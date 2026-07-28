@@ -39,7 +39,9 @@ const path = Astro.url.pathname;
   }
   *{margin:0;padding:0;box-sizing:border-box}
   html{scroll-behavior:smooth}
-  body{font-family:var(--body);background:var(--cream);color:var(--ink);line-height:1.6}
+  body{font-family:var(--body);background:var(--cream);color:var(--ink);line-height:1.6;
+    min-height:100vh;display:flex;flex-direction:column}
+  main{flex:1 0 auto}
   .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
   .checker{height:14px;background:repeating-conic-gradient(var(--ink) 0% 25%, var(--cream) 0% 50%) 0 0/28px 28px}
   section{padding:clamp(56px,9vw,110px) clamp(20px,6vw,72px)}
@@ -64,9 +66,12 @@ const path = Astro.url.pathname;
       text-decoration:none;font-size:.95rem;padding:6px 2px;border-bottom:3px solid transparent;transition:color .2s,border-color .2s}
   nav.site a.link:hover,nav.site a.link:focus-visible{color:var(--gold);border-color:var(--crimson);outline:none}
   nav.site a.link.active{color:var(--gold);border-color:var(--crimson)}
-  footer{background:#1a100b;color:var(--cream-2);text-align:center;padding:26px 20px;font-size:.88rem}
+  footer{background:#1a100b;color:var(--cream-2);text-align:center;padding:26px 20px;font-size:.88rem;flex-shrink:0}
   footer a{color:var(--gold);text-decoration:none}
   footer a:hover{text-decoration:underline}
+  .fb-icon{display:inline-flex;vertical-align:-6px;color:#1877F2;transition:opacity .2s}
+  .fb-icon:hover{opacity:.8}
+  footer .top-line{display:flex;flex-wrap:wrap;gap:6px 10px;justify-content:center;align-items:center}
   @media (max-width:820px){ nav.site ul{gap:14px} nav.site a.link{font-size:.8rem} }
   @media (prefers-reduced-motion: reduce){
     .reveal{transition:none;opacity:1;transform:none}
@@ -86,10 +91,17 @@ const path = Astro.url.pathname;
   </ul>
 </nav>
 
-<slot />
+<main><slot /></main>
 
 <footer>
-  <p>© {new Date().getFullYear()} Grayz'n Buffalo Bar &amp; Grill · 102 S Eau Claire St, Mondovi, WI · <a href="tel:+17159264431">(715) 926-4431</a> · <a href="https://www.facebook.com/grayznbuffalo/">Facebook</a></p>
+  <p class="top-line">
+    <span>© {new Date().getFullYear()} Grayz'n Buffalo Bar &amp; Grill · 102 S Eau Claire St, Mondovi, WI · <a href="tel:+17159264431">(715) 926-4431</a></span>
+    <a href="https://www.facebook.com/grayznbuffalo/" aria-label="Grayz'n Buffalo on Facebook" class="fb-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5 3.66 9.15 8.44 9.94v-7.03H7.9v-2.9h2.54V9.85c0-2.51 1.49-3.9 3.77-3.9 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.9h-2.34V22c4.78-.79 8.44-4.94 8.44-9.94Z"/>
+      </svg>
+    </a>
+  </p>
   <p style="margin-top:6px;opacity:.6">Built by <a href="https://joshuawerlein.com" style="color:inherit">Joshua Werlein</a></p>
 </footer>
 
