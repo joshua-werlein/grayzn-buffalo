@@ -2,9 +2,6 @@ name = "grayzn-buffalo"
 compatibility_date = "2026-01-01"
 pages_build_output_dir = "./dist"
 
-# After creating resources, paste the real IDs here:
-#   wrangler d1 create grayzn-db
-#   wrangler kv namespace create SESSIONS
 [[d1_databases]]
 binding = "DB"
 database_name = "grayzn-db"
