@@ -4,6 +4,17 @@ import SpecialsBoard from '../components/SpecialsBoard.astro';
 const foods = [
   { src: '/food-pretzel.webp', label: 'Soft pretzel & cheese' },
   { src: '/food-club.webp', label: 'Club on waffle fries' },
+  { src: '/food-stirfry.webp', label: 'Chicken stir fry' },
+  { src: '/food-chicken-wrap.webp', label: 'Chicken wrap' },
+  { src: '/food-cheesburger.webp', label: 'Cheeseburger' },
+  { src: '/philly-sub.webp', label: 'Philly cheesesteak' },
+  { src: '/food-cheescurd-burger.webp', label: 'Cheese curd burger' },
+  { src: '/food-mushroom-swiss.webp', label: 'Mushroom Swiss burger' },
+  { src: '/food-dovi-burger.webp', label: 'Dovi Burger' },
+  { src: '/food-chicken-salad.webp', label: 'Grilled chicken salad' },
+  { src: '/food-enchilada.webp', label: 'Enchilada' },
+  { src: '/food-burrito.webp', label: 'Wet burrito' },
+  { src: '/food-bloody-mary.webp', label: 'Bloody Mary bar' },
 ];
 ---
 <Base>
@@ -26,10 +37,6 @@ const foods = [
     {[0,1].map(() => (
       <>
         {foods.map(f => (<div class="strip-item"><img src={f.src} alt={f.label} loading="lazy" /></div>))}
-        <div class="strip-item ph">Photo: Grayz'n burger</div>
-        <div class="strip-item ph">Photo: broasted chicken</div>
-        <div class="strip-item ph">Photo: wrap &amp; fries</div>
-        <div class="strip-item ph">Photo: the bar</div>
       </>
     ))}
   </div>
@@ -190,7 +197,7 @@ const foods = [
   .link-arrow:hover{text-decoration:underline}
   .fb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;max-width:1120px;margin:0 auto}
   .visit-heading{color:var(--gold);text-align:center;max-width:900px;margin:0 auto 32px}
-  .map-frame{border-radius:14px;min-height:320px;max-width:1200px;margin:0 auto;overflow:hidden;border:2px solid rgba(247,234,211,.2)}
+  .map-frame{border-radius:14px;aspect-ratio:16/7;min-height:380px;max-width:1200px;margin:0 auto;overflow:hidden;border:2px solid rgba(247,234,211,.2)}
   .visit-cols{
     display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(20px,4vw,48px);
     max-width:900px;margin:38px auto 0;text-align:center;
@@ -206,3 +213,5 @@ const foods = [
     .rise,.charge,.strip-track{animation:none;opacity:1;transform:none}
   }
 </style>
+
+Same drill after both are saved: npm run build then npx wrangler pages deploy dist --project-name grayzn-buffalo.
