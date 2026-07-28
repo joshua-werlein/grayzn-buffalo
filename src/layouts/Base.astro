@@ -38,10 +38,11 @@ const path = Astro.url.pathname;
     --display:'Alfa Slab One', serif; --body:'Barlow', sans-serif; --label:'Barlow Condensed', sans-serif;
   }
   *{margin:0;padding:0;box-sizing:border-box}
-  html{scroll-behavior:smooth}
+  html{scroll-behavior:smooth;overflow-x:clip}
   body{font-family:var(--body);background:var(--cream);color:var(--ink);line-height:1.6;
-    min-height:100vh;display:flex;flex-direction:column}
-  main{flex:1 0 auto}
+    min-height:100vh;display:flex;flex-direction:column;overflow-x:clip;width:100%}
+  main{flex:1 0 auto;width:100%}
+  img,iframe{max-width:100%}
   .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
   .checker{height:14px;background:repeating-conic-gradient(var(--ink) 0% 25%, var(--cream) 0% 50%) 0 0/28px 28px}
   section{padding:clamp(56px,9vw,110px) clamp(20px,6vw,72px)}
