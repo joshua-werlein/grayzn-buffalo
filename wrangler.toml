@@ -1,0 +1,18 @@
+name = "grayzn-buffalo"
+compatibility_date = "2026-01-01"
+pages_build_output_dir = "./dist"
+
+# After creating resources, paste the real IDs here:
+#   wrangler d1 create grayzn-db
+#   wrangler kv namespace create SESSIONS
+[[d1_databases]]
+binding = "DB"
+database_name = "grayzn-db"
+database_id = "c998bfd4-7031-4ae2-9eea-df86f16ddb15"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "3c31559924b64014844778c431b80ef1"
+
+# Secrets (set in Pages project settings or `wrangler pages secret put`):
+#   ADMIN_PASSWORD, TURNSTILE_SECRET, RESEND_API_KEY, CONTACT_TO_EMAIL

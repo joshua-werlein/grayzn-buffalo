@@ -1,0 +1,62 @@
+---
+import { getSpecials } from '../lib/db';
+const env = (Astro.locals as any).runtime?.env ?? {};
+const specials = await getSpecials(env);
+const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+---
+<div class="board reveal" role="tablist" aria-label="Daily specials" data-specials={JSON.stringify(specials)}>
+  <div class="board-days" id="dayTabs"></div>
+  <div class="board-body">
+    <div class="board-day-label" id="boardDay"></div>
+    <div class="board-special" id="boardSpecial"></div>
+    <p class="board-desc" id="boardDesc"></p>
+    <span class="tag" id="boardTag" hidden></span>
+  </div>
+</div>
+
+<style>
+  .board{max-width:900px;margin:0 auto;background:var(--ink-2);border:3px solid var(--gold);border-radius:14px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.45)}
+  .board-days{display:flex;flex-wrap:wrap;border-bottom:3px solid var(--gold)}
+  .board-days :global(button){flex:1 1 0;min-width:78px;padding:13px 6px;background:transparent;border:none;cursor:pointer;
+    font-family:var(--label);font-weight:700;letter-spacing:.14em;font-size:.95rem;color:var(--cream-2);
+    text-transform:uppercase;transition:background .2s,color .2s}
+  .board-days :global(button:hover){background:rgba(255,210,63,.12);color:var(--gold)}
+  .board-days :global(button[aria-selected="true"]){background:var(--crimson);color:var(--cream)}
+  .board-days :global(.today-dot){display:block;font-size:.62rem;letter-spacing:.2em;color:var(--gold)}
+  .board-body{padding:clamp(24px,5vw,48px);text-align:center;min-height:220px}
+  .board-day-label{font-family:var(--label);font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:var(--amber);font-size:.9rem}
+  .board-special{font-family:var(--display);font-size:clamp(1.6rem,4vw,2.6rem);color:var(--cream);margin:12px 0 6px;line-height:1.15}
+  .board-desc{color:var(--cream-2);max-width:520px;margin:0 auto;font-size:1.02rem}
+  .tag{display:inline-block;margin-top:16px;font-family:var(--label);font-weight:700;font-size:.8rem;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--ink);background:var(--gold);padding:5px 14px;border-radius:999px}
+</style>
+
+<script>
+  const board = document.querySelector('.board') as HTMLElement;
+  const SPECIALS = JSON.parse(board.dataset.specials || '[]');
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const todayIdx = new Date().getDay();
+  const tabs = document.getElementById('dayTabs')!;
+  const elDay = document.getElementById('boardDay')!;
+  const elName = document.getElementById('boardSpecial')!;
+  const elDesc = document.getElementById('boardDesc')!;
+  const elTag = document.getElementById('boardTag')! as HTMLElement;
+
+  function bydow(i:number){ return SPECIALS.find((s:any)=>s.day_of_week===i) || {name:'Ask at the bar', description:'', tag:null}; }
+  function show(i:number){
+    const s = bydow(i);
+    elDay.textContent = (i === todayIdx ? 'Today · ' : '') + DAYS[i];
+    elName.textContent = s.name;
+    elDesc.textContent = s.description;
+    if(s.tag){ elTag.hidden = false; elTag.textContent = s.tag; } else { elTag.hidden = true; }
+    [...tabs.children].forEach((b,bi)=>b.setAttribute('aria-selected', bi===i ? 'true':'false'));
+  }
+  DAYS.forEach((d,i)=>{
+    const b = document.createElement('button');
+    b.setAttribute('role','tab');
+    b.innerHTML = d.slice(0,3) + (i===todayIdx ? '<span class="today-dot">today</span>' : '');
+    b.addEventListener('click', ()=>show(i));
+    tabs.appendChild(b);
+  });
+  show(todayIdx);
+</script>

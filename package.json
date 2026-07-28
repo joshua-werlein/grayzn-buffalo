@@ -1,0 +1,14 @@
+{
+  "name": "grayzn-buffalo",
+  "type": "module",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "wrangler pages dev dist"
+  },
+  "dependencies": {
+    "astro": "^5.0.0",
+    "@astrojs/cloudflare": "^12.0.0"
+  }
+}

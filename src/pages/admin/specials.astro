@@ -1,0 +1,48 @@
+---
+import Base from '../../layouts/Base.astro';
+import { isAuthed } from '../../lib/auth';
+const env = (Astro.locals as any).runtime?.env ?? {};
+if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
+
+const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+let notice = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  try {
+    await env.DB.prepare(`INSERT INTO specials (day_of_week, name, description, tag) VALUES (?1, ?2, ?3, ?4)
+      ON CONFLICT(day_of_week) DO UPDATE SET name=?2, description=?3, tag=?4`)
+      .bind(Number(f.get('day_of_week')), String(f.get('name')), String(f.get('description') ?? ''), String(f.get('tag') ?? '') || null).run();
+    notice = `${DAYS[Number(f.get('day_of_week'))]} updated.`;
+  } catch { notice = 'Database not connected yet — see README.'; }
+}
+let specials: any[] = [];
+try { specials = (await env.DB.prepare('SELECT * FROM specials ORDER BY day_of_week').all()).results ?? []; } catch {}
+const byDay = (i:number) => specials.find(s => s.day_of_week === i) ?? { name:'', description:'', tag:'' };
+---
+<Base title="Admin · Specials — Grayz'n Buffalo">
+<section>
+  <div class="section-head"><h2>Daily Specials</h2>{notice && <p><strong>{notice}</strong></p>}</div>
+  <div class="admin-wrap">
+    {DAYS.map((d, i) => { const s = byDay(i); return (
+      <form method="post" class="day-form">
+        <h3>{d}</h3>
+        <input type="hidden" name="day_of_week" value={i} />
+        <input name="name" placeholder="Special name" value={s.name} required />
+        <input name="description" placeholder="Description" value={s.description} />
+        <input name="tag" placeholder="Tag (e.g. Mexican Night)" value={s.tag ?? ''} />
+        <button class="btn btn-primary" type="submit">Save</button>
+      </form>
+    ); })}
+    <p style="text-align:center"><a href="/admin">← Back to admin</a></p>
+  </div>
+</section>
+</Base>
+
+<style>
+  .admin-wrap{max-width:680px;margin:0 auto}
+  .day-form{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(36,22,16,.1);margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .day-form h3{font-family:var(--display);grid-column:1 / -1}
+  .day-form input{padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream)}
+  .day-form input[name="name"]{grid-column:1 / -1}
+  .day-form button{grid-column:1 / -1;justify-self:start}
+</style>

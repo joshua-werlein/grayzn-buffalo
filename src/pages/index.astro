@@ -1,0 +1,205 @@
+---
+import Base from '../layouts/Base.astro';
+import SpecialsBoard from '../components/SpecialsBoard.astro';
+const foods = [
+  { src: '/food-pretzel.webp', label: 'Soft pretzel & cheese' },
+  { src: '/food-club.webp', label: 'Club on waffle fries' },
+];
+---
+<Base>
+<header class="hero" id="top">
+  <h1 class="sr-only">Grayz'n Buffalo Bar &amp; Grill — Mondovi, Wisconsin</h1>
+  <div class="sun" aria-hidden="true"></div>
+  <div class="ground" aria-hidden="true"></div>
+  <div class="hero-copy">
+    <img class="hero-logo charge" src="/logo-ink.webp" alt="" width="900" height="605" />
+    <p class="hero-tag rise d1">Burgers, broasted chicken &amp; cold ones — open daily 10 AM to 2 AM.</p>
+    <div class="hero-ctas rise d2">
+      <a class="btn btn-primary" href="/specials">Today's Special</a>
+      <a class="btn btn-ghost" href="/menu">See the Menu</a>
+    </div>
+  </div>
+</header>
+
+<div class="strip" aria-label="Food photos">
+  <div class="strip-track">
+    {[0,1].map(() => (
+      <>
+        {foods.map(f => (<div class="strip-item"><img src={f.src} alt={f.label} loading="lazy" /></div>))}
+        <div class="strip-item ph">Photo: Grayz'n burger</div>
+        <div class="strip-item ph">Photo: broasted chicken</div>
+        <div class="strip-item ph">Photo: wrap &amp; fries</div>
+        <div class="strip-item ph">Photo: the bar</div>
+      </>
+    ))}
+  </div>
+</div>
+
+<section id="specials" class="dark">
+  <div class="section-head reveal">
+    <span class="kicker" style="color:var(--amber)">Fresh off the board</span>
+    <h2 style="color:var(--gold)">What's On Today</h2>
+    <p style="color:var(--cream-2)">The board always opens on today.</p>
+  </div>
+  <SpecialsBoard />
+</section>
+
+<div class="checker" aria-hidden="true"></div>
+
+<section id="welcome">
+  <div class="welcome-grid">
+    <div class="welcome-copy reveal">
+      <span class="kicker">Welcome in</span>
+      <h2>Small Town.<br />Big Appetite.</h2>
+      <p>Right on Eau Claire Street in downtown Mondovi. Half-pound burgers, broasted chicken, and fries in checkered paper — with the kitchen running from 10 AM to 2 AM every day.</p>
+      <p>Longtime locals knew us as Gumby's. New name, same bar.</p>
+      <a class="btn btn-primary" href="/menu" style="margin-top:8px">Full Menu</a>
+    </div>
+    <div class="photo-stack reveal">
+      <div class="photo"><img src="/food-pretzel.webp" alt="Soft pretzel and cheese" loading="lazy" /><span>Pretzel &amp; cheese</span></div>
+      <div class="photo"><img src="/food-club.webp" alt="Club sandwich with waffle fries" loading="lazy" /><span>Club on waffle fries</span></div>
+      <div class="photo ph"><span>Photo: Grayz'n burger</span></div>
+      <div class="photo ph"><span>Photo: the bar</span></div>
+    </div>
+  </div>
+</section>
+
+<div class="checker" aria-hidden="true"></div>
+
+<section id="menu-preview" style="background:var(--cream-2)">
+  <div class="section-head reveal">
+    <span class="kicker">From the kitchen</span>
+    <h2>The Menu</h2>
+    <p>The daily lineup while the grill's on — and the late-night menu after it shuts down.</p>
+  </div>
+  <div class="menu-cards">
+    <article class="menu-card reveal">
+      <h3>Daily Menu</h3>
+      <p>Full kitchen while the grill is running.</p>
+      <a class="link-arrow" href="/menu">Daily menu →</a>
+    </article>
+    <article class="menu-card reveal">
+      <h3>Late Night</h3>
+      <p>After the grill shuts down, the oven keeps going — pizza, pizza fries, appetizers.</p>
+      <a class="link-arrow" href="/menu#late-night">Late night menu →</a>
+    </article>
+    <article class="menu-card reveal">
+      <h3>Specials</h3>
+      <p>A different deal every day — Mexican Night included.</p>
+      <a class="link-arrow" href="/specials">This week's board →</a>
+    </article>
+  </div>
+</section>
+
+<div class="checker" aria-hidden="true"></div>
+
+<section id="social">
+  <div class="section-head reveal">
+    <span class="kicker">Straight from Facebook</span>
+    <h2>The Latest</h2>
+    <p>Staff post to Facebook — the site picks it up automatically.</p>
+  </div>
+  <div class="fb-grid reveal" id="fbFeed">
+    <p style="text-align:center;color:var(--ink-2)">Recent posts appear here once the Facebook feed Worker is connected.</p>
+  </div>
+  <div style="text-align:center;margin-top:34px" class="reveal">
+    <a class="btn btn-primary" href="https://www.facebook.com/grayznbuffalo/">Follow on Facebook</a>
+  </div>
+</section>
+
+<section id="visit" class="dark">
+  <div class="visit-grid">
+    <div class="map-frame reveal">
+      <!-- Swap in Google Maps Embed API iframe (like Blair Sportsmen's) -->
+      <iframe title="Map to Grayz'n Buffalo"
+        src="https://www.google.com/maps?q=102+S+Eau+Claire+St,+Mondovi,+WI+54755&output=embed"
+        loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+        style="border:0;width:100%;height:100%;min-height:320px;border-radius:14px"></iframe>
+    </div>
+    <div class="visit-info reveal">
+      <h2 style="color:var(--gold);text-align:left">Come See the Grayz'n Buffalo</h2>
+      <div class="visit-block"><h4>Address</h4><p>102 S Eau Claire St<br />Mondovi, WI 54755</p></div>
+      <div class="visit-block"><h4>Phone</h4><p><a href="tel:+17159264431">(715) 926-4431</a></p></div>
+      <div class="visit-block"><h4>Hours</h4><p>Open daily · 10 AM – 2 AM</p></div>
+    </div>
+  </div>
+</section>
+</Base>
+
+<style>
+  .hero{position:relative;overflow:hidden;min-height:min(84vh,720px);
+    display:flex;align-items:flex-end;justify-content:center;text-align:center;
+    background:linear-gradient(180deg,#2f7fc1 0%,#5db4e4 40%,#a7dcf0 68%,#cfeadf 92%)}
+  .sun{position:absolute;left:50%;top:56%;transform:translate(-50%,-50%);
+    width:min(60vw,600px);height:min(60vw,600px);border-radius:50%;
+    background:radial-gradient(circle,#fffbe6 0%,#ffe98a 42%,rgba(255,233,138,0) 70%)}
+  .ground{position:absolute;left:0;right:0;bottom:0;
+    height:calc(7vh + 230px + min(78vw,560px) * 0.159);
+    background:linear-gradient(to top,#3f7d32 0%,#4f8c3f 58%,#5f9c4e 80%,rgba(122,180,92,.5) 92%,rgba(180,214,160,0) 100%)}
+  .hero-copy{position:relative;z-index:3;padding:0 24px;padding-bottom:7vh;max-width:900px;margin:0 auto}
+  .hero-logo{width:min(78vw,560px);height:auto;display:block;margin:0 auto;
+    filter:drop-shadow(0 0 22px rgba(255,255,255,.55))}
+  .hero-tag{font-size:clamp(1.05rem,2.4vw,1.4rem);color:var(--cream);
+    text-shadow:0 1px 10px rgba(36,22,16,.5);font-weight:600;margin-top:30px;letter-spacing:.01em}
+  .hero-ctas{margin-top:38px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
+  .rise{opacity:0;transform:translateY(26px);animation:rise .9s ease forwards}
+  .rise.d1{animation-delay:.75s}.rise.d2{animation-delay:.95s}
+  @keyframes rise{to{opacity:1;transform:translateY(0)}}
+  .charge{opacity:0;transform:scale(.42) translateY(14px);
+    animation:charge 1.15s cubic-bezier(.19,.74,.36,1) forwards;will-change:transform,opacity}
+  @keyframes charge{
+    0%{opacity:0;transform:scale(.42) translateY(14px)}
+    55%{opacity:1}
+    82%{transform:scale(1.045) translateY(-2px)}
+    100%{opacity:1;transform:scale(1) translateY(0)}
+  }
+  .strip{background:var(--ink);padding:18px 0;overflow:hidden}
+  .strip-track{display:flex;gap:16px;width:max-content;animation:slide 36s linear infinite}
+  .strip:hover .strip-track{animation-play-state:paused}
+  @keyframes slide{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  .strip-item{width:250px;height:170px;border-radius:10px;overflow:hidden;flex:none;
+    border:3px solid var(--cream);box-shadow:0 6px 16px rgba(0,0,0,.4);
+    position:relative;background:linear-gradient(150deg,var(--amber),var(--crimson))}
+  .strip-item img{width:100%;height:100%;object-fit:cover;display:block}
+  .strip-item.ph{display:flex;align-items:center;justify-content:center;
+    font-family:var(--label);font-weight:600;font-size:.75rem;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--cream);text-shadow:0 1px 6px rgba(0,0,0,.5)}
+  .dark{background:var(--ink);color:var(--cream)}
+  .welcome-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(28px,5vw,64px);max-width:1120px;margin:0 auto;align-items:center}
+  .welcome-copy h2{text-align:left}
+  .welcome-copy .kicker{display:block;text-align:left}
+  .welcome-copy p{margin:14px 0;color:var(--ink-2)}
+  .photo-stack{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .photo{aspect-ratio:4/5;border-radius:12px;position:relative;overflow:hidden;
+    background:linear-gradient(160deg,var(--amber),var(--crimson));
+    box-shadow:0 10px 26px rgba(36,22,16,.22);display:flex;align-items:flex-end;transition:transform .3s ease}
+  .photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .photo:hover{transform:translateY(-6px)}
+  .photo:nth-child(2){margin-top:34px}
+  .photo span{position:relative;width:100%;padding:10px 12px;font-family:var(--label);font-weight:600;font-size:.8rem;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--cream);
+    background:linear-gradient(transparent,rgba(36,22,16,.78))}
+  .menu-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:22px;max-width:1120px;margin:0 auto}
+  .menu-card{background:var(--cream);border-radius:14px;padding:30px 26px;border-top:6px solid var(--crimson);
+    box-shadow:0 8px 22px rgba(36,22,16,.12);transition:transform .25s ease, box-shadow .25s ease}
+  .menu-card:nth-child(2){border-top-color:var(--amber)}
+  .menu-card:nth-child(3){border-top-color:var(--denim)}
+  .menu-card:hover{transform:translateY(-7px);box-shadow:0 16px 34px rgba(36,22,16,.18)}
+  .menu-card h3{font-family:var(--display);font-size:1.35rem;margin-bottom:8px}
+  .menu-card p{color:var(--ink-2);font-size:.98rem;margin-bottom:16px}
+  .link-arrow{font-family:var(--label);font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--crimson);text-decoration:none;font-size:.92rem}
+  .link-arrow:hover{text-decoration:underline}
+  .fb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;max-width:1120px;margin:0 auto}
+  .visit-grid{display:grid;grid-template-columns:1fr 1fr;gap:clamp(28px,5vw,60px);max-width:1120px;margin:0 auto;align-items:stretch}
+  .map-frame{border-radius:14px;min-height:320px;overflow:hidden;border:2px solid rgba(247,234,211,.2)}
+  .visit-block{margin-top:22px}
+  .visit-block h4{font-family:var(--label);font-weight:700;letter-spacing:.2em;text-transform:uppercase;font-size:.85rem;color:var(--amber);margin-bottom:6px}
+  .visit-block p{color:var(--cream-2)}
+  .visit-block a{color:var(--gold);text-decoration:none}
+  .visit-block a:hover{text-decoration:underline}
+  @media (max-width:820px){ .welcome-grid,.visit-grid{grid-template-columns:1fr} }
+  @media (prefers-reduced-motion: reduce){
+    .rise,.charge,.strip-track{animation:none;opacity:1;transform:none}
+  }
+</style>

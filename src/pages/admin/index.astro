@@ -1,0 +1,53 @@
+---
+import Base from '../../layouts/Base.astro';
+import { isAuthed, login, logout } from '../../lib/auth';
+const env = (Astro.locals as any).runtime?.env ?? {};
+let authed = await isAuthed(Astro.cookies, env);
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = form.get('action');
+  if (action === 'login') {
+    if (await login(String(form.get('password') ?? ''), Astro.cookies, env)) authed = true;
+    else error = 'Wrong password.';
+  } else if (action === 'logout') {
+    await logout(Astro.cookies, env);
+    authed = false;
+  }
+}
+---
+<Base title="Admin — Grayz'n Buffalo">
+<section style="min-height:60vh">
+  <div class="section-head">
+    <h2>Admin</h2>
+  </div>
+  {authed ? (
+    <div class="panel">
+      <p>Signed in. Manage the site:</p>
+      <ul class="admin-links">
+        <li><a class="btn btn-primary" href="/admin/menu">Menu items</a></li>
+        <li><a class="btn btn-primary" href="/admin/specials">Daily specials</a></li>
+      </ul>
+      <form method="post" style="margin-top:26px">
+        <input type="hidden" name="action" value="logout" />
+        <button class="btn btn-ghost" type="submit">Sign out</button>
+      </form>
+    </div>
+  ) : (
+    <form method="post" class="panel">
+      <input type="hidden" name="action" value="login" />
+      <label>Password <input type="password" name="password" required /></label>
+      {error && <p style="color:var(--crimson);font-weight:600">{error}</p>}
+      <button class="btn btn-primary" type="submit">Sign in</button>
+    </form>
+  )}
+</section>
+</Base>
+
+<style>
+  .panel{max-width:420px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;box-shadow:0 8px 22px rgba(36,22,16,.12);text-align:center}
+  .panel label{display:block;text-align:left;margin-bottom:16px;font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.85rem}
+  .panel input{display:block;width:100%;margin-top:6px;padding:12px;border:2px solid rgba(36,22,16,.2);border-radius:8px;font-size:1rem;background:var(--cream)}
+  .admin-links{list-style:none;display:flex;gap:12px;justify-content:center;margin-top:16px;flex-wrap:wrap}
+</style>

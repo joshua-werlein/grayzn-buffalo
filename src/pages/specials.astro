@@ -1,0 +1,14 @@
+---
+import Base from '../layouts/Base.astro';
+import SpecialsBoard from '../components/SpecialsBoard.astro';
+---
+<Base title="Specials — Grayz'n Buffalo Bar & Grill">
+<section class="dark" style="background:var(--ink);color:var(--cream);min-height:70vh">
+  <div class="section-head">
+    <span class="kicker" style="color:var(--amber)">Fresh off the board</span>
+    <h2 style="color:var(--gold)">This Week's Specials</h2>
+    <p style="color:var(--cream-2)">A different deal every day. Follow us on Facebook for the daily details.</p>
+  </div>
+  <SpecialsBoard />
+</section>
+</Base>

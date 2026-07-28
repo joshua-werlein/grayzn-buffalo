@@ -1,0 +1,57 @@
+---
+import Base from '../layouts/Base.astro';
+import { getMenu } from '../lib/db';
+const env = (Astro.locals as any).runtime?.env ?? {};
+const { categories, items } = await getMenu(env);
+---
+<Base title="Menu — Grayz'n Buffalo Bar & Grill">
+<section>
+  <div class="section-head">
+    <span class="kicker">From the kitchen</span>
+    <h2>The Menu</h2>
+    <p>No prices here — ask at the bar. Staff keep this list current.</p>
+  </div>
+  <div class="tabs" role="tablist">
+    {categories.map((c, i) => (
+      <button role="tab" aria-selected={i === 0 ? 'true' : 'false'} data-cat={c.id} id={c.name.toLowerCase().replace(' ','-')}>{c.name}</button>
+    ))}
+  </div>
+  {categories.map((c, i) => (
+    <ul class="menu-list" data-cat={c.id} hidden={i !== 0}>
+      {items.filter(it => it.category_id === c.id).map(it => (
+        <li>
+          <strong>{it.name}</strong>
+          {it.description && <span>{it.description}</span>}
+        </li>
+      ))}
+    </ul>
+  ))}
+</section>
+</Base>
+
+<style>
+  .tabs{display:flex;justify-content:center;gap:10px;margin-bottom:34px;flex-wrap:wrap}
+  .tabs button{font-family:var(--label);font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    font-size:1rem;padding:12px 26px;border-radius:999px;border:2px solid var(--ink);
+    background:transparent;color:var(--ink);cursor:pointer;transition:background .2s,color .2s}
+  .tabs button[aria-selected="true"]{background:var(--crimson);border-color:var(--crimson);color:var(--cream)}
+  .menu-list{list-style:none;max-width:680px;margin:0 auto}
+  .menu-list li{padding:16px 4px;border-bottom:1px dashed rgba(36,22,16,.25)}
+  .menu-list li:last-child{border-bottom:none}
+  .menu-list strong{display:block;font-family:var(--display);font-weight:400;font-size:1.15rem}
+  .menu-list span{color:var(--ink-2);font-size:.95rem}
+</style>
+
+<script>
+  const tabs = document.querySelectorAll('.tabs button');
+  const lists = document.querySelectorAll('.menu-list');
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => x.setAttribute('aria-selected', x === t ? 'true' : 'false'));
+    lists.forEach(l => (l as HTMLElement).hidden = (l as HTMLElement).dataset.cat !== (t as HTMLElement).dataset.cat);
+  }));
+  // deep link: /menu#late-night
+  if (location.hash) {
+    const btn = document.querySelector(location.hash) as HTMLElement | null;
+    btn?.click();
+  }
+</script>

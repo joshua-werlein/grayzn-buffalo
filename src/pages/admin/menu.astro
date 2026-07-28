@@ -1,0 +1,78 @@
+---
+import Base from '../../layouts/Base.astro';
+import { isAuthed } from '../../lib/auth';
+const env = (Astro.locals as any).runtime?.env ?? {};
+if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
+
+let notice = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const action = f.get('action');
+  try {
+    if (action === 'add') {
+      await env.DB.prepare('INSERT INTO items (category_id, name, description, sort) VALUES (?1, ?2, ?3, COALESCE((SELECT MAX(sort)+1 FROM items WHERE category_id=?1), 0))')
+        .bind(Number(f.get('category_id')), String(f.get('name')), String(f.get('description') ?? '')).run();
+      notice = 'Item added.';
+    } else if (action === 'delete') {
+      await env.DB.prepare('DELETE FROM items WHERE id = ?1').bind(Number(f.get('id'))).run();
+      notice = 'Item removed.';
+    } else if (action === 'toggle') {
+      await env.DB.prepare('UPDATE items SET active = 1 - active WHERE id = ?1').bind(Number(f.get('id'))).run();
+      notice = 'Item updated.';
+    }
+  } catch (e) { notice = 'Database not connected yet — see README.'; }
+}
+
+let categories: any[] = [], items: any[] = [];
+try {
+  categories = (await env.DB.prepare('SELECT * FROM categories ORDER BY sort').all()).results ?? [];
+  items = (await env.DB.prepare('SELECT * FROM items ORDER BY category_id, sort').all()).results ?? [];
+} catch {}
+---
+<Base title="Admin · Menu — Grayz'n Buffalo">
+<section>
+  <div class="section-head"><h2>Menu Items</h2>{notice && <p><strong>{notice}</strong></p>}</div>
+  <div class="admin-wrap">
+    <form method="post" class="add-form">
+      <input type="hidden" name="action" value="add" />
+      <select name="category_id" required>
+        {categories.map((c:any) => <option value={c.id}>{c.name}</option>)}
+      </select>
+      <input name="name" placeholder="Item name" required />
+      <input name="description" placeholder="Description (optional)" />
+      <button class="btn btn-primary" type="submit">Add item</button>
+    </form>
+    {categories.map((c:any) => (
+      <div class="cat">
+        <h3>{c.name}</h3>
+        <ul>
+          {items.filter((i:any) => i.category_id === c.id).map((i:any) => (
+            <li class={i.active ? '' : 'inactive'}>
+              <div><strong>{i.name}</strong> <span>{i.description}</span></div>
+              <div class="row-actions">
+                <form method="post"><input type="hidden" name="action" value="toggle"/><input type="hidden" name="id" value={i.id}/><button title="Show/hide">{i.active ? 'Hide' : 'Show'}</button></form>
+                <form method="post" onsubmit="return confirm('Delete this item?')"><input type="hidden" name="action" value="delete"/><input type="hidden" name="id" value={i.id}/><button class="danger">Delete</button></form>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ))}
+    <p style="text-align:center"><a href="/admin">← Back to admin</a></p>
+  </div>
+</section>
+</Base>
+
+<style>
+  .admin-wrap{max-width:760px;margin:0 auto}
+  .add-form{display:flex;gap:10px;flex-wrap:wrap;background:#fff;padding:18px;border-radius:12px;box-shadow:0 6px 16px rgba(36,22,16,.1);margin-bottom:30px}
+  .add-form select,.add-form input{padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);flex:1;min-width:140px}
+  .cat h3{font-family:var(--display);margin:22px 0 8px}
+  .cat ul{list-style:none}
+  .cat li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px dashed rgba(36,22,16,.25)}
+  .cat li.inactive{opacity:.45}
+  .cat li span{color:var(--ink-2);font-size:.92rem;margin-left:6px}
+  .row-actions{display:flex;gap:8px}
+  .row-actions button{padding:6px 12px;border-radius:6px;border:2px solid var(--ink);background:transparent;cursor:pointer;font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.75rem}
+  .row-actions .danger{border-color:var(--crimson);color:var(--crimson)}
+</style>
