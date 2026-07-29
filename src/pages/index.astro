@@ -214,8 +214,9 @@ const foods = [
   .visit-block h4{font-family:var(--label);font-weight:700;letter-spacing:.2em;text-transform:uppercase;font-size:.85rem;color:var(--amber);margin-bottom:6px}
   .visit-block p{color:var(--cream-2);white-space:nowrap}
   .visit-block:first-child p{white-space:normal}
-  .visit-block a{color:var(--gold);text-decoration:none}
-  .visit-block a:hover{text-decoration:underline}
+  .visit-block a{color:var(--gold);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1.5px;}
+  .visit-block a:hover,
+  .visit-block a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
   @media (max-width:900px){ .welcome-grid{grid-template-columns:1fr} }
   @media (max-width:800px){ .visit-cols{grid-template-columns:1fr;gap:20px} .visit-block p{white-space:normal} }
   @media (max-width:480px){ .hero{min-height:min(72vh,640px);min-height:min(72dvh,640px)} .logo-wrap{width:min(88vw,560px)} }
