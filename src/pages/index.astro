@@ -132,6 +132,7 @@ const foods = [
 
 <style>
   .hero{position:relative;overflow:hidden;min-height:min(84vh,720px);
+    min-height:min(84dvh,720px);
     display:flex;align-items:flex-end;justify-content:center;text-align:center;
     background:linear-gradient(180deg,#2f7fc1 0%,#5db4e4 40%,#a7dcf0 68%,#cfeadf 92%)}
   .sun{position:absolute;left:50%;top:76.4%;transform:translate(-50%,-50%);
@@ -217,7 +218,7 @@ const foods = [
   .visit-block a:hover{text-decoration:underline}
   @media (max-width:900px){ .welcome-grid{grid-template-columns:1fr} }
   @media (max-width:800px){ .visit-cols{grid-template-columns:1fr;gap:20px} .visit-block p{white-space:normal} }
-  @media (max-width:480px){ .hero{min-height:min(72vh,640px)} .logo-wrap{width:min(88vw,560px)} }
+  @media (max-width:480px){ .hero{min-height:min(72vh,640px);min-height:min(72dvh,640px)} .logo-wrap{width:min(88vw,560px)} }
   @media (prefers-reduced-motion: reduce){
     .rise,.charge,.strip-track{animation:none;opacity:1;transform:none}
   }
