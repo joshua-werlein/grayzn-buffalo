@@ -1,5 +1,7 @@
 ---
 interface Props { title?: string; description?: string; }
+import { getSetting } from '../lib/db';
+interface Props { title?: string; description?: string; }
 const { title = "Grayz'n Buffalo Bar & Grill — Mondovi, WI",
         description = "Grayz'n Buffalo Bar & Grill in Mondovi, WI. Burgers, broasted chicken & cold ones — open daily 10 AM to 2 AM." } = Astro.props;
 const nav = [
@@ -9,6 +11,8 @@ const nav = [
   { href: '/contact', label: 'Contact' },
 ];
 const path = Astro.url.pathname;
+const env = (Astro.locals as any).runtime?.env ?? {};
+const announcement = await getSetting(env, 'announcement', '');
 ---
 <!DOCTYPE html>
 <html lang="en">
@@ -41,6 +45,11 @@ const path = Astro.url.pathname;
   html{scroll-behavior:smooth;overflow-x:clip}
   body{font-family:var(--body);background:var(--cream);color:var(--ink);line-height:1.6;
     min-height:100vh;display:flex;flex-direction:column;overflow-x:clip;width:100%}
+  .announce{background:var(--crimson);color:var(--cream);text-align:center;
+    padding:9px clamp(16px,4vw,48px);font-family:var(--label);font-weight:600;
+    letter-spacing:.04em;font-size:.92rem;line-height:1.35;
+    box-shadow:0 2px 8px rgba(0,0,0,.22)}
+  .announce p{margin:0;max-width:1100px;margin-inline:auto}
   main{flex:1 0 auto;width:100%}
   img,iframe{max-width:100%}
   .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
@@ -146,7 +155,11 @@ const path = Astro.url.pathname;
     ))}
   </ul>
 </nav>
-
+  {announcement && (
+    <div class="announce" role="region" aria-label="Announcement">
+      <p>{announcement}</p>
+    </div>
+  )}
 <nav class="action-bar" aria-label="Quick actions">
   <a href="https://www.google.com/maps?q=102+S+Eau+Claire+St,+Mondovi,+WI+54755" target="_blank" rel="noopener">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
