@@ -71,10 +71,9 @@ const path = Astro.url.pathname;
   footer a{color:var(--gold);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1.5px;}
   footer a:hover,
   footer a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
-  .footer-nav a{display:inline-block;padding:10px 4px;font-family:var(--label);font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:.85rem;color:var(--cream-2);text-decoration:none;border-bottom:3px solid transparent;}
-  .footer-nav a:hover,
-  .footer-nav a:focus-visible{color:var(--gold);border-bottom-color:var(--crimson);outline:none;}
-  .footer-nav a[aria-current="page"]{color:var(--gold);border-bottom-color:var(--crimson);}
+.footer-nav a{display:inline-block;padding:8px 6px;font-family:var(--label);font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:.85rem;color:var(--cream-2);text-decoration:none;}
+.footer-nav a:hover{color:var(--gold);text-decoration:underline;text-underline-offset:4px;}
+.footer-nav a:focus-visible{color:var(--gold);outline:2px solid var(--gold);outline-offset:2px;}
   .fb-icon{display:inline-flex;vertical-align:-6px;color:#1877F2;transition:opacity .2s}
   .fb-icon:hover{opacity:.8}
   footer .top-line{display:flex;flex-wrap:wrap;gap:6px 10px;justify-content:center;align-items:center}
