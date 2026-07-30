@@ -21,6 +21,18 @@ CREATE TABLE IF NOT EXISTS specials (
   tag TEXT DEFAULT NULL
 );
 
+-- Settings: single key/value store for site-wide toggles and copy.
+-- Reusable for the delivery pause switch, happy-hour notice, holiday hours, etc.
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT ''
+);
+
+-- Seed the announcement row empty so the banner stays hidden until staff set it.
+INSERT INTO settings (key, value) VALUES ('announcement', '')
+  ON CONFLICT(key) DO NOTHING;
+
+
 INSERT INTO categories (name, sort) VALUES ('Daily', 0), ('Late Night', 1);
 INSERT INTO items (category_id, name, description, sort) VALUES
  (1, 'Grayz''n Burger', 'Half-pound burger with your choice of side.', 0),
