@@ -71,9 +71,9 @@ const path = Astro.url.pathname;
   footer a{color:var(--gold);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1.5px;}
   footer a:hover,
   footer a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
-.footer-nav a{display:inline-block;padding:8px 6px;font-family:var(--label);font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:.85rem;color:var(--cream-2);text-decoration:none;}
-.footer-nav a:hover{color:var(--gold);text-decoration:underline;text-underline-offset:4px;}
-.footer-nav a:focus-visible{color:var(--gold);outline:2px solid var(--gold);outline-offset:2px;}
+  .footer-nav a{display:inline-block;padding:8px 6px;font-family:var(--label);font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:.85rem;color:var(--cream-2);text-decoration:none;}
+  .footer-nav a:hover{color:var(--gold);text-decoration:underline;text-underline-offset:4px;border-bottom-color:var(--crimson);}
+  .footer-nav a:focus-visible{color:var(--gold);outline:2px solid var(--gold);outline-offset:2px;}
   .fb-icon{display:inline-flex;vertical-align:-6px;color:#1877F2;transition:opacity .2s}
   .fb-icon:hover{opacity:.8}
   footer .top-line{display:flex;flex-wrap:wrap;gap:6px 10px;justify-content:center;align-items:center}
@@ -81,6 +81,7 @@ const path = Astro.url.pathname;
   .footer-legal a{color:var(--cream-2);font-size:.78rem;text-underline-offset:3px;}
   .footer-legal a:hover,
   .footer-legal a:focus-visible{color:var(--gold);}
+  footer .nowrap{white-space:nowrap}
   @media (max-width:820px){ nav.site ul{gap:14px} nav.site a.link{font-size:.8rem} }
   @media (prefers-reduced-motion: reduce){
     .reveal{transition:none;opacity:1;transform:none}
@@ -90,7 +91,6 @@ const path = Astro.url.pathname;
   /* ---- top bar hide-on-scroll (mobile only) ---- */
   nav.site{transition:transform .28s ease}
   nav.site.hidden{transform:translateY(-100%)}
-  @media (min-width:821px){ nav.site.hidden{transform:none} }
 
   /* ---- mobile top bar: logo + MENU only ---- */
   @media (max-width:820px){
@@ -175,7 +175,7 @@ const path = Astro.url.pathname;
     <a href="/accessibility">Accessibility</a>
   </nav>
   <p class="top-line">
-   <span>© {new Date().getFullYear()} Grayz'n Buffalo Bar &amp; Grill · <a href="https://www.google.com/maps/search/?api=1&query=102+S+Eau+Claire+St,+Mondovi,+WI+54755" target="_blank" rel="noopener">102 S Eau Claire St, Mondovi, WI</a> · <a href="tel:+17159264431">(715) 926-4431</a></span>
+     <span>© {new Date().getFullYear()} Grayz'n Buffalo Bar &amp; Grill · <a class="nowrap" href="https://www.google.com/maps/search/?api=1&query=102+S+Eau+Claire+St,+Mondovi,+WI+54755" target="_blank" rel="noopener">102 S Eau Claire St, Mondovi, WI</a> · <a class="nowrap" href="tel:+17159264431">(715) 926-4431</a></span>
     <a href="https://www.facebook.com/grayznbuffalo/" aria-label="Grayz'n Buffalo on Facebook" class="fb-icon">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
         <path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5 3.66 9.15 8.44 9.94v-7.03H7.9v-2.9h2.54V9.85c0-2.51 1.49-3.9 3.77-3.9 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.9h-2.34V22c4.78-.79 8.44-4.94 8.44-9.94Z"/>
