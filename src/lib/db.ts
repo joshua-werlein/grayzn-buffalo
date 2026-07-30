@@ -40,3 +40,17 @@ export async function getMenu(env: any): Promise<{ categories: Category[]; items
     ],
   };
 }
+
+export async function getSetting(env: any, key: string, fallback = ''): Promise<string> {
+  try {
+    const row = await env.DB.prepare('SELECT value FROM settings WHERE key = ?1').bind(key).first();
+    if (row && typeof (row as any).value === 'string') return (row as any).value;
+  } catch {}
+  return fallback;
+}
+
+export async function setSetting(env: any, key: string, value: string): Promise<void> {
+  await env.DB.prepare(
+    'INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?2'
+  ).bind(key, value).run();
+}
