@@ -1,9 +1,11 @@
 ---
 import Base from '../../layouts/Base.astro';
 import { isAuthed, login, logout } from '../../lib/auth';
+import { getSetting, setSetting } from '../../lib/db';
 const env = (Astro.locals as any).runtime?.env ?? {};
 let authed = await isAuthed(Astro.cookies, env);
 let error = '';
+let notice = '';
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -14,13 +16,23 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'logout') {
     await logout(Astro.cookies, env);
     authed = false;
+  } else if (action === 'save-announcement' && authed) {
+    try {
+      await setSetting(env, 'announcement', String(form.get('announcement') ?? '').trim());
+      notice = 'Announcement saved.';
+    } catch {
+      notice = 'Database not connected yet — see README.';
+    }
   }
 }
+
+const announcement = authed ? await getSetting(env, 'announcement', '') : '';
 ---
 <Base title="Admin — Grayz'n Buffalo">
 <section style="min-height:60vh">
   <div class="section-head">
     <h2>Admin</h2>
+    {notice && <p><strong>{notice}</strong></p>}
   </div>
   {authed ? (
     <div class="panel">
@@ -29,6 +41,16 @@ if (Astro.request.method === 'POST') {
         <li><a class="btn btn-primary" href="/admin/menu">Menu items</a></li>
         <li><a class="btn btn-primary" href="/admin/specials">Daily specials</a></li>
       </ul>
+
+      <form method="post" class="announce-form">
+        <input type="hidden" name="action" value="save-announcement" />
+        <label for="announcement">Announcement banner</label>
+        <p class="hint">Shows a strip across the top of every page. Leave it empty to hide the banner. Good for delivery hours, happy hour, or a quick notice.</p>
+        <input id="announcement" name="announcement" type="text" maxlength="140"
+               value={announcement} placeholder="e.g. Delivery Mon–Fri 11 AM–1:30 PM within Mondovi" />
+        <button class="btn btn-primary" type="submit">Save announcement</button>
+      </form>
+
       <form method="post" style="margin-top:26px">
         <input type="hidden" name="action" value="logout" />
         <button class="btn btn-ghost" type="submit">Sign out</button>
@@ -37,7 +59,8 @@ if (Astro.request.method === 'POST') {
   ) : (
     <form method="post" class="panel">
       <input type="hidden" name="action" value="login" />
-      <label>Password <input type="password" name="password" required /></label>
+      <label for="password">Password</label>
+      <input id="password" type="password" name="password" required />
       {error && <p style="color:var(--crimson);font-weight:600">{error}</p>}
       <button class="btn btn-primary" type="submit">Sign in</button>
     </form>
@@ -46,8 +69,10 @@ if (Astro.request.method === 'POST') {
 </Base>
 
 <style>
-  .panel{max-width:420px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;box-shadow:0 8px 22px rgba(36,22,16,.12);text-align:center}
-  .panel label{display:block;text-align:left;margin-bottom:16px;font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.85rem}
-  .panel input{display:block;width:100%;margin-top:6px;padding:12px;border:2px solid rgba(36,22,16,.2);border-radius:8px;font-size:1rem;background:var(--cream)}
+  .panel{max-width:460px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;box-shadow:0 8px 22px rgba(36,22,16,.12);text-align:center}
+  .panel label{display:block;text-align:left;margin-bottom:6px;font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.85rem}
+  .panel input{display:block;width:100%;margin:6px 0 14px;padding:12px;border:2px solid rgba(36,22,16,.2);border-radius:8px;font-size:1rem;background:var(--cream)}
   .admin-links{list-style:none;display:flex;gap:12px;justify-content:center;margin-top:16px;flex-wrap:wrap}
+  .announce-form{margin-top:26px;padding-top:22px;border-top:1px solid rgba(36,22,16,.12);text-align:left}
+  .announce-form .hint{font-size:.85rem;color:var(--ink-2);margin:0 0 4px}
 </style>
