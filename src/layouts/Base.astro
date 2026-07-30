@@ -63,17 +63,17 @@ const path = Astro.url.pathname;
       padding:0 clamp(16px,4vw,48px);height:66px;box-shadow:0 2px 12px rgba(0,0,0,.35)}
   nav.site .brand img{height:50px;width:auto;display:block}
   nav.site ul{display:flex;gap:clamp(10px,2.5vw,34px);list-style:none}
-  nav.site a.link{font-family:var(--label);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--cream);
-      text-decoration:none;font-size:.95rem;padding:6px 2px;border-bottom:3px solid transparent;transition:color .2s,border-color .2s}
-  nav.site a.link:hover,nav.site a.link:focus-visible{color:var(--gold);border-color:var(--crimson);outline:none}
-  nav.site a.link.active{color:var(--gold);border-color:var(--crimson)}
+  nav.site a.link{font-family:var(--label);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--cream);text-decoration:none;font-size:.95rem;padding:5px 2px;transition:color .2s}
+  nav.site a.link:hover,nav.site a.link:focus-visible{color:var(--gold);text-decoration:underline;text-decoration-color:var(--crimson);text-decoration-thickness:2px;text-underline-offset:5px;outline:none}
+  nav.site a.link.active{color:var(--gold);text-decoration:underline;text-decoration-color:var(--crimson);text-decoration-thickness:2px;text-underline-offset:5px}
   footer{background:#1a100b;color:var(--cream-2);text-align:center;padding:26px 20px;font-size:.88rem;flex-shrink:0}
   footer a{color:var(--gold);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1.5px;}
   footer a:hover,
   footer a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
-  .footer-nav a{display:inline-block;padding:8px 6px 6px;font-family:var(--label);font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:.85rem;color:var(--cream-2);text-decoration:none;border-bottom:3px solid transparent;}
-  .footer-nav a:hover{color:var(--gold);border-bottom-color:var(--crimson);}
-  .footer-nav a:focus-visible{color:var(--gold);outline:2px solid var(--gold);outline-offset:2px;}
+  .footer-nav a{display:inline-block;padding:4px 6px;font-family:var(--label);font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:.85rem;color:var(--cream-2);text-decoration:none;transition:color .2s}
+  .footer-nav a:hover{color:var(--gold);text-decoration:underline;text-decoration-color:var(--crimson);text-decoration-thickness:2px;text-underline-offset:4px}
+  .footer-nav a:focus-visible{color:var(--gold);outline:2px solid var(--gold);outline-offset:2px}
+  .footer-nav a[aria-current="page"]{color:var(--gold);text-decoration:underline;text-decoration-color:var(--crimson);text-decoration-thickness:2px;text-underline-offset:4px}
   .fb-icon{display:inline-flex;vertical-align:-6px;color:#1877F2;transition:opacity .2s}
   .fb-icon:hover{opacity:.8}
   footer .top-line{display:flex;flex-wrap:wrap;gap:6px 10px;justify-content:center;align-items:center}
