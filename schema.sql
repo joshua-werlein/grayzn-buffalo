@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS items (
   name TEXT NOT NULL,
   description TEXT DEFAULT '',
   sort INTEGER NOT NULL DEFAULT 0,
-  active INTEGER NOT NULL DEFAULT 1
+  active INTEGER NOT NULL DEFAULT 1,
+  photo_key TEXT
 );
 -- Specials: one per day-of-week (0=Sun..6=Sat); tag e.g. 'Mexican Night'
 CREATE TABLE IF NOT EXISTS specials (

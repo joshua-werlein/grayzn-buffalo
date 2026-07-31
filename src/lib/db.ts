@@ -1,7 +1,8 @@
 // D1 helpers with graceful fallback so dev/build works before provisioning.
 export type Special = { day_of_week: number; name: string; description: string; tag: string | null };
-export type Item = { id: number; category_id: number; name: string; description: string; sort: number; active: number };
+export type Item = { id: number; category_id: number; name: string; description: string; sort: number; active: number; photo_key: string | null };
 export type Category = { id: number; name: string; sort: number };
+export const thumbKey = (key: string) => key.replace(/\.webp$/, '@600.webp');
 
 const FALLBACK_SPECIALS: Special[] = [
   { day_of_week: 0, name: 'Broasted Chicken Dinner', description: 'Golden broasted chicken with all the fixings.', tag: null },
