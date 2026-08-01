@@ -9,15 +9,31 @@ let notice = '';
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
   try {
-    await env.DB.prepare(`INSERT INTO specials (day_of_week, name, description, tag) VALUES (?1, ?2, ?3, ?4)
-      ON CONFLICT(day_of_week) DO UPDATE SET name=?2, description=?3, tag=?4`)
-      .bind(Number(f.get('day_of_week')), String(f.get('name')), String(f.get('description') ?? ''), String(f.get('tag') ?? '') || null).run();
+    const value = (key: string) => String(f.get(key) ?? '').trim();
+    await env.DB.prepare(`INSERT INTO specials (
+        day_of_week, name, description, tag,
+        lunch_name, lunch_description, lunch_tag,
+        night_name, night_description, night_tag
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+      ON CONFLICT(day_of_week) DO UPDATE SET
+        name=?2, description=?3, tag=?4,
+        lunch_name=?5, lunch_description=?6, lunch_tag=?7,
+        night_name=?8, night_description=?9, night_tag=?10`)
+      .bind(
+        Number(f.get('day_of_week')),
+        value('night_name'), value('night_description'), value('night_tag') || null,
+        value('lunch_name'), value('lunch_description'), value('lunch_tag') || null,
+        value('night_name'), value('night_description'), value('night_tag') || null,
+      ).run();
     notice = `${DAYS[Number(f.get('day_of_week'))]} updated.`;
   } catch { notice = 'Database not connected yet — see README.'; }
 }
 let specials: any[] = [];
 try { specials = (await env.DB.prepare('SELECT * FROM specials ORDER BY day_of_week').all()).results ?? []; } catch {}
-const byDay = (i:number) => specials.find(s => s.day_of_week === i) ?? { name:'', description:'', tag:'' };
+const byDay = (i:number) => specials.find(s => s.day_of_week === i) ?? {
+  lunch_name: '', lunch_description: '', lunch_tag: '',
+  night_name: '', night_description: '', night_tag: '',
+};
 ---
 <Base title="Admin · Specials — Grayz'n Buffalo">
 <section>
@@ -31,13 +47,25 @@ const byDay = (i:number) => specials.find(s => s.day_of_week === i) ?? { name:''
       <form method="post" class="day-form">
         <h3>{d}</h3>
         <input type="hidden" name="day_of_week" value={i} />
-        <label for={`name-${i}`}>Special name</label>
-        <input id={`name-${i}`} name="name" value={s.name} required />
-        <label for={`description-${i}`}>Description <span class="hint">optional</span></label>
-        <input id={`description-${i}`} name="description" value={s.description} />
-        <label for={`tag-${i}`}>Tag <span class="hint">optional</span></label>
-        <input id={`tag-${i}`} name="tag" value={s.tag ?? ''} />
-        <button class="btn btn-primary" type="submit">Save</button>
+        <fieldset class="service-form lunch-form">
+          <legend>Lunch Special <span>11 AM–1:30 PM</span></legend>
+          <label for={`lunch-name-${i}`}>Special name <span class="hint">optional</span></label>
+          <input id={`lunch-name-${i}`} name="lunch_name" value={s.lunch_name ?? ''} />
+          <label for={`lunch-description-${i}`}>Description <span class="hint">optional</span></label>
+          <input id={`lunch-description-${i}`} name="lunch_description" value={s.lunch_description ?? ''} />
+          <label for={`lunch-tag-${i}`}>Tag <span class="hint">optional</span></label>
+          <input id={`lunch-tag-${i}`} name="lunch_tag" value={s.lunch_tag ?? ''} />
+        </fieldset>
+        <fieldset class="service-form night-form">
+          <legend>Nightly Special <span>5–10 PM</span></legend>
+          <label for={`night-name-${i}`}>Special name <span class="hint">optional</span></label>
+          <input id={`night-name-${i}`} name="night_name" value={s.night_name ?? ''} />
+          <label for={`night-description-${i}`}>Description <span class="hint">optional</span></label>
+          <input id={`night-description-${i}`} name="night_description" value={s.night_description ?? ''} />
+          <label for={`night-tag-${i}`}>Tag <span class="hint">optional</span></label>
+          <input id={`night-tag-${i}`} name="night_tag" value={s.night_tag ?? ''} />
+        </fieldset>
+        <button class="btn btn-primary" type="submit">Save {d}</button>
       </form>
     ); })}
     <p style="text-align:center"><a href="/admin">← Back to admin</a></p>
@@ -47,13 +75,17 @@ const byDay = (i:number) => specials.find(s => s.day_of_week === i) ?? { name:''
 
 <style>
   .admin-wrap{max-width:680px;margin:0 auto}
-  .day-form{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(36,22,16,.1);margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .day-form{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(36,22,16,.1);margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
   .day-form h3{font-family:var(--display);grid-column:1 / -1}
-  .day-form label{font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.8rem}
-  .day-form input{padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream)}
-  .day-form input[name="name"]{grid-column:1 / -1}
-  .day-form label[for^="name-"]{grid-column:1 / -1}
+  .service-form{min-width:0;border:1px solid rgba(36,22,16,.16);border-radius:10px;padding:14px;display:grid;gap:7px}
+  .service-form legend{padding:0 5px;font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:.88rem}
+  .service-form legend span{font-weight:500;letter-spacing:0;text-transform:none;color:var(--ink-2)}
+  .lunch-form{border-top:4px solid var(--amber)}
+  .night-form{border-top:4px solid var(--crimson)}
+  .day-form label{font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.78rem}
+  .day-form input{width:100%;padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream)}
   .hint{text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-2)}
   .day-form button{grid-column:1 / -1;justify-self:start}
   .back{text-align:center;margin-top:10px}
+  @media (max-width:620px){.day-form{grid-template-columns:1fr}}
 </style>

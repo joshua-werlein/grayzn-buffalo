@@ -19,7 +19,13 @@ CREATE TABLE IF NOT EXISTS specials (
   day_of_week INTEGER NOT NULL UNIQUE,
   name TEXT NOT NULL,
   description TEXT DEFAULT '',
-  tag TEXT DEFAULT NULL
+  tag TEXT DEFAULT NULL,
+  lunch_name TEXT NOT NULL DEFAULT '',
+  lunch_description TEXT NOT NULL DEFAULT '',
+  lunch_tag TEXT DEFAULT NULL,
+  night_name TEXT NOT NULL DEFAULT '',
+  night_description TEXT NOT NULL DEFAULT '',
+  night_tag TEXT DEFAULT NULL
 );
 
 -- Grayz'n Buffalo menu system. One system, admin-managed categories.
@@ -46,7 +52,13 @@ CREATE TABLE IF NOT EXISTS specials (
   day_of_week INTEGER NOT NULL UNIQUE,
   name TEXT NOT NULL,
   description TEXT DEFAULT '',
-  tag TEXT DEFAULT NULL
+  tag TEXT DEFAULT NULL,
+  lunch_name TEXT NOT NULL DEFAULT '',
+  lunch_description TEXT NOT NULL DEFAULT '',
+  lunch_tag TEXT DEFAULT NULL,
+  night_name TEXT NOT NULL DEFAULT '',
+  night_description TEXT NOT NULL DEFAULT '',
+  night_tag TEXT DEFAULT NULL
 );
  
 -- Settings: single key/value store for site-wide toggles and copy.
@@ -104,3 +116,10 @@ INSERT INTO specials (day_of_week, name, description, tag) VALUES
  (4, 'Soup & Sandwich', 'Cup of the day''s soup with a grilled sandwich.', NULL),
  (5, 'Friday Fish', 'It''s Wisconsin — you know what night it is.', NULL),
  (6, 'Grill Master''s Pick', 'Whatever the kitchen''s fired up about.', NULL);
+
+-- Fresh installs begin with the existing daily lineup as their Nightly specials.
+UPDATE specials
+SET night_name = name,
+    night_description = description,
+    night_tag = tag
+WHERE night_name = '';

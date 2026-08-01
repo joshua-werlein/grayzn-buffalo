@@ -1,10 +1,18 @@
 // D1 helpers with graceful fallback so dev/build works before provisioning.
-export type Special = { day_of_week: number; name: string; description: string; tag: string | null };
+export type Special = {
+  day_of_week: number;
+  lunch_name: string;
+  lunch_description: string;
+  lunch_tag: string | null;
+  night_name: string;
+  night_description: string;
+  night_tag: string | null;
+};
 export type Item = { id: number; category_id: number; name: string; description: string; sort: number; active: number; photo_key: string | null; late_night: number };
 export type Category = { id: number; name: string; sort: number };
 export const thumbKey = (key: string) => key.replace(/\.webp$/, '@600.webp');
  
-const FALLBACK_SPECIALS: Special[] = [
+const FALLBACK_SPECIALS = [
   { day_of_week: 0, name: 'Broasted Chicken Dinner', description: 'Golden broasted chicken with all the fixings.', tag: null },
   { day_of_week: 1, name: 'Burger & Basket Night', description: "Grayz'n Burger with a basket of waffle fries.", tag: null },
   { day_of_week: 2, name: 'Mexican Night', description: 'Tacos, quesadillas, and wet burritos.', tag: 'Mexican Night' },
@@ -14,6 +22,16 @@ const FALLBACK_SPECIALS: Special[] = [
   { day_of_week: 6, name: "Grill Master's Pick", description: "Whatever the kitchen's fired up about.", tag: null },
 ];
  
+const toSpecial = (row: any): Special => ({
+  day_of_week: Number(row.day_of_week),
+  lunch_name: String(row.lunch_name ?? ''),
+  lunch_description: String(row.lunch_description ?? ''),
+  lunch_tag: row.lunch_tag || null,
+  night_name: String(row.night_name ?? row.name ?? ''),
+  night_description: String(row.night_description ?? row.description ?? ''),
+  night_tag: row.night_tag ?? row.tag ?? null,
+});
+
 // Fallback only fires when D1 is unreachable (astro dev / build with no
 // bindings). Mirrors the real model: nine categories, Late Night as a flag.
 const FALLBACK_CATEGORIES: Category[] = [
@@ -45,12 +63,14 @@ const FALLBACK_ITEMS: Item[] = [
  
 export async function getSpecials(env: any): Promise<Special[]> {
   try {
-    const { results } = await env.DB.prepare('SELECT day_of_week, name, description, tag FROM specials ORDER BY day_of_week').all();
-    if (results?.length) return results as Special[];
+    const { results } = await env.DB.prepare(
+      'SELECT day_of_week, lunch_name, lunch_description, lunch_tag, night_name, night_description, night_tag FROM specials ORDER BY day_of_week'
+    ).all();
+    if (results?.length) return results.map(toSpecial);
   } catch {}
-  return FALLBACK_SPECIALS;
+  return FALLBACK_SPECIALS.map(toSpecial);
 }
- 
+
 export async function getMenu(env: any): Promise<{ categories: Category[]; items: Item[] }> {
   try {
     const cats = await env.DB.prepare('SELECT * FROM categories ORDER BY sort').all();
@@ -73,4 +93,3 @@ export async function setSetting(env: any, key: string, value: string): Promise<
     'INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?2'
   ).bind(key, value).run();
 }
- 
