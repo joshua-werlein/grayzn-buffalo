@@ -1,57 +1,180 @@
 ---
 import Base from '../layouts/Base.astro';
-import { getMenu } from '../lib/db';
+import { getMenu, thumbKey } from '../lib/db';
+ 
 const env = (Astro.locals as any).runtime?.env ?? {};
 const { categories, items } = await getMenu(env);
+ 
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+ 
+// Group active items by category, preserving category order; drop empty sections.
+type Group = { cat: { id: number; name: string }; items: typeof items };
+const daily: Group[] = categories
+  .map((c) => ({ cat: c, items: items.filter((it) => it.category_id === c.id) }))
+  .filter((g) => g.items.length > 0);
+ 
+const lateNight: Group[] = categories
+  .map((c) => ({ cat: c, items: items.filter((it) => it.category_id === c.id && it.late_night === 1) }))
+  .filter((g) => g.items.length > 0);
 ---
-<Base title="Menu — Grayz'n Buffalo Bar & Grill">
+<Base
+  title="Menu — Grayz'n Buffalo Bar & Grill"
+  description="Full menu for Grayz'n Buffalo Bar & Grill in Mondovi, WI — burgers, pizzas, baskets, wraps, salads and more. Plus a late-night menu after the grill closes."
+>
 <section>
   <div class="section-head">
     <span class="kicker">From the kitchen</span>
     <h2>The Menu</h2>
     <p>No prices here — ask at the bar. Staff keep this list current.</p>
   </div>
-  <div class="tabs" role="tablist">
-    {categories.map((c, i) => (
-      <button role="tab" aria-selected={i === 0 ? 'true' : 'false'} data-cat={c.id} id={c.name.toLowerCase().replace(' ','-')}>{c.name}</button>
+ 
+  <div class="tabs" role="tablist" aria-label="Menu type">
+    <button class="tab" role="tab" data-panel="daily" aria-controls="panel-daily" aria-selected="true">Daily</button>
+    <button class="tab" role="tab" data-panel="late-night" aria-controls="panel-late-night" aria-selected="false">Late Night</button>
+  </div>
+ 
+  <!-- ── Daily ─────────────────────────────────────────────────────────── -->
+  <div id="panel-daily" role="tabpanel" class="panel">
+    <nav class="chips" aria-label="Jump to a section">
+      {daily.map((g) => (
+        <a href={`#sec-${slug(g.cat.name)}`}>{g.cat.name}</a>
+      ))}
+    </nav>
+ 
+    {daily.map((g) => (
+      <section class="cat-section" id={`sec-${slug(g.cat.name)}`}>
+        <h3>{g.cat.name}</h3>
+        <ul class="menu-list">
+          {g.items.map((it) => (
+            <li class="item">
+              {it.photo_key && (
+                <img
+                  class="item-photo"
+                  src={`/img/${thumbKey(it.photo_key)}`}
+                  alt=""
+                  width="72"
+                  height="56"
+                  loading="lazy"
+                  decoding="async"
+                />
+              )}
+              <div class="item-copy">
+                <strong>{it.name}</strong>
+                {it.description && <span>{it.description}</span>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
     ))}
   </div>
-  {categories.map((c, i) => (
-    <ul class="menu-list" data-cat={c.id} hidden={i !== 0}>
-      {items.filter(it => it.category_id === c.id).map(it => (
-        <li>
-          <strong>{it.name}</strong>
-          {it.description && <span>{it.description}</span>}
-        </li>
-      ))}
-    </ul>
-  ))}
+ 
+  <!-- ── Late Night ────────────────────────────────────────────────────── -->
+  <div id="panel-late-night" role="tabpanel" class="panel" hidden>
+    <p class="late-note">After the grill closes — pizza, pizza fries &amp; appetizers.</p>
+    {lateNight.length === 0 ? (
+      <p class="empty">Late-night items are being set up. Check back soon.</p>
+    ) : (
+      lateNight.map((g) => (
+        <section class="cat-section">
+          <h3>{g.cat.name}</h3>
+          <ul class="menu-list">
+            {g.items.map((it) => (
+              <li class="item">
+                {it.photo_key && (
+                  <img
+                    class="item-photo"
+                    src={`/img/${thumbKey(it.photo_key)}`}
+                    alt=""
+                    width="72"
+                    height="56"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                )}
+                <div class="item-copy">
+                  <strong>{it.name}</strong>
+                  {it.description && <span>{it.description}</span>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))
+    )}
+  </div>
 </section>
 </Base>
-
+ 
 <style>
-  .tabs{display:flex;justify-content:center;gap:10px;margin-bottom:34px;flex-wrap:wrap}
-  .tabs button{font-family:var(--label);font-weight:700;letter-spacing:.14em;text-transform:uppercase;
-    font-size:1rem;padding:12px 26px;border-radius:999px;border:2px solid var(--ink);
-    background:transparent;color:var(--ink);cursor:pointer;transition:background .2s,color .2s}
-  .tabs button[aria-selected="true"]{background:var(--crimson);border-color:var(--crimson);color:var(--cream)}
-  .menu-list{list-style:none;max-width:680px;margin:0 auto}
-  .menu-list li{padding:16px 4px;border-bottom:1px dashed rgba(36,22,16,.25)}
-  .menu-list li:last-child{border-bottom:none}
-  .menu-list strong{display:block;font-family:var(--display);font-weight:400;font-size:1.15rem}
-  .menu-list span{color:var(--ink-2);font-size:.95rem}
+  /* ── tabs ── */
+  .tabs{display:flex;justify-content:center;gap:10px;margin-bottom:26px;flex-wrap:wrap}
+  .tabs .tab{font-family:var(--label);font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;font-size:1rem;padding:12px 28px;border-radius:999px;
+    border:2px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer;
+    transition:background .2s,color .2s,border-color .2s}
+  /* Active pill uses a darker crimson + near-white bold so contrast passes AA
+     (plain crimson + cream is the ~3.2:1 failure flagged site-wide in CLAUDE.md
+     §9 — fix that globally in .btn-primary too). */
+  .tabs .tab[aria-selected="true"]{background:#b0182b;border-color:#b0182b;color:#fff5e9}
+  .tabs .tab:focus-visible{outline:2px solid var(--crimson);outline-offset:2px}
+ 
+  /* ── sticky section chips (Daily) ── */
+  .chips{position:sticky;top:0;z-index:5;display:flex;gap:8px;overflow-x:auto;
+    padding:10px 2px;margin:0 auto 8px;max-width:720px;
+    background:var(--cream);
+    -webkit-overflow-scrolling:touch;scrollbar-width:thin}
+  /* If the header overlaps the chips, bump this top offset to the header height. */
+  .chips a{flex:0 0 auto;font-family:var(--label);font-weight:600;letter-spacing:.08em;
+    text-transform:uppercase;font-size:.78rem;white-space:nowrap;
+    padding:8px 14px;border-radius:999px;border:1.5px solid rgba(36,22,16,.28);
+    color:var(--ink);text-decoration:none;transition:background .18s,border-color .18s}
+  .chips a:hover,.chips a:focus-visible{background:rgba(36,22,16,.06);border-color:var(--ink)}
+  .chips a:focus-visible{outline:2px solid var(--crimson);outline-offset:2px}
+ 
+  /* ── sections + items ── */
+  .cat-section{max-width:720px;margin:0 auto;scroll-margin-top:120px}
+  .cat-section h3{font-family:var(--display);font-weight:400;font-size:1.5rem;
+    margin:30px 0 6px;padding-bottom:6px;border-bottom:2px solid rgba(36,22,16,.15)}
+ 
+  .menu-list{list-style:none;margin:0;padding:0}
+  .item{display:flex;align-items:center;gap:14px;
+    padding:14px 4px;border-bottom:1px dashed rgba(36,22,16,.22)}
+  .item:last-child{border-bottom:none}
+  .item-photo{flex:0 0 72px;width:72px;height:56px;object-fit:cover;
+    border-radius:8px;display:block;background:rgba(36,22,16,.08)}
+  .item-copy{min-width:0}
+  .item-copy strong{display:block;font-family:var(--display);font-weight:400;font-size:1.12rem;line-height:1.2}
+  .item-copy span{display:block;color:var(--ink-2);font-size:.92rem;margin-top:2px}
+ 
+  .late-note{max-width:720px;margin:0 auto 6px;text-align:center;
+    color:var(--ink-2);font-family:var(--label);letter-spacing:.04em;font-size:.95rem}
+  .empty{max-width:720px;margin:24px auto;text-align:center;color:var(--ink-2)}
+ 
+  @media (max-width:600px){
+    .item-photo{flex-basis:60px;width:60px;height:48px}
+    .cat-section h3{font-size:1.3rem}
+  }
 </style>
-
+ 
 <script>
-  const tabs = document.querySelectorAll('.tabs button');
-  const lists = document.querySelectorAll('.menu-list');
-  tabs.forEach(t => t.addEventListener('click', () => {
-    tabs.forEach(x => x.setAttribute('aria-selected', x === t ? 'true' : 'false'));
-    lists.forEach(l => (l as HTMLElement).hidden = (l as HTMLElement).dataset.cat !== (t as HTMLElement).dataset.cat);
-  }));
-  // deep link: /menu#late-night
-  if (location.hash) {
-    const btn = document.querySelector(location.hash) as HTMLElement | null;
-    btn?.click();
+  const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>('.tabs .tab'));
+  const panels: Record<string, HTMLElement | null> = {
+    daily: document.getElementById('panel-daily'),
+    'late-night': document.getElementById('panel-late-night'),
+  };
+ 
+  function show(name: string) {
+    tabs.forEach((t) => t.setAttribute('aria-selected', t.dataset.panel === name ? 'true' : 'false'));
+    Object.entries(panels).forEach(([key, el]) => { if (el) el.hidden = key !== name; });
+  }
+ 
+  tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.panel!)));
+ 
+  // Deep links: #late-night opens that tab; a #sec-* chip link stays on Daily.
+  if (location.hash === '#late-night') {
+    show('late-night');
+  } else if (location.hash.startsWith('#sec-')) {
+    show('daily');
   }
 </script>

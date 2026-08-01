@@ -1,12 +1,11 @@
-
 ---
 import Base from '../../layouts/Base.astro';
 import { isAuthed } from '../../lib/auth';
 import { thumbKey } from '../../lib/db';
- 
+
 const env = (Astro.locals as any).runtime?.env ?? {};
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
- 
+
 /** Remove both variants from R2. Never throws — an orphaned object is not
  *  worth failing a request over, and the row is already gone by then. */
 async function dropPhoto(key: string | null | undefined) {
@@ -16,10 +15,10 @@ async function dropPhoto(key: string | null | undefined) {
     env.PHOTOS.delete(thumbKey(key)),
   ]);
 }
- 
+
 let notice = '';
 let problem = '';
- 
+
 // Photo upload/remove goes to /api/menu-photo so the page can update in place.
 // These handlers cover everything else.
 if (Astro.request.method === 'POST') {
@@ -28,28 +27,34 @@ if (Astro.request.method === 'POST') {
   try {
     if (action === 'add') {
       await env.DB.prepare(
-        'INSERT INTO items (category_id, name, description, sort) VALUES (?1, ?2, ?3, COALESCE((SELECT MAX(sort)+1 FROM items WHERE category_id=?1), 0))'
-      ).bind(Number(f.get('category_id')), String(f.get('name')), String(f.get('description') ?? '')).run();
+        'INSERT INTO items (category_id, name, description, late_night, sort) VALUES (?1, ?2, ?3, ?4, COALESCE((SELECT MAX(sort)+1 FROM items WHERE category_id=?1), 0))'
+      ).bind(
+        Number(f.get('category_id')),
+        String(f.get('name')),
+        String(f.get('description') ?? ''),
+        f.get('late_night') ? 1 : 0
+      ).run();
       notice = 'Item added.';
- 
+
     } else if (action === 'edit') {
       await env.DB.prepare(
-        'UPDATE items SET name = ?2, description = ?3, category_id = ?4 WHERE id = ?1'
+        'UPDATE items SET name = ?2, description = ?3, category_id = ?4, late_night = ?5 WHERE id = ?1'
       ).bind(
         Number(f.get('id')),
         String(f.get('name')),
         String(f.get('description') ?? ''),
-        Number(f.get('category_id'))
+        Number(f.get('category_id')),
+        f.get('late_night') ? 1 : 0
       ).run();
       notice = 'Changes saved.';
- 
+
     } else if (action === 'delete') {
       const id = Number(f.get('id'));
       const row: any = await env.DB.prepare('SELECT photo_key FROM items WHERE id = ?1').bind(id).first();
       await env.DB.prepare('DELETE FROM items WHERE id = ?1').bind(id).run();
       await dropPhoto(row?.photo_key);
       notice = 'Item removed.';
- 
+
     } else if (action === 'toggle') {
       await env.DB.prepare('UPDATE items SET active = 1 - active WHERE id = ?1').bind(Number(f.get('id'))).run();
       notice = 'Item updated.';
@@ -58,7 +63,7 @@ if (Astro.request.method === 'POST') {
     problem = e?.message ?? 'Something went wrong. Check the database connection — see README.';
   }
 }
- 
+
 let categories: any[] = [], items: any[] = [];
 try {
   categories = (await env.DB.prepare('SELECT * FROM categories ORDER BY sort').all()).results ?? [];
@@ -72,7 +77,7 @@ try {
     {notice && <p class="flash ok">{notice}</p>}
     {problem && <p class="flash bad">{problem}</p>}
   </div>
- 
+
   <div class="admin-wrap">
     <form method="post" class="card add-form">
       <h3>Add an item</h3>
@@ -90,10 +95,16 @@ try {
         <label for="add-desc">Description <span class="hint">optional</span></label>
         <input id="add-desc" name="description" />
       </div>
+      <div class="field wide check">
+        <label for="add-late">
+          <input id="add-late" type="checkbox" name="late_night" value="1" />
+          Available late night <span class="hint">(after the grill closes — pizza, pizza fries, appetizers)</span>
+        </label>
+      </div>
       <input type="hidden" name="action" value="add" />
       <button class="btn btn-primary" type="submit">Add item</button>
     </form>
- 
+
     {categories.map((c:any) => (
       <div class="cat">
         <h3>{c.name}</h3>
@@ -115,6 +126,7 @@ try {
                 </div>
                 <div class="who">
                   <strong>{i.name}</strong>
+                  {i.late_night === 1 && <span class="late-badge">Late night</span>}
                   {i.description
                     ? <span class="desc">{i.description}</span>
                     : <span class="desc muted">No description yet</span>}
@@ -132,10 +144,10 @@ try {
                   </form>
                 </div>
               </div>
- 
+
               <details class="editor">
                 <summary>Edit</summary>
- 
+
                 <form method="post" class="edit-form">
                   <input type="hidden" name="action" value="edit" />
                   <input type="hidden" name="id" value={i.id} />
@@ -155,12 +167,18 @@ try {
                     <label for={`d-${i.id}`}>Description <span class="hint">optional</span></label>
                     <input id={`d-${i.id}`} name="description" value={i.description ?? ''} />
                   </div>
+                  <div class="field wide check">
+                    <label for={`l-${i.id}`}>
+                      <input id={`l-${i.id}`} type="checkbox" name="late_night" value="1" checked={i.late_night === 1} />
+                      Available late night
+                    </label>
+                  </div>
                   <button class="btn btn-primary" type="submit">Save changes</button>
                 </form>
- 
+
                 <div class="photo-card">
                   <p class="photo-title">Photo</p>
- 
+
                   <div class="preview">
                     <img
                       data-preview-for={i.id}
@@ -173,7 +191,7 @@ try {
                       No photo yet.
                     </p>
                   </div>
- 
+
                   <div class="pick">
                     <label class="pick-btn">
                       <span>Take a photo</span>
@@ -184,14 +202,14 @@ try {
                       <input type="file" accept="image/*" data-upload={i.id} />
                     </label>
                   </div>
- 
+
                   <button
                     class="danger remove-photo"
                     type="button"
                     data-remove={i.id}
                     hidden={!i.photo_key}
                   >Remove photo</button>
- 
+
                   <noscript>
                     <p class="hint">Photo uploads need JavaScript turned on.</p>
                   </noscript>
@@ -202,20 +220,20 @@ try {
         </ul>
       </div>
     ))}
- 
+
     <p class="back"><a href="/admin">← Back to admin</a></p>
   </div>
 </section>
- 
+
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 </Base>
- 
+
 <script>
   import { convertPhoto, PhotoError } from '../../lib/photo-client';
- 
+
   const toastEl = document.getElementById('toast')!;
   let toastTimer: number | undefined;
- 
+
   function toast(message: string, kind: 'ok' | 'bad' | 'busy' = 'ok') {
     window.clearTimeout(toastTimer);
     toastEl.textContent = message;
@@ -227,7 +245,7 @@ try {
       }, 3200);
     }
   }
- 
+
   /** Swap the list thumbnail and the editor preview without reloading. */
   function paint(id: string, thumbUrl: string | null) {
     const thumb = document.querySelector<HTMLImageElement>(`[data-thumb-for="${id}"]`);
@@ -235,7 +253,7 @@ try {
     const preview = document.querySelector<HTMLImageElement>(`[data-preview-for="${id}"]`);
     const previewEmpty = document.querySelector<HTMLElement>(`[data-preview-empty="${id}"]`);
     const remove = document.querySelector<HTMLElement>(`[data-remove="${id}"]`);
- 
+
     if (thumbUrl) {
       if (thumb) { thumb.src = thumbUrl; thumb.hidden = false; }
       if (preview) { preview.src = thumbUrl; preview.hidden = false; }
@@ -250,36 +268,36 @@ try {
       if (remove) remove.hidden = true;
     }
   }
- 
+
   function lock(id: string, busy: boolean) {
     document.querySelectorAll<HTMLInputElement>(`[data-upload="${id}"]`)
       .forEach(el => { el.disabled = busy; });
   }
- 
+
   // ---- upload: fires as soon as a photo is picked, no second tap ----------
   document.querySelectorAll<HTMLInputElement>('input[data-upload]').forEach((input) => {
     input.addEventListener('change', async () => {
       const file = input.files?.[0];
       const id = input.dataset.upload!;
       if (!file) return;
- 
+
       lock(id, true);
       toast('Resizing photo…', 'busy');
- 
+
       try {
         const { full, thumb } = await convertPhoto(file);
- 
+
         const body = new FormData();
         body.append('id', id);
         body.append('full', full, 'photo.webp');
         body.append('thumb', thumb, 'photo@600.webp');
- 
+
         toast('Uploading…', 'busy');
         const res = await fetch('/api/menu-photo', { method: 'POST', body });
         const data = await res.json();
- 
+
         if (!res.ok || !data.ok) throw new Error(data.error ?? 'Upload failed. Try again.');
- 
+
         paint(id, data.thumbUrl);
         toast(data.message ?? 'Photo saved.', 'ok');
       } catch (err) {
@@ -290,13 +308,13 @@ try {
       }
     });
   });
- 
+
   // ---- remove ------------------------------------------------------------
   document.querySelectorAll<HTMLButtonElement>('button[data-remove]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.remove!;
       if (!confirm('Remove this photo?')) return;
- 
+
       btn.disabled = true;
       toast('Removing…', 'busy');
       try {
@@ -306,7 +324,7 @@ try {
         const res = await fetch('/api/menu-photo', { method: 'POST', body });
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.error ?? 'Could not remove the photo.');
- 
+
         paint(id, null);
         toast(data.message ?? 'Photo removed.', 'ok');
       } catch (err) {
@@ -317,21 +335,21 @@ try {
     });
   });
 </script>
- 
+
 <style>
   .admin-wrap{max-width:780px;margin:0 auto}
- 
+
   .flash{font-family:var(--label);font-weight:700;letter-spacing:.04em;
     padding:10px 16px;border-radius:8px;display:inline-block;margin-top:10px}
   .flash.ok{background:var(--gold);color:var(--ink)}
   .flash.bad{background:#8d1626;color:var(--cream)}
- 
+
   .card{background:#fff;border-radius:12px;padding:18px;
     box-shadow:0 6px 16px rgba(36,22,16,.1)}
   .add-form{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:32px}
   .add-form h3{grid-column:1/-1;font-family:var(--display);font-size:1.2rem}
   .add-form button{grid-column:1/-1;justify-self:start}
- 
+
   .field{display:flex;flex-direction:column;gap:5px}
   .field.wide{grid-column:1/-1}
   .field label{font-family:var(--label);font-weight:600;letter-spacing:.1em;
@@ -341,12 +359,18 @@ try {
   .field input:focus-visible,.field select:focus-visible{outline:2px solid var(--crimson);outline-offset:1px}
   .hint{font-weight:500;text-transform:none;letter-spacing:0;
     color:var(--ink-2);opacity:.75;font-size:.8rem}
- 
+
+  /* checkbox rows read as a normal-case control, not an uppercase field label */
+  .field.check label{display:flex;align-items:center;gap:10px;
+    text-transform:none;letter-spacing:0;font-weight:600;font-size:.95rem;color:var(--ink)}
+  .field.check input{width:auto;padding:0;flex:0 0 auto;
+    width:20px;height:20px;accent-color:var(--crimson)}
+
   .cat h3{font-family:var(--display);margin:26px 0 8px}
   .cat ul{list-style:none}
   .cat li{padding:12px 4px;border-bottom:1px dashed rgba(36,22,16,.25)}
   .cat li.inactive{opacity:.45}
- 
+
   .row{display:flex;align-items:center;gap:12px}
   .thumb{flex:0 0 56px;height:44px;border-radius:6px;overflow:hidden;
     background:rgba(36,22,16,.08);display:grid;place-items:center}
@@ -354,16 +378,20 @@ try {
   .no-photo{color:var(--ink-2);opacity:.5}
   .who{flex:1;min-width:0}
   .who strong{display:block}
+  .late-badge{display:inline-block;font-family:var(--label);font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;font-size:.62rem;
+    background:var(--ink);color:var(--cream);padding:2px 7px;border-radius:999px;
+    margin:2px 0}
   .desc{color:var(--ink-2);font-size:.9rem}
   .desc.muted{opacity:.55;font-style:italic}
- 
+
   .row-actions{display:flex;gap:8px;flex-shrink:0}
   .row-actions button,.remove-photo{padding:6px 12px;border-radius:6px;
     border:2px solid var(--ink);background:transparent;cursor:pointer;
     font-family:var(--label);font-weight:600;letter-spacing:.08em;
     text-transform:uppercase;font-size:.75rem}
   .row-actions .danger,.remove-photo{border-color:var(--crimson);color:var(--crimson)}
- 
+
   .editor{margin-top:10px}
   .editor summary{cursor:pointer;font-family:var(--label);font-weight:600;
     letter-spacing:.1em;text-transform:uppercase;font-size:.75rem;
@@ -373,7 +401,7 @@ try {
     background:#fff;border-radius:12px;padding:16px;margin:10px 0;
     box-shadow:0 4px 12px rgba(36,22,16,.08)}
   .edit-form button{grid-column:1/-1;justify-self:start}
- 
+
   /* ---- photo card ---- */
   .photo-card{background:#fff;border-radius:12px;padding:16px;margin:10px 0;
     box-shadow:0 4px 12px rgba(36,22,16,.08);
@@ -397,9 +425,9 @@ try {
   /* input stays focusable for keyboards, just visually invisible over the label */
   .pick-btn input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
   .pick-btn:has(input:disabled){opacity:.5;pointer-events:none}
- 
+
   .back{text-align:center;margin-top:28px}
- 
+
   /* ---- toast ---- */
   .toast{position:fixed;left:50%;transform:translate(-50%,20px);
     bottom:calc(24px + env(safe-area-inset-bottom));
@@ -412,16 +440,16 @@ try {
   .toast.ok{background:var(--gold);color:var(--ink)}
   .toast.bad{background:#8d1626;color:var(--cream)}
   .toast.busy{background:var(--ink);color:var(--cream)}
- 
+
   @media (max-width:820px){
     /* clear the pinned action bar */
     .toast{bottom:calc(74px + env(safe-area-inset-bottom))}
   }
- 
+
   @media (prefers-reduced-motion:reduce){
     .toast{transition:none}
   }
- 
+
   @media (max-width:600px){
     .add-form,.edit-form{grid-template-columns:1fr}
     .row{flex-wrap:wrap}
@@ -430,4 +458,3 @@ try {
     .pick-btn{flex:1 1 100%}
   }
 </style>
- 
