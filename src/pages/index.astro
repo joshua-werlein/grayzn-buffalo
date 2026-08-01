@@ -1,20 +1,25 @@
 ---
 import Base from '../layouts/Base.astro';
 import SpecialsBoard from '../components/SpecialsBoard.astro';
-const foods = [
-  { src: '/food-pretzel.webp', label: 'Soft pretzel & cheese' },
-  { src: '/food-club.webp', label: 'Club on waffle fries' },
-  { src: '/food-stirfry.webp', label: 'Chicken stir fry' },
-  { src: '/food-chicken-wrap.webp', label: 'Chicken wrap' },
-  { src: '/food-cheesburger.webp', label: 'Cheeseburger' },
-  { src: '/philly-sub.webp', label: 'Philly cheesesteak' },
-  { src: '/food-cheescurd-burger.webp', label: 'Cheese curd burger' },
-  { src: '/food-mushroom-swiss.webp', label: 'Mushroom Swiss burger' },
-  { src: '/food-dovi-burger.webp', label: 'Dovi Burger' },
-  { src: '/food-chicken-salad.webp', label: 'Grilled chicken salad' },
-  { src: '/food-enchilada.webp', label: 'Enchilada' },
-  { src: '/food-bloody-mary.webp', label: 'Bloody Mary bar' },
-];
+import { getMenu, thumbKey } from '../lib/db';
+
+const env = (Astro.locals as any).runtime?.env ?? {};
+const { categories, items } = await getMenu(env);
+const photoGroups = categories
+  .map((category) => items.filter((item) => item.category_id === category.id && item.photo_key))
+  .filter((group) => group.length > 0);
+const stripPhotos = [] as typeof items;
+const longestPhotoGroup = Math.max(0, ...photoGroups.map((group) => group.length));
+
+// Lead with one photo from every category, then return for each category's
+// second photo, third photo, and so on. This keeps the strip varied instead
+// of showing a run of similar dishes from the same menu section.
+for (let position = 0; position < longestPhotoGroup; position += 1) {
+  for (const group of photoGroups) {
+    const item = group[position];
+    if (item) stripPhotos.push(item);
+  }
+}
 ---
 <Base>
 <header class="hero" id="top">
@@ -33,21 +38,31 @@ const foods = [
   </div>
 </header>
 
-<div class="strip" aria-label="Food photos">
-  <div class="strip-track">
-    {[0,1].map(() => (
-      <>
-        {foods.map(f => (<div class="strip-item"><img src={f.src} alt={f.label} loading="lazy" /></div>))}
-      </>
-    ))}
-  </div>
-</div>
+{stripPhotos.length > 0 && (
+  <section class="strip" aria-label="Menu photos">
+    <div class="strip-track">
+      <div class="strip-sequence">
+        {stripPhotos.map((item) => (
+          <div class="strip-item">
+            <img src={`/img/${thumbKey(item.photo_key!)}`} alt={item.name} width="250" height="170" loading="eager" decoding="async" />
+          </div>
+        ))}
+      </div>
+      <div class="strip-sequence" aria-hidden="true">
+        {stripPhotos.map((item) => (
+          <div class="strip-item">
+            <img src={`/img/${thumbKey(item.photo_key!)}`} alt="" width="250" height="170" loading="eager" decoding="async" />
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+)}
 
 <section id="specials" class="dark">
   <div class="section-head reveal">
     <span class="kicker" style="color:var(--amber)">Fresh off the board</span>
     <h2 style="color:var(--gold)">What's On Today</h2>
-    <p style="color:var(--cream-2)">The board always opens on today.</p>
   </div>
   <SpecialsBoard />
 </section>
@@ -166,7 +181,8 @@ const foods = [
     100%{opacity:1;transform:scale(1) translateY(0)}
   }
   .strip{background:var(--ink);padding:18px 0;overflow:hidden}
-  .strip-track{display:flex;gap:16px;width:max-content;animation:slide 36s linear infinite}
+  .strip-track{display:flex;width:max-content;animation:slide 36s linear infinite}
+  .strip-sequence{display:flex;gap:16px;padding-right:16px;flex:none}
   .strip:hover .strip-track{animation-play-state:paused}
   @keyframes slide{from{transform:translateX(0)}to{transform:translateX(-50%)}}
   .strip-item{width:250px;height:170px;border-radius:10px;overflow:hidden;flex:none;
