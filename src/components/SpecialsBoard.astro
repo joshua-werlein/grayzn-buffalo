@@ -29,6 +29,7 @@ const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Satur
   .board-desc{color:var(--cream-2);max-width:520px;margin:0 auto;font-size:1.02rem}
   .tag{display:inline-block;margin-top:16px;font-family:var(--label);font-weight:700;font-size:.8rem;
     letter-spacing:.18em;text-transform:uppercase;color:var(--ink);background:var(--gold);padding:5px 14px;border-radius:999px}
+  .tag[hidden]{display:none}
 </style>
 
 <script>
@@ -48,7 +49,7 @@ const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Satur
     elDay.textContent = (i === todayIdx ? 'Today · ' : '') + DAYS[i];
     elName.textContent = s.name;
     elDesc.textContent = s.description;
-    if(s.tag){ elTag.hidden = false; elTag.textContent = s.tag; } else { elTag.hidden = true; }
+    if(s.tag){ elTag.hidden = false; elTag.textContent = s.tag; } else { elTag.textContent = ''; elTag.hidden = true; }
     [...tabs.children].forEach((b,bi)=>b.setAttribute('aria-selected', bi===i ? 'true':'false'));
   }
   DAYS.forEach((d,i)=>{
