@@ -21,15 +21,22 @@ const byDay = (i:number) => specials.find(s => s.day_of_week === i) ?? { name:''
 ---
 <Base title="Admin · Specials — Grayz'n Buffalo">
 <section>
-  <div class="section-head"><h2>Daily Specials</h2>{notice && <p><strong>{notice}</strong></p>}</div>
+  <div class="section-head">
+    <h2>Daily Specials</h2>
+    <p class="back back-top"><a href="/admin">← Back to admin</a></p>
+    {notice && <p><strong>{notice}</strong></p>}
+  </div>
   <div class="admin-wrap">
     {DAYS.map((d, i) => { const s = byDay(i); return (
       <form method="post" class="day-form">
         <h3>{d}</h3>
         <input type="hidden" name="day_of_week" value={i} />
-        <input name="name" placeholder="Special name" value={s.name} required />
-        <input name="description" placeholder="Description" value={s.description} />
-        <input name="tag" placeholder="Tag (e.g. Mexican Night)" value={s.tag ?? ''} />
+        <label for={`name-${i}`}>Special name</label>
+        <input id={`name-${i}`} name="name" value={s.name} required />
+        <label for={`description-${i}`}>Description <span class="hint">optional</span></label>
+        <input id={`description-${i}`} name="description" value={s.description} />
+        <label for={`tag-${i}`}>Tag <span class="hint">optional</span></label>
+        <input id={`tag-${i}`} name="tag" value={s.tag ?? ''} />
         <button class="btn btn-primary" type="submit">Save</button>
       </form>
     ); })}
@@ -42,7 +49,11 @@ const byDay = (i:number) => specials.find(s => s.day_of_week === i) ?? { name:''
   .admin-wrap{max-width:680px;margin:0 auto}
   .day-form{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(36,22,16,.1);margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .day-form h3{font-family:var(--display);grid-column:1 / -1}
+  .day-form label{font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.8rem}
   .day-form input{padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream)}
   .day-form input[name="name"]{grid-column:1 / -1}
+  .day-form label[for^="name-"]{grid-column:1 / -1}
+  .hint{text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-2)}
   .day-form button{grid-column:1 / -1;justify-self:start}
+  .back{text-align:center;margin-top:10px}
 </style>

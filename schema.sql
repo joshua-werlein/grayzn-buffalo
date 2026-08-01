@@ -56,9 +56,13 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL DEFAULT ''
 );
  
--- Seed the announcement row empty so the banner stays hidden until staff set it.
-INSERT INTO settings (key, value) VALUES ('announcement', '')
-  ON CONFLICT(key) DO NOTHING;
+-- Three independently managed announcements plus the delivery-status toggle.
+INSERT INTO settings (key, value) VALUES
+ ('announcement_1', ''),
+ ('announcement_2', ''),
+ ('announcement_3', ''),
+ ('delivery_paused', '0')
+ON CONFLICT(key) DO NOTHING;
  
 -- ── Category seed (nine real printed sections) ──────────────────────────
 INSERT INTO categories (name, sort) VALUES

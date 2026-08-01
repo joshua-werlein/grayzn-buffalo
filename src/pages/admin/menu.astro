@@ -88,6 +88,7 @@ try {
 <section>
   <div class="section-head">
     <h2>Menu Items</h2>
+    <p class="back back-top"><a href="/admin">← Back to admin</a></p>
     {notice && <p class="flash ok">{notice}</p>}
     {problem && <p class="flash bad">{problem}</p>}
   </div>
@@ -567,6 +568,7 @@ try {
   .pick-btn:has(input:disabled){opacity:.5;pointer-events:none}
 
   .back{text-align:center;margin-top:28px}
+  .back-top{margin-top:10px}
 
   /* ---- toast ---- */
   .toast{position:fixed;left:50%;transform:translate(-50%,20px);

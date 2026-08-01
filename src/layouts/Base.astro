@@ -12,7 +12,18 @@ const nav = [
 const path = Astro.url.pathname;
 const noindex = path.startsWith('/admin');
 const env = (Astro.locals as any).runtime?.env ?? {};
-const announcement = await getSetting(env, 'announcement', '');
+const [announcement1, announcement2, announcement3, deliveryPaused] = await Promise.all([
+  getSetting(env, 'announcement_1', ''),
+  getSetting(env, 'announcement_2', ''),
+  getSetting(env, 'announcement_3', ''),
+  getSetting(env, 'delivery_paused', '0'),
+]);
+const announcements = [announcement1, announcement2, announcement3]
+  .map((message) => message.trim())
+  .filter(Boolean);
+const deliveryMessage = deliveryPaused === '1'
+  ? 'Delivery is paused right now — call us for details.'
+  : 'Delivery Monday–Friday, 11 AM–1:30 PM, within Mondovi city limits.';
 ---
 <!DOCTYPE html>
 <html lang="en">
@@ -56,7 +67,9 @@ const announcement = await getSetting(env, 'announcement', '');
     padding:9px clamp(16px,4vw,48px);font-family:var(--label);font-weight:700;
     letter-spacing:.04em;font-size:.95rem;line-height:1.35;
     box-shadow:0 2px 8px rgba(0,0,0,.22)}
-  .announce p{margin:0;max-width:1100px;margin-inline:auto}
+  .announce-list{max-width:1100px;margin:0 auto;padding:0;list-style:none;display:flex;justify-content:center;align-items:center;gap:5px 22px;flex-wrap:wrap}
+  .announce-list li{margin:0}
+  .announce-list .delivery-notice{font-weight:700}
   main{flex:1 0 auto;width:100%}
   img,iframe{max-width:100%}
   .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
@@ -173,9 +186,12 @@ const announcement = await getSetting(env, 'announcement', '');
     ))}
   </ul>
 </nav>
-  {announcement && (
+  {(announcements.length > 0 || deliveryMessage) && (
     <div class="announce" role="region" aria-label="Announcement">
-      <p>{announcement}</p>
+      <ul class="announce-list">
+        <li class="delivery-notice">{deliveryMessage}</li>
+        {announcements.map((message) => <li>{message}</li>)}
+      </ul>
     </div>
   )}
 <nav class="action-bar" aria-label="Quick actions">
