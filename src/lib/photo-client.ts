@@ -1,5 +1,4 @@
 /** Runs in the browser only. Converts a phone photo to two webp blobs. */
-
 export class PhotoError extends Error {}
 
 export type Converted = { full: Blob; thumb: Blob; width: number; height: number };
@@ -7,7 +6,7 @@ export type Converted = { full: Blob; thumb: Blob; width: number; height: number
 const MAX_INPUT_BYTES = 12 * 1024 * 1024;
 const QUALITY = 0.82;
 
-export async function convertPhoto(file: File): Promise<Converted> {
+export async function convertPhoto(file: File, rotation = 0): Promise<Converted> {
   if (!file.type.startsWith('image/')) {
     throw new PhotoError('That file is not an image.');
   }
@@ -17,9 +16,19 @@ export async function convertPhoto(file: File): Promise<Converted> {
 
   const src = await decode(file);
   try {
-    const full = await resize(src, 1200);
-    const thumb = await resize(src, 600);
-    return { full, thumb, width: src.width, height: src.height };
+    const normalized = normalizeRotation(rotation);
+    const full = await resize(src, 1200, normalized);
+    const thumb = await resize(src, 600, normalized);
+    const sourceWidth = 'naturalWidth' in src ? src.naturalWidth : src.width;
+    const sourceHeight = 'naturalHeight' in src ? src.naturalHeight : src.height;
+    const quarterTurn = Math.abs(normalized) === 90;
+
+    return {
+      full,
+      thumb,
+      width: quarterTurn ? sourceHeight : sourceWidth,
+      height: quarterTurn ? sourceWidth : sourceHeight,
+    };
   } finally {
     if ('close' in src) src.close();
   }
@@ -27,13 +36,18 @@ export async function convertPhoto(file: File): Promise<Converted> {
 
 type Source = ImageBitmap | HTMLImageElement;
 
+function normalizeRotation(value: number) {
+  const normalized = ((value % 360) + 360) % 360;
+  if (normalized === 270) return -90;
+  if (normalized === 0 || normalized === 90 || normalized === 180) return normalized;
+  throw new PhotoError('That rotation is not supported.');
+}
+
 async function decode(file: File): Promise<Source> {
-  // Preferred path: applies EXIF orientation, hands back a bitmap.
   try {
     return await createImageBitmap(file, { imageOrientation: 'from-image' });
-  } catch { /* older Safari, or a format it can't decode */ }
+  } catch { /* older Safari, or a format it cannot decode */ }
 
-  // Fallback: <img> applies EXIF orientation natively in current browsers.
   const url = URL.createObjectURL(file);
   try {
     const img = new Image();
@@ -47,13 +61,15 @@ async function decode(file: File): Promise<Source> {
   }
 }
 
-async function resize(src: Source, targetWidth: number): Promise<Blob> {
+async function resize(src: Source, targetWidth: number, rotation: number): Promise<Blob> {
   const sw = 'naturalWidth' in src ? src.naturalWidth : src.width;
   const sh = 'naturalHeight' in src ? src.naturalHeight : src.height;
-
-  const scale = Math.min(1, targetWidth / sw);   // never upscale
-  const w = Math.max(1, Math.round(sw * scale));
-  const h = Math.max(1, Math.round(sh * scale));
+  const quarterTurn = Math.abs(rotation) === 90;
+  const rotatedWidth = quarterTurn ? sh : sw;
+  const rotatedHeight = quarterTurn ? sw : sh;
+  const scale = Math.min(1, targetWidth / rotatedWidth);
+  const w = Math.max(1, Math.round(rotatedWidth * scale));
+  const h = Math.max(1, Math.round(rotatedHeight * scale));
 
   const canvas = document.createElement('canvas');
   canvas.width = w;
@@ -63,15 +79,15 @@ async function resize(src: Source, targetWidth: number): Promise<Blob> {
   if (!ctx) throw new PhotoError('Your browser could not process that photo.');
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(src as CanvasImageSource, 0, 0, w, h);
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(rotation * Math.PI / 180);
 
-  const blob = await new Promise<Blob | null>((res) =>
-    canvas.toBlob(res, 'image/webp', QUALITY)
-  );
+  const drawWidth = sw * scale;
+  const drawHeight = sh * scale;
+  ctx.drawImage(src as CanvasImageSource, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', QUALITY));
   if (!blob) throw new PhotoError('Your browser could not process that photo.');
-
-  // toBlob silently falls back to PNG where webp encoding is missing.
-  // Catch it — otherwise we upload a 2 MB PNG under a .webp key.
   if (blob.type !== 'image/webp') {
     throw new PhotoError('Your browser cannot save webp images. Try Chrome, Edge, or an up-to-date Safari.');
   }
