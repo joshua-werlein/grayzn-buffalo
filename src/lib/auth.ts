@@ -55,12 +55,13 @@ export async function logout(cookies: any, env: any) {
 /**
  * Verify a Turnstile token against Cloudflare.
  *
- * Fails OPEN when TURNSTILE_SECRET is unset — a missing binding shouldn't lock
- * you out of your own admin, and the password is still the actual gate. Change
- * the first `return true` to `return false` if you'd rather fail closed.
+ *Fails CLOSED when TURNSTILE_SECRET is unset. Callers that need a deliberate
+ * bypass should check for the secret themselves and skip the call — see the
+ * `turnstileOn` guard in admin/index.astro, which keeps the bypass visible
+ * rather than hiding it in here. 
  */
 export async function verifyTurnstile(token: string, env: any, ip?: string): Promise<boolean> {
-  if (!env?.TURNSTILE_SECRET) return true;
+  if (!env?.TURNSTILE_SECRET) return false; 
   if (!token) return false;
 
   const body = new FormData();
