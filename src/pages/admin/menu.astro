@@ -195,7 +195,7 @@ try {
                   <input type="hidden" name="id" value={i.id} />
                   <div class="field wide">
                     <label for={`p-${i.id}`}>{i.photo_key ? 'Replace the photo' : 'Add a photo'}</label>
-                    <input id={`p-${i.id}`} type="file" name="photo" accept="image/*" capture="environment" />
+                    <input id={`p-${i.id}`} type="file" name="photo" accept="image/*" />
                     <p class="hint">Take a photo or pick one from your phone. It gets resized automatically.</p>
                   </div>
                   <div class="photo-actions">
