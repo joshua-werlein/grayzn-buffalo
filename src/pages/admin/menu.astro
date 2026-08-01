@@ -134,11 +134,12 @@ try {
     </form>
 
     <nav class="jump-card" aria-label="Jump to menu section">
-      <label for="jump-category">Jump to section</label>
-      <select id="jump-category">
-        <option value="">Choose a section…</option>
-        {categories.map((c:any) => <option value={`cat-${slug(c.name)}`}>{c.name}</option>)}
-      </select>
+      <p>Jump to section</p>
+      <div class="jump-links">
+        {categories.map((c:any) => (
+          <a href={`#cat-${slug(c.name)}`}>{c.name}</a>
+        ))}
+      </div>
     </nav>
 
     {categories.map((c:any) => (
@@ -294,12 +295,6 @@ try {
     sessionStorage.removeItem('menuNotice');
     toast(carriedNotice, 'ok');
   }
-
-  document.querySelector<HTMLSelectElement>('#jump-category')?.addEventListener('change', (event) => {
-    const id = (event.currentTarget as HTMLSelectElement).value;
-    if (!id) return;
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
 
   document.querySelectorAll<HTMLInputElement>('input[data-add-photo]').forEach((input) => {
     input.addEventListener('change', () => {
@@ -497,11 +492,16 @@ try {
   .field.check input{width:auto;padding:0;flex:0 0 auto;
     width:20px;height:20px;accent-color:var(--crimson)}
 
-  .jump-card{position:sticky;top:10px;z-index:8;display:flex;align-items:center;gap:12px;
-    margin:0 0 22px;padding:12px 14px;border-radius:10px;background:var(--ink);color:var(--cream);
+  .jump-card{margin:0 0 22px;padding:14px;border-radius:10px;background:var(--ink);color:var(--cream);
     box-shadow:0 6px 16px rgba(36,22,16,.18)}
-  .jump-card label{font-family:var(--label);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:.78rem;white-space:nowrap}
-  .jump-card select{flex:1;min-width:0;padding:9px 10px;border-radius:7px;border:1px solid var(--cream-2);background:var(--cream);color:var(--ink);font-family:var(--body)}
+  .jump-card p{margin:0 0 10px;font-family:var(--label);font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;font-size:.78rem}
+  .jump-links{display:flex;gap:8px;flex-wrap:wrap}
+  .jump-links a{flex:1 1 auto;padding:9px 12px;border:1px solid var(--cream-2);border-radius:7px;
+    background:var(--cream);color:var(--ink);font-family:var(--label);font-weight:700;
+    letter-spacing:.04em;text-align:center;text-decoration:none;white-space:nowrap}
+  .jump-links a:hover{background:var(--gold)}
+  .jump-links a:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
   .cat{scroll-margin-top:90px}
   .cat h3{font-family:var(--display);margin:26px 0 8px}
   .cat ul{list-style:none}
@@ -594,7 +594,8 @@ try {
     .add-form,.edit-form{grid-template-columns:1fr}
     .row{flex-wrap:wrap}
     .row-actions{width:100%;justify-content:flex-start}
-    .jump-card{top:4px;align-items:stretch;flex-direction:column;gap:6px}
+    .jump-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+    .jump-links a{white-space:normal;display:flex;align-items:center;justify-content:center;min-height:44px}
     .pick,.photo-tools{width:100%}
     .pick-btn,.rotate-photo{flex:1 1 100%}
   }
