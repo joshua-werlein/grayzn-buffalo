@@ -48,9 +48,12 @@ if (Astro.request.method === 'POST') {
     }
 
   } else if (action === 'save-delivery-status' && authed) {
+    // Checkbox only: present ('1') => paused, absent => running.
+    // (No hidden fallback input — a duplicate name made get() always read "0".)
     try {
-      await setSetting(env, 'delivery_paused', form.get('delivery_paused') === '1' ? '1' : '0');
-      notice = form.get('delivery_paused') === '1' ? 'Delivery paused.' : 'Delivery is running.';
+      const paused = form.get('delivery_paused') === '1';
+      await setSetting(env, 'delivery_paused', paused ? '1' : '0');
+      notice = paused ? 'Delivery paused.' : 'Delivery is running.';
     } catch {
       notice = 'Database not connected yet — see README.';
     }
@@ -98,10 +101,9 @@ const deliveryPaused = authed && (await getSetting(env, 'delivery_paused', '0'))
         <input type="hidden" name="action" value="save-delivery-status" />
         <p class="delivery-title">Delivery status</p>
         <p class="hint">The public delivery message remains visible and switches between running and paused wording.</p>
-        <input type="hidden" name="delivery_paused" value="0" />
         <label class="delivery-switch" for="delivery-paused">
           <input id="delivery-paused" name="delivery_paused" type="checkbox" value="1" role="switch" checked={deliveryPaused} />
-          <span>{deliveryPaused ? 'Delivery paused' : 'Delivery is running'}</span>
+          <span data-switch-label>{deliveryPaused ? 'Delivery paused' : 'Delivery is running'}</span>
         </label>
         <button class="btn btn-primary" type="submit">Save delivery status</button>
       </form>
@@ -129,6 +131,17 @@ const deliveryPaused = authed && (await getSetting(env, 'delivery_paused', '0'))
 {!authed && turnstileOn && (
   <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 )}
+
+<script is:inline>
+  // Flip the switch label live so staff see the state before saving.
+  const sw = document.getElementById('delivery-paused');
+  const lbl = sw && sw.parentElement.querySelector('[data-switch-label]');
+  if (sw && lbl) {
+    sw.addEventListener('change', () => {
+      lbl.textContent = sw.checked ? 'Delivery paused' : 'Delivery is running';
+    });
+  }
+</script>
 
 <style>
   .panel{max-width:460px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;box-shadow:0 8px 22px rgba(36,22,16,.12);text-align:center}

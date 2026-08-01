@@ -2,7 +2,7 @@
 import { getSetting } from '../lib/db';
 interface Props { title?: string; description?: string; }
 const { title = "Grayz'n Buffalo Bar & Grill — Mondovi, WI",
-        description = "Grayz'n Buffalo Bar & Grill in Mondovi, WI. Burgers, broasted chicken & cold ones — open daily 10 AM to 2 AM." } = Astro.props;
+        description = "Grayz'n Buffalo Bar & Grill in Mondovi, WI. Burgers, Wraps, Pizzas & cold ones — open daily 10 AM to 2 AM." } = Astro.props;
 const nav = [
   { href: '/', label: 'Home' },
   { href: '/menu', label: 'Menu' },
@@ -21,9 +21,10 @@ const [announcement1, announcement2, announcement3, deliveryPaused] = await Prom
 const announcements = [announcement1, announcement2, announcement3]
   .map((message) => message.trim())
   .filter(Boolean);
-const deliveryMessage = deliveryPaused === '1'
-  ? 'Delivery is paused right now — call us for details.'
-  : 'Delivery Monday–Friday, 11 AM–1:30 PM, within Mondovi city limits.';
+// Delivery is always shown. Running copy is split so the city-limits qualifier
+// breaks to its own line on mobile and never breaks mid-phrase. 
+const deliveryPausedFlag = deliveryPaused === '1';
+const deliveryPausedMsg = 'Delivery is unavailable at this time';
 ---
 <!DOCTYPE html>
 <html lang="en">
@@ -70,6 +71,10 @@ const deliveryMessage = deliveryPaused === '1'
   .announce-list{max-width:1100px;margin:0 auto;padding:0;list-style:none;display:flex;justify-content:center;align-items:center;gap:5px 22px;flex-wrap:wrap}
   .announce-list li{margin:0}
   .announce-list .delivery-notice{font-weight:700}
+  /* keep each phrase of the delivery line whole; qualifier follows a comma on desktop */
+  .delivery-notice .dmain,
+  .delivery-notice .qualifier{white-space:nowrap}
+  .delivery-notice .qualifier::before{content:", "}
   main{flex:1 0 auto;width:100%}
   img,iframe{max-width:100%}
   .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
@@ -126,6 +131,14 @@ const deliveryMessage = deliveryPaused === '1'
   @media (prefers-reduced-motion: reduce){
     .reveal{transition:none;opacity:1;transform:none}
     html{scroll-behavior:auto}
+  }
+
+  /* ---- announcement banner: stack on mobile ---- */
+  @media (max-width:640px){
+    .announce-list{flex-direction:column;gap:6px}
+    .delivery-notice{display:block;text-align:center}
+    .delivery-notice .qualifier{display:block}
+    .delivery-notice .qualifier::before{content:""}
   }
 
   /* ---- top bar hide-on-scroll (mobile only) ---- */
@@ -186,14 +199,16 @@ const deliveryMessage = deliveryPaused === '1'
     ))}
   </ul>
 </nav>
-  {(announcements.length > 0 || deliveryMessage) && (
-    <div class="announce" role="region" aria-label="Announcement">
-      <ul class="announce-list">
-        <li class="delivery-notice">{deliveryMessage}</li>
-        {announcements.map((message) => <li>{message}</li>)}
-      </ul>
-    </div>
-  )}
+  <div class="announce" role="region" aria-label="Announcement">
+    <ul class="announce-list">
+      <li class="delivery-notice">
+        {deliveryPausedFlag
+          ? deliveryPausedMsg
+          : (<><span class="dmain">Delivery M–F 11 AM–1:30 PM</span><span class="qualifier">within Mondovi city limits</span></>)}
+      </li>
+      {announcements.map((message) => <li>{message}</li>)}
+    </ul>
+  </div>
 <nav class="action-bar" aria-label="Quick actions">
   <a href="https://www.google.com/maps?q=102+S+Eau+Claire+St,+Mondovi,+WI+54755" target="_blank" rel="noopener">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
