@@ -1,26 +1,96 @@
 ---
 import Base from '../../layouts/Base.astro';
 import { isAuthed } from '../../lib/auth';
+import { thumbKey } from '../../lib/db';
+
 const env = (Astro.locals as any).runtime?.env ?? {};
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 
+const MAX_UPLOAD = 10 * 1024 * 1024; // server-side guard; the client sends ~60 KB
+
+/** Remove both variants from R2. Never throws — an orphaned object is not
+ *  worth failing a request over, and the row is already gone by then. */
+async function dropPhoto(key: string | null | undefined) {
+  if (!key || !env.PHOTOS) return;
+  await Promise.allSettled([
+    env.PHOTOS.delete(key),
+    env.PHOTOS.delete(thumbKey(key)),
+  ]);
+}
+
 let notice = '';
+let problem = '';
+
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
   const action = f.get('action');
   try {
     if (action === 'add') {
-      await env.DB.prepare('INSERT INTO items (category_id, name, description, sort) VALUES (?1, ?2, ?3, COALESCE((SELECT MAX(sort)+1 FROM items WHERE category_id=?1), 0))')
-        .bind(Number(f.get('category_id')), String(f.get('name')), String(f.get('description') ?? '')).run();
+      await env.DB.prepare(
+        'INSERT INTO items (category_id, name, description, sort) VALUES (?1, ?2, ?3, COALESCE((SELECT MAX(sort)+1 FROM items WHERE category_id=?1), 0))'
+      ).bind(Number(f.get('category_id')), String(f.get('name')), String(f.get('description') ?? '')).run();
       notice = 'Item added.';
+
+    } else if (action === 'edit') {
+      await env.DB.prepare(
+        'UPDATE items SET name = ?2, description = ?3, category_id = ?4 WHERE id = ?1'
+      ).bind(
+        Number(f.get('id')),
+        String(f.get('name')),
+        String(f.get('description') ?? ''),
+        Number(f.get('category_id'))
+      ).run();
+      notice = 'Changes saved.';
+
     } else if (action === 'delete') {
-      await env.DB.prepare('DELETE FROM items WHERE id = ?1').bind(Number(f.get('id'))).run();
+      const id = Number(f.get('id'));
+      const row: any = await env.DB.prepare('SELECT photo_key FROM items WHERE id = ?1').bind(id).first();
+      await env.DB.prepare('DELETE FROM items WHERE id = ?1').bind(id).run();
+      await dropPhoto(row?.photo_key);
       notice = 'Item removed.';
+
     } else if (action === 'toggle') {
       await env.DB.prepare('UPDATE items SET active = 1 - active WHERE id = ?1').bind(Number(f.get('id'))).run();
       notice = 'Item updated.';
+
+    } else if (action === 'photo') {
+      if (!env.PHOTOS) throw new Error('Photo storage is not connected yet.');
+      const id = Number(f.get('id'));
+      const full = f.get('full');
+      const thumb = f.get('thumb');
+
+      if (!(full instanceof File) || !(thumb instanceof File)) {
+        throw new Error('No photo came through. Try picking the photo again.');
+      }
+      if (full.size > MAX_UPLOAD || thumb.size > MAX_UPLOAD) {
+        throw new Error('That photo is too big. Try a smaller one.');
+      }
+      if (full.type !== 'image/webp' || thumb.type !== 'image/webp') {
+        throw new Error('That photo was not converted properly. Reload the page and try again.');
+      }
+
+      const previous: any = await env.DB.prepare('SELECT photo_key FROM items WHERE id = ?1').bind(id).first();
+      const key = `menu/${id}/${crypto.randomUUID()}.webp`;
+      const meta = { httpMetadata: { contentType: 'image/webp' } };
+
+      // Write new, point the row at it, then clean up the old. In that order a
+      // failure leaves an orphaned object rather than a row with a dead key.
+      await env.PHOTOS.put(key, await full.arrayBuffer(), meta);
+      await env.PHOTOS.put(thumbKey(key), await thumb.arrayBuffer(), meta);
+      await env.DB.prepare('UPDATE items SET photo_key = ?1 WHERE id = ?2').bind(key, id).run();
+      await dropPhoto(previous?.photo_key);
+      notice = 'Photo added.';
+
+    } else if (action === 'photo-remove') {
+      const id = Number(f.get('id'));
+      const row: any = await env.DB.prepare('SELECT photo_key FROM items WHERE id = ?1').bind(id).first();
+      await env.DB.prepare('UPDATE items SET photo_key = NULL WHERE id = ?1').bind(id).run();
+      await dropPhoto(row?.photo_key);
+      notice = 'Photo removed.';
     }
-  } catch (e) { notice = 'Database not connected yet — see README.'; }
+  } catch (e: any) {
+    problem = e?.message ?? 'Something went wrong. Check the database connection — see README.';
+  }
 }
 
 let categories: any[] = [], items: any[] = [];
@@ -31,48 +101,230 @@ try {
 ---
 <Base title="Admin · Menu — Grayz'n Buffalo">
 <section>
-  <div class="section-head"><h2>Menu Items</h2>{notice && <p><strong>{notice}</strong></p>}</div>
+  <div class="section-head">
+    <h2>Menu Items</h2>
+    {notice && <p class="flash ok">{notice}</p>}
+    {problem && <p class="flash bad">{problem}</p>}
+  </div>
+
   <div class="admin-wrap">
-    <form method="post" class="add-form">
+    <form method="post" class="card add-form">
+      <h3>Add an item</h3>
+      <div class="field">
+        <label for="add-cat">Section</label>
+        <select id="add-cat" name="category_id" required>
+          {categories.map((c:any) => <option value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+      <div class="field">
+        <label for="add-name">Item name</label>
+        <input id="add-name" name="name" required />
+      </div>
+      <div class="field wide">
+        <label for="add-desc">Description <span class="hint">optional</span></label>
+        <input id="add-desc" name="description" />
+      </div>
       <input type="hidden" name="action" value="add" />
-      <select name="category_id" required>
-        {categories.map((c:any) => <option value={c.id}>{c.name}</option>)}
-      </select>
-      <input name="name" placeholder="Item name" required />
-      <input name="description" placeholder="Description (optional)" />
       <button class="btn btn-primary" type="submit">Add item</button>
     </form>
+
     {categories.map((c:any) => (
       <div class="cat">
         <h3>{c.name}</h3>
         <ul>
           {items.filter((i:any) => i.category_id === c.id).map((i:any) => (
             <li class={i.active ? '' : 'inactive'}>
-              <div><strong>{i.name}</strong> <span>{i.description}</span></div>
-              <div class="row-actions">
-                <form method="post"><input type="hidden" name="action" value="toggle"/><input type="hidden" name="id" value={i.id}/><button title="Show/hide">{i.active ? 'Hide' : 'Show'}</button></form>
-                <form method="post" onsubmit="return confirm('Delete this item?')"><input type="hidden" name="action" value="delete"/><input type="hidden" name="id" value={i.id}/><button class="danger">Delete</button></form>
+              <div class="row">
+                <div class="thumb">
+                  {i.photo_key
+                    ? <img src={`/img/${thumbKey(i.photo_key)}`} alt="" width="56" height="44" loading="lazy" />
+                    : <span class="no-photo" aria-hidden="true">—</span>}
+                </div>
+                <div class="who">
+                  <strong>{i.name}</strong>
+                  {i.description
+                    ? <span class="desc">{i.description}</span>
+                    : <span class="desc muted">No description yet</span>}
+                </div>
+                <div class="row-actions">
+                  <form method="post">
+                    <input type="hidden" name="action" value="toggle" />
+                    <input type="hidden" name="id" value={i.id} />
+                    <button type="submit">{i.active ? 'Hide' : 'Show'}</button>
+                  </form>
+                  <form method="post" onsubmit="return confirm('Delete this item and its photo?')">
+                    <input type="hidden" name="action" value="delete" />
+                    <input type="hidden" name="id" value={i.id} />
+                    <button class="danger" type="submit">Delete</button>
+                  </form>
+                </div>
               </div>
+
+              <details class="editor">
+                <summary>Edit</summary>
+
+                <form method="post" class="edit-form">
+                  <input type="hidden" name="action" value="edit" />
+                  <input type="hidden" name="id" value={i.id} />
+                  <div class="field">
+                    <label for={`n-${i.id}`}>Item name</label>
+                    <input id={`n-${i.id}`} name="name" value={i.name} required />
+                  </div>
+                  <div class="field">
+                    <label for={`c-${i.id}`}>Section</label>
+                    <select id={`c-${i.id}`} name="category_id">
+                      {categories.map((cc:any) => (
+                        <option value={cc.id} selected={cc.id === i.category_id}>{cc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div class="field wide">
+                    <label for={`d-${i.id}`}>Description <span class="hint">optional</span></label>
+                    <input id={`d-${i.id}`} name="description" value={i.description ?? ''} />
+                  </div>
+                  <button class="btn btn-primary" type="submit">Save changes</button>
+                </form>
+
+                <form
+                  method="post"
+                  class="photo-form"
+                  enctype="multipart/form-data"
+                  data-item={i.id}
+                >
+                  <input type="hidden" name="action" value="photo" />
+                  <input type="hidden" name="id" value={i.id} />
+                  <div class="field wide">
+                    <label for={`p-${i.id}`}>{i.photo_key ? 'Replace the photo' : 'Add a photo'}</label>
+                    <input id={`p-${i.id}`} type="file" name="photo" accept="image/*" capture="environment" />
+                    <p class="hint">Take a photo or pick one from your phone. It gets resized automatically.</p>
+                  </div>
+                  <div class="photo-actions">
+                    <button class="btn btn-ghost" type="submit">Upload photo</button>
+                    <span class="status" role="status" aria-live="polite"></span>
+                  </div>
+                </form>
+
+                {i.photo_key && (
+                  <form method="post" onsubmit="return confirm('Remove this photo?')">
+                    <input type="hidden" name="action" value="photo-remove" />
+                    <input type="hidden" name="id" value={i.id} />
+                    <button class="danger" type="submit">Remove photo</button>
+                  </form>
+                )}
+              </details>
             </li>
           ))}
         </ul>
       </div>
     ))}
-    <p style="text-align:center"><a href="/admin">← Back to admin</a></p>
+
+    <p class="back"><a href="/admin">← Back to admin</a></p>
   </div>
 </section>
 </Base>
 
+<script>
+  import { convertPhoto, PhotoError } from '../../lib/photo-client';
+
+  document.querySelectorAll<HTMLFormElement>('form.photo-form').forEach((form) => {
+    const input = form.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const status = form.querySelector<HTMLElement>('.status')!;
+    const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+
+    form.addEventListener('submit', async (e) => {
+      const file = input.files?.[0];
+      if (!file) return; // let the browser handle the empty case
+
+      e.preventDefault();
+      button.disabled = true;
+      status.textContent = 'Resizing…';
+
+      try {
+        const { full, thumb } = await convertPhoto(file);
+
+        const body = new FormData();
+        body.append('action', 'photo');
+        body.append('id', form.dataset.item!);
+        body.append('full', full, 'photo.webp');
+        body.append('thumb', thumb, 'photo@600.webp');
+
+        status.textContent = 'Uploading…';
+        const res = await fetch(window.location.pathname, { method: 'POST', body });
+        if (!res.ok) throw new Error('Upload failed. Check your connection and try again.');
+
+        window.location.reload();
+      } catch (err) {
+        status.textContent =
+          err instanceof PhotoError ? err.message : (err as Error).message;
+        button.disabled = false;
+      }
+    });
+  });
+</script>
+
 <style>
-  .admin-wrap{max-width:760px;margin:0 auto}
-  .add-form{display:flex;gap:10px;flex-wrap:wrap;background:#fff;padding:18px;border-radius:12px;box-shadow:0 6px 16px rgba(36,22,16,.1);margin-bottom:30px}
-  .add-form select,.add-form input{padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);flex:1;min-width:140px}
-  .cat h3{font-family:var(--display);margin:22px 0 8px}
+  .admin-wrap{max-width:780px;margin:0 auto}
+
+  .flash{font-family:var(--label);font-weight:700;letter-spacing:.04em;
+    padding:10px 16px;border-radius:8px;display:inline-block;margin-top:10px}
+  .flash.ok{background:var(--gold);color:var(--ink)}
+  .flash.bad{background:#8d1626;color:var(--cream)}
+
+  .card{background:#fff;border-radius:12px;padding:18px;
+    box-shadow:0 6px 16px rgba(36,22,16,.1)}
+  .add-form{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:32px}
+  .add-form h3{grid-column:1/-1;font-family:var(--display);font-size:1.2rem}
+  .add-form button{grid-column:1/-1;justify-self:start}
+
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field.wide{grid-column:1/-1}
+  .field label{font-family:var(--label);font-weight:600;letter-spacing:.1em;
+    text-transform:uppercase;font-size:.78rem;color:var(--ink-2)}
+  .field input,.field select{padding:10px;border:2px solid rgba(36,22,16,.2);
+    border-radius:8px;background:var(--cream);font-family:var(--body);width:100%}
+  .field input:focus-visible,.field select:focus-visible{outline:2px solid var(--crimson);outline-offset:1px}
+  .hint{font-weight:500;text-transform:none;letter-spacing:0;
+    color:var(--ink-2);opacity:.75;font-size:.8rem}
+
+  .cat h3{font-family:var(--display);margin:26px 0 8px}
   .cat ul{list-style:none}
-  .cat li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px dashed rgba(36,22,16,.25)}
+  .cat li{padding:12px 4px;border-bottom:1px dashed rgba(36,22,16,.25)}
   .cat li.inactive{opacity:.45}
-  .cat li span{color:var(--ink-2);font-size:.92rem;margin-left:6px}
-  .row-actions{display:flex;gap:8px}
-  .row-actions button{padding:6px 12px;border-radius:6px;border:2px solid var(--ink);background:transparent;cursor:pointer;font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.75rem}
-  .row-actions .danger{border-color:var(--crimson);color:var(--crimson)}
+
+  .row{display:flex;align-items:center;gap:12px}
+  .thumb{flex:0 0 56px;height:44px;border-radius:6px;overflow:hidden;
+    background:rgba(36,22,16,.08);display:grid;place-items:center}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .no-photo{color:var(--ink-2);opacity:.5}
+  .who{flex:1;min-width:0}
+  .who strong{display:block}
+  .desc{color:var(--ink-2);font-size:.9rem}
+  .desc.muted{opacity:.55;font-style:italic}
+
+  .row-actions{display:flex;gap:8px;flex-shrink:0}
+  .row-actions button,.editor button.danger{padding:6px 12px;border-radius:6px;
+    border:2px solid var(--ink);background:transparent;cursor:pointer;
+    font-family:var(--label);font-weight:600;letter-spacing:.08em;
+    text-transform:uppercase;font-size:.75rem}
+  .row-actions .danger,.editor button.danger{border-color:var(--crimson);color:var(--crimson)}
+
+  .editor{margin-top:10px}
+  .editor summary{cursor:pointer;font-family:var(--label);font-weight:600;
+    letter-spacing:.1em;text-transform:uppercase;font-size:.75rem;
+    color:var(--ink-2);padding:4px 0}
+  .editor summary:focus-visible{outline:2px solid var(--crimson);outline-offset:2px}
+  .edit-form,.photo-form{display:grid;grid-template-columns:1fr 1fr;gap:12px;
+    background:#fff;border-radius:12px;padding:16px;margin:10px 0;
+    box-shadow:0 4px 12px rgba(36,22,16,.08)}
+  .edit-form button{grid-column:1/-1;justify-self:start}
+  .photo-actions{grid-column:1/-1;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .status{font-family:var(--label);font-weight:600;font-size:.85rem;color:var(--ink-2)}
+
+  .back{text-align:center;margin-top:28px}
+
+  @media (max-width:600px){
+    .add-form,.edit-form,.photo-form{grid-template-columns:1fr}
+    .row{flex-wrap:wrap}
+    .row-actions{width:100%;justify-content:flex-start}
+  }
 </style>
