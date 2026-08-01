@@ -296,6 +296,10 @@ try {
     sessionStorage.removeItem('menuNotice');
     toast(carriedNotice, 'ok');
   }
+  const createdItem = new URL(location.href).searchParams.get('created');
+  if (createdItem) {
+    history.replaceState(null, '', `${location.pathname}${location.hash}`);
+  }
 
   document.querySelectorAll<HTMLInputElement>('input[data-add-photo]').forEach((input) => {
     input.addEventListener('change', () => {
@@ -343,7 +347,10 @@ try {
       }
 
       sessionStorage.setItem('menuNotice', pendingAddPhoto ? 'Item and photo added.' : 'Item added.');
-      location.href = `/admin/menu#item-${data.id}`;
+      // A hash-only navigation does not reload this page, leaving the busy
+      // toast and disabled submit button in place. The short-lived query
+      // parameter forces a real request; the page then removes it above.
+      location.assign(`/admin/menu?created=${data.id}#item-${data.id}`);
     } catch (err) {
       toast(err instanceof PhotoError ? err.message : (err as Error).message, 'bad');
       if (submit) submit.disabled = false;
