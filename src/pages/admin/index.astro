@@ -86,13 +86,13 @@ const deliveryPaused = authed && (await getSetting(env, 'delivery_paused', '0'))
           <p class="hint">Optional, static messages shown across the top of every page. Leave all three empty to show only the delivery status. Good for happy hour, closures, or a quick notice.</p>
           <label for="announcement-1">Announcement 1</label>
           <input id="announcement-1" name="announcement_1" type="text" maxlength="140"
-                 value={announcements[0]} placeholder="e.g. Happy Hour Monday–Friday, 5–6:30 PM" />
+                 value={announcements[0]} placeholder="e.g. Happy Hour M-F 5–6:30 PM" />
           <label for="announcement-2">Announcement 2</label>
           <input id="announcement-2" name="announcement_2" type="text" maxlength="140"
-                 value={announcements[1]} placeholder="e.g. Kitchen open daily until 2 AM" />
+                 value={announcements[1]} placeholder="e.g. Lunch Specials 11 AM–1:30 PM" />
           <label for="announcement-3">Announcement 3</label>
           <input id="announcement-3" name="announcement_3" type="text" maxlength="140"
-                 value={announcements[2]} placeholder="e.g. Follow us on Facebook for daily details" />
+                 value={announcements[2]} placeholder="e.g. Nightly Specials 5–10 PM" />
         </fieldset>
         <button class="btn btn-primary" type="submit">Save announcements</button>
       </form>
