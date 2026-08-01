@@ -17,10 +17,16 @@ const lateNight: Group[] = categories
   .map((c) => ({ cat: c, items: items.filter((it) => it.category_id === c.id && it.late_night === 1) }))
   .filter((g) => g.items.length > 0);
 
-const splitColumns = (groups: Group[]) => [
-  groups.filter((_, index) => index % 2 === 0),
-  groups.filter((_, index) => index % 2 === 1),
-];
+const splitColumns = (groups: Group[]) => {
+  const left = groups.filter((_, index) => index % 2 === 0);
+  const right = groups.filter((_, index) => index % 2 === 1);
+  const lighterSide = left.find((group) => group.cat.name === 'On The Lighter Side');
+
+  // Keep this short final category with Loaded Tot Baskets instead of leaving it alone.
+  return lighterSide
+    ? [left.filter((group) => group !== lighterSide), [...right, lighterSide]]
+    : [left, right];
+};
 const dailyColumns = splitColumns(daily);
 const lateNightColumns = splitColumns(lateNight);
 ---
