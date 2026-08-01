@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 const env = (Astro.locals as any).runtime?.env ?? {};
-const sitekey = env.TURNSTILE_SITEKEY ?? '1x00000000000000000000AA'; // Turnstile test key until real one is set
+const sitekey = env.TURNSTILE_SITEKEY;
 ---
 <Base title="Contact — Grayz'n Buffalo Bar & Grill">
 <section>
