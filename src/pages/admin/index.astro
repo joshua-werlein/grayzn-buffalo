@@ -4,7 +4,8 @@ import { isAuthed, login, logout, verifyTurnstile } from '../../lib/auth';
 import { getSetting, setSetting } from '../../lib/db';
 
 const env = (Astro.locals as any).runtime?.env ?? {};
-const sitekey = env.TURNSTILE_SITEKEY ?? '1x00000000000000000000AA'; // Turnstile test key until real one is set
+const sitekey = env.TURNSTILE_SITEKEY;
+const turnstileOn = Boolean(sitekey && env.TURNSTILE_SECRET);
 
 let authed = await isAuthed(Astro.cookies, env);
 let error = '';
@@ -18,7 +19,9 @@ if (Astro.request.method === 'POST') {
     // Turnstile FIRST — a bot without a valid token never reaches the password
     // comparison and never touches KV.
     const ip = Astro.request.headers.get('CF-Connecting-IP') ?? undefined;
-    const human = await verifyTurnstile(String(form.get('cf-turnstile-response') ?? ''), env, ip);
+    const human = turnstileOn
+      ? await verifyTurnstile(String(form.get('cf-turnstile-response') ?? ''), env, ip)
+      : true;
 
     if (!human) {
       error = 'Verification failed. Reload the page and try again.';
@@ -77,7 +80,9 @@ const announcement = authed ? await getSetting(env, 'announcement', '') : '';
       <input type="hidden" name="action" value="login" />
       <label for="password">Password</label>
       <input id="password" type="password" name="password" required autocomplete="current-password" />
-      <div class="cf-turnstile" data-sitekey={sitekey}></div>
+      {turnstileOn
+        ? <div class="cf-turnstile" data-sitekey={sitekey}></div>
+        : <p class="warn">Bot protection is off — Turnstile isn't configured.</p>}
       {error && <p class="err">{error}</p>}
       <button class="btn btn-primary" type="submit">Sign in</button>
     </form>
@@ -85,7 +90,7 @@ const announcement = authed ? await getSetting(env, 'announcement', '') : '';
 </section>
 </Base>
 
-{!authed && (
+{!authed && turnstileOn && (
   <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 )}
 
@@ -98,4 +103,5 @@ const announcement = authed ? await getSetting(env, 'announcement', '') : '';
   .announce-form .hint{font-size:.85rem;color:var(--ink-2);margin:0 0 4px}
   .cf-turnstile{margin:0 0 16px;display:flex;justify-content:center;min-height:65px}
   .err{color:var(--crimson);font-weight:600;margin-bottom:12px}
+  .warn{background:var(--amber);color:var(--ink);font-weight:700;padding:8px 12px;border-radius:8px;margin-bottom:14px;font-size:.9rem}
 </style>
