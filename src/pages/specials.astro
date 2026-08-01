@@ -91,6 +91,7 @@ const recurring = [
   const card = document.querySelector(`.day-card[data-day="${today}"]`);
   if (card) {
     card.classList.add('is-today');
+    card.parentElement?.prepend(card);
     const badge = document.createElement('span');
     badge.className = 'today-badge';
     badge.textContent = 'Today';
@@ -106,13 +107,13 @@ const recurring = [
 
   /* ── week grid ── */
   .week{list-style:none;margin:0 auto;padding:0;max-width:1120px;
-    display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px}
+    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
   .day-card{position:relative;background:#2c1c13;border:1px solid rgba(247,234,211,.14);
-    border-radius:14px;padding:22px 20px;
+    border-radius:14px;padding:22px 24px;
     box-shadow:0 6px 18px rgba(0,0,0,.3)}
   .day-name{font-family:var(--label);font-weight:700;letter-spacing:.18em;
     text-transform:uppercase;font-size:.8rem;color:var(--amber)}
-  .day-services{display:grid;gap:12px;margin-top:12px}
+  .day-services{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}
   .day-service{padding:13px;border-radius:9px;background:rgba(0,0,0,.13);border-left:4px solid var(--amber)}
   .day-service.night-service{border-left-color:var(--crimson)}
   .service-label{font-family:var(--label);font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);font-size:.76rem}
@@ -125,7 +126,8 @@ const recurring = [
     background:var(--gold);color:var(--ink);padding:4px 12px;border-radius:999px}
 
   /* today */
-  .day-card.is-today{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),0 8px 22px rgba(0,0,0,.4)}
+  .day-card.is-today{grid-column:1 / -1;max-width:820px;width:100%;justify-self:center;
+    border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),0 8px 22px rgba(0,0,0,.4)}
   .today-badge{position:absolute;top:-10px;right:14px;font-family:var(--label);font-weight:700;
     letter-spacing:.12em;text-transform:uppercase;font-size:.68rem;
     background:var(--crimson);color:#fff5e9;padding:3px 12px;border-radius:999px;
@@ -157,7 +159,9 @@ const recurring = [
   /* ── cta ── */
   .specials-cta{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:44px auto 0}
 
-  @media (max-width:600px){
+  @media (max-width:680px){
     .week{grid-template-columns:1fr}
+    .day-card.is-today{grid-column:auto}
+    .day-services{grid-template-columns:1fr}
   }
 </style>
