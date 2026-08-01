@@ -16,6 +16,13 @@ const daily: Group[] = categories
 const lateNight: Group[] = categories
   .map((c) => ({ cat: c, items: items.filter((it) => it.category_id === c.id && it.late_night === 1) }))
   .filter((g) => g.items.length > 0);
+
+const splitColumns = (groups: Group[]) => [
+  groups.filter((_, index) => index % 2 === 0),
+  groups.filter((_, index) => index % 2 === 1),
+];
+const dailyColumns = splitColumns(daily);
+const lateNightColumns = splitColumns(lateNight);
 ---
 <Base
   title="Menu — Grayz'n Buffalo Bar & Grill"
@@ -50,32 +57,38 @@ const lateNight: Group[] = categories
       </select>
     </nav>
  
-    {daily.map((g) => (
-      <section class="cat-section" id={`sec-${slug(g.cat.name)}`}>
-        <h3>{g.cat.name}</h3>
-        <ul class="menu-list">
-          {g.items.map((it) => (
-            <li class="item">
-              {it.photo_key && (
-                <img
-                  class="item-photo"
-                  src={`/img/${thumbKey(it.photo_key)}`}
-                  alt=""
-                  width="72"
-                  height="56"
-                  loading="lazy"
-                  decoding="async"
-                />
-              )}
-              <div class="item-copy">
-                <strong>{it.name}</strong>
-                {it.description && <span>{it.description}</span>}
-              </div>
-            </li>
+    <div class="menu-columns">
+      {dailyColumns.map((column) => (
+        <div class="menu-column">
+          {column.map((g) => (
+            <section class="cat-section" id={`sec-${slug(g.cat.name)}`}>
+              <h3>{g.cat.name}</h3>
+              <ul class="menu-list">
+                {g.items.map((it) => (
+                  <li class="item">
+                    {it.photo_key && (
+                      <img
+                        class="item-photo"
+                        src={`/img/${thumbKey(it.photo_key)}`}
+                        alt=""
+                        width="72"
+                        height="56"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    )}
+                    <div class="item-copy">
+                      <strong>{it.name}</strong>
+                      {it.description && <span>{it.description}</span>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
-      </section>
-    ))}
+        </div>
+      ))}
+    </div>
   </div>
  
   <!-- ── Late Night ────────────────────────────────────────────────────── -->
@@ -84,32 +97,38 @@ const lateNight: Group[] = categories
     {lateNight.length === 0 ? (
       <p class="empty">Late-night items are being set up. Check back soon.</p>
     ) : (
-      lateNight.map((g) => (
-        <section class="cat-section">
-          <h3>{g.cat.name}</h3>
-          <ul class="menu-list">
-            {g.items.map((it) => (
-              <li class="item">
-                {it.photo_key && (
-                  <img
-                    class="item-photo"
-                    src={`/img/${thumbKey(it.photo_key)}`}
-                    alt=""
-                    width="72"
-                    height="56"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                )}
-                <div class="item-copy">
-                  <strong>{it.name}</strong>
-                  {it.description && <span>{it.description}</span>}
-                </div>
-              </li>
+      <div class="menu-columns">
+        {lateNightColumns.map((column) => (
+          <div class="menu-column">
+            {column.map((g) => (
+              <section class="cat-section">
+                <h3>{g.cat.name}</h3>
+                <ul class="menu-list">
+                  {g.items.map((it) => (
+                    <li class="item">
+                      {it.photo_key && (
+                        <img
+                          class="item-photo"
+                          src={`/img/${thumbKey(it.photo_key)}`}
+                          alt=""
+                          width="72"
+                          height="56"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      )}
+                      <div class="item-copy">
+                        <strong>{it.name}</strong>
+                        {it.description && <span>{it.description}</span>}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             ))}
-          </ul>
-        </section>
-      ))
+          </div>
+        ))}
+      </div>
     )}
   </div>
 </section>
@@ -145,7 +164,10 @@ const lateNight: Group[] = categories
   .chip-select:focus-visible{outline:2px solid var(--crimson);outline-offset:2px}
  
   /* ── sections + items ── */
-  .cat-section{max-width:720px;margin:0 auto;scroll-margin-top:120px}
+  .menu-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 48px;
+    max-width:1120px;margin:0 auto}
+  .menu-column{min-width:0}
+  .cat-section{scroll-margin-top:120px}
   .cat-section h3{font-family:var(--display);font-weight:400;font-size:1.5rem;
     margin:30px 0 6px;padding-bottom:6px;border-bottom:2px solid rgba(36,22,16,.15)}
  
@@ -167,6 +189,7 @@ const lateNight: Group[] = categories
     .chips{max-width:720px;padding:8px 0}
     .chip-links{display:none}
     .chip-select{display:block}
+    .menu-columns{grid-template-columns:1fr}
     .item-photo{flex-basis:60px;width:60px;height:48px}
     .cat-section h3{font-size:1.3rem}
   }
