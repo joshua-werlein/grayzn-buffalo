@@ -104,7 +104,7 @@ try {
                 <div class="thumb">
                   <img
                     data-thumb-for={i.id}
-                    src={i.photo_key ? `/img/${thumbKey(i.photo_key)}` : ''}
+                    src={i.photo_key ? `/img/${thumbKey(i.photo_key)}` :  undefined}
                     alt=""
                     width="56"
                     height="44"
@@ -164,7 +164,7 @@ try {
                   <div class="preview">
                     <img
                       data-preview-for={i.id}
-                      src={i.photo_key ? `/img/${thumbKey(i.photo_key)}` : ''}
+                      src={i.photo_key ? `/img/${thumbKey(i.photo_key)}` : undefined}
                       alt={`Current photo for ${i.name}`}
                       loading="lazy"
                       hidden={!i.photo_key}
@@ -384,7 +384,8 @@ try {
   .preview img{width:100%;height:auto;border-radius:10px;display:block;
     border:2px solid rgba(36,22,16,.15)}
   .preview-empty{color:var(--ink-2);opacity:.6;font-style:italic;font-size:.9rem}
- 
+ .thumb img[hidden],
+  .preview img[hidden]{display:none}
   .pick{display:flex;gap:10px;flex-wrap:wrap}
   .pick-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;
     min-height:44px;padding:11px 20px;border-radius:8px;cursor:pointer;
