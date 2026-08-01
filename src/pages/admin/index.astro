@@ -1,8 +1,11 @@
 ---
 import Base from '../../layouts/Base.astro';
-import { isAuthed, login, logout } from '../../lib/auth';
+import { isAuthed, login, logout, verifyTurnstile } from '../../lib/auth';
 import { getSetting, setSetting } from '../../lib/db';
+
 const env = (Astro.locals as any).runtime?.env ?? {};
+const sitekey = env.TURNSTILE_SITEKEY ?? '1x00000000000000000000AA'; // Turnstile test key until real one is set
+
 let authed = await isAuthed(Astro.cookies, env);
 let error = '';
 let notice = '';
@@ -10,12 +13,25 @@ let notice = '';
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = form.get('action');
+
   if (action === 'login') {
-    if (await login(String(form.get('password') ?? ''), Astro.cookies, env)) authed = true;
-    else error = 'Wrong password.';
+    // Turnstile FIRST — a bot without a valid token never reaches the password
+    // comparison and never touches KV.
+    const ip = Astro.request.headers.get('CF-Connecting-IP') ?? undefined;
+    const human = await verifyTurnstile(String(form.get('cf-turnstile-response') ?? ''), env, ip);
+
+    if (!human) {
+      error = 'Verification failed. Reload the page and try again.';
+    } else if (await login(String(form.get('password') ?? ''), Astro.cookies, env)) {
+      authed = true;
+    } else {
+      error = 'Wrong password.';
+    }
+
   } else if (action === 'logout') {
     await logout(Astro.cookies, env);
     authed = false;
+
   } else if (action === 'save-announcement' && authed) {
     try {
       await setSetting(env, 'announcement', String(form.get('announcement') ?? '').trim());
@@ -60,13 +76,18 @@ const announcement = authed ? await getSetting(env, 'announcement', '') : '';
     <form method="post" class="panel">
       <input type="hidden" name="action" value="login" />
       <label for="password">Password</label>
-      <input id="password" type="password" name="password" required />
-      {error && <p style="color:var(--crimson);font-weight:600">{error}</p>}
+      <input id="password" type="password" name="password" required autocomplete="current-password" />
+      <div class="cf-turnstile" data-sitekey={sitekey}></div>
+      {error && <p class="err">{error}</p>}
       <button class="btn btn-primary" type="submit">Sign in</button>
     </form>
   )}
 </section>
 </Base>
+
+{!authed && (
+  <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+)}
 
 <style>
   .panel{max-width:460px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;box-shadow:0 8px 22px rgba(36,22,16,.12);text-align:center}
@@ -75,4 +96,6 @@ const announcement = authed ? await getSetting(env, 'announcement', '') : '';
   .admin-links{list-style:none;display:flex;gap:12px;justify-content:center;margin-top:16px;flex-wrap:wrap}
   .announce-form{margin-top:26px;padding-top:22px;border-top:1px solid rgba(36,22,16,.12);text-align:left}
   .announce-form .hint{font-size:.85rem;color:var(--ink-2);margin:0 0 4px}
+  .cf-turnstile{margin:0 0 16px;display:flex;justify-content:center;min-height:65px}
+  .err{color:var(--crimson);font-weight:600;margin-bottom:12px}
 </style>
