@@ -36,9 +36,18 @@ const lateNight: Group[] = categories
   <!-- ── Daily ─────────────────────────────────────────────────────────── -->
   <div id="panel-daily" role="tabpanel" class="panel">
     <nav class="chips" aria-label="Jump to a section">
-      {daily.map((g) => (
-        <a href={`#sec-${slug(g.cat.name)}`}>{g.cat.name}</a>
-      ))}
+      <div class="chip-links">
+        {daily.map((g) => (
+          <a href={`#sec-${slug(g.cat.name)}`}>{g.cat.name}</a>
+        ))}
+      </div>
+      <label class="sr-only" for="category-jump">Jump to a menu section</label>
+      <select class="chip-select" id="category-jump">
+        <option value="" selected disabled>Jump to a section</option>
+        {daily.map((g) => (
+          <option value={`#sec-${slug(g.cat.name)}`}>{g.cat.name}</option>
+        ))}
+      </select>
     </nav>
  
     {daily.map((g) => (
@@ -120,17 +129,20 @@ const lateNight: Group[] = categories
   .tabs .tab:focus-visible{outline:2px solid var(--crimson);outline-offset:2px}
  
   /* ── sticky section chips (Daily) ── */
-  .chips{position:sticky;top:0;z-index:5;display:flex;gap:8px;overflow-x:auto;
-    padding:10px 2px;margin:0 auto 8px;max-width:720px;
-    background:var(--cream);
-    -webkit-overflow-scrolling:touch;scrollbar-width:thin}
+  .chips{position:sticky;top:0;z-index:5;padding:10px 2px;margin:0 auto 8px;
+    max-width:1120px;background:var(--cream)}
   /* If the header overlaps the chips, bump this top offset to the header height. */
-  .chips a{flex:0 0 auto;font-family:var(--label);font-weight:600;letter-spacing:.08em;
+  .chip-links{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
+  .chips a{font-family:var(--label);font-weight:600;letter-spacing:.08em;
     text-transform:uppercase;font-size:.78rem;white-space:nowrap;
     padding:8px 14px;border-radius:999px;border:1.5px solid rgba(36,22,16,.28);
     color:var(--ink);text-decoration:none;transition:background .18s,border-color .18s}
   .chips a:hover,.chips a:focus-visible{background:rgba(36,22,16,.06);border-color:var(--ink)}
   .chips a:focus-visible{outline:2px solid var(--crimson);outline-offset:2px}
+  .chip-select{display:none;width:100%;min-height:46px;padding:0 42px 0 14px;
+    border:2px solid var(--ink);border-radius:8px;background:var(--cream);color:var(--ink);
+    font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:.9rem}
+  .chip-select:focus-visible{outline:2px solid var(--crimson);outline-offset:2px}
  
   /* ── sections + items ── */
   .cat-section{max-width:720px;margin:0 auto;scroll-margin-top:120px}
@@ -152,6 +164,9 @@ const lateNight: Group[] = categories
   .empty{max-width:720px;margin:24px auto;text-align:center;color:var(--ink-2)}
  
   @media (max-width:600px){
+    .chips{max-width:720px;padding:8px 0}
+    .chip-links{display:none}
+    .chip-select{display:block}
     .item-photo{flex-basis:60px;width:60px;height:48px}
     .cat-section h3{font-size:1.3rem}
   }
@@ -170,6 +185,11 @@ const lateNight: Group[] = categories
   }
  
   tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.panel!)));
+
+  const categoryJump = document.querySelector<HTMLSelectElement>('#category-jump');
+  categoryJump?.addEventListener('change', () => {
+    if (categoryJump.value) location.hash = categoryJump.value;
+  });
  
   // Deep links: #late-night opens that tab; a #sec-* chip link stays on Daily.
   if (location.hash === '#late-night') {
