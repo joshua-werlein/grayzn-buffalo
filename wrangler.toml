@@ -1,7 +1,6 @@
 name = "grayzn-buffalo"
 compatibility_date = "2026-01-01"
 pages_build_output_dir = "./dist"
-account_id = "a79e3b4a2bb8dad70c75bceac4b1d3f9"
 
 [[d1_databases]]
 binding = "DB"
