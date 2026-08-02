@@ -57,7 +57,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   :root{
     --ink:#241610; --ink-2:#33221a;
     --crimson:#d7263d; --flame:#ff6b35; --amber:#ffb627; --gold:#ffd23f;
-    --cream:#f7ead3; --cream-2:#efdfc2; --denim:#3f5e8c;
+    --cream:#f7ead3; --cream-2:#efdfc2; --denim:#3f5e8c;--btn-crimson:#bf1e33;--btn-crimson-hover:#a8112e;
     --display:'Alfa Slab One', serif; --body:'Barlow', sans-serif; --label:'Barlow Condensed', sans-serif;
   }
   *{margin:0;padding:0;box-sizing:border-box}
@@ -87,8 +87,8 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   .btn{font-family:var(--label);font-weight:700;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;
        padding:14px 30px;border-radius:8px;font-size:1rem;display:inline-block;border:none;cursor:pointer;
        transition:transform .18s ease, box-shadow .18s ease, background .18s}
-  .btn-primary{background:var(--crimson);color:var(--cream);box-shadow:0 6px 0 #8d1626}
-  .btn-primary:hover{transform:translateY(-3px);box-shadow:0 9px 0 #8d1626}
+  .btn-primary{background:var(--btn-crimson);color:var(--cream);box-shadow:0 6px 0 #8d1626}
+  .btn-primary:hover{background:var(--btn-crimson-hover);transform:translateY(-3px);box-shadow:0 9px 0 #8d1626}
   .btn-ghost{background:rgba(247,234,211,.85);color:var(--ink);border:2px solid var(--ink)}
   .btn-ghost:hover{background:var(--cream);transform:translateY(-3px)}
   .reveal{opacity:0;transform:translateY(30px);transition:opacity .7s ease, transform .7s ease}
@@ -170,8 +170,8 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
       text-transform:uppercase;font-size:.7rem;line-height:1;
     }
     .action-bar a svg{width:21px;height:21px;fill:currentColor;display:block}
-    .action-bar a.primary{background:var(--crimson)}
-    .action-bar a:active{background:rgba(247,234,211,.12)}
+    .action-bar a.primary{background:var(--btn-crimson)}
+    .action-bar a:active{background:var(--btn-crimson-hover);}
     .action-bar a.primary:active{background:#b81f33}
     .action-bar a:focus-visible{outline:2px solid var(--gold);outline-offset:-3px}
     .action-bar a[aria-current="page"]{color:var(--gold)}
