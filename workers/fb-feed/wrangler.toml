@@ -1,9 +1,19 @@
 name = "grayzn-fb-feed"
 main = "worker.js"
 compatibility_date = "2026-01-01"
+account_id = "a79e3b4a2bb8dad70c75bceac4b1d3f9"
+routes = [
+  { pattern = "grayznbuffalo.com/api/facebook-feed", zone_name = "grayznbuffalo.com" },
+  { pattern = "grazynbuffalo.com/api/facebook-feed", zone_name = "grazynbuffalo.com" }
+]
+
 [triggers]
 crons = ["*/30 * * * *"]
+
 [[kv_namespaces]]
 binding = "FB_KV"
-id = "REPLACE_WITH_KV_ID"
-# secrets: wrangler secret put FB_PAGE_ID / FB_SYSTEM_TOKEN
+id = "319aa824b570400c82d3fe85edaa36d6"
+
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "grayzn-photos"

@@ -116,10 +116,11 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
 
 <div class="checker" aria-hidden="true"></div>
 
-<section id="social">
+<section id="social" hidden>
   <div class="section-head reveal">
     <span class="kicker">Straight from Facebook</span>
     <h2>The Latest</h2>
+    <p>For today&rsquo;s specials, see the <a href="/specials">Specials board</a>.</p>
     <p>Staff post to Facebook — the site picks it up automatically.</p>
   </div>
   <div class="fb-grid reveal" id="fbFeed">
@@ -219,6 +220,17 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     color:var(--crimson);text-decoration:none;font-size:.92rem}
   .link-arrow:hover{text-decoration:underline}
   .fb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;max-width:1120px;margin:0 auto}
+  .fb-grid[data-count="1"]{max-width:360px}
+  .fb-grid[data-count="2"]{max-width:740px}
+  .fb-card{display:flex;flex-direction:column;overflow:hidden;border-radius:14px;background:var(--cream);color:var(--ink);box-shadow:0 8px 22px rgba(36,22,16,.12);text-decoration:none;transition:transform .2s ease,box-shadow .2s ease}
+  .fb-card:hover,.fb-card:focus-visible{transform:translateY(-5px);box-shadow:0 14px 30px rgba(36,22,16,.2)}
+  .fb-card:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+  .fb-card img{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--cream-2)}
+  .fb-copy{padding:18px 18px 20px}.fb-copy p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden;color:var(--ink-2)}
+  .fb-copy .fb-date{display:block;margin-bottom:8px;font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);font-size:.78rem}
+  .fb-copy .fb-link{display:block;margin-top:12px;font-family:var(--label);font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--crimson);font-size:.82rem}
+  .section-head p a{color:var(--crimson);font-weight:700;text-underline-offset:3px;text-decoration-thickness:1.5px}
+  .section-head p a:hover,.section-head p a:focus-visible{color:var(--ink);text-decoration-thickness:2px}
   .visit-heading{color:var(--gold);text-align:center;max-width:900px;margin:0 auto 32px}
   .map-frame{border-radius:14px;width:100%;max-width:1100px;height:clamp(300px,42vw,440px);
     margin:0 auto;overflow:hidden;border:2px solid rgba(247,234,211,.2)}
@@ -234,9 +246,68 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .visit-block a:hover,
   .visit-block a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
   @media (max-width:900px){ .welcome-grid{grid-template-columns:1fr} }
+  @media (max-width:600px){ .fb-grid[data-count="2"]{max-width:360px;grid-template-columns:1fr} }
   @media (max-width:800px){ .visit-cols{grid-template-columns:1fr;gap:20px} .visit-block p{white-space:normal} }
   @media (max-width:480px){ .hero{min-height:min(72vh,640px);min-height:min(72dvh,640px)} .logo-wrap{width:min(88vw,560px)} }
   @media (prefers-reduced-motion: reduce){
     .rise,.charge,.strip-track{animation:none;opacity:1;transform:none}
   }
 </style>
+
+<script>
+  const social = document.getElementById('social');
+  const feed = document.getElementById('fbFeed');
+
+  fetch('/api/facebook-feed', { headers: { Accept: 'application/json' } })
+    .then((response) => response.ok ? response.json() : null)
+    .then((payload) => {
+      if (!feed || !social || !Array.isArray(payload?.posts) || payload.posts.length === 0) return;
+
+      feed.replaceChildren();
+      for (const post of payload.posts) {
+        if (!post?.permalinkUrl) continue;
+        const card = document.createElement('a');
+        card.className = 'fb-card';
+        card.href = post.permalinkUrl;
+        card.target = '_blank';
+        card.rel = 'noopener';
+        card.setAttribute('aria-label', "Open today's Facebook post from Grayz'n Buffalo");
+
+        if (post.imageUrl) {
+          const image = document.createElement('img');
+          image.src = post.imageUrl;
+          image.alt = '';
+          image.loading = 'lazy';
+          card.append(image);
+        }
+
+        const copy = document.createElement('div');
+        copy.className = 'fb-copy';
+        if (post.postedLabel) {
+          const date = document.createElement('span');
+          date.className = 'fb-date';
+          date.textContent = post.postedLabel;
+          copy.append(date);
+        }
+        if (post.message) {
+          const message = document.createElement('p');
+          message.textContent = post.message;
+          copy.append(message);
+        }
+        const linkLabel = document.createElement('span');
+        linkLabel.className = 'fb-link';
+        linkLabel.textContent = 'View on Facebook';
+        copy.append(linkLabel);
+        card.append(copy);
+        feed.append(card);
+      }
+
+      if (feed.childElementCount > 0) {
+        feed.dataset.count = String(feed.childElementCount);
+        social.hidden = false;
+      }
+    })
+    .catch(() => {
+      // A failed feed request leaves this optional section hidden.
+    });
+</script>
