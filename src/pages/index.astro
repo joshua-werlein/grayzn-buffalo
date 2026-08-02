@@ -91,8 +91,8 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
 
 <section id="menu-preview" style="background:var(--cream-2)">
   <div class="section-head reveal">
-    <span class="kicker">From the kitchen</span>
     <h2>The Menu</h2>
+    <span class="kicker">From the kitchen</span>
     <p>The daily lineup while the grill's on — and the late-night menu after it shuts down.</p>
   </div>
   <div class="menu-cards">
@@ -118,17 +118,15 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
 
 <section id="social" hidden>
   <div class="section-head reveal">
-    <span class="kicker">Straight from Facebook</span>
     <h2>The Latest</h2>
+    <span class="kicker">Straight from Facebook</span>
     <p>For today&rsquo;s specials, see the <a href="/specials">Specials</a>.</p>
-    <p>For today&rsquo;s specials, see the <a href="/specials">Specials board</a>.</p>
-    <p>Staff post to Facebook — the site picks it up automatically.</p>
   </div>
   <div class="fb-grid reveal" id="fbFeed">
     <p style="text-align:center;color:var(--ink-2)">Recent posts appear here once the Facebook feed Worker is connected.</p>
   </div>
   <div style="text-align:center;margin-top:34px" class="reveal">
-    <a class="btn btn-primary" href="https://www.facebook.com/grayznbuffalo/">Follow on Facebook</a>
+    <a class="btn btn-primary" href="https://www.facebook.com/grayznbuffalo/">Follow the Grayz'n Buffalo</a>
   </div>
 </section>
 
@@ -220,21 +218,9 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .link-arrow{font-family:var(--label);font-weight:700;letter-spacing:.14em;text-transform:uppercase;
     color:var(--crimson);text-decoration:none;font-size:.92rem}
   .link-arrow:hover{text-decoration:underline}
-  .fb-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px;max-width:1120px;margin:0 auto;align-items:stretch}
-  .fb-grid[data-count="1"]{max-width:360px;grid-template-columns:1fr}
-  .fb-grid[data-count="2"]{max-width:740px;grid-template-columns:repeat(2,minmax(0,1fr))}
-  .fb-grid[data-count="3"]{max-width:850px;grid-template-columns:repeat(3,minmax(0,1fr))}
-  .fb-card{height:100%;overflow:hidden;border:1px solid rgba(36,22,16,.08);border-radius:14px;background:var(--cream);box-shadow:0 8px 22px rgba(36,22,16,.12);transition:transform .2s ease,box-shadow .2s ease}
-  .fb-card:hover{transform:translateY(-5px);box-shadow:0 14px 30px rgba(36,22,16,.2)}
-  .fb-card-link{display:flex;flex-direction:column;height:100%;color:var(--ink);text-decoration:none}
-  .fb-card-link:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
-  .fb-card img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--cream-2)}
-  .fb-copy{display:flex;flex:1;flex-direction:column;padding:18px 18px 20px}.fb-copy p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:6;overflow:hidden;color:var(--ink-2);white-space:pre-line}
-  .fb-copy .fb-date{display:block;margin-bottom:8px;font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);font-size:.78rem}
-  .fb-copy .fb-link{align-self:flex-start;display:inline-block;margin-top:16px;padding:7px 11px;border-radius:999px;background:var(--btn-crimson);color:var(--cream);font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:.78rem;line-height:1}
-  .fb-card-link:hover .fb-link,.fb-card-link:focus-visible .fb-link{background:var(--btn-crimson-hover)}
   .section-head p a{color:var(--crimson);font-weight:700;text-underline-offset:3px;text-decoration-thickness:1.5px}
   .section-head p a:hover,.section-head p a:focus-visible{color:var(--ink);text-decoration-thickness:2px}
+  #social .section-head .kicker,#menu-preview .section-head .kicker{display:block;margin:-2px 0 10px}
   .visit-heading{color:var(--gold);text-align:center;max-width:900px;margin:0 auto 32px}
   .map-frame{border-radius:14px;width:100%;max-width:1100px;height:clamp(300px,42vw,440px);
     margin:0 auto;overflow:hidden;border:2px solid rgba(247,234,211,.2)}
@@ -250,8 +236,6 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .visit-block a:hover,
   .visit-block a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
   @media (max-width:900px){ .welcome-grid{grid-template-columns:1fr} }
-  @media (max-width:900px){ .fb-grid,.fb-grid[data-count="3"],.fb-grid[data-count="4"]{max-width:740px;grid-template-columns:repeat(2,minmax(0,1fr))} }
-  @media (max-width:600px){ .fb-grid,.fb-grid[data-count="2"],.fb-grid[data-count="3"],.fb-grid[data-count="4"]{max-width:360px;grid-template-columns:1fr} }
   @media (max-width:800px){ .visit-cols{grid-template-columns:1fr;gap:20px} .visit-block p{white-space:normal} }
   @media (max-width:480px){ .hero{min-height:min(72vh,640px);min-height:min(72dvh,640px)} .logo-wrap{width:min(88vw,560px)} }
   @media (prefers-reduced-motion: reduce){
@@ -261,7 +245,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
 
 <style is:global>
   /* Feed cards are created in the browser, so these selectors must not carry Astro's scope attribute. */
-  #social .fb-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px;max-width:1120px;margin:0 auto;align-items:stretch}
+  #social .fb-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px;max-width:1280px;margin:0 auto;align-items:stretch}
   #social .fb-grid[data-count="1"]{max-width:360px;grid-template-columns:1fr}
   #social .fb-grid[data-count="2"]{max-width:740px;grid-template-columns:repeat(2,minmax(0,1fr))}
   #social .fb-grid[data-count="3"]{max-width:850px;grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -269,20 +253,19 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   #social .fb-card:hover{transform:translateY(-5px);box-shadow:0 14px 30px rgba(36,22,16,.2)}
   #social .fb-card-link{display:flex;flex-direction:column;height:100%;color:var(--ink);text-decoration:none}
   #social .fb-card-link:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
-  #social .fb-card img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--cream-2)}
-  #social .fb-text-media{display:flex;align-items:center;justify-content:center;aspect-ratio:4/3;padding:24px;background:var(--btn-crimson);color:var(--cream);font-family:var(--display);font-size:clamp(1.2rem,2vw,1.7rem);line-height:1.25;text-align:center}
-  #social .fb-text-media p{margin:0;white-space:pre-line}
-  #social .fb-copy{display:flex;flex:1;flex-direction:column;padding:18px 18px 20px}
-  #social .fb-copy p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:6;overflow:hidden;color:var(--ink-2);white-space:pre-line}
-  #social .fb-copy .fb-date{display:block;margin-top:12px;font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);font-size:.78rem}
-  #social .fb-copy .fb-link{align-self:flex-start;display:inline-block;margin-top:16px;padding:7px 11px;border-radius:999px;background:var(--btn-crimson);color:var(--cream);font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:.78rem;line-height:1}
+  #social .fb-card-header{display:flex;align-items:center;min-height:64px;max-height:180px;overflow:auto;padding:13px 16px;background:var(--denim);color:var(--cream)}
+  #social .fb-card-header p{margin:0;white-space:pre-line;font-size:.96rem;line-height:1.38}
+  #social .fb-card img{display:block;width:100%;aspect-ratio:3/4;object-fit:contain;background:var(--cream-2)}
+  #social .fb-text-media{display:flex;align-items:center;justify-content:center;aspect-ratio:3/4;padding:24px;background:var(--cream-2);color:var(--ink);font-family:var(--display);font-size:clamp(1.2rem,2vw,1.7rem);line-height:1.25;text-align:center}
+  #social .fb-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:54px;padding:10px 12px 10px 14px}
+  #social .fb-footer .fb-date{font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);font-size:.76rem;line-height:1.1}
+  #social .fb-footer .fb-link{display:inline-block;flex:none;padding:7px 10px;border-radius:999px;background:var(--btn-crimson);color:var(--cream);font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:.75rem;line-height:1}
   #social .fb-card-link:hover .fb-link,#social .fb-card-link:focus-visible .fb-link{background:var(--btn-crimson-hover)}
   @media (max-width:900px){#social .fb-grid,#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{max-width:740px;grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media (max-width:600px){#social .fb-grid,#social .fb-grid[data-count="2"],#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{max-width:360px;grid-template-columns:1fr}}
 </style>
 
 <script>
-  document.querySelector('#social .section-head p:last-child')?.remove();
   const social = document.getElementById('social');
   const feed = document.getElementById('fbFeed');
 
@@ -303,6 +286,15 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
         cardLink.rel = 'noopener';
         cardLink.setAttribute('aria-label', "Open Facebook post from Grayz'n Buffalo");
 
+        const header = document.createElement('div');
+        header.className = 'fb-card-header';
+        if (post.message) {
+          const caption = document.createElement('p');
+          caption.textContent = post.message;
+          header.append(caption);
+        }
+        cardLink.append(header);
+
         if (post.imageUrl) {
           const image = document.createElement('img');
           image.src = post.imageUrl;
@@ -312,30 +304,24 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
         } else {
           const fallback = document.createElement('div');
           fallback.className = 'fb-text-media';
-          const fallbackMessage = document.createElement('p');
-          fallbackMessage.textContent = post.message;
-          fallback.append(fallbackMessage);
+          fallback.setAttribute('aria-hidden', 'true');
+          fallback.textContent = "Grayz'n Buffalo";
           cardLink.append(fallback);
         }
 
-        const copy = document.createElement('div');
-        copy.className = 'fb-copy';
-        if (post.message && post.imageUrl) {
-          const message = document.createElement('p');
-          message.textContent = post.message;
-          copy.append(message);
-        }
+        const footer = document.createElement('div');
+        footer.className = 'fb-footer';
         if (post.postedLabel) {
           const date = document.createElement('span');
           date.className = 'fb-date';
           date.textContent = post.postedLabel;
-          copy.append(date);
+          footer.append(date);
         }
         const linkLabel = document.createElement('span');
         linkLabel.className = 'fb-link';
-        linkLabel.textContent = 'View on Facebook';
-        copy.append(linkLabel);
-        cardLink.append(copy);
+        linkLabel.textContent = 'View Post';
+        footer.append(linkLabel);
+        cardLink.append(footer);
         card.append(cardLink);
         feed.append(card);
       }
