@@ -4,7 +4,7 @@ const env = (Astro.locals as any).runtime?.env ?? {};
 const specials = await getSpecials(env);
 const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 ---
-<div class="board reveal" role="tablist" aria-label="Daily specials" data-specials={JSON.stringify(specials)}>
+<div class="board reveal" aria-label="Daily specials" data-specials={JSON.stringify(specials)}>
   <div class="board-days" id="dayTabs"></div>
   <div class="board-body">
     <div class="board-day-label" id="boardDay"></div>
@@ -83,7 +83,7 @@ const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Satur
     elDay.textContent = (i === todayIdx ? 'Today · ' : '') + DAYS[i];
     showPart('lunch', s);
     showPart('night', s);
-    [...tabs.children].forEach((b,bi)=>b.setAttribute('aria-selected', bi===i ? 'true':'false'));
+    [...tabs.children].forEach((b,bi)=>b.setAttribute('aria-pressed', bi===i ? 'true':'false'));
   }
   DAYS.forEach((d,i)=>{
     const b = document.createElement('button');

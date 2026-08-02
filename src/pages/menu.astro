@@ -42,12 +42,33 @@ const lateNightColumns = splitColumns(lateNight);
   </div>
  
   <div class="tabs" role="tablist" aria-label="Menu type">
-    <button class="tab" role="tab" data-panel="daily" aria-controls="panel-daily" aria-selected="true">Daily</button>
-    <button class="tab" role="tab" data-panel="late-night" aria-controls="panel-late-night" aria-selected="false">Late Night</button>
+    <button
+      class="tab"
+      id="tab-daily"
+      role="tab"
+      data-panel="daily"
+      aria-controls="panel-daily"
+      aria-selected="true"
+      tabindex="0"
+    >
+      Daily
+    </button>
+
+    <button
+      class="tab"
+      id="tab-late-night"
+      role="tab"
+      data-panel="late-night"
+      aria-controls="panel-late-night"
+      aria-selected="false"
+      tabindex="-1"
+    >
+      Late Night
+    </button>
   </div>
  
   <!-- ── Daily ─────────────────────────────────────────────────────────── -->
-  <div id="panel-daily" role="tabpanel" class="panel">
+  <div id="panel-daily" role="tabpanel" class="panel" aria-labelledby="tab-daily" tabindex="0">
     <nav class="chips" aria-label="Jump to a section">
       <div class="chip-links">
         {daily.map((g) => (
@@ -98,7 +119,7 @@ const lateNightColumns = splitColumns(lateNight);
   </div>
  
   <!-- ── Late Night ────────────────────────────────────────────────────── -->
-  <div id="panel-late-night" role="tabpanel" class="panel" hidden>
+  <div id="panel-late-night" role="tabpanel" class="panel" tabindex="0" hidden>
     <p class="late-note">After the grill closes — pizza, pizza fries &amp; appetizers.</p>
     {lateNight.length === 0 ? (
       <p class="empty">Late-night items are being set up. Check back soon.</p>
@@ -203,23 +224,60 @@ const lateNightColumns = splitColumns(lateNight);
  
 <script>
   const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>('.tabs .tab'));
+
   const panels: Record<string, HTMLElement | null> = {
     daily: document.getElementById('panel-daily'),
     'late-night': document.getElementById('panel-late-night'),
   };
- 
+
   function show(name: string) {
-    tabs.forEach((t) => t.setAttribute('aria-selected', t.dataset.panel === name ? 'true' : 'false'));
-    Object.entries(panels).forEach(([key, el]) => { if (el) el.hidden = key !== name; });
+    tabs.forEach((t) => {
+      const active = t.dataset.panel === name;
+      t.setAttribute('aria-selected', active ? 'true' : 'false');
+      t.setAttribute('tabindex', active ? '0' : '-1');
+    });
+
+    Object.entries(panels).forEach(([key, el]) => {
+      if (el) el.hidden = key !== name;
+    });
   }
- 
-  tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.panel!)));
+
+  tabs.forEach((t, index) => {
+    t.addEventListener('click', () => show(t.dataset.panel!));
+
+    t.addEventListener('keydown', (e) => {
+      let next = index;
+
+      if (e.key === 'ArrowRight') {
+        next = (index + 1) % tabs.length;
+      }
+
+      if (e.key === 'ArrowLeft') {
+        next = (index - 1 + tabs.length) % tabs.length;
+      }
+
+      if (e.key === 'Home') {
+        next = 0;
+      }
+
+      if (e.key === 'End') {
+        next = tabs.length - 1;
+      }
+
+      if (next !== index) {
+        e.preventDefault();
+        tabs[next].focus();
+        show(tabs[next].dataset.panel!);
+      }
+    });
+  });
 
   const categoryJump = document.querySelector<HTMLSelectElement>('#category-jump');
+
   categoryJump?.addEventListener('change', () => {
     if (categoryJump.value) location.hash = categoryJump.value;
   });
- 
+
   // Deep links: #late-night opens that tab; a #sec-* chip link stays on Daily.
   if (location.hash === '#late-night') {
     show('late-night');
