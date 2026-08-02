@@ -23,6 +23,12 @@ function postedLabel(createdTime, now = new Date()) {
   if (postDate === chicagoCalendarOffset(now, -1)) return 'Posted yesterday';
   return `Posted ${displayDateFormatter.format(new Date(createdTime))}`;
 }
+function cleanMessage(value) {
+  if (typeof value !== 'string') return '';
+  // Graph API messages are normally clean, but never surface a trailing UI affordance
+  // if Meta includes one in a future response shape.
+  return value.replace(/(?:\r?\n)?(?:See more|See less)\s*$/i, '').trim();
+}
 function imageKey(postId) {
   return `facebook/${postId.replace(/[^A-Za-z0-9_-]/g, '_')}.jpg`;
 }
@@ -96,10 +102,14 @@ async function refreshFeed(env) {
     return;
   }
   const result = await response.json();
-  const latestPosts = (result.data ?? []).filter((post) => post.id && post.created_time && post.permalink_url).sort((a, b) => Date.parse(b.created_time) - Date.parse(a.created_time)).slice(0, MAX_POSTS);
+  const latestPosts = (result.data ?? [])
+    .map((post) => ({ ...post, message: cleanMessage(post.message) }))
+    .filter((post) => post.id && post.created_time && post.permalink_url && (post.message || post.full_picture))
+    .sort((a, b) => Date.parse(b.created_time) - Date.parse(a.created_time))
+    .slice(0, MAX_POSTS);
   const posts = await Promise.all(latestPosts.map(async (post) => ({
     id: post.id,
-    message: typeof post.message === 'string' ? post.message : '',
+    message: post.message,
     createdTime: post.created_time,
     permalinkUrl: post.permalink_url,
     ...(await saveImage(post, env, previousById.get(post.id))),

@@ -120,6 +120,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   <div class="section-head reveal">
     <span class="kicker">Straight from Facebook</span>
     <h2>The Latest</h2>
+    <p>For today&rsquo;s specials, see the <a href="/specials">Specials</a>.</p>
     <p>For today&rsquo;s specials, see the <a href="/specials">Specials board</a>.</p>
     <p>Staff post to Facebook — the site picks it up automatically.</p>
   </div>
@@ -228,7 +229,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .fb-card-link{display:flex;flex-direction:column;height:100%;color:var(--ink);text-decoration:none}
   .fb-card-link:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
   .fb-card img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--cream-2)}
-  .fb-copy{display:flex;flex:1;flex-direction:column;padding:18px 18px 20px}.fb-copy p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden;color:var(--ink-2)}
+  .fb-copy{display:flex;flex:1;flex-direction:column;padding:18px 18px 20px}.fb-copy p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:6;overflow:hidden;color:var(--ink-2);white-space:pre-line}
   .fb-copy .fb-date{display:block;margin-bottom:8px;font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);font-size:.78rem}
   .fb-copy .fb-link{align-self:flex-start;display:inline-block;margin-top:16px;padding:7px 11px;border-radius:999px;background:var(--btn-crimson);color:var(--cream);font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:.78rem;line-height:1}
   .fb-card-link:hover .fb-link,.fb-card-link:focus-visible .fb-link{background:var(--btn-crimson-hover)}
@@ -258,7 +259,30 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   }
 </style>
 
+<style is:global>
+  /* Feed cards are created in the browser, so these selectors must not carry Astro's scope attribute. */
+  #social .fb-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px;max-width:1120px;margin:0 auto;align-items:stretch}
+  #social .fb-grid[data-count="1"]{max-width:360px;grid-template-columns:1fr}
+  #social .fb-grid[data-count="2"]{max-width:740px;grid-template-columns:repeat(2,minmax(0,1fr))}
+  #social .fb-grid[data-count="3"]{max-width:850px;grid-template-columns:repeat(3,minmax(0,1fr))}
+  #social .fb-card{height:100%;overflow:hidden;border:1px solid rgba(36,22,16,.08);border-radius:14px;background:var(--cream);box-shadow:0 8px 22px rgba(36,22,16,.12);transition:transform .2s ease,box-shadow .2s ease}
+  #social .fb-card:hover{transform:translateY(-5px);box-shadow:0 14px 30px rgba(36,22,16,.2)}
+  #social .fb-card-link{display:flex;flex-direction:column;height:100%;color:var(--ink);text-decoration:none}
+  #social .fb-card-link:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+  #social .fb-card img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--cream-2)}
+  #social .fb-text-media{display:flex;align-items:center;justify-content:center;aspect-ratio:4/3;padding:24px;background:var(--btn-crimson);color:var(--cream);font-family:var(--display);font-size:clamp(1.2rem,2vw,1.7rem);line-height:1.25;text-align:center}
+  #social .fb-text-media p{margin:0;white-space:pre-line}
+  #social .fb-copy{display:flex;flex:1;flex-direction:column;padding:18px 18px 20px}
+  #social .fb-copy p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:6;overflow:hidden;color:var(--ink-2);white-space:pre-line}
+  #social .fb-copy .fb-date{display:block;margin-top:12px;font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);font-size:.78rem}
+  #social .fb-copy .fb-link{align-self:flex-start;display:inline-block;margin-top:16px;padding:7px 11px;border-radius:999px;background:var(--btn-crimson);color:var(--cream);font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:.78rem;line-height:1}
+  #social .fb-card-link:hover .fb-link,#social .fb-card-link:focus-visible .fb-link{background:var(--btn-crimson-hover)}
+  @media (max-width:900px){#social .fb-grid,#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{max-width:740px;grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:600px){#social .fb-grid,#social .fb-grid[data-count="2"],#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{max-width:360px;grid-template-columns:1fr}}
+</style>
+
 <script>
+  document.querySelector('#social .section-head p:last-child')?.remove();
   const social = document.getElementById('social');
   const feed = document.getElementById('fbFeed');
 
@@ -285,20 +309,27 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
           image.alt = post.message ? `Facebook post: ${post.message}` : '';
           image.loading = 'lazy';
           cardLink.append(image);
+        } else {
+          const fallback = document.createElement('div');
+          fallback.className = 'fb-text-media';
+          const fallbackMessage = document.createElement('p');
+          fallbackMessage.textContent = post.message;
+          fallback.append(fallbackMessage);
+          cardLink.append(fallback);
         }
 
         const copy = document.createElement('div');
         copy.className = 'fb-copy';
+        if (post.message && post.imageUrl) {
+          const message = document.createElement('p');
+          message.textContent = post.message;
+          copy.append(message);
+        }
         if (post.postedLabel) {
           const date = document.createElement('span');
           date.className = 'fb-date';
           date.textContent = post.postedLabel;
           copy.append(date);
-        }
-        if (post.message) {
-          const message = document.createElement('p');
-          message.textContent = post.message;
-          copy.append(message);
         }
         const linkLabel = document.createElement('span');
         linkLabel.className = 'fb-link';
