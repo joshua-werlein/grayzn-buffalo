@@ -128,11 +128,6 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   </div>
 </section>
 
-<dialog class="welcome-lightbox" id="welcomeLightbox" aria-label="Expanded Welcome photo">
-  <button class="lightbox-close" type="button" aria-label="Close enlarged photo">×</button>
-  <img alt="" />
-</dialog>
-
 <div class="checker" aria-hidden="true"></div>
 
 <section id="menu-preview" style="background:var(--cream-2)">
@@ -244,19 +239,19 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .welcome-copy h2{text-align:left}
   .welcome-copy .kicker{display:block;text-align:left}
   .welcome-copy p{margin:14px 0;color:var(--ink-2)}
-  .photo-stack{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-flow:row dense;gap:12px;align-content:start}
-  .photo{aspect-ratio:4/3;border:0;border-radius:12px;position:relative;overflow:hidden;
+  .photo-stack{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-flow:row dense;grid-auto-rows:clamp(160px,16vw,220px);gap:12px;align-content:start}
+  .photo{height:100%;min-height:0;aspect-ratio:auto;border:0;border-radius:12px;position:relative;overflow:hidden;
     background:var(--cream-2);
     box-shadow:0 10px 26px rgba(36,22,16,.22);display:flex;align-items:flex-end;transition:transform .3s ease;cursor:zoom-in}
   .photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-  .photo.wide{grid-column:span 2;aspect-ratio:2/1}
-  .photo-stack[data-count="1"] .photo{grid-column:span 2;aspect-ratio:3/2}
+  .photo.wide{grid-column:span 2}
+  .photo-stack[data-count="1"] .photo{grid-column:span 2}
   .photo-stack[data-count="2"][data-wide-count="1"] .photo:not(.wide),
   .photo-stack[data-normal-odd="true"]:not(.all-landscape) .photo[data-final-normal="true"]{grid-column:span 2}
   .photo-stack.all-landscape[data-count="2"] .photo,
-  .photo-stack.all-landscape[data-count="4"] .photo{grid-column:span 1;aspect-ratio:4/3}
-  .photo-stack.all-landscape[data-count="3"] .photo{grid-column:span 1;aspect-ratio:4/3}
-  .photo-stack.all-landscape[data-count="3"] .photo:last-child{grid-column:span 2;aspect-ratio:2/1}
+  .photo-stack.all-landscape[data-count="4"] .photo{grid-column:span 1}
+  .photo-stack.all-landscape[data-count="3"] .photo{grid-column:span 1}
+  .photo-stack.all-landscape[data-count="3"] .photo:last-child{grid-column:span 2}
   .photo:hover{transform:translateY(-6px)}
   .photo:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
   .photo span{position:relative;width:100%;padding:10px 12px;font-family:var(--label);font-weight:600;font-size:.8rem;
@@ -290,12 +285,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .visit-block a{color:var(--gold);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1.5px;}
   .visit-block a:hover,
   .visit-block a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
-  .welcome-lightbox{max-width:min(94vw,1200px);max-height:92vh;padding:0;border:0;border-radius:14px;background:var(--ink);box-shadow:0 20px 60px rgba(0,0,0,.55)}
-  .welcome-lightbox::backdrop{background:rgba(20,12,8,.82)}
-  .welcome-lightbox img{display:block;max-width:94vw;max-height:88vh;width:auto;height:auto;object-fit:contain}
-  .lightbox-close{position:absolute;top:10px;right:10px;width:42px;height:42px;border:0;border-radius:50%;background:var(--cream);color:var(--ink);font-size:2rem;line-height:1;cursor:pointer}
-  .lightbox-close:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
-  @media (max-width:900px){ .welcome-grid{grid-template-columns:1fr} .welcome-copy{max-width:52ch}.photo-stack{grid-template-columns:1fr}.photo-stack .photo,.photo-stack .photo.wide{grid-column:auto;aspect-ratio:4/3} }
+  @media (max-width:900px){ .welcome-grid{grid-template-columns:1fr} .welcome-copy{max-width:52ch}.photo-stack{grid-template-columns:1fr;grid-auto-rows:clamp(180px,62vw,280px)}.photo-stack .photo,.photo-stack .photo.wide{grid-column:auto} }
   @media (max-width:800px){ .visit-cols{grid-template-columns:1fr;gap:20px} .visit-block p{white-space:normal} }
   @media (max-width:480px){ .hero{min-height:min(72vh,640px);min-height:min(72dvh,640px)} .logo-wrap{width:min(88vw,560px)} }
   @media (prefers-reduced-motion: reduce){
@@ -334,20 +324,6 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   });
   refreshWelcomeLayout();
 
-  const lightbox = document.querySelector<HTMLDialogElement>('#welcomeLightbox');
-  const lightboxImage = lightbox?.querySelector<HTMLImageElement>('img');
-  document.querySelectorAll<HTMLElement>('[data-lightbox-src]').forEach((trigger) => {
-    trigger.addEventListener('click', () => {
-      if (!lightbox || !lightboxImage) return;
-      lightboxImage.src = trigger.dataset.lightboxSrc ?? '';
-      lightboxImage.alt = trigger.dataset.lightboxAlt ?? '';
-      lightbox.showModal();
-    });
-  });
-  lightbox?.querySelector('.lightbox-close')?.addEventListener('click', () => lightbox.close());
-  lightbox?.addEventListener('click', (event) => {
-    if (event.target === lightbox) lightbox.close();
-  });
 </script>
 
 <style is:global>
