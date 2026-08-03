@@ -100,10 +100,16 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     <div class="photo-stack reveal">
       {welcomeTiles.map((photo) => (
         photo && (
-          <div class={`photo${photo.orientation === 'landscape' ? ' wide' : ''}`}>
+          <button
+            class={`photo${photo.orientation === 'landscape' ? ' wide' : ''}`}
+            type="button"
+            data-lightbox-src={`/img/${photo.photo_key}`}
+            data-lightbox-alt={photo.alt}
+            aria-label={photo.alt ? `View larger photo: ${photo.alt}` : 'View larger photo'}
+          >
             <img data-welcome-photo src={`/img/${photo.photo_key}`} alt={photo.alt} loading="lazy" />
             {photo.caption && <span>{photo.caption}</span>}
-          </div>
+          </button>
         )
       ))}
     </div>
@@ -221,12 +227,13 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .welcome-copy .kicker{display:block;text-align:left}
   .welcome-copy p{margin:14px 0;color:var(--ink-2)}
   .photo-stack{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .photo{aspect-ratio:4/3;border-radius:12px;position:relative;overflow:hidden;
+  .photo{aspect-ratio:4/3;border:0;border-radius:12px;position:relative;overflow:hidden;
     background:var(--cream-2);
-    box-shadow:0 10px 26px rgba(36,22,16,.22);display:flex;align-items:flex-end;transition:transform .3s ease}
+    box-shadow:0 10px 26px rgba(36,22,16,.22);display:flex;align-items:flex-end;transition:transform .3s ease;cursor:zoom-in}
   .photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
   .photo.wide{grid-column:span 2;aspect-ratio:2/1}
   .photo:hover{transform:translateY(-6px)}
+  .photo:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
   .photo span{position:relative;width:100%;padding:10px 12px;font-family:var(--label);font-weight:600;font-size:.8rem;
     letter-spacing:.12em;text-transform:uppercase;color:var(--cream);
     background:linear-gradient(transparent,rgba(36,22,16,.78))}

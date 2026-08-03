@@ -1,5 +1,6 @@
 ---
 import { getSetting } from '../lib/db';
+import ImageLightbox from '../components/ImageLightbox.astro';
 interface Props { title?: string; description?: string; }
 const { title = "Grayz'n Buffalo Bar & Grill — Mondovi, WI",
         description = "Grayz'n Buffalo Bar & Grill in Mondovi, WI. Burgers, Wraps, Pizzas & cold ones — open daily 10 AM to 2 AM." } = Astro.props;
@@ -225,6 +226,8 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 </nav>
 
 <main><slot /></main>
+
+<ImageLightbox />
 
 <footer>
   <nav class="footer-nav" aria-label="Footer">

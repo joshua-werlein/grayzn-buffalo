@@ -94,15 +94,9 @@ const lateNightColumns = splitColumns(lateNight);
                 {g.items.map((it) => (
                   <li class="item">
                     {it.photo_key && (
-                      <img
-                        class="item-photo"
-                        src={`/img/${thumbKey(it.photo_key)}`}
-                        alt=""
-                        width="72"
-                        height="56"
-                        loading="lazy"
-                        decoding="async"
-                      />
+                      <button class="item-photo-trigger" type="button" data-lightbox-src={`/img/${it.photo_key}`} data-lightbox-alt={it.name} aria-label={`View larger photo of ${it.name}`}>
+                        <img class="item-photo" src={`/img/${thumbKey(it.photo_key)}`} alt="" width="72" height="56" loading="lazy" decoding="async" />
+                      </button>
                     )}
                     <div class="item-copy">
                       <strong>{it.name}</strong>
@@ -134,15 +128,9 @@ const lateNightColumns = splitColumns(lateNight);
                   {g.items.map((it) => (
                     <li class="item">
                       {it.photo_key && (
-                        <img
-                          class="item-photo"
-                          src={`/img/${thumbKey(it.photo_key)}`}
-                          alt=""
-                          width="72"
-                          height="56"
-                          loading="lazy"
-                          decoding="async"
-                        />
+                        <button class="item-photo-trigger" type="button" data-lightbox-src={`/img/${it.photo_key}`} data-lightbox-alt={it.name} aria-label={`View larger photo of ${it.name}`}>
+                          <img class="item-photo" src={`/img/${thumbKey(it.photo_key)}`} alt="" width="72" height="56" loading="lazy" decoding="async" />
+                        </button>
                       )}
                       <div class="item-copy">
                         <strong>{it.name}</strong>
@@ -202,7 +190,9 @@ const lateNightColumns = splitColumns(lateNight);
   .item{display:flex;align-items:center;gap:14px;
     padding:14px 4px;border-bottom:1px dashed rgba(36,22,16,.22)}
   .item:last-child{border-bottom:none}
-  .item-photo{flex:0 0 72px;width:72px;height:56px;object-fit:cover;
+  .item-photo-trigger{flex:0 0 72px;width:72px;height:56px;padding:0;border:0;border-radius:8px;background:transparent;cursor:zoom-in}
+  .item-photo-trigger:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+  .item-photo{width:72px;height:56px;object-fit:cover;
     border-radius:8px;display:block;background:rgba(36,22,16,.08)}
   .item-copy{min-width:0}
   .item-copy strong{display:block;font-family:var(--display);font-weight:400;font-size:1.12rem;line-height:1.2}
@@ -217,7 +207,8 @@ const lateNightColumns = splitColumns(lateNight);
     .chip-links{display:none}
     .chip-select{display:block}
     .menu-columns{grid-template-columns:1fr}
-    .item-photo{flex-basis:60px;width:60px;height:48px}
+    .item-photo-trigger{flex-basis:60px;width:60px;height:48px}
+    .item-photo{width:60px;height:48px}
     .cat-section h3{font-size:1.3rem}
   }
 </style>
