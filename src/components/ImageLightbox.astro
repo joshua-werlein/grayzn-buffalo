@@ -8,11 +8,13 @@
 </div>
 
 <script>
-  const lightbox = document.querySelector<HTMLElement>('[data-image-lightbox]');
+  function initImageLightbox() {
+    const lightbox = document.querySelector<HTMLElement>('[data-image-lightbox]');
+    if (!lightbox) return;
 
-  if (lightbox) {
-    const image = lightbox.querySelector<HTMLImageElement>('[data-lightbox-image]')!;
-    const closeButton = lightbox.querySelector<HTMLButtonElement>('.image-lightbox__close')!;
+    const image = lightbox.querySelector<HTMLImageElement>('[data-lightbox-image]');
+    const closeButton = lightbox.querySelector<HTMLButtonElement>('.image-lightbox__close');
+    if (!image || !closeButton) return;
     let trigger: HTMLElement | null = null;
     let closeTimer: number | undefined;
 
@@ -78,11 +80,18 @@
       }
     });
   }
+
+  try {
+    initImageLightbox();
+  } catch (error) {
+    console.error('Image lightbox disabled after an initialization error.', error);
+  }
 </script>
 
 <style>
-  .image-lightbox{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:clamp(18px,4vw,56px);opacity:0;transition:opacity .18s ease}
-  .image-lightbox.is-open{opacity:1}
+  .image-lightbox{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:clamp(18px,4vw,56px);opacity:0;pointer-events:none;transition:opacity .18s ease}
+  .image-lightbox[hidden]{display:none}
+  .image-lightbox.is-open{opacity:1;pointer-events:auto}
   .image-lightbox__backdrop{position:absolute;inset:0;background:rgba(20,12,8,.82)}
   .image-lightbox__dialog{position:relative;display:grid;place-items:center;max-width:min(1100px,100%);max-height:100%;transform:scale(.97);transition:transform .18s ease}
   .image-lightbox.is-open .image-lightbox__dialog{transform:scale(1)}
