@@ -26,7 +26,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     method: 'POST',
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from: 'Grayz\'n Buffalo Website <noreply@send.grayznbuffalo.com>',
+      from: 'Grayz\'n Buffalo Website <noreply@grayznbuffalo.com>',
       to: [env.CONTACT_TO_EMAIL ?? 'grayznbar@outlook.com'],
       reply_to: email,
       subject: `Website contact from ${name}`,
