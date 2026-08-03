@@ -11,13 +11,15 @@ CREATE TABLE IF NOT EXISTS items (
   description TEXT DEFAULT '',
   sort INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
-  photo_key TEXT
+  photo_key TEXT,
+  photo_orientation TEXT NOT NULL DEFAULT 'portrait'
 );
 CREATE TABLE IF NOT EXISTS welcome_photos (
   slot INTEGER PRIMARY KEY CHECK (slot BETWEEN 1 AND 4),
   photo_key TEXT,
   alt TEXT NOT NULL DEFAULT '',
-  caption TEXT NOT NULL DEFAULT ''
+  caption TEXT NOT NULL DEFAULT '',
+  orientation TEXT NOT NULL DEFAULT 'portrait'
 );
 -- Specials: one per day-of-week (0=Sun..6=Sat); tag e.g. 'Mexican Night'
 CREATE TABLE IF NOT EXISTS specials (
@@ -50,6 +52,7 @@ CREATE TABLE IF NOT EXISTS items (
   sort INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
   photo_key TEXT,
+  photo_orientation TEXT NOT NULL DEFAULT 'portrait',
   late_night INTEGER NOT NULL DEFAULT 0   -- 1 = available after the grill closes
 );
 -- Specials: one per day-of-week (0=Sun..6=Sat); tag e.g. 'Mexican Night'

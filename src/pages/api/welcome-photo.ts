@@ -20,6 +20,15 @@ const slotFrom = (form: FormData) => {
   return Number.isInteger(slot) && slot >= 1 && slot <= 4 ? slot : null;
 };
 
+const photoOrientation = (form: FormData) => {
+  const width = Number(form.get('width'));
+  const height = Number(form.get('height'));
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return 'portrait';
+  if (width > height * 1.1) return 'landscape';
+  if (height > width * 1.1) return 'portrait';
+  return 'square';
+};
+
 export const POST: APIRoute = async ({ request, cookies, locals }) => {
   const env = (locals as any).runtime?.env ?? {};
   if (!(await isAuthed(cookies, env))) {
@@ -35,6 +44,7 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
     const alt = String(form.get('alt') ?? '').trim().slice(0, 240);
     const caption = String(form.get('caption') ?? '').trim().slice(0, 120);
     const action = String(form.get('action') ?? 'upload');
+    const orientation = photoOrientation(form);
 
     if (action === 'metadata') {
       await env.DB.prepare(
@@ -49,8 +59,8 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
 
     if (action === 'remove') {
       await env.DB.prepare(
-        'INSERT INTO welcome_photos (slot, photo_key, alt, caption) VALUES (?1, NULL, ?2, ?3) ON CONFLICT(slot) DO UPDATE SET photo_key = NULL, alt = ?2, caption = ?3'
-      ).bind(slot, alt, caption).run();
+        'INSERT INTO welcome_photos (slot, photo_key, alt, caption, orientation) VALUES (?1, NULL, ?2, ?3, ?4) ON CONFLICT(slot) DO UPDATE SET photo_key = NULL, alt = ?2, caption = ?3, orientation = ?4'
+      ).bind(slot, alt, caption, orientation).run();
       await dropPhoto(env, previous?.photo_key);
       return json({ ok: true, removed: true, message: 'Photo removed.' });
     }
@@ -75,8 +85,8 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
     await env.PHOTOS.put(key, await full.arrayBuffer(), meta);
     await env.PHOTOS.put(thumbKey(key), await thumb.arrayBuffer(), meta);
     await env.DB.prepare(
-      'INSERT INTO welcome_photos (slot, photo_key, alt, caption) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(slot) DO UPDATE SET photo_key = ?2, alt = ?3, caption = ?4'
-    ).bind(slot, key, alt, caption).run();
+      'INSERT INTO welcome_photos (slot, photo_key, alt, caption, orientation) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(slot) DO UPDATE SET photo_key = ?2, alt = ?3, caption = ?4, orientation = ?5'
+    ).bind(slot, key, alt, caption, orientation).run();
     await dropPhoto(env, previous?.photo_key);
 
     return json({

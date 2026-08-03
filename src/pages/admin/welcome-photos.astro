@@ -77,7 +77,7 @@ const photos = await getWelcomePhotos(env);
     document.querySelectorAll<HTMLButtonElement>(`[data-save="${slot}"],[data-rotate="${slot}"],[data-remove="${slot}"]`).forEach((button) => { button.disabled = busy; });
   }
 
-  async function request(slot: string, action: string, full?: Blob, thumb?: Blob) {
+  async function request(slot: string, action: string, full?: Blob, thumb?: Blob, width?: number, height?: number) {
     const body = new FormData();
     body.append('slot', slot);
     body.append('action', action);
@@ -86,6 +86,8 @@ const photos = await getWelcomePhotos(env);
     if (full && thumb) {
       body.append('full', full, 'welcome.webp');
       body.append('thumb', thumb, 'welcome@600.webp');
+      body.append('width', String(width ?? 0));
+      body.append('height', String(height ?? 0));
     }
     const response = await fetch('/api/welcome-photo', { method: 'POST', body });
     const data = await response.json();
@@ -125,9 +127,9 @@ const photos = await getWelcomePhotos(env);
       setBusy(slot, true);
       try {
         toast('Resizing photo…', 'busy');
-        const { full, thumb } = await convertPhoto(file);
+        const { full, thumb, width, height } = await convertPhoto(file);
         toast('Uploading photo…', 'busy');
-        const data = await request(slot, 'upload', full, thumb);
+        const data = await request(slot, 'upload', full, thumb, width, height);
         paint(slot, data.thumbUrl ?? null, data.fullUrl ?? null);
         toast(data.message ?? 'Welcome photo saved.');
       } catch (error) {
@@ -168,8 +170,8 @@ const photos = await getWelcomePhotos(env);
         const source = await fetch(url, { cache: 'no-store' });
         if (!source.ok) throw new Error('The original photo could not be loaded.');
         const file = new File([await source.blob()], 'welcome.webp', { type: 'image/webp' });
-        const { full, thumb } = await convertPhoto(file, Number(button.dataset.degrees));
-        const data = await request(slot, 'upload', full, thumb);
+        const { full, thumb, width, height } = await convertPhoto(file, Number(button.dataset.degrees));
+        const data = await request(slot, 'upload', full, thumb, width, height);
         paint(slot, data.thumbUrl ?? null, data.fullUrl ?? null);
         toast('Photo rotated.');
       } catch (error) {

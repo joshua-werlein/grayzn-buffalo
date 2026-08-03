@@ -8,9 +8,10 @@ export type Special = {
   night_description: string;
   night_tag: string | null;
 };
-export type Item = { id: number; category_id: number; name: string; description: string; sort: number; active: number; photo_key: string | null; late_night: number };
+export type PhotoOrientation = 'portrait' | 'square' | 'landscape';
+export type Item = { id: number; category_id: number; name: string; description: string; sort: number; active: number; photo_key: string | null; late_night: number; photo_orientation?: PhotoOrientation };
 export type Category = { id: number; name: string; sort: number };
-export type WelcomePhoto = { slot: number; photo_key: string | null; alt: string; caption: string };
+export type WelcomePhoto = { slot: number; photo_key: string | null; alt: string; caption: string; orientation: PhotoOrientation };
 export const thumbKey = (key: string) => key.replace(/\.webp$/, '@600.webp');
  
 const FALLBACK_SPECIALS = [
@@ -86,12 +87,13 @@ const FALLBACK_WELCOME_PHOTOS: WelcomePhoto[] = [1, 2, 3, 4].map((slot) => ({
   photo_key: null,
   alt: '',
   caption: '',
+  orientation: 'portrait',
 }));
 
 export async function getWelcomePhotos(env: any): Promise<WelcomePhoto[]> {
   try {
     const { results } = await env.DB.prepare(
-      'SELECT slot, photo_key, alt, caption FROM welcome_photos WHERE slot BETWEEN 1 AND 4 ORDER BY slot'
+      'SELECT slot, photo_key, alt, caption, orientation FROM welcome_photos WHERE slot BETWEEN 1 AND 4 ORDER BY slot'
     ).all();
     const bySlot = new Map((results ?? []).map((row: any) => [Number(row.slot), row]));
     return FALLBACK_WELCOME_PHOTOS.map((fallback) => {
@@ -102,6 +104,7 @@ export async function getWelcomePhotos(env: any): Promise<WelcomePhoto[]> {
             photo_key: typeof row.photo_key === 'string' ? row.photo_key : null,
             alt: typeof row.alt === 'string' ? row.alt : '',
             caption: typeof row.caption === 'string' ? row.caption : '',
+            orientation: row.orientation === 'landscape' || row.orientation === 'square' ? row.orientation : 'portrait',
           }
         : fallback;
     });

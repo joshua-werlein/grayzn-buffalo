@@ -314,11 +314,13 @@ try {
   });
 
   async function uploadPhoto(id: string, file: File, rotation = 0) {
-    const { full, thumb } = await convertPhoto(file, rotation);
+    const { full, thumb, width, height } = await convertPhoto(file, rotation);
     const body = new FormData();
     body.append('id', id);
     body.append('full', full, 'photo.webp');
     body.append('thumb', thumb, 'photo@600.webp');
+    body.append('width', String(width));
+    body.append('height', String(height));
 
     const res = await fetch('/api/menu-photo', { method: 'POST', body });
     const data = await res.json();

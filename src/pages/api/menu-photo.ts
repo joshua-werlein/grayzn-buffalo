@@ -6,6 +6,15 @@ export const prerender = false;
 
 const MAX_UPLOAD = 10 * 1024 * 1024; // the client sends ~60 KB; this is a floor, not a target
 
+const photoOrientation = (form: FormData) => {
+  const width = Number(form.get('width'));
+  const height = Number(form.get('height'));
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return 'portrait';
+  if (width > height * 1.1) return 'landscape';
+  if (height > width * 1.1) return 'portrait';
+  return 'square';
+};
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -42,7 +51,7 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
     // ---- remove -------------------------------------------------------
     if (f.get('remove') === '1') {
       const row: any = await env.DB.prepare('SELECT photo_key FROM items WHERE id = ?1').bind(id).first();
-      await env.DB.prepare('UPDATE items SET photo_key = NULL WHERE id = ?1').bind(id).run();
+      await env.DB.prepare("UPDATE items SET photo_key = NULL, photo_orientation = 'portrait' WHERE id = ?1").bind(id).run();
       await dropPhoto(env, row?.photo_key);
       return json({ ok: true, removed: true, message: 'Photo removed.' });
     }
@@ -62,6 +71,7 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
     }
 
     const previous: any = await env.DB.prepare('SELECT photo_key FROM items WHERE id = ?1').bind(id).first();
+    const orientation = photoOrientation(f);
     const key = `menu/${id}/${crypto.randomUUID()}.webp`;
     const meta = { httpMetadata: { contentType: 'image/webp' } };
 
@@ -69,7 +79,7 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
     // failure leaves an orphaned object rather than a row with a dead key.
     await env.PHOTOS.put(key, await full.arrayBuffer(), meta);
     await env.PHOTOS.put(thumbKey(key), await thumb.arrayBuffer(), meta);
-    await env.DB.prepare('UPDATE items SET photo_key = ?1 WHERE id = ?2').bind(key, id).run();
+    await env.DB.prepare('UPDATE items SET photo_key = ?1, photo_orientation = ?2 WHERE id = ?3').bind(key, orientation, id).run();
     await dropPhoto(env, previous?.photo_key);
 
     return json({

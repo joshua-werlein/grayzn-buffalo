@@ -6,12 +6,25 @@ import { getMenu, getWelcomePhotos, thumbKey } from '../lib/db';
 const env = (Astro.locals as any).runtime?.env ?? {};
 const { categories, items } = await getMenu(env);
 const welcomePhotos = await getWelcomePhotos(env);
-const welcomePlaceholderLabels = [
-  "Photo: Grayz'n Buffalo",
-  'Photo: the kitchen',
-  "Photo: Grayz'n burger",
-  'Photo: the bar',
-];
+// Keep these separate from the opening strip: a stable selection of the last
+// four menu photos fills any empty Welcome slot without animation or timers.
+const welcomeFallbackPhotos = items
+  .filter((item) => item.photo_key)
+  .sort((a, b) => b.id - a.id)
+  .slice(0, 4);
+const welcomeTiles = welcomePhotos.map((photo, index) => {
+  if (photo.photo_key) return photo;
+  const fallback = welcomeFallbackPhotos[index];
+  return fallback?.photo_key
+    ? {
+        slot: photo.slot,
+        photo_key: fallback.photo_key,
+        alt: fallback.name,
+        caption: photo.caption,
+        orientation: fallback.photo_orientation ?? 'portrait',
+      }
+    : null;
+});
 const photoGroups = categories
   .map((category) => items.filter((item) => item.category_id === category.id && item.photo_key))
   .filter((group) => group.length > 0);
@@ -85,14 +98,12 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
       <p>Longtime locals knew us as Gumby's. New name, same bar.</p>
     </div>
     <div class="photo-stack reveal">
-      {welcomePhotos.map((photo) => (
-        photo.photo_key ? (
-          <div class="photo">
-            <img src={`/img/${photo.photo_key}`} alt={photo.alt} loading="lazy" />
+      {welcomeTiles.map((photo) => (
+        photo && (
+          <div class={`photo${photo.orientation === 'landscape' ? ' wide' : ''}`}>
+            <img data-welcome-photo src={`/img/${photo.photo_key}`} alt={photo.alt} loading="lazy" />
             {photo.caption && <span>{photo.caption}</span>}
           </div>
-        ) : (
-          <div class="photo ph"><span>{photo.caption || welcomePlaceholderLabels[photo.slot - 1]}</span></div>
         )
       ))}
     </div>
@@ -211,9 +222,10 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .welcome-copy p{margin:14px 0;color:var(--ink-2)}
   .photo-stack{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .photo{aspect-ratio:4/3;border-radius:12px;position:relative;overflow:hidden;
-    background:linear-gradient(160deg,var(--amber),var(--crimson));
+    background:var(--cream-2);
     box-shadow:0 10px 26px rgba(36,22,16,.22);display:flex;align-items:flex-end;transition:transform .3s ease}
   .photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .photo.wide{grid-column:span 2;aspect-ratio:2/1}
   .photo:hover{transform:translateY(-6px)}
   .photo span{position:relative;width:100%;padding:10px 12px;font-family:var(--label);font-weight:600;font-size:.8rem;
     letter-spacing:.12em;text-transform:uppercase;color:var(--cream);
@@ -246,13 +258,27 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .visit-block a{color:var(--gold);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1.5px;}
   .visit-block a:hover,
   .visit-block a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
-  @media (max-width:900px){ .welcome-grid{grid-template-columns:1fr} }
+  @media (max-width:900px){ .welcome-grid{grid-template-columns:1fr} .photo-stack{grid-template-columns:1fr}.photo.wide{grid-column:auto} }
   @media (max-width:800px){ .visit-cols{grid-template-columns:1fr;gap:20px} .visit-block p{white-space:normal} }
   @media (max-width:480px){ .hero{min-height:min(72vh,640px);min-height:min(72dvh,640px)} .logo-wrap{width:min(88vw,560px)} }
   @media (prefers-reduced-motion: reduce){
     .rise,.charge,.strip-track{animation:none;opacity:1;transform:none}
   }
 </style>
+
+<script>
+  // Existing menu fallbacks predate stored orientation metadata. Confirm their
+  // real dimensions after load so they receive the same adaptive tile treatment.
+  document.querySelectorAll<HTMLImageElement>('#welcome img[data-welcome-photo]').forEach((image) => {
+    const applyOrientation = () => {
+      const tile = image.closest<HTMLElement>('.photo');
+      if (!tile || !image.naturalWidth || !image.naturalHeight) return;
+      tile.classList.toggle('wide', image.naturalWidth > image.naturalHeight * 1.1);
+    };
+    if (image.complete) applyOrientation();
+    else image.addEventListener('load', applyOrientation, { once: true });
+  });
+</script>
 
 <style is:global>
   /* Feed cards are created in the browser, so these selectors must not carry Astro's scope attribute. */
