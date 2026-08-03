@@ -98,7 +98,13 @@ async function refreshFeed(env) {
     return;
   }
   if (!response.ok) {
-    console.error('Facebook Graph API returned an error', response.status);
+    const errorBody = await response.text();
+
+    console.error('Facebook Graph API returned an error', {
+      status: response.status,
+      body: errorBody,
+    });
+
     return;
   }
   const result = await response.json();
