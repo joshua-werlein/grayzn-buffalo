@@ -1,0 +1,225 @@
+---
+import Base from '../../layouts/Base.astro';
+import { isAuthed } from '../../lib/auth';
+import { getWelcomePhotos, thumbKey } from '../../lib/db';
+
+const env = (Astro.locals as any).runtime?.env ?? {};
+if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
+const photos = await getWelcomePhotos(env);
+---
+
+<Base title="Admin · Welcome Photos — Grayz'n Buffalo">
+  <section>
+    <div class="section-head">
+      <h2>Welcome Photos</h2>
+      <p>Four homepage photos. Replace any slot whenever you have a better shot.</p>
+      <p class="back"><a href="/admin">← Back to admin</a></p>
+    </div>
+
+    <div class="welcome-photo-admin">
+      {photos.map((photo) => (
+        <article class="slot-card" data-slot-card={photo.slot}>
+          <h3>Photo {photo.slot}</h3>
+          <div class="preview">
+            <img
+              data-preview={photo.slot}
+              data-full-url={photo.photo_key ? `/img/${photo.photo_key}` : undefined}
+              src={photo.photo_key ? `/img/${thumbKey(photo.photo_key)}` : undefined}
+              alt={photo.alt}
+              hidden={!photo.photo_key}
+              loading="lazy"
+            />
+            <p data-empty={photo.slot} hidden={!!photo.photo_key}>No photo yet.</p>
+          </div>
+
+          <label for={`alt-${photo.slot}`}>Image description <span>optional</span></label>
+          <input id={`alt-${photo.slot}`} data-alt={photo.slot} value={photo.alt} maxlength="240" placeholder="Describe the photo for visitors" />
+          <label for={`caption-${photo.slot}`}>Caption <span>optional</span></label>
+          <input id={`caption-${photo.slot}`} data-caption={photo.slot} value={photo.caption} maxlength="120" placeholder="Short label on the photo" />
+
+          <div class="pick">
+            <label class="pick-btn">Take a photo<input type="file" accept="image/*" capture="environment" data-upload={photo.slot} /></label>
+            <label class="pick-btn">Choose from gallery<input type="file" accept="image/*" data-upload={photo.slot} /></label>
+          </div>
+          <div class="tools">
+            <button type="button" data-save={photo.slot}>Save details</button>
+            <button type="button" data-rotate={photo.slot} data-degrees="-90" hidden={!photo.photo_key}>Rotate left</button>
+            <button type="button" data-rotate={photo.slot} data-degrees="90" hidden={!photo.photo_key}>Rotate right</button>
+            <button type="button" class="danger" data-remove={photo.slot} hidden={!photo.photo_key}>Remove photo</button>
+          </div>
+        </article>
+      ))}
+    </div>
+    <p class="back"><a href="/admin">← Back to admin</a></p>
+  </section>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</Base>
+
+<script>
+  import { convertPhoto, PhotoError } from '../../lib/photo-client';
+
+  const toastEl = document.getElementById('toast')!;
+  let toastTimer: number | undefined;
+
+  function toast(message: string, kind: 'ok' | 'bad' | 'busy' = 'ok') {
+    window.clearTimeout(toastTimer);
+    toastEl.textContent = message;
+    toastEl.className = `toast show ${kind}`;
+    toastEl.hidden = false;
+    if (kind !== 'busy') toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 3200);
+  }
+
+  const value = (kind: 'alt' | 'caption', slot: string) =>
+    document.querySelector<HTMLInputElement>(`[data-${kind}="${slot}"]`)?.value.trim() ?? '';
+
+  function setBusy(slot: string, busy: boolean) {
+    document.querySelectorAll<HTMLInputElement>(`[data-upload="${slot}"]`).forEach((input) => { input.disabled = busy; });
+    document.querySelectorAll<HTMLButtonElement>(`[data-save="${slot}"],[data-rotate="${slot}"],[data-remove="${slot}"]`).forEach((button) => { button.disabled = busy; });
+  }
+
+  async function request(slot: string, action: string, full?: Blob, thumb?: Blob) {
+    const body = new FormData();
+    body.append('slot', slot);
+    body.append('action', action);
+    body.append('alt', value('alt', slot));
+    body.append('caption', value('caption', slot));
+    if (full && thumb) {
+      body.append('full', full, 'welcome.webp');
+      body.append('thumb', thumb, 'welcome@600.webp');
+    }
+    const response = await fetch('/api/welcome-photo', { method: 'POST', body });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error ?? 'Photo update failed. Try again.');
+    return data as { fullUrl?: string; thumbUrl?: string; message?: string };
+  }
+
+  function paint(slot: string, thumbUrl: string | null, fullUrl: string | null = null) {
+    const image = document.querySelector<HTMLImageElement>(`[data-preview="${slot}"]`);
+    const empty = document.querySelector<HTMLElement>(`[data-empty="${slot}"]`);
+    const remove = document.querySelector<HTMLButtonElement>(`[data-remove="${slot}"]`);
+    const rotate = document.querySelectorAll<HTMLButtonElement>(`[data-rotate="${slot}"]`);
+    if (!image || !empty) return;
+    if (thumbUrl) {
+      image.src = `${thumbUrl}?v=${Date.now()}`;
+      image.dataset.fullUrl = fullUrl ?? image.dataset.fullUrl;
+      image.alt = value('alt', slot);
+      image.hidden = false;
+      empty.hidden = true;
+      if (remove) remove.hidden = false;
+      rotate.forEach((button) => { button.hidden = false; });
+    } else {
+      image.hidden = true;
+      image.removeAttribute('src');
+      delete image.dataset.fullUrl;
+      empty.hidden = false;
+      if (remove) remove.hidden = true;
+      rotate.forEach((button) => { button.hidden = true; });
+    }
+  }
+
+  document.querySelectorAll<HTMLInputElement>('input[data-upload]').forEach((input) => {
+    input.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      const slot = input.dataset.upload!;
+      if (!file) return;
+      setBusy(slot, true);
+      try {
+        toast('Resizing photo…', 'busy');
+        const { full, thumb } = await convertPhoto(file);
+        toast('Uploading photo…', 'busy');
+        const data = await request(slot, 'upload', full, thumb);
+        paint(slot, data.thumbUrl ?? null, data.fullUrl ?? null);
+        toast(data.message ?? 'Welcome photo saved.');
+      } catch (error) {
+        toast(error instanceof PhotoError ? error.message : (error as Error).message, 'bad');
+      } finally {
+        setBusy(slot, false);
+        input.value = '';
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('button[data-save]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const slot = button.dataset.save!;
+      setBusy(slot, true);
+      try {
+        const data = await request(slot, 'metadata');
+        const image = document.querySelector<HTMLImageElement>(`[data-preview="${slot}"]`);
+        if (image) image.alt = value('alt', slot);
+        toast(data.message ?? 'Photo details saved.');
+      } catch (error) {
+        toast((error as Error).message, 'bad');
+      } finally {
+        setBusy(slot, false);
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('button[data-rotate]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const slot = button.dataset.rotate!;
+      const image = document.querySelector<HTMLImageElement>(`[data-preview="${slot}"]`);
+      const url = image?.dataset.fullUrl;
+      if (!url) return toast('The original photo could not be loaded.', 'bad');
+      setBusy(slot, true);
+      try {
+        toast('Rotating photo…', 'busy');
+        const source = await fetch(url, { cache: 'no-store' });
+        if (!source.ok) throw new Error('The original photo could not be loaded.');
+        const file = new File([await source.blob()], 'welcome.webp', { type: 'image/webp' });
+        const { full, thumb } = await convertPhoto(file, Number(button.dataset.degrees));
+        const data = await request(slot, 'upload', full, thumb);
+        paint(slot, data.thumbUrl ?? null, data.fullUrl ?? null);
+        toast('Photo rotated.');
+      } catch (error) {
+        toast(error instanceof PhotoError ? error.message : (error as Error).message, 'bad');
+      } finally {
+        setBusy(slot, false);
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('button[data-remove]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const slot = button.dataset.remove!;
+      if (!confirm('Remove this Welcome photo?')) return;
+      setBusy(slot, true);
+      try {
+        const data = await request(slot, 'remove');
+        paint(slot, null);
+        toast(data.message ?? 'Photo removed.');
+      } catch (error) {
+        toast((error as Error).message, 'bad');
+      } finally {
+        setBusy(slot, false);
+      }
+    });
+  });
+</script>
+
+<style>
+  .welcome-photo-admin{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;max-width:900px;margin:0 auto}
+  .slot-card{background:#fff;border-radius:12px;padding:18px;box-shadow:0 6px 16px rgba(36,22,16,.1);display:flex;flex-direction:column;gap:10px}
+  .slot-card h3{font-family:var(--display);font-size:1.2rem}
+  .slot-card label{font-family:var(--label);font-weight:600;letter-spacing:.1em;text-transform:uppercase;font-size:.78rem;color:var(--ink-2)}
+  .slot-card label span{font-weight:500;text-transform:none;letter-spacing:0;opacity:.75}
+  .slot-card input:not([type="file"]){padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit}
+  .slot-card input:focus-visible{outline:2px solid var(--crimson);outline-offset:1px}
+  .preview{aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:rgba(36,22,16,.08);display:grid;place-items:center}
+  .preview img{width:100%;height:100%;object-fit:cover;display:block}
+  .preview p{color:var(--ink-2);opacity:.65;font-style:italic}
+  .preview img[hidden]{display:none}
+  .pick,.tools{display:flex;gap:8px;flex-wrap:wrap}
+  .pick-btn,.tools button{position:relative;display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:9px 13px;border:2px solid var(--ink);border-radius:7px;background:transparent;color:var(--ink);cursor:pointer;font-family:var(--label);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:.75rem}
+  .pick-btn:hover,.tools button:hover{background:rgba(36,22,16,.06)}
+  .pick-btn:focus-within,.tools button:focus-visible{outline:2px solid var(--crimson);outline-offset:2px}
+  .pick-btn input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+  .pick-btn:has(input:disabled),.tools button:disabled{opacity:.5;pointer-events:none}
+  .tools .danger{border-color:var(--crimson);color:var(--crimson)}
+  .back{text-align:center;margin-top:22px}.back a{color:var(--crimson);font-weight:600}
+  .toast{position:fixed;left:50%;transform:translate(-50%,20px);bottom:calc(24px + env(safe-area-inset-bottom));z-index:200;max-width:min(92vw,420px);padding:14px 22px;border-radius:10px;text-align:center;font-family:var(--label);font-weight:700;letter-spacing:.04em;box-shadow:0 10px 30px rgba(0,0,0,.35);opacity:0;transition:opacity .22s ease,transform .22s ease;pointer-events:none}
+  .toast.show{opacity:1;transform:translate(-50%,0)}.toast.ok{background:var(--gold);color:var(--ink)}.toast.bad{background:#8d1626;color:var(--cream)}.toast.busy{background:var(--ink);color:var(--cream)}
+  @media (max-width:820px){.toast{bottom:calc(74px + env(safe-area-inset-bottom))}}
+  @media (max-width:620px){.welcome-photo-admin{grid-template-columns:1fr}.pick,.tools{display:grid;grid-template-columns:1fr 1fr}.pick-btn,.tools button{width:100%}.tools .danger{grid-column:1/-1}}
+</style>

@@ -1,10 +1,17 @@
 ---
 import Base from '../layouts/Base.astro';
 import SpecialsBoard from '../components/SpecialsBoard.astro';
-import { getMenu, thumbKey } from '../lib/db';
+import { getMenu, getWelcomePhotos, thumbKey } from '../lib/db';
 
 const env = (Astro.locals as any).runtime?.env ?? {};
 const { categories, items } = await getMenu(env);
+const welcomePhotos = await getWelcomePhotos(env);
+const welcomePlaceholderLabels = [
+  "Photo: Grayz'n Buffalo",
+  'Photo: the kitchen',
+  "Photo: Grayz'n burger",
+  'Photo: the bar',
+];
 const photoGroups = categories
   .map((category) => items.filter((item) => item.category_id === category.id && item.photo_key))
   .filter((group) => group.length > 0);
@@ -78,10 +85,16 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
       <p>Longtime locals knew us as Gumby's. New name, same bar.</p>
     </div>
     <div class="photo-stack reveal">
-      <div class="photo"><img src="/food-pretzel.webp" alt="Soft pretzel and cheese" loading="lazy" /><span>Pretzel &amp; cheese</span></div>
-      <div class="photo"><img src="/food-club.webp" alt="Club sandwich with waffle fries" loading="lazy" /><span>Club on waffle fries</span></div>
-      <div class="photo ph"><span>Photo: Grayz'n burger</span></div>
-      <div class="photo ph"><span>Photo: the bar</span></div>
+      {welcomePhotos.map((photo) => (
+        photo.photo_key ? (
+          <div class="photo">
+            <img src={`/img/${photo.photo_key}`} alt={photo.alt} loading="lazy" />
+            {photo.caption && <span>{photo.caption}</span>}
+          </div>
+        ) : (
+          <div class="photo ph"><span>{photo.caption || welcomePlaceholderLabels[photo.slot - 1]}</span></div>
+        )
+      ))}
     </div>
   </div>
 </section>
@@ -191,17 +204,17 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     font-family:var(--label);font-weight:600;font-size:.75rem;letter-spacing:.14em;
     text-transform:uppercase;color:var(--cream);text-shadow:0 1px 6px rgba(0,0,0,.5)}
   .dark{background:var(--ink);color:var(--cream)}
-  .welcome-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(28px,5vw,64px);max-width:1120px;margin:0 auto;align-items:center}
+  #welcome{padding-block:clamp(44px,6vw,70px)}
+  .welcome-grid{display:grid;grid-template-columns:1.05fr .85fr;gap:clamp(24px,4vw,48px);max-width:1000px;margin:0 auto;align-items:center}
   .welcome-copy h2{text-align:left}
   .welcome-copy .kicker{display:block;text-align:left}
   .welcome-copy p{margin:14px 0;color:var(--ink-2)}
-  .photo-stack{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-  .photo{aspect-ratio:4/5;border-radius:12px;position:relative;overflow:hidden;
+  .photo-stack{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .photo{aspect-ratio:4/3;border-radius:12px;position:relative;overflow:hidden;
     background:linear-gradient(160deg,var(--amber),var(--crimson));
     box-shadow:0 10px 26px rgba(36,22,16,.22);display:flex;align-items:flex-end;transition:transform .3s ease}
   .photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
   .photo:hover{transform:translateY(-6px)}
-  .photo:nth-child(2){margin-top:34px}
   .photo span{position:relative;width:100%;padding:10px 12px;font-family:var(--label);font-weight:600;font-size:.8rem;
     letter-spacing:.12em;text-transform:uppercase;color:var(--cream);
     background:linear-gradient(transparent,rgba(36,22,16,.78))}

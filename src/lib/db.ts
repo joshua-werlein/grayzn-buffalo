@@ -10,6 +10,7 @@ export type Special = {
 };
 export type Item = { id: number; category_id: number; name: string; description: string; sort: number; active: number; photo_key: string | null; late_night: number };
 export type Category = { id: number; name: string; sort: number };
+export type WelcomePhoto = { slot: number; photo_key: string | null; alt: string; caption: string };
 export const thumbKey = (key: string) => key.replace(/\.webp$/, '@600.webp');
  
 const FALLBACK_SPECIALS = [
@@ -78,6 +79,34 @@ export async function getMenu(env: any): Promise<{ categories: Category[]; items
     if (cats.results?.length) return { categories: cats.results as Category[], items: (items.results ?? []) as Item[] };
   } catch {}
   return { categories: FALLBACK_CATEGORIES, items: FALLBACK_ITEMS };
+}
+
+const FALLBACK_WELCOME_PHOTOS: WelcomePhoto[] = [1, 2, 3, 4].map((slot) => ({
+  slot,
+  photo_key: null,
+  alt: '',
+  caption: '',
+}));
+
+export async function getWelcomePhotos(env: any): Promise<WelcomePhoto[]> {
+  try {
+    const { results } = await env.DB.prepare(
+      'SELECT slot, photo_key, alt, caption FROM welcome_photos WHERE slot BETWEEN 1 AND 4 ORDER BY slot'
+    ).all();
+    const bySlot = new Map((results ?? []).map((row: any) => [Number(row.slot), row]));
+    return FALLBACK_WELCOME_PHOTOS.map((fallback) => {
+      const row: any = bySlot.get(fallback.slot);
+      return row
+        ? {
+            slot: fallback.slot,
+            photo_key: typeof row.photo_key === 'string' ? row.photo_key : null,
+            alt: typeof row.alt === 'string' ? row.alt : '',
+            caption: typeof row.caption === 'string' ? row.caption : '',
+          }
+        : fallback;
+    });
+  } catch {}
+  return FALLBACK_WELCOME_PHOTOS;
 }
  
 export async function getSetting(env: any, key: string, fallback = ''): Promise<string> {

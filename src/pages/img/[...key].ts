@@ -4,7 +4,7 @@ export const prerender = false;
 
 // Only serve keys we generate. Blocks traversal and stops the route
 // becoming a general-purpose reader for anything else in the bucket.
-const KEY_RE = /^(?:menu\/\d+\/[0-9a-f-]{36}(@600)?\.webp|facebook\/(?:\d{4}-\d{2}-\d{2}\/)?[A-Za-z0-9_-]+\.(?:jpg|png|webp))$/;
+const KEY_RE = /^(?:menu\/\d+\/[0-9a-f-]{36}(@600)?\.webp|welcome\/[0-9a-f-]{36}(@600)?\.webp|facebook\/(?:\d{4}-\d{2}-\d{2}\/)?[A-Za-z0-9_-]+\.(?:jpg|png|webp))$/;
 const NO_STORE_HEADERS = { 'cache-control': 'no-store' };
 
 export const GET: APIRoute = async ({ params, locals, request }) => {

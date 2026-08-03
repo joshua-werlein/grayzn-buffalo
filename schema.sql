@@ -13,6 +13,12 @@ CREATE TABLE IF NOT EXISTS items (
   active INTEGER NOT NULL DEFAULT 1,
   photo_key TEXT
 );
+CREATE TABLE IF NOT EXISTS welcome_photos (
+  slot INTEGER PRIMARY KEY CHECK (slot BETWEEN 1 AND 4),
+  photo_key TEXT,
+  alt TEXT NOT NULL DEFAULT '',
+  caption TEXT NOT NULL DEFAULT ''
+);
 -- Specials: one per day-of-week (0=Sun..6=Sat); tag e.g. 'Mexican Night'
 CREATE TABLE IF NOT EXISTS specials (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
