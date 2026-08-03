@@ -297,6 +297,10 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   #social .fb-footer .fb-date{font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--crimson);font-size:.76rem;line-height:1.1}
   #social .fb-footer .fb-link{display:inline-block;flex:none;padding:7px 10px;border-radius:999px;background:var(--btn-crimson);color:var(--cream);font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:.75rem;line-height:1}
   #social .fb-card-link:hover .fb-link,#social .fb-card-link:focus-visible .fb-link{background:var(--btn-crimson-hover)}
+  #social .fb-unavailable{max-width:680px;margin:0 auto;padding:28px;border-radius:14px;background:var(--cream-2);box-shadow:0 8px 22px rgba(36,22,16,.12);color:var(--ink-2);text-align:center;font-size:1.05rem;}
+  #social .fb-unavailable a{color:var(--btn-crimson);font-weight:700;text-underline-offset:3px;}
+  #social .fb-unavailable a:hover,
+  #social .fb-unavailable a:focus-visible{color:var(--btn-crimson-hover);}
   @media (max-width:1180px){#social .fb-grid,#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{max-width:820px;grid-template-columns:repeat(2,minmax(280px,1fr))}}
   @media (max-width:650px){#social .fb-grid,#social .fb-grid[data-count="2"],#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{max-width:400px;grid-template-columns:1fr}#social .fb-card img,#social .fb-text-media{height:clamp(320px,110vw,440px)}}
 </style>
@@ -305,30 +309,70 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   const social = document.getElementById('social');
   const feed = document.getElementById('fbFeed');
 
-  fetch('/api/facebook-feed', { headers: { Accept: 'application/json' } })
-    .then((response) => response.ok ? response.json() : null)
+  function showFacebookFallback() {
+    if (!feed || !social) return;
+
+    feed.replaceChildren();
+
+    const message = document.createElement('p');
+    message.className = 'fb-unavailable';
+    message.append('Facebook posts are temporarily unavailable. ');
+
+    const link = document.createElement('a');
+    link.href = 'https://www.facebook.com/grayznbuffalo/';
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = 'Visit our Facebook page for the latest updates.';
+
+    message.append(link);
+    feed.append(message);
+
+    delete feed.dataset.count;
+    social.hidden = false;
+  }
+
+  fetch('/api/facebook-feed', {
+    headers: { Accept: 'application/json' },
+  })
+    .then((response) => (response.ok ? response.json() : null))
     .then((payload) => {
-      if (!feed || !social || !Array.isArray(payload?.posts) || payload.posts.length === 0) return;
+      if (
+        !feed ||
+        !social ||
+        !Array.isArray(payload?.posts) ||
+        payload.posts.length === 0
+      ) {
+        showFacebookFallback();
+        return;
+      }
 
       feed.replaceChildren();
+
       for (const post of payload.posts) {
         if (!post?.permalinkUrl) continue;
+
         const card = document.createElement('article');
         card.className = 'fb-card';
+
         const cardLink = document.createElement('a');
         cardLink.className = 'fb-card-link';
         cardLink.href = post.permalinkUrl;
         cardLink.target = '_blank';
         cardLink.rel = 'noopener';
-        cardLink.setAttribute('aria-label', "Open Facebook post from Grayz'n Buffalo");
+        cardLink.setAttribute(
+          'aria-label',
+          "Open Facebook post from Grayz'n Buffalo"
+        );
 
         const header = document.createElement('div');
         header.className = 'fb-card-header';
+
         if (post.message) {
           const caption = document.createElement('p');
           caption.textContent = post.message;
           header.append(caption);
         }
+
         cardLink.append(header);
 
         if (post.imageUrl) {
@@ -347,15 +391,18 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
 
         const footer = document.createElement('div');
         footer.className = 'fb-footer';
+
         if (post.postedLabel) {
           const date = document.createElement('span');
           date.className = 'fb-date';
           date.textContent = post.postedLabel;
           footer.append(date);
         }
+
         const linkLabel = document.createElement('span');
         linkLabel.className = 'fb-link';
         linkLabel.textContent = 'View Post';
+
         footer.append(linkLabel);
         cardLink.append(footer);
         card.append(cardLink);
@@ -365,9 +412,9 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
       if (feed.childElementCount > 0) {
         feed.dataset.count = String(feed.childElementCount);
         social.hidden = false;
+      } else {
+        showFacebookFallback();
       }
     })
-    .catch(() => {
-      // A failed feed request leaves this optional section hidden.
-    });
+    .catch(showFacebookFallback);
 </script>

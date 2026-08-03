@@ -79,9 +79,24 @@ async function getCurrentFeed(env) {
   return (await env.FB_KV.get(FEED_KEY, 'json')) ?? emptyFeed();
 }
 function publicFeed(feed, now = new Date()) {
+  const updatedAt = Date.parse(feed.updatedAt);
+  const isStale =
+    !Number.isFinite(updatedAt) ||
+    now.getTime() - updatedAt > 4 * 24 * 60 * 60 * 1000;
+
+  if (isStale) {
+    return {
+      updatedAt: feed.updatedAt,
+      posts: [],
+    };
+  }
+
   return {
     updatedAt: feed.updatedAt,
-    posts: (feed.posts ?? []).map(({ imageKey: _imageKey, ...post }) => ({ ...post, postedLabel: postedLabel(post.createdTime, now) })),
+    posts: (feed.posts ?? []).map(({ imageKey: _imageKey, ...post }) => ({
+      ...post,
+      postedLabel: postedLabel(post.createdTime, now),
+    })),
   };
 }
 
