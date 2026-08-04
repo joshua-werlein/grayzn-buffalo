@@ -18,6 +18,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const response = await next();
   const headers = new Headers(response.headers);
   const pathname = context.url.pathname;
+  const isProductionHost = ['grayznbuffalo.com', 'www.grayznbuffalo.com'].includes(context.url.hostname);
 
   // Site-wide security headers.
   headers.set('X-Content-Type-Options', 'nosniff');
@@ -41,6 +42,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   // Prevent Astro API endpoints from being indexed.
   if (pathname === '/api' || pathname.startsWith('/api/')) {
+    headers.set('X-Robots-Tag', 'noindex, nofollow');
+  }
+
+  // Preview, staging, and temporary deployment URLs must never compete with the
+  // canonical production domain in search results.
+  if (!isProductionHost) {
     headers.set('X-Robots-Tag', 'noindex, nofollow');
   }
 

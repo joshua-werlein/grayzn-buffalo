@@ -3,11 +3,14 @@ import Base from '../layouts/Base.astro';
 const env = (Astro.locals as any).runtime?.env ?? {};
 const sitekey = env.TURNSTILE_SITEKEY;
 ---
-<Base title="Contact — Grayz'n Buffalo Bar & Grill">
-<section>
+<Base
+  title="Contact — Grayz'n Buffalo Bar & Grill"
+  description="Contact Grayz'n Buffalo Bar & Grill in Mondovi, WI for questions, events, menu information, or general inquiries."
+>
+<section class="contact-page">
   <div class="section-head">
-    <span class="kicker">Get in touch</span>
     <h2>Contact Us</h2>
+    <span class="kicker">To get in touch</span>
     <p>Questions, events, or just want to say hi — drop us a line or give us a call.</p>
   </div>
   <div class="contact-grid">
@@ -34,6 +37,7 @@ const sitekey = env.TURNSTILE_SITEKEY;
 </Base>
 
 <style>
+  .contact-page{padding-top:clamp(28px,4vw,48px)}
   .contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;max-width:1000px;margin:0 auto}
   .card{background:#fff;border-radius:14px;padding:28px;box-shadow:0 8px 22px rgba(36,22,16,.12)}
   .card.info h3{font-family:var(--display);margin-bottom:10px}

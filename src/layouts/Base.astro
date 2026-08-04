@@ -19,9 +19,10 @@ const nav = [
   { href: '/contact', label: 'Contact' },
 ];
 const path = Astro.url.pathname;
-const noindex = path.startsWith('/admin');
 const isHome = path === '/';
 const siteUrl = 'https://grayznbuffalo.com';
+const productionHosts = new Set(['grayznbuffalo.com', 'www.grayznbuffalo.com']);
+const noindex = path.startsWith('/admin') || !productionHosts.has(Astro.url.hostname);
 const canonicalUrl = new URL(path, siteUrl).toString();
 const socialImage = `${siteUrl}/social-share-black-white.png`;
 const socialImageAlt = "Grayz'n Buffalo Bar & Grill in Mondovi, Wisconsin";
