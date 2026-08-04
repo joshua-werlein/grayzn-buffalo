@@ -113,11 +113,13 @@ async function refreshFeed(env) {
     return;
   }
   if (!response.ok) {
-    const errorBody = await response.text();
+    const body = await response.json().catch(() => null);
 
     console.error('Facebook Graph API returned an error', {
       status: response.status,
-      body: errorBody,
+      code: body?.error?.code,
+      subcode: body?.error?.error_subcode,
+      message: body?.error?.message,
     });
 
     return;
