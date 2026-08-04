@@ -23,7 +23,7 @@ const noindex = path.startsWith('/admin');
 const isHome = path === '/';
 const siteUrl = 'https://grazynbuffalo.com';
 const canonicalUrl = new URL(path, siteUrl).toString();
-const socialImage = `${siteUrl}/social-share-cream.png`;
+const socialImage = `${siteUrl}/social-share-black-white.png`;
 const socialImageAlt = "Grayz'n Buffalo Bar & Grill in Mondovi, Wisconsin";
 const env = (Astro.locals as any).runtime?.env ?? {};
 const [announcement1, announcement2, announcement3, deliveryPaused] = await Promise.all([
