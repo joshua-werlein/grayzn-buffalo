@@ -297,10 +297,8 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   #social .fb-footer .fb-date{font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--crimson);font-size:.76rem;line-height:1.1}
   #social .fb-footer .fb-link{display:inline-block;flex:none;padding:7px 10px;border-radius:999px;background:var(--btn-crimson);color:var(--cream);font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:.75rem;line-height:1}
   #social .fb-card-link:hover .fb-link,#social .fb-card-link:focus-visible .fb-link{background:var(--btn-crimson-hover)}
-  #social .fb-unavailable{max-width:680px;margin:0 auto;padding:28px;border-radius:14px;background:var(--cream-2);box-shadow:0 8px 22px rgba(36,22,16,.12);color:var(--ink-2);text-align:center;font-size:1.05rem;}
-  #social .fb-unavailable a{color:var(--btn-crimson);font-weight:700;text-underline-offset:3px;}
-  #social .fb-unavailable a:hover,
-  #social .fb-unavailable a:focus-visible{color:var(--btn-crimson-hover);}
+  #social .fb-unavailable{grid-column:1 / -1;justify-self:center;width:min(100%,36rem);margin:4px auto 10px;padding:28px;display:flex;border-radius:14px;flex-direction:column;align-items:center;gap:8px;background:var(--cream-2);box-shadow:0 8px 22px rgba(36,22,16,.12);color:var(--ink-2);text-align:center;font-size:1.05rem;}
+  #social .fb-unavailable-arrow{color:var(--btn-crimson);font-family:var(--display);font-size:2rem;line-height:1;}
   @media (max-width:1180px){#social .fb-grid,#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{max-width:820px;grid-template-columns:repeat(2,minmax(280px,1fr))}}
   @media (max-width:650px){#social .fb-grid,#social .fb-grid[data-count="2"],#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{max-width:400px;grid-template-columns:1fr}#social .fb-card img,#social .fb-text-media{height:clamp(320px,110vw,440px)}}
 </style>
@@ -316,15 +314,14 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
 
     const message = document.createElement('p');
     message.className = 'fb-unavailable';
-    message.append('Facebook posts are temporarily unavailable. ');
+    message.textContent = 'Facebook posts are temporarily unavailable.';
 
-    const link = document.createElement('a');
-    link.href = 'https://www.facebook.com/grayznbuffalo/';
-    link.target = '_blank';
-    link.rel = 'noopener';
-    link.textContent = 'Visit our Facebook page for the latest updates.';
+    const arrow = document.createElement('span');
+    arrow.className = 'fb-unavailable-arrow';
+    arrow.setAttribute('aria-hidden', 'true');
+    arrow.textContent = '↓';
 
-    message.append(link);
+    message.append(arrow);
     feed.append(message);
 
     delete feed.dataset.count;
