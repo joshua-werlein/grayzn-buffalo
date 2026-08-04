@@ -65,20 +65,33 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
       <div class="strip-sequence">
         {stripPhotos.map((item) => (
           <div class="strip-item">
-            <img src={`/img/${thumbKey(item.photo_key!)}`} alt={item.name} width="250" height="170" loading="lazy" decoding="async" />
+            <img data-photo-route src={`/img/${thumbKey(item.photo_key!)}`} alt={item.name} width="250" height="170" loading="lazy" decoding="async" />
           </div>
         ))}
       </div>
       <div class="strip-sequence" aria-hidden="true">
         {stripPhotos.map((item) => (
           <div class="strip-item">
-            <img src={`/img/${thumbKey(item.photo_key!)}`} alt="" width="250" height="170" loading="lazy" decoding="async" />
+            <img data-photo-route src={`/img/${thumbKey(item.photo_key!)}`} alt="" width="250" height="170" loading="lazy" decoding="async" />
           </div>
         ))}
       </div>
     </div>
   </section>
 )}
+
+<script>
+  document.addEventListener('error', (event) => {
+    const image = event.target;
+    if (!(image instanceof HTMLImageElement) || !image.matches('img[data-photo-route]')) return;
+    if (image.dataset.photoRetried === 'true') return;
+
+    image.dataset.photoRetried = 'true';
+    const url = new URL(image.src, window.location.href);
+    url.searchParams.set('retry', '1');
+    image.src = url.toString();
+  }, true);
+</script>
 
 <section id="specials" class="dark">
   <div class="section-head reveal">
