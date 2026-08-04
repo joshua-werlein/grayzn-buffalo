@@ -48,7 +48,10 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   <div class="hero-copy">
     <div class="logo-wrap">
       <div class="sun" aria-hidden="true"></div>
-      <img class="hero-logo charge" src="/logo-ink-600.webp" srcset="/logo-ink-600.webp 600w, /logo-ink.webp 900w" sizes="(max-width: 640px) 88vw, min(78vw, 560px)" alt="" width="600" height="403" fetchpriority="high" decoding="async" />
+      <picture>
+        <source media="(max-width: 480px)" srcset="/logo-ink-400.webp" />
+        <img class="hero-logo charge" src="/logo-ink-600.webp" srcset="/logo-ink-600.webp 600w, /logo-ink.webp 900w" sizes="(max-width: 640px) 88vw, min(78vw, 560px)" alt="" width="600" height="403" fetchpriority="high" decoding="async" />
+      </picture>
       <div class="ground-fill" aria-hidden="true"></div>
     </div>
     <p class="hero-tag rise d1">Burgers, Wraps, Pizzas &amp; cold ones — open daily 10 AM to 2 AM.</p>

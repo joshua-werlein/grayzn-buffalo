@@ -5,7 +5,9 @@ export type PhotoOrientation = 'portrait' | 'square' | 'landscape';
 export type Converted = { full: Blob; thumb: Blob; width: number; height: number; orientation: PhotoOrientation };
 
 const MAX_INPUT_BYTES = 12 * 1024 * 1024;
-const QUALITY = 0.82;
+// Food photography remains crisp at this level while uploads are materially
+// smaller than the previous 0.82 setting.
+const QUALITY = 0.74;
 
 export async function convertPhoto(file: File, rotation = 0): Promise<Converted> {
   if (!file.type.startsWith('image/')) {

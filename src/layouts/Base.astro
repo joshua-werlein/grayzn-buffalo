@@ -6,7 +6,6 @@ import '@fontsource/barlow/latin-400.css';
 import '@fontsource/barlow/latin-500.css';
 import '@fontsource/barlow/latin-600.css';
 import '@fontsource/barlow/latin-700.css';
-import '@fontsource/barlow-condensed/latin-500.css';
 import '@fontsource/barlow-condensed/latin-600.css';
 import '@fontsource/barlow-condensed/latin-700.css';
 interface Props { title?: string; description?: string; }
@@ -69,7 +68,12 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
-{isHome && <link rel="preload" as="image" href="/logo-ink-600.webp" imagesrcset="/logo-ink-600.webp 600w, /logo-ink.webp 900w" imagesizes="(max-width: 640px) 88vw, min(78vw, 560px)" fetchpriority="high" />}
+{isHome && (
+  <>
+    <link rel="preload" as="image" href="/logo-ink-400.webp" media="(max-width: 480px)" fetchpriority="high" />
+    <link rel="preload" as="image" href="/logo-ink-600.webp" imagesrcset="/logo-ink-600.webp 600w, /logo-ink.webp 900w" imagesizes="(max-width: 640px) 88vw, min(78vw, 560px)" media="(min-width: 481px)" fetchpriority="high" />
+  </>
+)}
 {noindex && <meta name="robots" content="noindex, nofollow" />}
 <script is:inline type="application/ld+json" set:html={JSON.stringify({
   "@context": "https://schema.org",
