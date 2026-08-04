@@ -44,6 +44,18 @@ export const onRequest = defineMiddleware(async (context, next) => {
     headers.set('X-Robots-Tag', 'noindex, nofollow');
   }
 
+  if (pathname.startsWith('/img/')) {
+    headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+
+  if (pathname === '/menu.json') {
+    headers.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+  }
+
+  if (pathname === '/menu') {
+    headers.append('Link', '</menu.json>; rel="alternate"; type="application/json"');
+  }
+
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,

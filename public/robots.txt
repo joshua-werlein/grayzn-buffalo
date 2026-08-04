@@ -1,0 +1,7 @@
+# Public pages and the menu data feed are available to search and AI crawlers.
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+Sitemap: https://grayznbuffalo.com/sitemap.xml

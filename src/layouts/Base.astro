@@ -12,6 +12,7 @@ const nav = [
 ];
 const path = Astro.url.pathname;
 const noindex = path.startsWith('/admin');
+const isHome = path === '/';
 const env = (Astro.locals as any).runtime?.env ?? {};
 const [announcement1, announcement2, announcement3, deliveryPaused] = await Promise.all([
   getSetting(env, 'announcement_1', ''),
@@ -40,6 +41,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
+{isHome && <link rel="preload" as="image" href="/logo-ink.webp" fetchpriority="high" />}
 {noindex && <meta name="robots" content="noindex, nofollow" />}
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

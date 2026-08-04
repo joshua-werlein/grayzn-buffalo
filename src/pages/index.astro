@@ -48,7 +48,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   <div class="hero-copy">
     <div class="logo-wrap">
       <div class="sun" aria-hidden="true"></div>
-      <img class="hero-logo charge" src="/logo-ink.webp" alt="" width="900" height="605" />
+      <img class="hero-logo charge" src="/logo-ink.webp" alt="" width="900" height="605" fetchpriority="high" decoding="async" />
       <div class="ground-fill" aria-hidden="true"></div>
     </div>
     <p class="hero-tag rise d1">Burgers, Wraps, Pizzas &amp; cold ones — open daily 10 AM to 2 AM.</p>
@@ -65,14 +65,14 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
       <div class="strip-sequence">
         {stripPhotos.map((item) => (
           <div class="strip-item">
-            <img src={`/img/${thumbKey(item.photo_key!)}`} alt={item.name} width="250" height="170" loading="eager" decoding="async" />
+            <img src={`/img/${thumbKey(item.photo_key!)}`} alt={item.name} width="250" height="170" loading="lazy" decoding="async" />
           </div>
         ))}
       </div>
       <div class="strip-sequence" aria-hidden="true">
         {stripPhotos.map((item) => (
           <div class="strip-item">
-            <img src={`/img/${thumbKey(item.photo_key!)}`} alt="" width="250" height="170" loading="eager" decoding="async" />
+            <img src={`/img/${thumbKey(item.photo_key!)}`} alt="" width="250" height="170" loading="lazy" decoding="async" />
           </div>
         ))}
       </div>
@@ -167,9 +167,9 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
       loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
   </div>
   <div class="visit-cols reveal">
-    <div class="visit-block"><h4>Address</h4><p><a href="https://www.google.com/maps/search/?api=1&query=102+S+Eau+Claire+St,+Mondovi,+WI+54755" target="_blank" rel="noopener">102 S Eau Claire St, Mondovi, WI</a></p></div>
-    <div class="visit-block"><h4>Phone</h4><p><a href="tel:+17159264431">(715) 926-4431</a></p></div>
-    <div class="visit-block"><h4>Hours</h4><p>Open daily · 10 AM – 2 AM</p></div>
+    <div class="visit-block"><h3>Address</h3><p><a href="https://www.google.com/maps/search/?api=1&query=102+S+Eau+Claire+St,+Mondovi,+WI+54755" target="_blank" rel="noopener">102 S Eau Claire St, Mondovi, WI</a></p></div>
+    <div class="visit-block"><h3>Phone</h3><p><a href="tel:+17159264431">(715) 926-4431</a></p></div>
+    <div class="visit-block"><h3>Hours</h3><p>Open daily · 10 AM – 2 AM</p></div>
   </div>
 </section>
 </Base>

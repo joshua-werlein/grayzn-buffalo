@@ -5,7 +5,7 @@ const specials = await getSpecials(env);
 const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 ---
 <div class="board reveal" aria-label="Daily specials" data-specials={JSON.stringify(specials)}>
-  <div class="board-days" id="dayTabs"></div>
+  <div class="board-days" id="dayTabs" role="tablist" aria-label="Choose a day for specials"></div>
   <div class="board-body">
     <div class="board-day-label" id="boardDay"></div>
     <div class="board-services">
@@ -83,14 +83,22 @@ const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Satur
     elDay.textContent = (i === todayIdx ? 'Today · ' : '') + DAYS[i];
     showPart('lunch', s);
     showPart('night', s);
-    [...tabs.children].forEach((b,bi)=>b.setAttribute('aria-pressed', bi===i ? 'true':'false'));
+    [...tabs.children].forEach((b,bi)=>{
+      const selected = bi === i;
+      b.setAttribute('aria-selected', selected ? 'true' : 'false');
+      b.setAttribute('tabindex', selected ? '0' : '-1');
+    });
   }
   DAYS.forEach((d,i)=>{
     const b = document.createElement('button');
     b.setAttribute('role','tab');
+    b.setAttribute('aria-controls', 'specialsPanel');
     b.innerHTML = d.slice(0,3) + (i===todayIdx ? '<span class="today-dot">today</span>' : '');
     b.addEventListener('click', ()=>show(i));
     tabs.appendChild(b);
   });
+  const panel = document.querySelector('.board-body')!;
+  panel.id = 'specialsPanel';
+  panel.setAttribute('role', 'tabpanel');
   show(todayIdx);
 </script>
