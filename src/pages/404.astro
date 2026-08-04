@@ -1,0 +1,29 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base
+  title="Page Not Found | Grayz'n Buffalo"
+  description="That page wandered off. Head back to Grayz'n Buffalo Bar & Grill in Mondovi, WI."
+>
+  <section class="notfound">
+    <p class="code">404</p>
+    <h1>This one got away.</h1>
+    <p class="lead">The page you're after isn't here — but the buffalo's still Grayz'n.</p>
+    <div class="actions">
+      <a class="nf-btn nf-primary" href="/">Back home</a>
+      <a class="nf-btn" href="/menu">See the menu</a>
+      <a class="nf-btn" href="tel:+17159264431">Call (715) 926-4431</a>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .notfound{ max-width:640px; margin:0 auto; padding:clamp(64px,12vw,140px) 20px; text-align:center; }
+  .code{ font-family:var(--display); font-size:clamp(4rem,16vw,8rem); line-height:.9; color:var(--gold); margin:0; }
+  h1{ font-family:var(--display); font-size:clamp(1.8rem,5vw,2.8rem); margin:8px 0 12px; }
+  .lead{ color:var(--ink-2); font-size:1.05rem; margin:0 0 28px; }
+  .actions{ display:flex; flex-wrap:wrap; gap:12px; justify-content:center; }
+  .nf-btn{ display:inline-block; padding:12px 20px; border-radius:8px; font-weight:700; text-decoration:none; border:2px solid var(--ink); color:var(--ink); }
+  .nf-primary{ background:var(--btn-crimson); color:var(--cream); border-color:var(--btn-crimson); }
+  .nf-primary:hover{ background:var(--btn-crimson-hover); border-color:var(--btn-crimson-hover); }
+</style>
