@@ -48,7 +48,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   <div class="hero-copy">
     <div class="logo-wrap">
       <div class="sun" aria-hidden="true"></div>
-      <img class="hero-logo charge" src="/logo-ink.webp" alt="" width="900" height="605" fetchpriority="high" decoding="async" />
+      <img class="hero-logo charge" src="/logo-ink-600.webp" srcset="/logo-ink-600.webp 600w, /logo-ink.webp 900w" sizes="(max-width: 640px) 88vw, min(78vw, 560px)" alt="" width="600" height="403" fetchpriority="high" decoding="async" />
       <div class="ground-fill" aria-hidden="true"></div>
     </div>
     <p class="hero-tag rise d1">Burgers, Wraps, Pizzas &amp; cold ones — open daily 10 AM to 2 AM.</p>
@@ -100,18 +100,22 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     </div>
     {visibleWelcomeTiles.length > 0 && (
       <div class="photo-stack">
-      {visibleWelcomeTiles.map((photo) => (
+      {visibleWelcomeTiles.map((photo) => {
+        const photoKey = photo.photo_key;
+        if (!photoKey) return null;
+        return (
           <button
             class="photo reveal welcome-photo-reveal"
             type="button"
-            data-lightbox-src={`/img/${photo.photo_key}`}
+            data-lightbox-src={`/img/${photoKey}`}
             data-lightbox-alt={photo.alt}
             aria-label={photo.alt ? `View larger photo: ${photo.alt}` : 'View larger photo'}
           >
-            <img src={`/img/${thumbKey(photo.photo_key)}`} alt={photo.alt} loading="lazy" />
+            <img src={`/img/${thumbKey(photoKey)}`} alt={photo.alt} loading="lazy" />
             {photo.caption && <span>{photo.caption}</span>}
           </button>
-      ))}
+        );
+      })}
       </div>
     )}
   </div>
@@ -266,7 +270,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(20px,4vw,48px);
     max-width:900px;margin:38px auto 0;text-align:center;
   }
-  .visit-block h4{font-family:var(--label);font-weight:700;letter-spacing:.2em;text-transform:uppercase;font-size:.85rem;color:var(--amber);margin-bottom:6px}
+  .visit-block h3{font-family:var(--label);font-weight:700;letter-spacing:.2em;text-transform:uppercase;font-size:.85rem;color:var(--amber);margin-bottom:6px}
   .visit-block p{color:var(--cream-2);white-space:nowrap}
   .visit-block:first-child p{white-space:normal}
   .visit-block a{color:var(--gold);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1.5px;}
@@ -423,10 +427,14 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   }
 
   function scheduleFacebookFeed() {
-    if ('requestIdleCallback' in window) {
-      window.requestIdleCallback(loadFacebookFeed, { timeout: 4000 });
+    const requestIdleCallback = (globalThis as typeof globalThis & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+    }).requestIdleCallback;
+
+    if (requestIdleCallback) {
+      requestIdleCallback(loadFacebookFeed, { timeout: 4000 });
     } else {
-      window.setTimeout(loadFacebookFeed, 1500);
+      setTimeout(loadFacebookFeed, 1500);
     }
   }
 

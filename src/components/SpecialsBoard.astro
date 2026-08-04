@@ -2,7 +2,6 @@
 import { getSpecials } from '../lib/db';
 const env = (Astro.locals as any).runtime?.env ?? {};
 const specials = await getSpecials(env);
-const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 ---
 <div class="board reveal" aria-label="Daily specials" data-specials={JSON.stringify(specials)}>
   <div class="board-days" id="dayTabs" role="tablist" aria-label="Choose a day for specials"></div>
