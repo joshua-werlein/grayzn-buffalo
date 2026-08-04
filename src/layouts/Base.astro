@@ -140,6 +140,17 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   .staff-door:hover,
   .staff-door:focus-visible{opacity:1}
   .staff-door:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+  /* Offset the tap padding so the visible buffalo aligns with Facebook's edge. */
+  .staff-door{left:-10px}
+  .install-prompt{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));z-index:70;
+    width:min(calc(100% - 32px),420px);padding:16px;border:1px solid rgba(255,210,63,.45);border-radius:12px;
+    background:var(--ink);color:var(--cream);box-shadow:0 16px 38px rgba(0,0,0,.34);transform:translateX(-50%)}
+  .install-prompt[hidden]{display:none}
+  .install-prompt__copy{margin:0 42px 0 0;line-height:1.35}
+  .install-prompt__title{display:block;font-family:var(--label);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}
+  .install-prompt__dismiss{position:absolute;top:10px;right:10px;width:30px;height:30px;border:0;border-radius:50%;background:transparent;color:var(--cream);font-size:1.35rem;line-height:1;cursor:pointer}
+  .install-prompt__dismiss:hover,.install-prompt__dismiss:focus-visible{background:rgba(247,234,211,.15)}
+  .install-prompt button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
   @media (max-width:820px){ nav.site .brand img{height:52px} nav.site ul{gap:14px} nav.site a.link{font-size:.8rem} }
   @media (prefers-reduced-motion: reduce){
     .reveal{transition:none;opacity:1;transform:none}
@@ -193,6 +204,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     body{padding-bottom:calc(58px + env(safe-area-inset-bottom))}
 
     .footer-social svg{width:24px;height:24px}
+    .install-prompt{bottom:calc(78px + env(safe-area-inset-bottom))}
   }
 
   /* On narrow phones, give Facebook the maker-credit corner instead. */
@@ -270,7 +282,42 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   </div>
 </footer>
 
+<aside class="install-prompt" id="installPrompt" hidden aria-labelledby="installPromptTitle">
+  <button class="install-prompt__dismiss" type="button" aria-label="Dismiss install suggestion">×</button>
+  <p class="install-prompt__copy"><strong class="install-prompt__title" id="installPromptTitle">Add Grayz'n to your phone</strong><span id="installPromptMessage"></span></p>
+</aside>
+
 <script>
+  const installPrompt = document.getElementById('installPrompt');
+  const installPromptMessage = document.getElementById('installPromptMessage');
+  const installDismiss = installPrompt?.querySelector('.install-prompt__dismiss');
+  const installHintSeenKey = 'grayzn-install-hint-seen';
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isAndroid = /Android/.test(navigator.userAgent);
+
+  function hideInstallPrompt() {
+    installPrompt?.setAttribute('hidden', '');
+  }
+
+  function showInstallHint(message) {
+    if (!installPrompt || localStorage.getItem(installHintSeenKey) || isStandalone) return;
+    localStorage.setItem(installHintSeenKey, '1');
+    installPromptMessage.textContent = message;
+    installPrompt.removeAttribute('hidden');
+  }
+
+  installDismiss?.addEventListener('click', hideInstallPrompt);
+
+  if ((isIos || isAndroid) && !isStandalone) {
+    window.setTimeout(() => {
+      const instructions = isIos
+        ? ' On iPhone, tap Share, then “Add to Home Screen.”'
+        : ' On Android, open your browser menu and choose “Add to Home screen.”';
+      showInstallHint('Add Grayz’n Buffalo to your home screen for quick access to specials and the menu.' + instructions);
+    }, 15000);
+  }
+
   const io = new IntersectionObserver((entries)=>{
     entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
   },{threshold:.14});

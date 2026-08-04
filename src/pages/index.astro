@@ -99,12 +99,10 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
       <p>Longtime locals knew us as Gumby's. New name, same bar.</p>
     </div>
     {visibleWelcomeTiles.length > 0 && (
-      <div
-        class="photo-stack reveal"
-      >
+      <div class="photo-stack">
       {visibleWelcomeTiles.map((photo) => (
           <button
-            class="photo"
+            class="photo reveal welcome-photo-reveal"
             type="button"
             data-lightbox-src={`/img/${photo.photo_key}`}
             data-lightbox-alt={photo.alt}
@@ -234,8 +232,14 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .photo{height:100%;max-height:220px;min-height:0;aspect-ratio:4/3;border:0;border-radius:12px;position:relative;overflow:hidden;
     background:var(--cream-2);
     box-shadow:0 10px 26px rgba(36,22,16,.22);display:flex;align-items:flex-end;transition:transform .3s ease;cursor:zoom-in}
+  .photo.welcome-photo-reveal{opacity:0;transform:translateX(56px);transition:opacity .65s ease,transform .65s cubic-bezier(.19,.74,.36,1)}
+  .photo.welcome-photo-reveal.in{opacity:1;transform:translateX(0)}
+  .photo.welcome-photo-reveal:nth-child(2){transition-delay:.14s}
+  .photo.welcome-photo-reveal:nth-child(3){transition-delay:.28s}
+  .photo.welcome-photo-reveal:nth-child(4){transition-delay:.42s}
   .photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
   .photo:hover{transform:translateY(-6px)}
+  .photo.welcome-photo-reveal.in:hover{transform:translateY(-6px)}
   .photo:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
   .photo span{position:relative;width:100%;padding:10px 12px;font-family:var(--label);font-weight:600;font-size:.8rem;
     letter-spacing:.12em;text-transform:uppercase;color:var(--cream);
@@ -273,6 +277,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   @media (max-width:480px){ .hero{min-height:min(72vh,640px);min-height:min(72dvh,640px)} .logo-wrap{width:min(88vw,560px)} }
   @media (prefers-reduced-motion: reduce){
     .rise,.charge,.strip-track{animation:none;opacity:1;transform:none}
+    .photo.welcome-photo-reveal{opacity:1;transform:none;transition:none}
   }
 </style>
 
