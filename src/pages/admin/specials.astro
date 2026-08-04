@@ -28,6 +28,15 @@ if (Astro.request.method === 'POST') {
     notice = `${DAYS[Number(f.get('day_of_week'))]} updated.`;
   } catch { notice = 'Database not connected yet — see README.'; }
 }
+if (Astro.request.method === 'POST' && Astro.request.headers.get('accept')?.includes('application/json')) {
+  return new Response(JSON.stringify({
+    ok: !notice.startsWith('Database not connected yet'),
+    message: notice,
+  }), {
+    status: notice.startsWith('Database not connected yet') ? 503 : 200,
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+  });
+}
 let specials: any[] = [];
 try { specials = (await env.DB.prepare('SELECT * FROM specials ORDER BY day_of_week').all()).results ?? []; } catch {}
 const byDay = (i:number) => specials.find(s => s.day_of_week === i) ?? {
@@ -71,7 +80,56 @@ const byDay = (i:number) => specials.find(s => s.day_of_week === i) ?? {
     <p style="text-align:center"><a href="/admin">← Back to admin</a></p>
   </div>
 </section>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 </Base>
+
+<script>
+  const toastEl = document.getElementById('toast')!;
+  let toastTimer: number | undefined;
+
+  function toast(message: string, kind: 'ok' | 'bad' | 'busy' = 'ok') {
+    window.clearTimeout(toastTimer);
+    toastEl.textContent = message;
+    toastEl.className = `toast show ${kind}`;
+    toastEl.hidden = false;
+    if (kind !== 'busy') {
+      toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 3200);
+    }
+  }
+
+  document.querySelectorAll<HTMLFormElement>('.day-form').forEach((form) => {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+      const label = submit?.textContent ?? 'Save special';
+      if (submit) {
+        submit.disabled = true;
+        submit.textContent = 'Saving…';
+      }
+      form.setAttribute('aria-busy', 'true');
+
+      try {
+        toast('Saving special…', 'busy');
+        const response = await fetch('/admin/specials', {
+          method: 'POST',
+          headers: { Accept: 'application/json' },
+          body: new FormData(form),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.message ?? 'Could not save the special.');
+        toast(data.message ?? 'Special updated.');
+      } catch (error) {
+        toast(error instanceof Error ? error.message : 'Could not save the special.', 'bad');
+      } finally {
+        form.removeAttribute('aria-busy');
+        if (submit) {
+          submit.disabled = false;
+          submit.textContent = label;
+        }
+      }
+    });
+  });
+</script>
 
 <style>
   .admin-wrap{max-width:680px;margin:0 auto}
@@ -86,6 +144,11 @@ const byDay = (i:number) => specials.find(s => s.day_of_week === i) ?? {
   .day-form input{width:100%;padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream)}
   .hint{text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-2)}
   .day-form button{grid-column:1 / -1;justify-self:start}
+  .day-form[aria-busy="true"]{opacity:.7}
   .back{text-align:center;margin-top:10px}
+  .toast{position:fixed;left:50%;transform:translate(-50%,20px);bottom:calc(24px + env(safe-area-inset-bottom));z-index:200;max-width:min(92vw,420px);padding:14px 22px;border-radius:10px;text-align:center;font-family:var(--label);font-weight:700;letter-spacing:.04em;box-shadow:0 10px 30px rgba(0,0,0,.35);opacity:0;transition:opacity .22s ease,transform .22s ease;pointer-events:none}
+  .toast.show{opacity:1;transform:translate(-50%,0)}.toast.ok{background:var(--gold);color:var(--ink)}.toast.bad{background:#8d1626;color:var(--cream)}.toast.busy{background:var(--ink);color:var(--cream)}
+  @media (max-width:820px){.toast{bottom:calc(74px + env(safe-area-inset-bottom))}}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
   @media (max-width:620px){.day-form{grid-template-columns:1fr}}
 </style>
