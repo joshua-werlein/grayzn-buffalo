@@ -3,6 +3,12 @@ const GRAPH_API_VERSION = 'v26.0';
 const FEED_KEY = 'fb:feed';
 const MAX_POSTS = 4;
 
+const RESPONSE_SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Robots-Tag': 'noindex, nofollow',
+  'Referrer-Policy': 'no-referrer',
+};
+
 const datePartsFormatter = new Intl.DateTimeFormat('en-US', { timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' });
 const displayDateFormatter = new Intl.DateTimeFormat('en-US', { timeZone: TIME_ZONE, month: 'short', day: 'numeric' });
 
@@ -152,18 +158,41 @@ export default {
   async scheduled(_controller, env, ctx) {
     ctx.waitUntil(refreshFeed(env));
   },
-  async fetch(request, env, ctx) {
-    if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-    // The Chicago date in the cache key refreshes relative date labels at local midnight.
-    const url = new URL(request.url);
-    const cacheKey = new Request(`${url.origin}${url.pathname}?date=${chicagoDate()}`);
-    const cache = caches.default;
-    const cached = await cache.match(cacheKey);
-    if (cached) return cached;
-    // This handler only reads FB_KV. Graph API calls and KV writes are limited
-    // to refreshFeed(), which is called solely by the scheduled cron handler.
-    const response = Response.json(publicFeed(await getCurrentFeed(env)), { headers: { 'Cache-Control': 'public, max-age=60' } });
-    ctx.waitUntil(cache.put(cacheKey, response.clone()));
-    return response;
-  },
+ async fetch(request, env, ctx) {
+  if (request.method !== 'GET') {
+    return new Response('Method not allowed', {
+      status: 405,
+      headers: {
+        ...RESPONSE_SECURITY_HEADERS,
+        Allow: 'GET',
+      },
+    });
+  }
+
+  // The Chicago date in the cache key refreshes relative date labels at local midnight.
+  const url = new URL(request.url);
+  const cacheKey = new Request(
+    `${url.origin}${url.pathname}?date=${chicagoDate()}`,
+  );
+
+  const cache = caches.default;
+  const cached = await cache.match(cacheKey);
+
+  if (cached) return cached;
+
+  // This handler only reads FB_KV. Graph API calls and KV writes are limited
+  // to refreshFeed(), which is called solely by the scheduled cron handler.
+  const response = Response.json(
+    publicFeed(await getCurrentFeed(env)),
+    {
+      headers: {
+        ...RESPONSE_SECURITY_HEADERS,
+        'Cache-Control': 'public, max-age=60',
+      },
+    },
+  );
+
+  ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  return response;
+},
 };
