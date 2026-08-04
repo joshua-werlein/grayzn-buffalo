@@ -34,7 +34,7 @@ const lateNightColumns = splitColumns(lateNight);
   title="Menu — Grayz'n Buffalo Bar & Grill"
   description="Full menu for Grayz'n Buffalo Bar & Grill in Mondovi, WI — burgers, pizzas, baskets, wraps, salads and more. Plus a late-night menu after the grill closes."
 >
-<section>
+<section class="menu-top">
   <div class="section-head">
     <h2>The Menu</h2>
     <span class="kicker">From the kitchen</span>
@@ -150,6 +150,8 @@ const lateNightColumns = splitColumns(lateNight);
 </Base>
  
 <style>
+  .menu-top{padding-top:clamp(28px,4vw,48px)}
+
   /* ── tabs ── */
   .tabs{display:flex;justify-content:center;gap:10px;margin-bottom:26px;flex-wrap:wrap}
   .tabs .tab{font-family:var(--label);font-weight:700;letter-spacing:.14em;
