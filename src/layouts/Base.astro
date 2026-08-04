@@ -146,8 +146,11 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     width:min(calc(100% - 32px),420px);padding:16px;border:1px solid rgba(255,210,63,.45);border-radius:12px;
     background:var(--ink);color:var(--cream);box-shadow:0 16px 38px rgba(0,0,0,.34);transform:translateX(-50%)}
   .install-prompt[hidden]{display:none}
-  .install-prompt__copy{margin:0 42px 0 0;line-height:1.35}
+  .install-prompt__copy{margin:0 42px 12px 0;line-height:1.35}
   .install-prompt__title{display:block;font-family:var(--label);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}
+  .install-prompt__actions{display:flex;align-items:center;gap:10px}
+  .install-prompt__install{padding:9px 13px;border:0;border-radius:7px;background:var(--btn-crimson);color:var(--cream);font:700 .82rem/1 var(--label);letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+  .install-prompt__install:hover,.install-prompt__install:focus-visible{background:var(--btn-crimson-hover)}
   .install-prompt__dismiss{position:absolute;top:10px;right:10px;width:30px;height:30px;border:0;border-radius:50%;background:transparent;color:var(--cream);font-size:1.35rem;line-height:1;cursor:pointer}
   .install-prompt__dismiss:hover,.install-prompt__dismiss:focus-visible{background:rgba(247,234,211,.15)}
   .install-prompt button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
@@ -285,36 +288,71 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 <aside class="install-prompt" id="installPrompt" hidden aria-labelledby="installPromptTitle">
   <button class="install-prompt__dismiss" type="button" aria-label="Dismiss install suggestion">×</button>
   <p class="install-prompt__copy"><strong class="install-prompt__title" id="installPromptTitle">Add Grayz'n to your phone</strong><span id="installPromptMessage"></span></p>
+  <div class="install-prompt__actions" id="installPromptActions" hidden>
+    <button class="install-prompt__install" id="installPromptInstall" type="button">Install App</button>
+  </div>
 </aside>
 
 <script>
   const installPrompt = document.getElementById('installPrompt');
   const installPromptMessage = document.getElementById('installPromptMessage');
+  const installPromptActions = document.getElementById('installPromptActions');
+  const installPromptInstall = document.getElementById('installPromptInstall');
   const installDismiss = installPrompt?.querySelector('.install-prompt__dismiss');
-  const installHintSeenKey = 'grayzn-install-hint-seen';
+  const installDismissKey = 'grayzn-install-prompt-dismissed';
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   const isAndroid = /Android/.test(navigator.userAgent);
+  const isMobile = (isIos || isAndroid) && window.matchMedia('(max-width: 820px)').matches;
+  let deferredInstallPrompt = null;
+  let installHintReady = false;
 
-  function hideInstallPrompt() {
+  function hideInstallPrompt(remember = false) {
     installPrompt?.setAttribute('hidden', '');
+    if (remember) localStorage.setItem(installDismissKey, '1');
   }
 
-  function showInstallHint(message) {
-    if (!installPrompt || localStorage.getItem(installHintSeenKey) || isStandalone) return;
-    localStorage.setItem(installHintSeenKey, '1');
+  function showInstallPrompt(message, showInstallButton = false) {
+    if (!installPrompt || localStorage.getItem(installDismissKey) || isStandalone) return;
     installPromptMessage.textContent = message;
+    installPromptActions?.toggleAttribute('hidden', !showInstallButton);
     installPrompt.removeAttribute('hidden');
+    window.setTimeout(() => hideInstallPrompt(true), 20000);
   }
 
-  installDismiss?.addEventListener('click', hideInstallPrompt);
+  installDismiss?.addEventListener('click', () => hideInstallPrompt(true));
 
-  if ((isIos || isAndroid) && !isStandalone) {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js').catch(() => {}));
+  }
+
+  window.addEventListener('beforeinstallprompt', (event) => {
+    if (!isAndroid || !isMobile || isStandalone) return;
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    if (installHintReady) {
+      showInstallPrompt('Add Grayz’n Buffalo to your home screen for quick access to specials and the menu.', true);
+    }
+  });
+
+  installPromptInstall?.addEventListener('click', async () => {
+    if (!deferredInstallPrompt) return;
+    await deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    hideInstallPrompt(true);
+  });
+
+  window.addEventListener('appinstalled', () => hideInstallPrompt(true));
+
+  if (isMobile && !isStandalone) {
     window.setTimeout(() => {
-      const instructions = isIos
-        ? ' On iPhone, tap Share, then “Add to Home Screen.”'
-        : ' On Android, open your browser menu and choose “Add to Home screen.”';
-      showInstallHint('Add Grayz’n Buffalo to your home screen for quick access to specials and the menu.' + instructions);
+      installHintReady = true;
+      if (isIos) {
+        showInstallPrompt('Tap Share → Add to Home Screen.');
+      } else if (deferredInstallPrompt) {
+        showInstallPrompt('Add Grayz’n Buffalo to your home screen for quick access to specials and the menu.', true);
+      }
     }, 15000);
   }
 
