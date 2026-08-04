@@ -108,7 +108,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
             data-lightbox-alt={photo.alt}
             aria-label={photo.alt ? `View larger photo: ${photo.alt}` : 'View larger photo'}
           >
-            <img src={`/img/${photo.photo_key}`} alt={photo.alt} loading="lazy" />
+            <img src={`/img/${thumbKey(photo.photo_key)}`} alt={photo.alt} loading="lazy" />
             {photo.caption && <span>{photo.caption}</span>}
           </button>
       ))}
@@ -333,9 +333,10 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     social.hidden = false;
   }
 
-  fetch('/api/facebook-feed', {
-    headers: { Accept: 'application/json' },
-  })
+  function loadFacebookFeed() {
+    fetch('/api/facebook-feed', {
+      headers: { Accept: 'application/json' },
+    })
     .then((response) => (response.ok ? response.json() : null))
     .then((payload) => {
       if (
@@ -418,5 +419,20 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
         showFacebookFallback();
       }
     })
-    .catch(showFacebookFallback);
+      .catch(showFacebookFallback);
+  }
+
+  function scheduleFacebookFeed() {
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(loadFacebookFeed, { timeout: 4000 });
+    } else {
+      window.setTimeout(loadFacebookFeed, 1500);
+    }
+  }
+
+  if (document.readyState === 'complete') {
+    scheduleFacebookFeed();
+  } else {
+    window.addEventListener('load', scheduleFacebookFeed, { once: true });
+  }
 </script>

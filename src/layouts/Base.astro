@@ -1,6 +1,14 @@
 ---
 import { getSetting } from '../lib/db';
 import ImageLightbox from '../components/ImageLightbox.astro';
+import '@fontsource/alfa-slab-one/latin-400.css';
+import '@fontsource/barlow/latin-400.css';
+import '@fontsource/barlow/latin-500.css';
+import '@fontsource/barlow/latin-600.css';
+import '@fontsource/barlow/latin-700.css';
+import '@fontsource/barlow-condensed/latin-500.css';
+import '@fontsource/barlow-condensed/latin-600.css';
+import '@fontsource/barlow-condensed/latin-700.css';
 interface Props { title?: string; description?: string; }
 const { title = "Grayz'n Buffalo Bar & Grill — Mondovi, WI",
         description = "Grayz'n Buffalo Bar & Grill in Mondovi, WI. Burgers, Wraps, Pizzas & cold ones — open daily 10 AM to 2 AM." } = Astro.props;
@@ -43,9 +51,6 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 <link rel="manifest" href="/site.webmanifest" />
 {isHome && <link rel="preload" as="image" href="/logo-ink.webp" fetchpriority="high" />}
 {noindex && <meta name="robots" content="noindex, nofollow" />}
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet" />
 <script type="application/ld+json" set:html={JSON.stringify({
   "@context": "https://schema.org",
   "@type": "BarOrPub",
