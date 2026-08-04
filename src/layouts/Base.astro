@@ -50,9 +50,19 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   "name": "Grayz'n Buffalo Bar & Grill",
   "address": { "@type": "PostalAddress", "streetAddress": "102 S Eau Claire St", "addressLocality": "Mondovi", "addressRegion": "WI", "postalCode": "54755", "addressCountry": "US" },
   "telephone": "+1-715-926-4431",
-  "openingHours": "Mo-Su 10:00-02:00",
+  "openingHoursSpecification": [
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
+      "opens": "10:00",
+      "closes": "02:00"
+    }
+  ],
   "servesCuisine": "American",
-  "url": "https://grayznbuffalo.com"
+  "menu": "https://grayznbuffalo.com/menu",
+  "url": "https://grayznbuffalo.com",
+  "image": "https://grayznbuffalo.com/apple-touch-icon.png",
+  "sameAs": ["https://www.facebook.com/grayznbuffalo"]
 })} />
 <style is:global>
   :root{
