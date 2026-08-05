@@ -13,10 +13,13 @@ const welcomeFallbackPhotos = items
   .sort((a, b) => b.id - a.id)
   .slice(0, 4);
 const welcomeTiles = welcomePhotos.map((photo, index) => {
-  if (photo.photo_key) return { photo, menuItem: null };
+  // A stored welcome photo key is the authoritative record of a client upload.
+  // Only an empty welcome slot may borrow an active menu item's image.
+  if (photo.photo_key) return { photo, source: 'client-upload' as const, menuItem: null };
   const fallback = welcomeFallbackPhotos[index];
   return fallback?.photo_key
     ? {
+        source: 'menu-fallback' as const,
         photo: {
           slot: photo.slot,
           photo_key: fallback.photo_key,
@@ -66,7 +69,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
 </header>
 
 {stripPhotos.length > 0 && (
-  <section class="strip" aria-label="Menu photos">
+  <section class="strip" aria-label="Menu photos" tabindex="0">
     <div class="strip-track">
       <div class="strip-sequence">
         {stripPhotos.map((item) => (
@@ -123,14 +126,23 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
         const { photo, menuItem } = tile;
         const photoKey = photo.photo_key;
         if (!photoKey) return null;
+        const menuAction =
+          tile.source === 'menu-fallback' &&
+          menuItem?.active === 1 &&
+          menuItem.photo_key === photoKey
+            ? {
+                url: `/menu#menu-item-${menuItem.id}`,
+                label: `See ${menuItem.name} on the Menu`,
+              }
+            : null;
         return (
           <button
             class="photo reveal welcome-photo-reveal"
             type="button"
             data-lightbox-src={`/img/${photoKey}`}
             data-lightbox-alt={photo.alt}
-            data-lightbox-action-url={menuItem ? `/menu#menu-item-${menuItem.id}` : undefined}
-            data-lightbox-action-label={menuItem ? `See ${menuItem.name} on the Menu` : undefined}
+            data-lightbox-action-url={menuAction?.url}
+            data-lightbox-action-label={menuAction?.label}
             aria-label={photo.alt ? `View larger photo: ${photo.alt}` : 'View larger photo'}
           >
             <img src={`/img/${thumbKey(photoKey)}`} alt={photo.alt} loading="lazy" />
@@ -237,7 +249,6 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .strip{background:var(--ink);padding:18px 0;overflow:hidden}
   .strip-track{display:flex;width:max-content;animation:slide 36s linear infinite}
   .strip-sequence{display:flex;gap:16px;padding-right:16px;flex:none}
-  .strip:hover .strip-track{animation-play-state:paused}
   @keyframes slide{from{transform:translateX(0)}to{transform:translateX(-50%)}}
   .strip-item{width:250px;height:170px;border-radius:10px;overflow:hidden;flex:none;
     border:3px solid var(--cream);box-shadow:0 6px 16px rgba(0,0,0,.4);
@@ -302,7 +313,14 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   @media (max-width:480px){ .hero{min-height:min(72vh,640px);min-height:min(72dvh,640px)} .logo-wrap{width:min(88vw,560px)} }
   @media (prefers-reduced-motion: reduce){
     .rise,.charge,.strip-track{animation:none;opacity:1;transform:none}
+    .strip{overflow-x:auto;overscroll-behavior-x:contain}
+    .strip-sequence[aria-hidden="true"]{display:none}
     .photo.welcome-photo-reveal{opacity:1;transform:none;transition:none}
+  }
+  @media (hover: hover) and (pointer: fine){
+    .strip:hover .strip-track,
+    .strip:focus .strip-track{animation-play-state:paused}
+    .strip:focus-visible{outline:2px solid var(--cream);outline-offset:-2px}
   }
 </style>
 
