@@ -4,6 +4,7 @@
     <h2 id="image-lightbox-title" class="sr-only">Image preview</h2>
     <button class="image-lightbox__close" type="button" data-lightbox-close aria-label="Close image preview">&times;</button>
     <img class="image-lightbox__image" data-lightbox-image alt="" />
+    <a class="image-lightbox__action btn btn-primary" data-lightbox-action hidden></a>
   </section>
 </div>
 
@@ -14,7 +15,8 @@
 
     const image = lightbox.querySelector<HTMLImageElement>('[data-lightbox-image]');
     const closeButton = lightbox.querySelector<HTMLButtonElement>('.image-lightbox__close');
-    if (!image || !closeButton) return;
+    const action = lightbox.querySelector<HTMLAnchorElement>('[data-lightbox-action]');
+    if (!image || !closeButton || !action) return;
     let trigger: HTMLElement | null = null;
     let closeTimer: number | undefined;
 
@@ -30,6 +32,8 @@
       closeTimer = window.setTimeout(() => {
         lightbox.hidden = true;
         image.removeAttribute('src');
+        action.removeAttribute('href');
+        action.hidden = true;
       }, 180);
       trigger?.focus();
     };
@@ -41,6 +45,23 @@
       trigger = nextTrigger;
       image.src = src;
       image.alt = nextTrigger.dataset.lightboxAlt ?? '';
+      const actionUrl = nextTrigger.dataset.lightboxActionUrl;
+      if (actionUrl) {
+        action.href = actionUrl;
+        action.textContent = nextTrigger.dataset.lightboxActionLabel ?? 'View details';
+        action.setAttribute('aria-label', action.textContent);
+        if (nextTrigger.dataset.lightboxActionNewTab === 'true') {
+          action.target = '_blank';
+          action.rel = 'noopener';
+        } else {
+          action.removeAttribute('target');
+          action.removeAttribute('rel');
+        }
+        action.hidden = false;
+      } else {
+        action.removeAttribute('href');
+        action.hidden = true;
+      }
       lightbox.hidden = false;
       document.body.classList.add('lightbox-open');
       requestAnimationFrame(() => lightbox.classList.add('is-open'));
@@ -95,10 +116,11 @@
   .image-lightbox__backdrop{position:absolute;inset:0;background:rgba(20,12,8,.82)}
   .image-lightbox__dialog{position:relative;display:grid;place-items:center;max-width:min(1100px,100%);max-height:100%;transform:scale(.97);transition:transform .18s ease}
   .image-lightbox.is-open .image-lightbox__dialog{transform:scale(1)}
-  .image-lightbox__image{display:block;max-width:100%;max-height:calc(100vh - clamp(36px,8vw,112px));width:auto;height:auto;border-radius:10px;box-shadow:0 18px 56px rgba(0,0,0,.5);background:var(--ink)}
+  .image-lightbox__image{display:block;max-width:100%;max-height:calc(100vh - clamp(112px,14vw,164px));width:auto;height:auto;border-radius:10px;box-shadow:0 18px 56px rgba(0,0,0,.5);background:var(--ink)}
   .image-lightbox__close{position:absolute;top:10px;right:10px;z-index:1;width:44px;height:44px;border:2px solid var(--cream);border-radius:50%;background:var(--ink);color:var(--cream);font:400 2rem/1 var(--body);cursor:pointer;box-shadow:0 3px 14px rgba(0,0,0,.4)}
   .image-lightbox__close:hover{background:var(--btn-crimson)}
   .image-lightbox__close:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+  .image-lightbox__action{margin-top:14px;text-align:center}
   :global(body.lightbox-open){overflow:hidden}
   @media (prefers-reduced-motion:reduce){.image-lightbox,.image-lightbox__dialog{transition:none}}
 </style>

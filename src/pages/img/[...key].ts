@@ -4,8 +4,18 @@ export const prerender = false;
 
 // Only serve keys we generate. Blocks traversal and stops the route
 // becoming a general-purpose reader for anything else in the bucket.
-const KEY_RE = /^(?:menu\/\d+\/[0-9a-f-]{36}(@600)?\.webp|welcome\/[0-9a-f-]{36}(@600)?\.webp|facebook\/(?:\d{4}-\d{2}-\d{2}\/)?[A-Za-z0-9_-]+\.(?:jpg|png|webp))$/;
+const KEY_RE = /^(?:menu\/\d+\/[0-9a-f-]{36}(@600)?\.webp|welcome\/[0-9a-f-]{36}(@600)?\.webp|facebook\/(?:\d{4}-\d{2}-\d{2}\/)?[A-Za-z0-9_-]+\.(?:jpg|png|webp|gif|bin))$/;
 const NO_STORE_HEADERS = { 'cache-control': 'no-store' };
+
+const contentTypeForKey = (key: string) => {
+  const extension = key.split('.').pop()?.toLowerCase();
+  if (extension === 'jpg') return 'image/jpeg';
+  if (extension === 'png') return 'image/png';
+  if (extension === 'webp') return 'image/webp';
+  if (extension === 'gif') return 'image/gif';
+  if (extension === 'bin') return 'application/octet-stream';
+  return 'image/webp';
+};
 
 export const GET: APIRoute = async ({ params, locals, request }) => {
   const env = (locals as any).runtime?.env ?? {};
@@ -27,7 +37,7 @@ export const GET: APIRoute = async ({ params, locals, request }) => {
   headers.set('etag', obj.httpEtag);
   // Successful image objects are immutable at their key; errors must never be cached.
   headers.set('cache-control', 'public, max-age=31536000, immutable');
-  if (!headers.has('content-type')) headers.set('content-type', 'image/webp');
+  if (!headers.has('content-type')) headers.set('content-type', contentTypeForKey(key));
 
   // onlyIf matched the client's If-None-Match: object comes back with no body.
   if (!('body' in obj) || !obj.body) return new Response(null, { status: 304, headers });

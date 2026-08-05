@@ -92,7 +92,7 @@ const lateNightColumns = splitColumns(lateNight);
               <h3>{g.cat.name}</h3>
               <ul class="menu-list">
                 {g.items.map((it) => (
-                  <li class="item">
+                  <li class="item" id={`menu-item-${it.id}`}>
                     {it.photo_key && (
                       <button class="item-photo-trigger" type="button" data-lightbox-src={`/img/${it.photo_key}`} data-lightbox-alt={it.name} aria-label={`View larger photo of ${it.name}`}>
                         <img class="item-photo" src={`/img/${thumbKey(it.photo_key)}`} alt="" width="72" height="56" loading="lazy" decoding="async" />
@@ -190,7 +190,8 @@ const lateNightColumns = splitColumns(lateNight);
  
   .menu-list{list-style:none;margin:0;padding:0}
   .item{display:flex;align-items:center;gap:14px;
-    padding:14px 4px;border-bottom:1px dashed rgba(36,22,16,.22)}
+    padding:14px 4px;border-bottom:1px dashed rgba(36,22,16,.22);scroll-margin-top:84px}
+  .item:target{outline:3px solid var(--gold);outline-offset:5px;border-radius:6px}
   .item:last-child{border-bottom:none}
   .item-photo-trigger{flex:0 0 72px;width:72px;height:56px;padding:0;border:0;border-radius:8px;background:transparent;cursor:zoom-in}
   .item-photo-trigger:focus-visible{outline:3px solid var(--gold);outline-offset:3px}

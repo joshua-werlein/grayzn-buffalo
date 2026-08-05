@@ -35,8 +35,51 @@ function cleanMessage(value) {
   // if Meta includes one in a future response shape.
   return value.replace(/(?:\r?\n)?(?:See more|See less)\s*$/i, '').trim();
 }
-function imageKey(postId) {
-  return `facebook/${postId.replace(/[^A-Za-z0-9_-]/g, '_')}.jpg`;
+const IMAGE_FORMATS = {
+  'image/jpeg': { extension: 'jpg', contentType: 'image/jpeg' },
+  'image/png': { extension: 'png', contentType: 'image/png' },
+  'image/webp': { extension: 'webp', contentType: 'image/webp' },
+  'image/gif': { extension: 'gif', contentType: 'image/gif' },
+};
+
+export function imageFormat(contentType) {
+  const normalized = typeof contentType === 'string' ? contentType.split(';', 1)[0].trim().toLowerCase() : '';
+  return IMAGE_FORMATS[normalized] ?? {
+    extension: 'bin',
+    contentType: normalized.startsWith('image/') ? normalized : 'application/octet-stream',
+  };
+}
+
+function normalizedImageUrl(value) {
+  try {
+    const url = new URL(value);
+    // Facebook CDN query strings can be transient. The path is the more
+    // stable fallback identity when Graph does not provide updated_time.
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return String(value ?? '');
+  }
+}
+
+export function imageSourceVersion(post) {
+  if (typeof post.updated_time === 'string' && post.updated_time) return `updated:${post.updated_time}`;
+  return `image:${normalizedImageUrl(post.full_picture)}`;
+}
+
+export function shouldRefreshImage(post, previousPost) {
+  if (!post.full_picture) return false;
+  if (!imageKeyFromPost(previousPost ?? {})) return true;
+  return previousPost?.imageSourceVersion !== imageSourceVersion(post);
+}
+
+async function versionToken(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest)).slice(0, 10).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export function imageKey(postId, token, extension) {
+  return `facebook/${postId.replace(/[^A-Za-z0-9_-]/g, '_')}-${token}.${extension}`;
 }
 function imageKeyFromPost(post) {
   if (typeof post.imageKey === 'string' && post.imageKey.startsWith('facebook/')) return post.imageKey;
@@ -49,34 +92,47 @@ function emptyFeed() {
 function postSetChanged(previousPosts, posts) {
   return previousPosts.map((post) => post.id).join('|') !== posts.map((post) => post.id).join('|');
 }
-function needsImageKeyMigration(posts) {
-  return posts.some((post) => {
-    const key = imageKeyFromPost(post);
-    return key && key !== imageKey(post.id);
-  });
-}
-
 async function saveImage(post, env, previousPost) {
   if (!post.full_picture) return { imageKey: null, imageUrl: null };
-  const key = imageKey(post.id);
-  if (imageKeyFromPost(previousPost ?? {}) === key) return { imageKey: key, imageUrl: `/img/${key}` };
+  const sourceVersion = imageSourceVersion(post);
+  if (!shouldRefreshImage(post, previousPost)) {
+    const key = imageKeyFromPost(previousPost);
+    return { imageKey: key, imageUrl: `/img/${key}`, imageSourceVersion: sourceVersion };
+  }
   try {
     const response = await fetch(post.full_picture);
     if (!response.ok) throw new Error(`Facebook image returned ${response.status}`);
-    await env.PHOTOS.put(key, response.body, { httpMetadata: { contentType: response.headers.get('content-type') || 'image/jpeg' } });
-    return { imageKey: key, imageUrl: `/img/${key}` };
+    const format = imageFormat(response.headers.get('content-type'));
+    const key = imageKey(post.id, await versionToken(sourceVersion), format.extension);
+    await env.PHOTOS.put(key, response.body, { httpMetadata: { contentType: format.contentType } });
+    return { imageKey: key, imageUrl: `/img/${key}`, imageSourceVersion: sourceVersion };
   } catch (error) {
     const previousKey = imageKeyFromPost(previousPost ?? {});
     console.error('Unable to store Facebook post image', { postId: post.id, error: String(error) });
-    return previousKey ? { imageKey: previousKey, imageUrl: `/img/${previousKey}` } : { imageKey: key, imageUrl: null };
+    return previousKey
+      ? { imageKey: previousKey, imageUrl: `/img/${previousKey}`, imageSourceVersion: previousPost?.imageSourceVersion }
+      : { imageKey: null, imageUrl: null, imageSourceVersion: sourceVersion };
   }
 }
 
-async function pruneFeedImages(env, liveKeys) {
+function safePostId(postId) {
+  return String(postId).replace(/[^A-Za-z0-9_-]/g, '_');
+}
+
+function belongsToLivePost(key, livePostIds) {
+  return Array.from(livePostIds).some((postId) => {
+    const base = `facebook/${safePostId(postId)}`;
+    return key.startsWith(`${base}-`) || key.startsWith(`${base}.`);
+  });
+}
+
+async function pruneFeedImages(env, livePostIds) {
   let cursor;
   do {
     const page = await env.PHOTOS.list({ prefix: 'facebook/', cursor });
-    const staleKeys = page.objects.map((object) => object.key).filter((key) => !liveKeys.has(key));
+    // Keep every version for posts still in the feed. This preserves local
+    // cache compatibility when a post image refreshes to a new versioned key.
+    const staleKeys = page.objects.map((object) => object.key).filter((key) => !belongsToLivePost(key, livePostIds));
     await Promise.all(staleKeys.map((key) => env.PHOTOS.delete(key)));
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
@@ -99,7 +155,7 @@ function publicFeed(feed, now = new Date()) {
 
   return {
     updatedAt: feed.updatedAt,
-    posts: (feed.posts ?? []).map(({ imageKey: _imageKey, ...post }) => ({
+    posts: (feed.posts ?? []).map(({ imageKey: _imageKey, imageSourceVersion: _imageSourceVersion, ...post }) => ({
       ...post,
       postedLabel: postedLabel(post.createdTime, now),
     })),
@@ -110,7 +166,7 @@ async function refreshFeed(env) {
   const previous = await getCurrentFeed(env);
   const previousById = new Map((previous.posts ?? []).map((post) => [post.id, post]));
   const url = new URL(`https://graph.facebook.com/${GRAPH_API_VERSION}/${env.FB_PAGE_ID}/posts`);
-  url.search = new URLSearchParams({ fields: 'id,message,created_time,permalink_url,full_picture', limit: String(MAX_POSTS) }).toString();
+  url.search = new URLSearchParams({ fields: 'id,message,created_time,updated_time,permalink_url,full_picture', limit: String(MAX_POSTS) }).toString();
   let response;
   try {
     response = await fetch(url, { headers: { Authorization: `Bearer ${env.FB_SYSTEM_TOKEN}` } });
@@ -143,9 +199,9 @@ async function refreshFeed(env) {
     permalinkUrl: post.permalink_url,
     ...(await saveImage(post, env, previousById.get(post.id))),
   })));
-  if (postSetChanged(previous.posts ?? [], posts) || needsImageKeyMigration(previous.posts ?? [])) {
+  if (postSetChanged(previous.posts ?? [], posts)) {
     try {
-      await pruneFeedImages(env, new Set(posts.map((post) => post.imageKey).filter(Boolean)));
+      await pruneFeedImages(env, new Set(posts.map((post) => post.id)));
     } catch (error) {
       // A later scheduled refresh retries cleanup; a failed prune never blocks the feed.
       console.error('Unable to prune stale Facebook feed images', String(error));
