@@ -19,6 +19,7 @@ async function dropPhoto(key: string | null | undefined) {
 
 let notice = '';
 let problem = '';
+const wantsJson = Astro.request.headers.get('accept')?.includes('application/json');
 
 // Photo upload/remove goes to /api/menu-photo so the page can update in place.
 // These handlers cover everything else.
@@ -37,7 +38,7 @@ if (Astro.request.method === 'POST') {
       ).run();
 
       const id = Number(result.meta?.last_row_id);
-      if (Astro.request.headers.get('accept')?.includes('application/json')) {
+      if (wantsJson) {
         return new Response(JSON.stringify({ ok: true, id, message: 'Item added.' }), {
           headers: { 'content-type': 'application/json' },
         });
@@ -67,9 +68,14 @@ if (Astro.request.method === 'POST') {
       await env.DB.prepare('UPDATE items SET active = 1 - active WHERE id = ?1').bind(Number(f.get('id'))).run();
       notice = 'Item updated.';
     }
+    if (wantsJson) {
+      return new Response(JSON.stringify({ ok: true, action, id: Number(f.get('id')), message: notice }), {
+        headers: { 'content-type': 'application/json' },
+      });
+    }
   } catch (e: any) {
     problem = e?.message ?? 'Something went wrong. Check the database connection — see README.';
-    if (Astro.request.headers.get('accept')?.includes('application/json')) {
+    if (wantsJson) {
       return new Response(JSON.stringify({ ok: false, error: problem }), {
         status: 500,
         headers: { 'content-type': 'application/json' },
@@ -144,7 +150,7 @@ try {
     </nav>
 
     {categories.map((c:any) => (
-      <div class="cat" id={`cat-${slug(c.name)}`}>
+      <div class="cat" id={`cat-${slug(c.name)}`} data-category-id={c.id}>
         <h3>{c.name}</h3>
         <ul>
           {items.filter((i:any) => i.category_id === c.id).map((i:any) => (
@@ -175,7 +181,7 @@ try {
                     <input type="hidden" name="id" value={i.id} />
                     <button type="submit">{i.active ? 'Hide' : 'Show'}</button>
                   </form>
-                  <form method="post" onsubmit="return confirm('Delete this item and its photo?')">
+                  <form method="post">
                     <input type="hidden" name="action" value="delete" />
                     <input type="hidden" name="id" value={i.id} />
                     <button class="danger" type="submit">Delete</button>
@@ -357,6 +363,72 @@ try {
       toast(err instanceof PhotoError ? err.message : (err as Error).message, 'bad');
       if (submit) submit.disabled = false;
     }
+  });
+
+  // Existing items update in place. Adding is deliberately different: its
+  // redirect is what reveals the newly created item in its section.
+  document.querySelectorAll<HTMLFormElement>('form[method="post"]').forEach((form) => {
+    if (form === addForm || !form.querySelector('input[name="action"]')) return;
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const action = form.querySelector<HTMLInputElement>('input[name="action"]')?.value;
+      const id = form.querySelector<HTMLInputElement>('input[name="id"]')?.value;
+      if (!action || !id) return;
+      if (action === 'delete' && !confirm('Delete this item and its photo?')) return;
+
+      const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+      if (submit) submit.disabled = true;
+      try {
+        toast(action === 'delete' ? 'Removing item…' : 'Saving…', 'busy');
+        const res = await fetch('/admin/menu', {
+          method: 'POST',
+          headers: { accept: 'application/json' },
+          body: new FormData(form),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error ?? 'Could not update the item.');
+
+        const item = document.getElementById(`item-${id}`);
+        if (action === 'delete') {
+          item?.remove();
+        } else if (action === 'toggle') {
+          const isNowActive = submit?.textContent?.trim() === 'Show';
+          item?.classList.toggle('inactive', !isNowActive);
+          if (submit) submit.textContent = isNowActive ? 'Hide' : 'Show';
+        } else if (action === 'edit') {
+          const name = form.querySelector<HTMLInputElement>('input[name="name"]')?.value.trim() ?? '';
+          const description = form.querySelector<HTMLInputElement>('input[name="description"]')?.value.trim() ?? '';
+          const lateNight = form.querySelector<HTMLInputElement>('input[name="late_night"]')?.checked ?? false;
+          const categoryId = form.querySelector<HTMLSelectElement>('select[name="category_id"]')?.value;
+          const strong = item?.querySelector<HTMLElement>('.who strong');
+          const desc = item?.querySelector<HTMLElement>('.desc');
+          if (strong) strong.textContent = name;
+          if (desc) {
+            desc.textContent = description || 'No description yet';
+            desc.classList.toggle('muted', !description);
+          }
+          const badge = item?.querySelector<HTMLElement>('.late-badge');
+          if (lateNight && !badge) {
+            const newBadge = document.createElement('span');
+            newBadge.className = 'late-badge';
+            newBadge.textContent = 'Late night';
+            strong?.after(newBadge);
+          } else if (!lateNight) {
+            badge?.remove();
+          }
+          const destination = categoryId
+            ? document.querySelector<HTMLElement>(`.cat[data-category-id="${categoryId}"] ul`)
+            : null;
+          if (item && destination && item.parentElement !== destination) destination.append(item);
+        }
+        toast(data.message ?? 'Item updated.', 'ok');
+      } catch (err) {
+        toast((err as Error).message, 'bad');
+      } finally {
+        if (submit) submit.disabled = false;
+      }
+    });
   });
 
   function paint(id: string, thumbUrl: string | null, fullUrl: string | null = null) {
