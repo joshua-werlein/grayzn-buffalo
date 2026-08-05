@@ -1,14 +1,16 @@
 import { defineMiddleware } from 'astro:middleware';
 
+// Report-Only is deliberate. Do not enforce this policy until Astro’s executable inline scripts have been externalized and staging verification is complete.
 const CSP_REPORT_ONLY = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'none'",
-  "img-src 'self' data: https:",
+  "img-src 'self' data:",
   "font-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com",
+  "worker-src 'self'",
   "connect-src 'self' https://cloudflareinsights.com https://challenges.cloudflare.com",
   "frame-src https://challenges.cloudflare.com https://www.google.com",
   "form-action 'self'",
