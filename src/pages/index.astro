@@ -224,9 +224,9 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     position:absolute;left:-1500px;right:-1500px;top:76.4%;bottom:-1500px;
     background:linear-gradient(to bottom,
       rgba(90,150,70,0) 0px,
-      #5e7a42 16px,
-      #526e3b 90px,
-      #486335 100%);
+      #718c58 16px,
+      #64804e 90px,
+      #587445 100%);
     z-index:1;
   }
   .hero-copy{position:relative;z-index:3;padding:0 24px;padding-bottom:7vh;max-width:900px;margin:0 auto}
@@ -239,12 +239,12 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .rise{opacity:0;transform:translateY(26px);animation:rise .9s ease forwards}
   .rise.d1{animation-delay:.75s}.rise.d2{animation-delay:.95s}
   @keyframes rise{to{opacity:1;transform:translateY(0)}}
-  .charge{opacity:0;transform:scale(.16) translateY(48px);
+  .charge{opacity:0;transform:scale(.16) translateY(56px);
     animation:charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;will-change:transform,opacity}
   @keyframes charge{
-    0%{opacity:0;transform:scale(.16) translateY(48px)}
+    0%{opacity:0;transform:scale(.16) translateY(56px)}
     30%{opacity:.9}
-    100%{opacity:1;transform:scale(1) translateY(0)}
+    100%{opacity:1;transform:scale(1) translateY(8px)}
   }
   .strip{background:var(--ink);padding:18px 0;overflow:hidden}
   .strip-track{display:flex;width:max-content;animation:slide 36s linear infinite}
@@ -312,7 +312,8 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   @media (max-width:800px){ .visit-cols{grid-template-columns:1fr;gap:20px} .visit-block p{white-space:normal} }
   @media (max-width:480px){ .hero{min-height:min(72vh,640px);min-height:min(72dvh,640px)} .logo-wrap{width:min(88vw,560px)} }
   @media (prefers-reduced-motion: reduce){
-    .rise,.charge,.strip-track{animation:none;opacity:1;transform:none}
+    .rise,.strip-track{animation:none;opacity:1;transform:none}
+    .charge{animation:none;opacity:1;transform:translateY(8px)}
     .strip{overflow-x:auto;overscroll-behavior-x:contain}
     .strip-sequence[aria-hidden="true"]{display:none}
     .photo.welcome-photo-reveal{opacity:1;transform:none;transition:none}
