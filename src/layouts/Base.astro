@@ -11,12 +11,6 @@ import '@fontsource/barlow-condensed/latin-700.css';
 interface Props { title?: string; description?: string; }
 const { title = "Grayz'n Buffalo Bar & Grill — Mondovi, WI",
         description = "Grayz'n Buffalo Bar & Grill in Mondovi, WI. Burgers, Wraps, Pizzas & cold ones — open daily 10 AM to 2 AM." } = Astro.props;
-const nav = [
-  { href: '/', label: 'Home' },
-  { href: '/menu', label: 'Menu' },
-  { href: '/specials', label: 'Specials' },
-  { href: '/contact', label: 'Contact' },
-];
 const path = Astro.url.pathname;
 const isHome = path === '/';
 const siteUrl = 'https://grayznbuffalo.com';
@@ -70,6 +64,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 <link rel="manifest" href="/site.webmanifest" />
 {isHome && (
   <>
+    <link rel="preload" as="image" href="/grayznBackground.webp" fetchpriority="high" />
     <link rel="preload" as="image" href="/logo-ink-400.webp" media="(max-width: 480px)" fetchpriority="high" />
     <link rel="preload" as="image" href="/logo-ink-600.webp" imagesrcset="/logo-ink-600.webp 600w, /logo-ink.webp 900w" imagesizes="(max-width: 640px) 88vw, min(78vw, 560px)" media="(min-width: 481px)" fetchpriority="high" />
   </>
@@ -135,10 +130,12 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   .btn-ghost:hover{background:var(--cream);transform:translateY(-3px)}
   .reveal{opacity:0;transform:translateY(30px);transition:opacity .7s ease, transform .7s ease}
   .reveal.in{opacity:1;transform:none}
+  .site-chrome{position:relative;z-index:50}
   nav.site{position:sticky;top:0;z-index:50;background:var(--ink);display:flex;align-items:center;justify-content:space-between;
       padding:0 clamp(16px,4vw,48px);height:66px;box-shadow:0 2px 12px rgba(0,0,0,.35)}
   nav.site .brand img{height:64px;width:auto;display:block}
   nav.site ul{display:flex;gap:clamp(10px,2.5vw,34px);list-style:none}
+  nav.site .nav-star,nav.site .nav-gap{display:none}
   nav.site a.link{font-family:var(--label);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--cream);text-decoration:none;font-size:.95rem;padding:5px 2px;transition:color .2s}
   nav.site a.link:hover,nav.site a.link:focus-visible{color:var(--gold);text-decoration:underline;text-decoration-color:var(--crimson);text-decoration-thickness:2px;text-underline-offset:5px;outline:none}
   nav.site a.link.active{color:var(--gold);text-decoration:underline;text-decoration-color:var(--crimson);text-decoration-thickness:2px;text-underline-offset:5px}
@@ -185,7 +182,22 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   .install-prompt__dismiss{position:absolute;top:10px;right:10px;width:30px;height:30px;border:0;border-radius:50%;background:transparent;color:var(--cream);font-size:1.35rem;line-height:1;cursor:pointer}
   .install-prompt__dismiss:hover,.install-prompt__dismiss:focus-visible{background:rgba(247,234,211,.15)}
   .install-prompt button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
-  @media (max-width:820px){ nav.site .brand img{height:52px} nav.site ul{gap:14px} nav.site a.link{font-size:.8rem} }
+  @media (min-width:1100px){
+    .site-chrome{display:flex;flex-direction:column}
+    .site-chrome .announce{order:1}
+    .site-chrome nav.site{order:2;height:64px;padding:0 clamp(28px,6vw,88px);background:var(--cream);box-shadow:none}
+    .site-chrome-home{position:absolute;inset:0 0 auto;z-index:50}
+    .site-chrome-home nav.site{background:transparent}
+    nav.site .brand{display:none}
+    nav.site ul{width:min(100%,1280px);margin:0 auto;display:grid;grid-template-columns:max-content max-content max-content minmax(360px,1fr) max-content max-content max-content;align-items:center;column-gap:clamp(13px,1.8vw,26px)}
+    nav.site .nav-star,nav.site .nav-gap{display:block}
+    nav.site .nav-star{color:var(--crimson);font-size:.75rem;line-height:1}
+    nav.site .nav-gap{min-width:0}
+    nav.site a.link{color:var(--ink);font-weight:700;font-size:1rem}
+    nav.site a.link:hover,nav.site a.link:focus-visible{color:var(--ink);text-decoration-color:var(--crimson);outline:2px solid var(--crimson);outline-offset:5px}
+    nav.site a.link.active{color:var(--ink);text-decoration-color:var(--crimson)}
+  }
+  @media (max-width:1099px){ nav.site .brand img{height:52px} nav.site ul{gap:14px} nav.site a.link{font-size:.8rem} }
   @media (prefers-reduced-motion: reduce){
     .reveal{transition:none;opacity:1;transform:none}
     html{scroll-behavior:auto}
@@ -204,7 +216,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   nav.site.hidden{transform:translateY(-100%)}
 
   /* ---- mobile top bar: logo returns home; Contact stays available ---- */
-  @media (max-width:820px){
+  @media (max-width:1099px){
     nav.site li[data-nav="home"],
     nav.site li[data-nav="menu"],
     nav.site li[data-nav="specials"]{display:none}
@@ -212,7 +224,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 
   /* ---- pinned bottom action bar ---- */
   .action-bar{display:none}
-  @media (max-width:820px){
+  @media (max-width:1099px){
     .action-bar{
       display:grid;grid-template-columns:repeat(3,1fr);
       position:fixed;left:0;right:0;bottom:0;z-index:60;
@@ -256,16 +268,21 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 </style>
 </head>
 <body>
-<nav class="site">
-  <a class="brand" href="/" aria-label="Grayz'n Buffalo home">
-    <img src="/buffalo-mark.svg" alt="Grayz'n Buffalo Bar & Grill logo" width="100" height="70" />
-  </a>
-  <ul>
-    {nav.map(n => (
-      <li data-nav={n.label.toLowerCase()}><a class={"link" + (path === n.href ? " active" : "")} href={n.href}>{n.label}</a></li>
-    ))}
-  </ul>
-</nav>
+<header class={"site-chrome" + (isHome ? " site-chrome-home" : "")}>
+  <nav class="site">
+    <a class="brand" href="/" aria-label="Grayz'n Buffalo home">
+      <img src="/buffalo-mark.svg" alt="Grayz'n Buffalo Bar & Grill logo" width="100" height="70" />
+    </a>
+    <ul>
+      <li data-nav="home"><a class={"link" + (path === '/' ? " active" : "")} href="/">Home</a></li>
+      <li class="nav-star" aria-hidden="true">★</li>
+      <li data-nav="menu"><a class={"link" + (path === '/menu' ? " active" : "")} href="/menu">Menu</a></li>
+      <li class="nav-gap" aria-hidden="true"></li>
+      <li data-nav="specials"><a class={"link" + (path === '/specials' ? " active" : "")} href="/specials">Specials</a></li>
+      <li class="nav-star" aria-hidden="true">★</li>
+      <li data-nav="contact"><a class={"link" + (path === '/contact' ? " active" : "")} href="/contact">Contact</a></li>
+    </ul>
+  </nav>
   <div class="announce" role="region" aria-label="Announcement">
     <ul class="announce-list">
       <li class="delivery-notice">
@@ -276,6 +293,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
       {announcements.map((message) => <li>{message}</li>)}
     </ul>
   </div>
+</header>
 <nav class="action-bar" aria-label="Quick actions">
   <a href="/menu" aria-current={path === '/menu' ? 'page' : undefined}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm2 4v2h12V7H6zm0 4v2h12v-2H6zm0 4v2h8v-2H6z"/></svg>
