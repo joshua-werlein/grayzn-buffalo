@@ -47,7 +47,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>{title}</title>
 <meta name="description" content={description} />
-<meta name="theme-color" content="#241610" />
+<meta name="theme-color" content="#2B1B14" />
 <link rel="canonical" href={canonicalUrl} />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Grayz'n Buffalo Bar & Grill" />
@@ -97,16 +97,16 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 })} />
 <style is:global>
   :root{
-    --ink:#241610; --ink-2:#33221a;
-    --crimson:#d7263d; --flame:#ff6b35; --amber:#ffb627; --gold:#ffd23f;
-    --cream:#f7ead3; --cream-2:#efdfc2; --denim:#3f5e8c;--btn-crimson:#bf1e33;--btn-crimson-hover:#a8112e;
+    --ink:#2B1B14; --ink-2:#4A3327;
+    --crimson:#A33A32; --flame:#B8553C; --amber:#C4974B; --gold:#C4974B;
+    --cream:#F3E6CC; --cream-2:#E7D5B2; --denim:#244B62;--btn-crimson:#922C29;--btn-crimson-hover:#74211F;
     --display:'Alfa Slab One', serif; --body:'Barlow', sans-serif; --label:'Barlow Condensed', sans-serif;
   }
   *{margin:0;padding:0;box-sizing:border-box}
   html{scroll-behavior:smooth;overflow-x:clip}
   body{font-family:var(--body);background:var(--cream);color:var(--ink);line-height:1.6;
     min-height:100vh;display:flex;flex-direction:column;overflow-x:clip;width:100%}
-  .announce{background:var(--cream);color:var(--ink);text-align:center;
+  .announce{background:var(--crimson);color:var(--cream);text-align:center;
     padding:9px clamp(16px,4vw,48px);font-family:var(--label);font-weight:700;
     letter-spacing:.04em;font-size:.95rem;line-height:1.35;
     box-shadow:0 2px 8px rgba(0,0,0,.22)}
@@ -129,9 +129,9 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   .btn{font-family:var(--label);font-weight:700;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;
        padding:14px 30px;border-radius:8px;font-size:1rem;display:inline-block;border:none;cursor:pointer;
        transition:transform .18s ease, box-shadow .18s ease, background .18s}
-  .btn-primary{background:var(--btn-crimson);color:var(--cream);box-shadow:0 6px 0 #8d1626}
-  .btn-primary:hover{background:var(--btn-crimson-hover);transform:translateY(-3px);box-shadow:0 9px 0 #8d1626}
-  .btn-ghost{background:rgba(247,234,211,.85);color:var(--ink);border:2px solid var(--ink)}
+  .btn-primary{background:var(--btn-crimson);color:var(--cream);box-shadow:0 6px 0 #651B19}
+  .btn-primary:hover{background:var(--btn-crimson-hover);transform:translateY(-3px);box-shadow:0 9px 0 #651B19}
+  .btn-ghost{background:rgba(243,230,204,.85);color:var(--ink);border:2px solid var(--ink)}
   .btn-ghost:hover{background:var(--cream);transform:translateY(-3px)}
   .reveal{opacity:0;transform:translateY(30px);transition:opacity .7s ease, transform .7s ease}
   .reveal.in{opacity:1;transform:none}
@@ -142,7 +142,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   nav.site a.link{font-family:var(--label);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--cream);text-decoration:none;font-size:.95rem;padding:5px 2px;transition:color .2s}
   nav.site a.link:hover,nav.site a.link:focus-visible{color:var(--gold);text-decoration:underline;text-decoration-color:var(--crimson);text-decoration-thickness:2px;text-underline-offset:5px;outline:none}
   nav.site a.link.active{color:var(--gold);text-decoration:underline;text-decoration-color:var(--crimson);text-decoration-thickness:2px;text-underline-offset:5px}
-  footer{background:#1a100b;color:var(--cream-2);text-align:center;padding:8px 20px 16px;font-size:.88rem;flex-shrink:0}
+  footer{background:var(--ink);color:var(--cream-2);text-align:center;padding:8px 20px 16px;font-size:.88rem;flex-shrink:0}
   footer a{color:var(--gold);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1.5px;}
   footer a:hover,
   footer a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
@@ -217,7 +217,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
       display:grid;grid-template-columns:repeat(3,1fr);
       position:fixed;left:0;right:0;bottom:0;z-index:60;
       background:var(--ink);
-      border-top:2px solid rgba(247,234,211,.15);
+      border-top:2px solid rgba(243,230,204,.15);
       box-shadow:0 -2px 14px rgba(0,0,0,.4);
       padding-bottom:env(safe-area-inset-bottom);
     }
@@ -230,7 +230,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     .action-bar a svg{width:21px;height:21px;fill:currentColor;display:block}
     .action-bar a.primary{background:var(--btn-crimson)}
     .action-bar a:active{background:var(--btn-crimson-hover);}
-    .action-bar a.primary:active{background:#b81f33}
+    .action-bar a.primary:active{background:#7F2623}
     .action-bar a:focus-visible{outline:2px solid var(--gold);outline-offset:-3px}
     .action-bar a[aria-current="page"]{color:var(--gold)}
 
