@@ -66,7 +66,8 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   <>
     <link rel="preload" as="image" href="/grayznBackground.webp" fetchpriority="high" />
     <link rel="preload" as="image" href="/logo-ink-400.webp" media="(max-width: 480px)" fetchpriority="high" />
-    <link rel="preload" as="image" href="/logo-ink-600.webp" imagesrcset="/logo-ink-600.webp 600w, /logo-ink.webp 900w" imagesizes="(max-width: 640px) 88vw, min(78vw, 560px)" media="(min-width: 481px)" fetchpriority="high" />
+    <link rel="preload" as="image" href="/logo-ink-600.webp" imagesrcset="/logo-ink-600.webp 600w, /logo-ink.webp 900w" imagesizes="(max-width: 640px) 88vw, min(78vw, 560px)" media="(min-width: 481px) and (max-width: 1099px)" fetchpriority="high" />
+    <link rel="preload" as="image" href="/logo-buffalo.webp" media="(min-width: 1100px)" fetchpriority="high" />
   </>
 )}
 {noindex && <meta name="robots" content="noindex, nofollow" />}

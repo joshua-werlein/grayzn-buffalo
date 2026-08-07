@@ -55,29 +55,35 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     <div class="logo-wrap logo-full">
       <div class="sun" aria-hidden="true"></div>
       <picture>
+        <source media="(min-width: 1100px)" srcset="/logo-buffalo.webp" />
         <source media="(max-width: 480px)" srcset="/logo-ink-400.webp" />
-        <img class="hero-logo charge" src="/logo-ink-600.webp" srcset="/logo-ink-600.webp 600w, /logo-ink.webp 900w" sizes="(max-width: 640px) 88vw, min(78vw, 560px)" alt="" width="600" height="403" fetchpriority="high" decoding="async" />
+        <img class="hero-logo charge" src="/logo-ink-600.webp" srcset="/logo-ink-600.webp 600w, /logo-ink.webp 900w" sizes="(max-width: 640px) 88vw, min(78vw, 560px)" alt="" width="600" height="403" decoding="async" />
       </picture>
       <div class="ground-fill" aria-hidden="true"></div>
     </div>
-    <div class="logo-top charge" aria-hidden="true">
+    <div class="logo-stage" aria-hidden="true">
       <picture>
-        <img class="hero-logo" src="/logo-ink-600.webp" srcset="/logo-ink-600.webp 600w, /logo-ink.webp 900w" sizes="min(78vw, 560px)" alt="" width="600" height="403" decoding="async" />
+        <source media="(max-width: 1099px)" srcset="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" />
+        <img class="logo-layer logo-wordmark" src="/logo-wordmark.webp" alt="" width="900" height="605" decoding="async" />
       </picture>
-    </div>
-    <div class="logo-center charge" aria-hidden="true">
       <picture>
-        <img class="hero-logo" src="/logo-ink-600.webp" srcset="/logo-ink-600.webp 600w, /logo-ink.webp 900w" sizes="min(78vw, 560px)" alt="" width="600" height="403" decoding="async" />
+        <source media="(max-width: 1099px)" srcset="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" />
+        <img class="logo-layer logo-buffalo" src="/logo-buffalo.webp" alt="" width="900" height="605" fetchpriority="high" decoding="async" />
+      </picture>
+      <picture>
+        <source media="(max-width: 1099px)" srcset="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" />
+        <img class="logo-layer logo-landscape" src="/logo-landscape.webp" alt="" width="900" height="605" decoding="async" />
       </picture>
     </div>
   </div>
 </header>
 
 <section class="hero-after">
-  <div class="logo-lower" aria-hidden="true">
+  <div class="logo-bar-stage" aria-hidden="true">
     <picture>
+      <source media="(max-width: 1099px)" srcset="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" />
       <source media="(max-width: 480px)" srcset="/logo-ink-400.webp" />
-      <img src="/logo-ink-600.webp" srcset="/logo-ink-600.webp 600w, /logo-ink.webp 900w" sizes="min(78vw, 560px)" alt="" width="600" height="403" loading="lazy" decoding="async" />
+      <img class="logo-bar-grill" src="/logo-bar-grill.webp" alt="" width="900" height="605" decoding="async" />
     </picture>
   </div>
   <div class="hero-actions">
@@ -243,8 +249,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .logo-wrap{position:relative;width:min(78vw,560px);margin:0 auto;z-index:1}
   .hero-logo{position:relative;z-index:2;display:block;width:100%;height:auto;
      filter:drop-shadow(0 0 22px rgba(243,230,204,.55))}
-  .logo-top,.logo-center{display:none}
-  .logo-lower{display:none}
+  .logo-stage,.logo-bar-stage{display:none}
   .hero-after{padding:0;background:var(--cream)}
   .hero-actions{padding:clamp(28px,4vw,46px) 24px clamp(34px,5vw,54px);text-align:center}
   .hero-tag{font-size:clamp(1.05rem,2.4vw,1.4rem);color:var(--ink);
@@ -254,16 +259,16 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     .hero{min-height:542px;background-position-x:center;background-position-y:bottom}
     .hero-copy{position:absolute;inset:0;max-width:none;margin:0;padding:0}
     .logo-full{display:none}
-    .logo-top,.logo-center{display:block;position:absolute;left:0;right:0;width:min(78vw,560px);aspect-ratio:600 / 403;margin:0 auto;overflow:visible}
-    .logo-top{top:152px}
-    .logo-center{top:220px}
-    .logo-top picture{display:block;width:100%}
-    .logo-center picture{display:block;width:100%}
-    .logo-top .hero-logo{clip-path:polygon(0 0,100% 0,100% 36%,62% 36%,62% 32%,38% 32%,38% 36%,0 36%)}
-    .logo-center .hero-logo{clip-path:polygon(42% 39%,58% 39%,62% 56%,78% 71%,100% 71%,100% 84%,0 84%,0 71%,22% 71%,38% 56%)}
-    .logo-lower{display:block;width:min(78vw,560px);aspect-ratio:600 / 96;margin:0 auto;overflow:hidden}
-    .logo-lower picture{display:block}
-    .logo-lower img{display:block;width:100%;height:auto;transform:translateY(-78.5%)}
+    .logo-stage{display:block;position:absolute;top:226px;left:0;right:0;width:min(78vw,560px);aspect-ratio:900 / 605;margin:0 auto;pointer-events:none}
+    .logo-stage picture{position:absolute;inset:0;display:block}
+    .logo-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+    .logo-buffalo{opacity:1;transform:scale(.16) translateY(56px);transform-origin:center;animation:buffalo-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;will-change:transform}
+    .logo-wordmark,.logo-landscape{opacity:0;animation:logo-layer-fade .34s ease 1.28s forwards;will-change:opacity}
+    .logo-bar-stage{display:block;position:relative;width:min(78vw,560px);height:90px;margin:0 auto;pointer-events:none}
+    .logo-bar-stage picture{display:block;width:100%}
+    .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(-78.5%);opacity:0;pointer-events:none;animation:logo-bar-fade .3s ease 1.7s forwards;will-change:opacity}
+    .hero-actions .rise.d1{animation-delay:2s}
+    .hero-actions .rise.d2{animation-delay:2.18s}
   }
   .rise{opacity:0;transform:translateY(26px);animation:rise .9s ease forwards}
   .rise.d1{animation-delay:.75s}.rise.d2{animation-delay:.95s}
@@ -275,6 +280,12 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     30%{opacity:.9}
     100%{opacity:1;transform:scale(1) translateY(8px)}
   }
+  @keyframes buffalo-charge{
+    0%{transform:scale(.16) translateY(56px)}
+    100%{transform:scale(1) translateY(0)}
+  }
+  @keyframes logo-layer-fade{to{opacity:1}}
+  @keyframes logo-bar-fade{to{opacity:1}}
   .strip{background:var(--ink);padding:18px 0;overflow:hidden}
   .strip-track{display:flex;width:max-content;animation:slide 36s linear infinite}
   .strip-sequence{display:flex;gap:16px;padding-right:16px;flex:none}
@@ -343,6 +354,9 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   @media (prefers-reduced-motion: reduce){
     .rise,.strip-track{animation:none;opacity:1;transform:none}
     .charge{animation:none;opacity:1;transform:translateY(8px)}
+    .logo-buffalo{animation:none;transform:none}
+    .logo-wordmark,.logo-landscape{animation:none;opacity:1}
+    .logo-bar-grill{animation:none;opacity:1}
     .strip{overflow-x:auto;overscroll-behavior-x:contain}
     .strip-sequence[aria-hidden="true"]{display:none}
     .photo.welcome-photo-reveal{opacity:1;transform:none;transition:none}
