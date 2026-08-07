@@ -259,18 +259,19 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     .hero{min-height:542px;background-position-x:center;background-position-y:bottom}
     .hero-copy{position:absolute;inset:0;max-width:none;margin:0;padding:0}
     .logo-full{display:none}
-    .logo-stage{--wordmark-y:-20px;--buffalo-y:-8px;--landscape-y:-4px;
+    .logo-stage{--wordmark-y:-42px;--buffalo-y:-8px;--landscape-y:-4px;
       display:block;position:absolute;top:190px;left:0;right:0;width:min(78vw,560px);aspect-ratio:900 / 605;margin:0 auto;pointer-events:none}
     .logo-stage picture{position:absolute;inset:0;display:block}
     .logo-layer{position:absolute;top:var(--layer-y);left:0;width:100%;height:100%;pointer-events:none}
-    .logo-wordmark{--layer-y:var(--wordmark-y);z-index:3}
+    .logo-wordmark{--layer-y:var(--wordmark-y);z-index:3;transform:scale(1.1);transform-origin:center}
     .logo-buffalo{--layer-y:var(--buffalo-y);z-index:2}
     .logo-landscape{--layer-y:var(--landscape-y);z-index:1}
     .logo-buffalo{opacity:1;transform:scale(.16) translateY(56px);transform-origin:center;animation:buffalo-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;will-change:transform}
-    .logo-wordmark,.logo-landscape{opacity:0;animation:logo-layer-fade .34s ease 1.28s forwards;will-change:opacity}
-    .logo-bar-stage{display:block;position:relative;width:min(78vw,560px);height:90px;margin:0 auto;pointer-events:none}
+    .logo-wordmark{opacity:0;animation:logo-layer-fade .34s ease 1.28s forwards;will-change:opacity}
+    .logo-landscape{opacity:1;animation:none}
+    .logo-bar-stage{--bar-y:-12px;display:block;position:relative;width:min(78vw,560px);height:90px;margin:0 auto;pointer-events:none}
     .logo-bar-stage picture{display:block;width:100%}
-    .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(-78.5%);opacity:0;pointer-events:none;animation:logo-bar-fade .3s ease 1.7s forwards;will-change:opacity}
+    .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(calc(-78.5% + var(--bar-y))) scale(1.1);transform-origin:center 78.5%;opacity:0;pointer-events:none;animation:logo-bar-fade .3s ease 1.7s forwards;will-change:opacity}
     .hero-actions .rise.d1{animation-delay:2s}
     .hero-actions .rise.d2{animation-delay:2.18s}
   }
