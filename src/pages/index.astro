@@ -241,11 +241,11 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     .hero{min-height:542px;background-position-x:center;background-position-y:bottom}
     .hero-copy{position:absolute;inset:0;max-width:none;margin:0;padding:0}
     .logo-full{display:none}
-    .logo-stage{--wordmark-y:-74px;--buffalo-y:-1px;--landscape-y:48px;
+    .logo-stage{--wordmark-y:-74px;--buffalo-y:0px;--landscape-y:48px;
       display:block;position:absolute;top:190px;left:0;right:0;width:min(78vw,560px);aspect-ratio:900 / 605;margin:0 auto;pointer-events:none}
     .logo-wordmark{--layer-y:var(--wordmark-y);z-index:3;transform:scale(1.23);transform-origin:center}
     .logo-buffalo{--layer-y:var(--buffalo-y);z-index:2}
-    .logo-landscape{--layer-y:var(--landscape-y);z-index:1;transform:rotate(-.2deg);transform-origin:center}
+    .logo-landscape{--layer-y:var(--landscape-y);z-index:1;transform:rotate(-.15deg);transform-origin:center}
     .logo-buffalo{--buffalo-scale:.8;--buffalo-final-y:-8px;opacity:1;transform:scale(.13) translateY(56px);transform-origin:center;animation:buffalo-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;will-change:transform}
     .logo-wordmark{opacity:0;animation:logo-layer-fade .34s ease 1.28s forwards;will-change:opacity}
     .logo-landscape{opacity:1;animation:none}
