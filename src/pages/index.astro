@@ -251,7 +251,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(calc(-78.5% + var(--bar-y))) scale(1.15);transform-origin:center 78.5%;opacity:0;pointer-events:none;animation:logo-bar-fade .4s ease 1.95s forwards;will-change:opacity}
   }
   .hero-tag-enter{opacity:0;animation:hero-tag-fade .4s ease 2.25s forwards}
-  .hero-cta-enter{opacity:1;animation:hero-cta-slide 1.7s cubic-bezier(.16,.78,.28,1) 2.65s forwards}
+  .hero-cta-enter{opacity:1;animation:hero-cta-slide 2.3s cubic-bezier(.16,.78,.28,1) 2.25s forwards}
   .hero-cta-left{transform:translateX(-100vw)}
   .hero-cta-right{transform:translateX(100vw)}
   @keyframes hero-tag-fade{to{opacity:1}}
@@ -259,15 +259,15 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   @keyframes buffalo-anchor-charge{
     0%{transform:translateY(var(--buffalo-anchor-start-y))}
     28%{transform:translateY(var(--buffalo-anchor-28-y))}
-    52%{transform:translateY(var(--buffalo-anchor-52-y))}
-    76%{transform:translateY(var(--buffalo-anchor-76-y))}
+    52%{transform:translateY(var(--buffalo-anchor-52-y));animation-timing-function:linear}
+    76%{transform:translateY(var(--buffalo-anchor-76-y));animation-timing-function:linear}
     100%{transform:translateY(var(--buffalo-anchor-final-y))}
   }
   @keyframes buffalo-scale-charge{
     0%{transform:scale(.2)}
     28%{transform:scale(.36)}
-    52%{transform:scale(.55)}
-    76%{transform:scale(.72)}
+    52%{transform:scale(.55);animation-timing-function:linear}
+    76%{transform:scale(.72);animation-timing-function:linear}
     100%{transform:scale(var(--buffalo-scale))}
   }
   @keyframes logo-layer-fade{to{opacity:1}}
