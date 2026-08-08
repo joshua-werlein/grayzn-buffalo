@@ -55,7 +55,6 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     <div class="logo-stage" aria-hidden="true">
       <img class="logo-layer logo-wordmark" src="/logo-wordmark.webp" alt="" width="900" height="605" decoding="async" />
       <img class="logo-layer logo-buffalo" src="/logo-buffalo.webp" alt="" width="900" height="605" fetchpriority="high" decoding="async" />
-      <img class="logo-layer logo-landscape" src="/logo-landscape.webp" alt="" width="900" height="605" decoding="async" />
     </div>
   </div>
 </header>
@@ -223,13 +222,12 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     display:flex;align-items:flex-end;justify-content:center;text-align:center;
     background:url('/grayznBackground.webp') center bottom / cover no-repeat}
   .hero-copy{position:absolute;inset:0;z-index:3;pointer-events:none}
-  .logo-stage{--wordmark-y:-105px;--buffalo-y:0px;--landscape-y:0px;
+  .logo-stage{--wordmark-y:-105px;--buffalo-y:0px;
     display:block;position:absolute;top:clamp(180px,45vw,210px);left:0;right:0;
     width:min(95vw,500px);aspect-ratio:900 / 605;margin:0 auto}
   .logo-layer{position:absolute;top:var(--layer-y);left:0;width:100%;height:100%;pointer-events:none}
-  .logo-wordmark{--layer-y:var(--wordmark-y);z-index:3;transform:scale(1.02);transform-origin:center;opacity:0;animation:logo-layer-fade .34s ease 1.28s forwards;will-change:opacity}
-  .logo-buffalo{--layer-y:var(--buffalo-y);--buffalo-scale:.86;--buffalo-final-y:-2px;z-index:2;opacity:1;transform:scale(.14) translateY(56px);transform-origin:center;animation:buffalo-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;will-change:transform}
-  .logo-landscape{--layer-y:var(--landscape-y);z-index:1;opacity:1;animation:none}
+  .logo-wordmark{--layer-y:var(--wordmark-y);z-index:2;transform:scale(1.02);transform-origin:center;opacity:0;animation:logo-layer-fade .34s ease 1.28s forwards;will-change:opacity}
+  .logo-buffalo{--layer-y:var(--buffalo-y);--buffalo-scale:.86;--buffalo-final-y:-2px;z-index:1;opacity:1;transform:scale(.14) translateY(56px);transform-origin:center;animation:buffalo-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;will-change:transform}
   .logo-bar-stage{display:block;position:relative;width:min(95vw,500px);height:58px;margin:0 auto;pointer-events:none}
   .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(-78.5%) scale(1.04);transform-origin:center 78.5%;opacity:0;pointer-events:none;animation:logo-bar-fade .3s ease 1.7s forwards;will-change:opacity}
   .hero-after{padding:0;background:var(--cream)}
@@ -238,17 +236,14 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     font-weight:600;letter-spacing:.01em}
   .hero-ctas{margin-top:22px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
   @media (min-width:1100px){
-    .hero{min-height:542px;background-position-x:center;background-position-y:bottom}
+    .hero{min-height:542px}
     .hero-copy{position:absolute;inset:0;max-width:none;margin:0;padding:0}
-    .logo-full{display:none}
-    .logo-stage{--wordmark-y:-74px;--buffalo-y:0px;--landscape-y:48px;
+    .logo-stage{--wordmark-y:-74px;--buffalo-y:0px;
       display:block;position:absolute;top:190px;left:0;right:0;width:min(78vw,560px);aspect-ratio:900 / 605;margin:0 auto;pointer-events:none}
-    .logo-wordmark{--layer-y:var(--wordmark-y);z-index:3;transform:scale(1.23);transform-origin:center}
-    .logo-buffalo{--layer-y:var(--buffalo-y);z-index:2}
-    .logo-landscape{--layer-y:var(--landscape-y);z-index:1;transform:rotate(-.15deg);transform-origin:center}
+    .logo-wordmark{--layer-y:var(--wordmark-y);z-index:2;transform:scale(1.23);transform-origin:center}
+    .logo-buffalo{--layer-y:var(--buffalo-y);z-index:1}
     .logo-buffalo{--buffalo-scale:.8;--buffalo-final-y:-8px;opacity:1;transform:scale(.13) translateY(56px);transform-origin:center;animation:buffalo-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;will-change:transform}
     .logo-wordmark{opacity:0;animation:logo-layer-fade .34s ease 1.28s forwards;will-change:opacity}
-    .logo-landscape{opacity:1;animation:none}
     .logo-bar-stage{--bar-y:10px;display:block;position:relative;width:min(78vw,560px);height:90px;margin:0 auto;pointer-events:none}
     .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(calc(-78.5% + var(--bar-y))) scale(1.15);transform-origin:center 78.5%;opacity:0;pointer-events:none;animation:logo-bar-fade .3s ease 1.7s forwards;will-change:opacity}
     .hero-actions .rise.d1{animation-delay:2.08s}
@@ -338,7 +333,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   @media (prefers-reduced-motion: reduce){
     .rise,.strip-track{animation:none;opacity:1;transform:none}
     .logo-buffalo{animation:none;transform:scale(var(--buffalo-scale)) translateY(var(--buffalo-final-y))}
-    .logo-wordmark,.logo-landscape{animation:none;opacity:1}
+    .logo-wordmark{animation:none;opacity:1}
     .logo-bar-grill{animation:none;opacity:1}
     .strip{overflow-x:auto;overscroll-behavior-x:contain}
     .strip-sequence[aria-hidden="true"]{display:none}
