@@ -52,39 +52,17 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
 <header class="hero" id="top">
   <h1 class="sr-only">Grayz'n Buffalo Bar &amp; Grill — Mondovi, Wisconsin</h1>
   <div class="hero-copy">
-    <div class="logo-wrap logo-full">
-      <div class="sun" aria-hidden="true"></div>
-      <picture>
-        <source media="(min-width: 1100px)" srcset="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" />
-        <source media="(max-width: 480px)" srcset="/logo-ink-400.webp" />
-        <img class="hero-logo charge" src="/logo-ink-600.webp" srcset="/logo-ink-600.webp 600w, /logo-ink.webp 900w" sizes="(max-width: 640px) 88vw, min(78vw, 560px)" alt="" width="600" height="403" decoding="async" />
-      </picture>
-      <div class="ground-fill" aria-hidden="true"></div>
-    </div>
     <div class="logo-stage" aria-hidden="true">
-      <picture>
-        <source media="(max-width: 1099px)" srcset="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" />
-        <img class="logo-layer logo-wordmark" src="/logo-wordmark.webp" alt="" width="900" height="605" decoding="async" />
-      </picture>
-      <picture>
-        <source media="(max-width: 1099px)" srcset="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" />
-        <img class="logo-layer logo-buffalo" src="/logo-buffalo.webp" alt="" width="900" height="605" fetchpriority="high" decoding="async" />
-      </picture>
-      <picture>
-        <source media="(max-width: 1099px)" srcset="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" />
-        <img class="logo-layer logo-landscape" src="/logo-landscape.webp" alt="" width="900" height="605" decoding="async" />
-      </picture>
+      <img class="logo-layer logo-wordmark" src="/logo-wordmark.webp" alt="" width="900" height="605" decoding="async" />
+      <img class="logo-layer logo-buffalo" src="/logo-buffalo.webp" alt="" width="900" height="605" fetchpriority="high" decoding="async" />
+      <img class="logo-layer logo-landscape" src="/logo-landscape.webp" alt="" width="900" height="605" decoding="async" />
     </div>
   </div>
 </header>
 
 <section class="hero-after">
   <div class="logo-bar-stage" aria-hidden="true">
-    <picture>
-      <source media="(max-width: 1099px)" srcset="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" />
-      <source media="(max-width: 480px)" srcset="/logo-ink-400.webp" />
-      <img class="logo-bar-grill" src="/logo-bar-grill.webp" alt="" width="900" height="605" decoding="async" />
-    </picture>
+    <img class="logo-bar-grill" src="/logo-bar-grill.webp" alt="" width="900" height="605" decoding="async" />
   </div>
   <div class="hero-actions">
     <p class="hero-tag rise d1">Burgers, Wraps, Pizzas &amp; cold ones — open daily 10 AM to 2 AM.</p>
@@ -244,14 +222,18 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     min-height:min(84dvh,720px);
     display:flex;align-items:flex-end;justify-content:center;text-align:center;
     background:url('/grayznBackground.webp') center bottom / cover no-repeat}
-  .sun,.ground-fill{display:none}
-  .hero-copy{position:relative;z-index:3;padding:0 24px;padding-bottom:7vh;max-width:900px;margin:0 auto}
-  .logo-wrap{position:relative;width:min(78vw,560px);margin:0 auto;z-index:1}
-  .hero-logo{position:relative;z-index:2;display:block;width:100%;height:auto;
-     filter:drop-shadow(0 0 22px rgba(243,230,204,.55))}
-  .logo-stage,.logo-bar-stage{display:none}
+  .hero-copy{position:absolute;inset:0;z-index:3;pointer-events:none}
+  .logo-stage{--wordmark-y:-105px;--buffalo-y:0px;--landscape-y:0px;
+    display:block;position:absolute;top:clamp(180px,45vw,210px);left:0;right:0;
+    width:min(95vw,500px);aspect-ratio:900 / 605;margin:0 auto}
+  .logo-layer{position:absolute;top:var(--layer-y);left:0;width:100%;height:100%;pointer-events:none}
+  .logo-wordmark{--layer-y:var(--wordmark-y);z-index:3;opacity:0;animation:logo-layer-fade .34s ease 1.28s forwards;will-change:opacity}
+  .logo-buffalo{--layer-y:var(--buffalo-y);z-index:2;opacity:1;transform:scale(.16) translateY(56px);transform-origin:center;animation:buffalo-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;will-change:transform}
+  .logo-landscape{--layer-y:var(--landscape-y);z-index:1;opacity:1;animation:none}
+  .logo-bar-stage{display:block;position:relative;width:min(95vw,500px);height:58px;margin:0 auto;pointer-events:none}
+  .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(-78.5%);transform-origin:center 78.5%;opacity:0;pointer-events:none;animation:logo-bar-fade .3s ease 1.7s forwards;will-change:opacity}
   .hero-after{padding:0;background:var(--cream)}
-  .hero-actions{padding:clamp(28px,4vw,46px) 24px clamp(34px,5vw,54px);text-align:center}
+  .hero-actions{padding:clamp(18px,4vw,28px) 24px clamp(30px,5vw,44px);text-align:center}
   .hero-tag{font-size:clamp(1.05rem,2.4vw,1.4rem);color:var(--ink);
     font-weight:600;letter-spacing:.01em}
   .hero-ctas{margin-top:22px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
@@ -259,18 +241,15 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     .hero{min-height:542px;background-position-x:center;background-position-y:bottom}
     .hero-copy{position:absolute;inset:0;max-width:none;margin:0;padding:0}
     .logo-full{display:none}
-    .logo-stage{--wordmark-y:-42px;--buffalo-y:-8px;--landscape-y:-4px;
+    .logo-stage{--wordmark-y:-67px;--buffalo-y:-8px;--landscape-y:-4px;
       display:block;position:absolute;top:190px;left:0;right:0;width:min(78vw,560px);aspect-ratio:900 / 605;margin:0 auto;pointer-events:none}
-    .logo-stage picture{position:absolute;inset:0;display:block}
-    .logo-layer{position:absolute;top:var(--layer-y);left:0;width:100%;height:100%;pointer-events:none}
     .logo-wordmark{--layer-y:var(--wordmark-y);z-index:3;transform:scale(1.1);transform-origin:center}
     .logo-buffalo{--layer-y:var(--buffalo-y);z-index:2}
     .logo-landscape{--layer-y:var(--landscape-y);z-index:1}
     .logo-buffalo{opacity:1;transform:scale(.16) translateY(56px);transform-origin:center;animation:buffalo-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;will-change:transform}
     .logo-wordmark{opacity:0;animation:logo-layer-fade .34s ease 1.28s forwards;will-change:opacity}
     .logo-landscape{opacity:1;animation:none}
-    .logo-bar-stage{--bar-y:-12px;display:block;position:relative;width:min(78vw,560px);height:90px;margin:0 auto;pointer-events:none}
-    .logo-bar-stage picture{display:block;width:100%}
+    .logo-bar-stage{--bar-y:-2px;display:block;position:relative;width:min(78vw,560px);height:90px;margin:0 auto;pointer-events:none}
     .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(calc(-78.5% + var(--bar-y))) scale(1.1);transform-origin:center 78.5%;opacity:0;pointer-events:none;animation:logo-bar-fade .3s ease 1.7s forwards;will-change:opacity}
     .hero-actions .rise.d1{animation-delay:2s}
     .hero-actions .rise.d2{animation-delay:2.18s}
@@ -278,13 +257,6 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .rise{opacity:0;transform:translateY(26px);animation:rise .9s ease forwards}
   .rise.d1{animation-delay:.75s}.rise.d2{animation-delay:.95s}
   @keyframes rise{to{opacity:1;transform:translateY(0)}}
-  .charge{opacity:0;transform:scale(.16) translateY(56px);
-    animation:charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;will-change:transform,opacity}
-  @keyframes charge{
-    0%{opacity:0;transform:scale(.16) translateY(56px)}
-    30%{opacity:.9}
-    100%{opacity:1;transform:scale(1) translateY(8px)}
-  }
   @keyframes buffalo-charge{
     0%{transform:scale(.16) translateY(56px)}
     100%{transform:scale(1) translateY(0)}
@@ -355,10 +327,16 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .visit-block a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
   @media (max-width:900px){ .welcome-grid{grid-template-columns:1fr} .welcome-copy{max-width:52ch}.photo-stack{grid-template-columns:1fr;grid-auto-rows:clamp(180px,62vw,280px)}.photo-stack .photo{max-height:280px} }
   @media (max-width:800px){ .visit-cols{grid-template-columns:1fr;gap:20px} .visit-block p{white-space:normal} }
-  @media (max-width:480px){ .hero{min-height:min(72vh,640px);min-height:min(72dvh,640px)} .logo-wrap{width:min(88vw,560px)} }
+  @media (max-width:1099px){
+    .hero{min-height:clamp(460px,55svh,500px);background-position:center bottom}
+    .logo-bar-stage{height:50px}
+    .hero-actions{padding:12px 20px 24px}
+    .hero-ctas{margin-top:14px;gap:12px;flex-wrap:nowrap}
+    .hero-ctas .btn{padding:12px 18px;font-size:.92rem}
+  }
+  @media (max-width:480px){ .hero{min-height:clamp(460px,55svh,480px)} }
   @media (prefers-reduced-motion: reduce){
     .rise,.strip-track{animation:none;opacity:1;transform:none}
-    .charge{animation:none;opacity:1;transform:translateY(8px)}
     .logo-buffalo{animation:none;transform:none}
     .logo-wordmark,.logo-landscape{animation:none;opacity:1}
     .logo-bar-grill{animation:none;opacity:1}
