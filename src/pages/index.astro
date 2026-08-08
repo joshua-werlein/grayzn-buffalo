@@ -229,7 +229,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     width:min(95vw,500px);aspect-ratio:900 / 605;margin:0 auto}
   .logo-layer{position:absolute;top:var(--layer-y);left:0;width:100%;height:100%;pointer-events:none}
   .logo-wordmark{--layer-y:var(--wordmark-y);z-index:2;transform:scale(1.02);transform-origin:center;opacity:0;animation:logo-layer-fade .4s ease 1.65s forwards;will-change:opacity}
-  .buffalo-anchor{--layer-y:var(--buffalo-y);--buffalo-anchor-start-y:-64px;--buffalo-anchor-25-y:-48px;--buffalo-anchor-50-y:-32px;--buffalo-anchor-625-y:-24px;--buffalo-anchor-75-y:-16px;--buffalo-anchor-final-y:-1.72px;z-index:1;transform:translateY(var(--buffalo-anchor-start-y));animation:buffalo-anchor-charge 1.65s linear forwards;animation-fill-mode:forwards;will-change:transform}
+  .buffalo-anchor{--layer-y:var(--buffalo-y);--buffalo-anchor-start-y:-64px;--buffalo-anchor-28-y:-46.56px;--buffalo-anchor-52-y:-31.61px;--buffalo-anchor-76-y:-16.67px;--buffalo-anchor-final-y:-1.72px;z-index:1;transform:translateY(var(--buffalo-anchor-start-y));animation:buffalo-anchor-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;animation-fill-mode:forwards;will-change:transform}
   .logo-buffalo{--buffalo-scale:.86;display:block;width:100%;height:100%;opacity:1;transform:scale(.2);transform-origin:center bottom;animation:buffalo-scale-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;animation-fill-mode:forwards;backface-visibility:hidden;will-change:transform}
   .logo-bar-stage{display:block;position:relative;width:min(95vw,500px);height:58px;margin:0 auto;pointer-events:none}
   .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(-78.5%) scale(1.04);transform-origin:center 78.5%;opacity:0;pointer-events:none;animation:logo-bar-fade .4s ease 1.95s forwards;will-change:opacity}
@@ -244,32 +244,30 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     .logo-stage{--wordmark-y:-74px;--buffalo-y:8px;
       display:block;position:absolute;top:190px;left:0;right:0;width:min(78vw,560px);aspect-ratio:900 / 605;margin:0 auto;pointer-events:none}
     .logo-wordmark{--layer-y:var(--wordmark-y);z-index:2;transform:scale(1.23);transform-origin:center}
-    .buffalo-anchor{--layer-y:var(--buffalo-y);--buffalo-anchor-start-y:-96px;--buffalo-anchor-25-y:-74px;--buffalo-anchor-50-y:-52px;--buffalo-anchor-625-y:-41px;--buffalo-anchor-75-y:-30px;--buffalo-anchor-final-y:-8px;z-index:1}
+    .buffalo-anchor{--layer-y:var(--buffalo-y);--buffalo-anchor-start-y:-96px;--buffalo-anchor-28-y:-71.36px;--buffalo-anchor-52-y:-50.24px;--buffalo-anchor-76-y:-29.12px;--buffalo-anchor-final-y:-8px;z-index:1}
     .logo-buffalo{--buffalo-scale:.8}
     .logo-wordmark{opacity:0;animation:logo-layer-fade .4s ease 1.65s forwards;will-change:opacity}
     .logo-bar-stage{--bar-y:10px;display:block;position:relative;width:min(78vw,560px);height:90px;margin:0 auto;pointer-events:none}
     .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(calc(-78.5% + var(--bar-y))) scale(1.15);transform-origin:center 78.5%;opacity:0;pointer-events:none;animation:logo-bar-fade .4s ease 1.95s forwards;will-change:opacity}
   }
   .hero-tag-enter{opacity:0;animation:hero-tag-fade .4s ease 2.25s forwards}
-  .hero-cta-enter{opacity:1;animation:hero-cta-slide 1s cubic-bezier(.16,.78,.28,1) 2.65s forwards}
+  .hero-cta-enter{opacity:1;animation:hero-cta-slide 1.7s cubic-bezier(.16,.78,.28,1) 2.65s forwards}
   .hero-cta-left{transform:translateX(-100vw)}
   .hero-cta-right{transform:translateX(100vw)}
   @keyframes hero-tag-fade{to{opacity:1}}
   @keyframes hero-cta-slide{to{opacity:1;transform:translateX(0)}}
   @keyframes buffalo-anchor-charge{
     0%{transform:translateY(var(--buffalo-anchor-start-y))}
-    25%{transform:translateY(var(--buffalo-anchor-25-y))}
-    50%{transform:translateY(var(--buffalo-anchor-50-y))}
-    62.5%{transform:translateY(var(--buffalo-anchor-625-y))}
-    75%{transform:translateY(var(--buffalo-anchor-75-y))}
+    28%{transform:translateY(var(--buffalo-anchor-28-y))}
+    52%{transform:translateY(var(--buffalo-anchor-52-y))}
+    76%{transform:translateY(var(--buffalo-anchor-76-y))}
     100%{transform:translateY(var(--buffalo-anchor-final-y))}
   }
   @keyframes buffalo-scale-charge{
     0%{transform:scale(.2)}
-    25%{transform:scale(.32)}
-    50%{transform:scale(.52)}
-    62.5%{transform:scale(.64)}
-    75%{transform:scale(.76)}
+    28%{transform:scale(.36)}
+    52%{transform:scale(.55)}
+    76%{transform:scale(.72)}
     100%{transform:scale(var(--buffalo-scale))}
   }
   @keyframes logo-layer-fade{to{opacity:1}}
