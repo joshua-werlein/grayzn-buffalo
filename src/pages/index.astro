@@ -66,10 +66,10 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     <img class="logo-bar-grill" src="/logo-bar-grill.webp" alt="" width="900" height="605" decoding="async" />
   </div>
   <div class="hero-actions">
-    <p class="hero-tag rise d1">Burgers, Wraps, Pizzas &amp; cold ones — open daily 10 AM to 2 AM.</p>
-    <div class="hero-ctas rise d2">
-      <a class="btn btn-primary" href="/specials">Today's Special</a>
-      <a class="btn btn-ghost" href="/menu">See the Menu</a>
+    <p class="hero-tag hero-tag-enter">Burgers, Wraps, Pizzas &amp; cold ones — open daily 10 AM to 2 AM.</p>
+    <div class="hero-ctas">
+      <a class="btn btn-primary hero-cta-enter hero-cta-left" href="/specials">Today's Special</a>
+      <a class="btn btn-ghost hero-cta-enter hero-cta-right" href="/menu">See the Menu</a>
     </div>
   </div>
 
@@ -228,11 +228,11 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     display:block;position:absolute;top:clamp(180px,45vw,210px);left:0;right:0;
     width:min(95vw,500px);aspect-ratio:900 / 605;margin:0 auto}
   .logo-layer{position:absolute;top:var(--layer-y);left:0;width:100%;height:100%;pointer-events:none}
-  .logo-wordmark{--layer-y:var(--wordmark-y);z-index:2;transform:scale(1.02);transform-origin:center;opacity:0;animation:logo-layer-fade .34s ease 1.28s forwards;will-change:opacity}
+  .logo-wordmark{--layer-y:var(--wordmark-y);z-index:2;transform:scale(1.02);transform-origin:center;opacity:0;animation:logo-layer-fade .4s ease 1.65s forwards;will-change:opacity}
   .buffalo-anchor{--layer-y:var(--buffalo-y);--buffalo-anchor-start-y:-64px;--buffalo-anchor-25-y:-48px;--buffalo-anchor-50-y:-32px;--buffalo-anchor-75-y:-16px;--buffalo-anchor-final-y:-1.72px;z-index:1;transform:translateY(var(--buffalo-anchor-start-y));animation:buffalo-anchor-charge 1.65s linear forwards;will-change:transform}
   .logo-buffalo{--buffalo-scale:.86;display:block;width:100%;height:100%;opacity:1;transform:scale(.2);transform-origin:center bottom;animation:buffalo-scale-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;will-change:transform}
   .logo-bar-stage{display:block;position:relative;width:min(95vw,500px);height:58px;margin:0 auto;pointer-events:none}
-  .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(-78.5%) scale(1.04);transform-origin:center 78.5%;opacity:0;pointer-events:none;animation:logo-bar-fade .3s ease 1.7s forwards;will-change:opacity}
+  .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(-78.5%) scale(1.04);transform-origin:center 78.5%;opacity:0;pointer-events:none;animation:logo-bar-fade .4s ease 1.95s forwards;will-change:opacity}
   .hero-after{padding:0;background:var(--cream)}
   .hero-actions{padding:clamp(18px,4vw,28px) 24px clamp(30px,5vw,44px);text-align:center}
   .hero-tag{font-size:clamp(1.05rem,2.4vw,1.4rem);color:var(--ink);
@@ -246,15 +246,16 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     .logo-wordmark{--layer-y:var(--wordmark-y);z-index:2;transform:scale(1.23);transform-origin:center}
     .buffalo-anchor{--layer-y:var(--buffalo-y);--buffalo-anchor-start-y:-96px;--buffalo-anchor-25-y:-74px;--buffalo-anchor-50-y:-52px;--buffalo-anchor-75-y:-30px;--buffalo-anchor-final-y:-8px;z-index:1}
     .logo-buffalo{--buffalo-scale:.8}
-    .logo-wordmark{opacity:0;animation:logo-layer-fade .34s ease 1.28s forwards;will-change:opacity}
+    .logo-wordmark{opacity:0;animation:logo-layer-fade .4s ease 1.65s forwards;will-change:opacity}
     .logo-bar-stage{--bar-y:10px;display:block;position:relative;width:min(78vw,560px);height:90px;margin:0 auto;pointer-events:none}
-    .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(calc(-78.5% + var(--bar-y))) scale(1.15);transform-origin:center 78.5%;opacity:0;pointer-events:none;animation:logo-bar-fade .3s ease 1.7s forwards;will-change:opacity}
-    .hero-actions .rise.d1{animation-delay:2.08s}
-    .hero-actions .rise.d2{animation-delay:2.25s}
+    .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(calc(-78.5% + var(--bar-y))) scale(1.15);transform-origin:center 78.5%;opacity:0;pointer-events:none;animation:logo-bar-fade .4s ease 1.95s forwards;will-change:opacity}
   }
-  .rise{opacity:0;transform:translateY(26px);animation:rise .9s ease forwards}
-  .rise.d1{animation-delay:.75s}.rise.d2{animation-delay:.95s}
-  @keyframes rise{to{opacity:1;transform:translateY(0)}}
+  .hero-tag-enter{opacity:0;animation:hero-tag-fade .4s ease 2.25s forwards}
+  .hero-cta-enter{opacity:0;animation:hero-cta-slide .45s cubic-bezier(.16,.78,.28,1) 2.55s forwards}
+  .hero-cta-left{transform:translateX(-48px)}
+  .hero-cta-right{transform:translateX(48px)}
+  @keyframes hero-tag-fade{to{opacity:1}}
+  @keyframes hero-cta-slide{to{opacity:1;transform:translateX(0)}}
   @keyframes buffalo-anchor-charge{
     0%{transform:translateY(var(--buffalo-anchor-start-y))}
     25%{transform:translateY(var(--buffalo-anchor-25-y))}
@@ -344,7 +345,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   }
   @media (max-width:480px){ .hero{min-height:clamp(460px,55svh,480px)} }
   @media (prefers-reduced-motion: reduce){
-    .rise,.strip-track{animation:none;opacity:1;transform:none}
+    .hero-tag-enter,.hero-cta-enter,.strip-track{animation:none;opacity:1;transform:none}
     .buffalo-anchor{animation:none;transform:translateY(var(--buffalo-anchor-final-y))}
     .logo-buffalo{animation:none;opacity:1;transform:scale(var(--buffalo-scale))}
     .logo-wordmark{animation:none;opacity:1}
