@@ -227,8 +227,8 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .logo-wordmark{--layer-y:var(--wordmark-y);z-index:2;transform:scale(1.02);transform-origin:center;opacity:0;animation:logo-layer-fade .4s ease 1.25s forwards;will-change:opacity}
   .buffalo-anchor{--buffalo-rest-y:-1.72px;--buffalo-track-start-y:-64px;--buffalo-track-24-y:-49.05px;--buffalo-track-48-y:-34.11px;--buffalo-track-72-y:-19.16px;--layer-y:calc(var(--buffalo-y) + var(--buffalo-rest-y));--buffalo-motion-start-y:calc(var(--buffalo-track-start-y) - var(--buffalo-rest-y));--buffalo-motion-24-y:calc(var(--buffalo-track-24-y) - var(--buffalo-rest-y));--buffalo-motion-48-y:calc(var(--buffalo-track-48-y) - var(--buffalo-rest-y));--buffalo-motion-72-y:calc(var(--buffalo-track-72-y) - var(--buffalo-rest-y));z-index:1;transform:translateY(var(--buffalo-motion-start-y));animation:buffalo-anchor-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;animation-fill-mode:forwards;will-change:transform}
   .logo-buffalo{--buffalo-scale:.86;display:block;width:100%;height:100%;opacity:1;transform:scale(.2);transform-origin:center bottom;animation:buffalo-scale-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;animation-fill-mode:forwards;backface-visibility:hidden;will-change:transform}
-  .logo-bar-stage{display:block;position:relative;width:min(95vw,500px);height:58px;margin:0 auto;pointer-events:none}
-  .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(-78.5%) scale(1.04);transform-origin:center 78.5%;opacity:0;pointer-events:none;animation:logo-bar-fade .4s ease 1.65s forwards;will-change:opacity}
+  .logo-bar-stage{display:flex;align-items:center;justify-content:center;position:relative;width:min(72vw,320px);height:clamp(150px,34vw,215px);margin:0 auto;pointer-events:none}
+  .logo-bar-grill{display:block;width:100%;height:auto;transform:none;opacity:0;pointer-events:none;animation:logo-bar-fade .4s ease 1.65s forwards;will-change:opacity}
   .hero-after{padding:0;background:var(--cream)}
   .hero-actions{padding:clamp(18px,4vw,28px) 24px clamp(30px,5vw,44px);text-align:center}
   .hero-tag{font-size:clamp(1.05rem,2.4vw,1.4rem);color:var(--ink);
@@ -243,8 +243,8 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     .buffalo-anchor{--buffalo-rest-y:-8px;--buffalo-track-start-y:-96px;--buffalo-track-24-y:-71px;--buffalo-track-48-y:-52px;--buffalo-track-72-y:-32.64px;z-index:1}
     .logo-buffalo{--buffalo-scale:.8}
     .logo-wordmark{opacity:0;animation:logo-layer-fade .4s ease 1.25s forwards;will-change:opacity}
-    .logo-bar-stage{--bar-y:10px;display:block;position:relative;width:min(78vw,560px);height:90px;margin:0 auto;pointer-events:none}
-    .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(calc(-78.5% + var(--bar-y))) scale(1.15);transform-origin:center 78.5%;opacity:0;pointer-events:none;animation:logo-bar-fade .4s ease 1.65s forwards;will-change:opacity}
+    .logo-bar-stage{display:flex;align-items:center;justify-content:center;position:relative;width:min(50vw,360px);height:242px;margin:0 auto;pointer-events:none}
+    .logo-bar-grill{display:block;width:100%;height:auto;transform:none;opacity:0;pointer-events:none;animation:logo-bar-fade .4s ease 1.65s forwards;will-change:opacity}
   }
   .hero-tag-enter{opacity:0;animation:hero-tag-fade .4s ease 2.15s forwards}
   .hero-cta-enter{opacity:1;animation:hero-cta-slide 1.8s cubic-bezier(.08,.9,.2,1) 1.65s forwards}
@@ -334,7 +334,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   @media (max-width:800px){ .visit-cols{grid-template-columns:1fr;gap:20px} .visit-block p{white-space:normal} }
   @media (max-width:1099px){
     .hero{min-height:clamp(460px,55svh,500px);background-position:center bottom}
-    .logo-bar-stage{height:50px}
+    .logo-bar-stage{height:clamp(150px,34vw,215px)}
     .hero-actions{padding:12px 20px 24px}
     .hero-ctas{margin-top:14px;gap:12px;flex-wrap:nowrap}
     .hero-ctas .btn{padding:12px 18px;font-size:.92rem}
