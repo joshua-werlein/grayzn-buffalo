@@ -27,7 +27,7 @@ const recurring = [
 <section class="specials-page section-tavern">
   <div class="section-head interior-heading">
     <span class="kicker">Fresh from the kitchen</span>
-    <h2>This Week's Specials</h2>
+    <h1>This Week's Specials</h1>
     <span class="vintage-rule" aria-hidden="true"></span>
     <p>A different deal every day of the week. Staff post the details to Facebook — this is the full lineup.</p>
   </div>
@@ -103,7 +103,7 @@ const recurring = [
 <style>
   .specials-page{background:var(--ink);color:var(--cream);min-height:70vh;padding-top:clamp(28px,4vw,48px)}
   .specials-page .section-head .kicker{color:var(--amber)}
-  .specials-page .section-head h2{color:var(--gold)}
+  .specials-page .section-head :is(h1,h2){color:var(--gold)}
   .specials-page .section-head p{color:var(--cream-2)}
 
   /* ── week grid ── */
@@ -166,7 +166,7 @@ const recurring = [
     .day-services{grid-template-columns:1fr}
   }
 
-  .specials-page{padding-top:clamp(32px,5vw,54px);background:var(--surface-wood)}.specials-page .section-head{margin-bottom:28px}.specials-page .section-head .kicker,.specials-page .section-head h2{color:var(--ochre)}.specials-page .vintage-rule{background:var(--brick)}
+  .specials-page{padding-top:clamp(32px,5vw,54px);background:var(--surface-wood)}.specials-page .section-head{margin-bottom:28px}.specials-page .section-head .kicker,.specials-page .section-head :is(h1,h2){color:var(--ochre)}.specials-page .vintage-rule{background:var(--brick)}
   .week{max-width:var(--content-wide);gap:10px}.day-card{border:1px solid var(--rule-light);border-left:5px solid var(--ochre);border-radius:var(--panel-radius);padding:18px 20px;background:rgba(0,0,0,.12);box-shadow:none}.day-card:nth-child(even){border-left-color:var(--brick)}
   .day-services{gap:0;margin-top:10px;border-top:1px solid var(--rule-light)}.day-service{padding:13px 0;border:0;border-radius:0;background:transparent;border-top:0}.day-service + .day-service{padding-left:16px;border-left:1px solid var(--rule-light)}
   .day-card.is-today{max-width:var(--content-standard);border:2px solid var(--ochre);border-left:7px solid var(--brick);box-shadow:var(--panel-shadow-dark)}.today-badge{top:-12px;right:12px;border-radius:2px;background:var(--brick)}
