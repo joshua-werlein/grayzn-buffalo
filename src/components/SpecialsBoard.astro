@@ -25,8 +25,8 @@ const specials = await getSpecials(env);
 </div>
 
 <style>
-  .board{max-width:var(--content-standard);margin:0 auto;background:var(--surface-wood);border:2px solid var(--ochre);border-radius:var(--panel-radius);overflow:hidden;box-shadow:var(--panel-shadow-dark)}
-  .board-days{display:flex;flex-wrap:wrap;border-bottom:1px solid var(--rule-light);background:rgba(0,0,0,.12)}
+  .board{max-width:var(--content-standard);margin:0 auto;background-color:var(--denim);background-image:linear-gradient(110deg,rgba(255,255,255,.04),transparent 30%,rgba(0,0,0,.2)),repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 5px);border:2px solid var(--ochre);border-radius:0;overflow:hidden;box-shadow:0 4px 0 #120d0a,0 14px 28px rgba(0,0,0,.28)}
+  .board-days{display:flex;flex-wrap:wrap;border-bottom:1px solid var(--rule-light);background:rgba(13,26,34,.35)}
   .board-days :global(button){flex:1 1 0;min-width:78px;padding:13.5px 6px;background:transparent;border:0;border-right:1px solid var(--rule-light);cursor:pointer;
     font-family:var(--label);font-weight:700;letter-spacing:.12em;font-size:.88rem;color:var(--cream-2);
     text-transform:uppercase;transition:background .2s,color .2s}
@@ -34,10 +34,10 @@ const specials = await getSpecials(env);
   .board-days :global(button[aria-selected="true"]){background:var(--brick);color:var(--cream)}
   .board-days :global(button:focus-visible){outline:3px solid var(--ochre);outline-offset:-3px}
   .board-days :global(.today-dot){display:block;font-size:.58rem;letter-spacing:.16em;color:var(--ochre)}
-  .board-body{padding:clamp(22px,4vw,38px);text-align:center}
+  .board-body{padding:clamp(22px,4vw,38px);text-align:center;background:linear-gradient(90deg,transparent,rgba(255,248,222,.035),transparent)}
   .board-day-label{font-family:var(--label);font-weight:700;letter-spacing:.24em;text-transform:uppercase;color:var(--ochre);font-size:.82rem}
-  .board-services{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;margin-top:16px;border:1px solid var(--rule-light)}
-  .service-card{min-width:0;padding:clamp(18px,3vw,26px);border:0;border-radius:0;background:rgba(0,0,0,.1)}
+  .board-services{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;margin-top:16px;border-top:1px solid var(--rule-light);border-bottom:1px solid var(--rule-light)}
+  .service-card{min-width:0;padding:clamp(18px,3vw,26px);border:0;border-radius:0;background:rgba(4,20,30,.16)}
   .service-card + .service-card{border-left:1px solid var(--rule-light)}
   .lunch-service{border-top:4px solid var(--ochre)}
   .night-service{border-top:4px solid var(--brick)}

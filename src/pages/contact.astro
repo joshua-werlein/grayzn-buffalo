@@ -57,6 +57,13 @@ const sitekey = env.TURNSTILE_SITEKEY;
   .card.info h3{color:var(--cream)}.card.info p{color:var(--cream-2);padding-bottom:8px;border-bottom:1px solid var(--rule-light)}.card.info a{color:var(--cream);text-decoration-color:var(--ochre)}
   form label{color:var(--text);margin-bottom:14px}form input,form textarea{min-height:48px;margin-top:5px;padding:11px 12px;border:1px solid var(--rule);border-radius:var(--control-radius);background:var(--page-parchment);color:var(--text)}form textarea{min-height:136px;resize:vertical}form input:focus,form textarea:focus{border-color:var(--brick);box-shadow:0 0 0 3px rgba(146,44,41,.18)}
   .card.info iframe{border:2px solid var(--ochre)!important;border-radius:var(--panel-radius)!important;margin-top:6px!important}.cf-turnstile{min-height:65px}
+
+  .contact-page{position:relative;background-color:var(--page-parchment);background-image:linear-gradient(90deg,rgba(94,53,28,.1) 0 1px,transparent 1px 34px),linear-gradient(0deg,rgba(94,53,28,.07) 0 1px,transparent 1px 34px),linear-gradient(110deg,#f4e7ce,#dbc397);border-top:5px double var(--ink);overflow:hidden}
+  .contact-page::after{content:'';position:absolute;right:-60px;bottom:-80px;width:360px;height:310px;background:url('/logo-buffalo.webp') center / contain no-repeat;opacity:.06;filter:sepia(1);pointer-events:none}.contact-page > *{position:relative;z-index:1}
+  .contact-page .section-head .kicker{color:var(--denim)}.contact-page .section-head .vintage-rule{width:15rem;background:linear-gradient(90deg,transparent,var(--brick),transparent)}
+  .contact-grid{gap:clamp(18px,3vw,34px)}.card{border:2px solid var(--ink);border-top:6px double var(--brick);border-radius:0;box-shadow:4px 5px 0 rgba(43,27,20,.22),0 12px 24px rgba(43,27,20,.12);background-color:#f4e7ce;background-image:linear-gradient(90deg,rgba(84,48,24,.05),transparent 18%,transparent 82%,rgba(84,48,24,.05))}.card.info{border-top-color:var(--denim);background-color:#e7d2a8;background-image:linear-gradient(90deg,rgba(43,27,20,.08) 0 1px,transparent 1px 26px);color:var(--ink)}
+  .card.info h3,.card.info p,.card.info a{color:var(--ink)}.card.info p{border-bottom-color:var(--rule)}.card.info a{text-decoration-color:var(--brick)}
+  form label{padding-bottom:7px;border-bottom:1px dotted rgba(43,27,20,.38)}form input,form textarea{border-radius:0;border-color:rgba(43,27,20,.55);background:rgba(255,248,226,.58);box-shadow:inset 0 1px 2px rgba(43,27,20,.08)}.card.info iframe{border:5px solid #f7ecd6!important;border-radius:0!important;box-shadow:2px 2px 0 rgba(43,27,20,.22)}
 </style>
 
 <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
