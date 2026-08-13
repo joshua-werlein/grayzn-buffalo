@@ -34,10 +34,11 @@ const lateNightColumns = splitColumns(lateNight);
   title="Menu — Grayz'n Buffalo Bar & Grill"
   description="Full menu for Grayz'n Buffalo Bar & Grill in Mondovi, WI — burgers, pizzas, baskets, wraps, salads and more. Plus a late-night menu after the grill closes."
 >
-<section class="menu-top">
-  <div class="section-head">
-    <h2>The Menu</h2>
+<section class="menu-top section-parchment">
+  <div class="section-head interior-heading">
     <span class="kicker">From the kitchen</span>
+    <h2>The Menu</h2>
+    <span class="vintage-rule" aria-hidden="true"></span>
     <p>No prices here — ask at the bar. Staff keep this list current.</p>
   </div>
  
@@ -98,8 +99,9 @@ const lateNightColumns = splitColumns(lateNight);
                         <img class="item-photo" src={`/img/${thumbKey(it.photo_key)}`} alt="" width="72" height="56" loading="lazy" decoding="async" />
                       </button>
                     )}
-                    <div class="item-copy">
+                      <div class="item-copy">
                       <strong>{it.name}</strong>
+                      {it.late_night === 1 && <span class="late-night-note">Late Night</span>}
                       {it.description && <span>{it.description}</span>}
                     </div>
                   </li>
@@ -133,8 +135,9 @@ const lateNightColumns = splitColumns(lateNight);
                         </button>
                       )}
                       <div class="item-copy">
-                        <strong>{it.name}</strong>
-                        {it.description && <span>{it.description}</span>}
+                      <strong>{it.name}</strong>
+                      {it.late_night === 1 && <span class="late-night-note">Late Night</span>}
+                      {it.description && <span>{it.description}</span>}
                       </div>
                     </li>
                   ))}
@@ -214,6 +217,17 @@ const lateNightColumns = splitColumns(lateNight);
     .item-photo{width:60px;height:48px}
     .cat-section h3{font-size:1.3rem}
   }
+
+  .menu-top{padding-top:clamp(32px,5vw,54px)}
+  .interior-heading{margin-bottom:24px}.interior-heading .vintage-rule{background:var(--brick)}
+  .tabs{gap:0;margin-bottom:20px}.tabs .tab{min-height:48px;border-radius:0;border:1px solid var(--ink);padding:11px 26px;background:var(--surface-parchment)}
+  .tabs .tab + .tab{border-left:0}.tabs .tab[aria-selected="true"]{background:var(--brick);border-color:var(--brick);color:var(--cream)}
+  .chips{max-width:var(--content-wide);padding:10px 0;background:var(--page-parchment);border-bottom:1px solid var(--rule)}
+  .chip-links{gap:0}.chips a{border:0;border-radius:0;padding:7px 10px;color:var(--text-muted);text-decoration:underline;text-decoration-color:transparent;text-underline-offset:4px}.chips a:hover,.chips a:focus-visible{background:transparent;color:var(--brick);text-decoration-color:currentColor}
+  .menu-columns{max-width:var(--content-wide);gap:0 clamp(28px,5vw,64px)}.cat-section{margin-bottom:20px}.cat-section h3{margin:24px 0 4px;padding:0 0 8px;border-bottom:2px solid var(--ochre);font-size:clamp(1.35rem,2.4vw,1.8rem)}
+  .item{gap:12px;padding:12px 2px;border-bottom:1px solid var(--rule)}.item-photo-trigger,.item-photo{border-radius:var(--control-radius)}.item-copy strong{font-size:1.05rem}.item-copy span{color:var(--text-muted)}
+  .late-night-note{display:inline-block;margin-left:7px;padding:1px 6px;border:1px solid var(--ochre);color:var(--text-muted);font-family:var(--label);font-size:.68rem;line-height:1.25;letter-spacing:.1em;text-transform:uppercase;vertical-align:middle}.panel#panel-late-night .late-night-note{display:none}
+  .late-note{margin:0 auto 18px;padding:10px;border-bottom:1px solid var(--rule)}
 </style>
  
 <script>

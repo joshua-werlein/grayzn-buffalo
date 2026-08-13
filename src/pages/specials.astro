@@ -24,10 +24,11 @@ const recurring = [
   title="Specials — Grayz'n Buffalo Bar & Grill, Mondovi WI"
   description="This week's daily specials at Grayz'n Buffalo Bar & Grill in Mondovi, WI — a different deal every day, plus Mexican Night on Tuesdays, happy hour, lunch and nightly specials."
 >
-<section class="specials-page">
-  <div class="section-head">
-    <h2>This Week's Specials</h2>
+<section class="specials-page section-tavern">
+  <div class="section-head interior-heading">
     <span class="kicker">Fresh from the kitchen</span>
+    <h2>This Week's Specials</h2>
+    <span class="vintage-rule" aria-hidden="true"></span>
     <p>A different deal every day of the week. Staff post the details to Facebook — this is the full lineup.</p>
   </div>
 
@@ -164,4 +165,11 @@ const recurring = [
     .day-card.is-today{grid-column:auto}
     .day-services{grid-template-columns:1fr}
   }
+
+  .specials-page{padding-top:clamp(32px,5vw,54px);background:var(--surface-wood)}.specials-page .section-head{margin-bottom:28px}.specials-page .section-head .kicker,.specials-page .section-head h2{color:var(--ochre)}.specials-page .vintage-rule{background:var(--brick)}
+  .week{max-width:var(--content-wide);gap:10px}.day-card{border:1px solid var(--rule-light);border-left:5px solid var(--ochre);border-radius:var(--panel-radius);padding:18px 20px;background:rgba(0,0,0,.12);box-shadow:none}.day-card:nth-child(even){border-left-color:var(--brick)}
+  .day-services{gap:0;margin-top:10px;border-top:1px solid var(--rule-light)}.day-service{padding:13px 0;border:0;border-radius:0;background:transparent;border-top:0}.day-service + .day-service{padding-left:16px;border-left:1px solid var(--rule-light)}
+  .day-card.is-today{max-width:var(--content-standard);border:2px solid var(--ochre);border-left:7px solid var(--brick);box-shadow:var(--panel-shadow-dark)}.today-badge{top:-12px;right:12px;border-radius:2px;background:var(--brick)}
+  .recurring-head{margin:40px auto 16px}.recurring{max-width:var(--content-wide);gap:10px}.rec-card{border:1px solid var(--rule-light);border-radius:var(--panel-radius);padding:14px}.delivery-block{border-radius:var(--panel-radius);border-color:var(--ochre);padding:14px 18px}.specials-cta{margin-top:30px}
+  @media (max-width:680px){.day-service + .day-service{padding-left:0;margin-top:12px;padding-top:12px;border-left:0;border-top:1px solid var(--rule-light)}}
 </style>

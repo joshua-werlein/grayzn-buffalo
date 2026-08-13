@@ -7,10 +7,11 @@ const sitekey = env.TURNSTILE_SITEKEY;
   title="Contact — Grayz'n Buffalo Bar & Grill"
   description="Contact Grayz'n Buffalo Bar & Grill in Mondovi, WI for questions, events, menu information, or general inquiries."
 >
-<section class="contact-page">
-  <div class="section-head">
-    <h2>Contact Us</h2>
+<section class="contact-page section-parchment">
+  <div class="section-head interior-heading">
     <span class="kicker">To get in touch</span>
+    <h2>Contact Us</h2>
+    <span class="vintage-rule" aria-hidden="true"></span>
     <p>Questions, events, or just want to say hi — drop us a line or give us a call.</p>
   </div>
   <div class="contact-grid">
@@ -50,6 +51,12 @@ const sitekey = env.TURNSTILE_SITEKEY;
   #formStatus{margin-top:12px;font-weight:600}
   .cf-turnstile{margin-bottom:16px}
   @media (max-width:820px){ .contact-grid{grid-template-columns:1fr} }
+
+  .contact-page{padding-top:clamp(32px,5vw,54px)}.contact-page .section-head{margin-bottom:28px}.contact-grid{max-width:var(--content-standard);gap:16px;align-items:start}
+  .card{border:1px solid var(--rule);border-top:5px solid var(--brick);border-radius:var(--panel-radius);padding:clamp(20px,3vw,30px);background:var(--surface-parchment);box-shadow:var(--panel-shadow)}.card.info{border-top-color:var(--ochre);background:var(--surface-wood);color:var(--cream);box-shadow:var(--panel-shadow-dark)}
+  .card.info h3{color:var(--cream)}.card.info p{color:var(--cream-2);padding-bottom:8px;border-bottom:1px solid var(--rule-light)}.card.info a{color:var(--cream);text-decoration-color:var(--ochre)}
+  form label{color:var(--text);margin-bottom:14px}form input,form textarea{min-height:48px;margin-top:5px;padding:11px 12px;border:1px solid var(--rule);border-radius:var(--control-radius);background:var(--page-parchment);color:var(--text)}form textarea{min-height:136px;resize:vertical}form input:focus,form textarea:focus{border-color:var(--brick);box-shadow:0 0 0 3px rgba(146,44,41,.18)}
+  .card.info iframe{border:2px solid var(--ochre)!important;border-radius:var(--panel-radius)!important;margin-top:6px!important}.cf-turnstile{min-height:65px}
 </style>
 
 <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
