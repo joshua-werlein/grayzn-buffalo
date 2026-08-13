@@ -216,11 +216,9 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   nav.site{transition:transform .28s ease}
   nav.site.hidden{transform:translateY(-100%)}
 
-  /* ---- mobile top bar: logo returns home; Contact stays available ---- */
+  /* ---- mobile: announcement stays visible; actions live in the bottom bar ---- */
   @media (max-width:1099px){
-    nav.site li[data-nav="home"],
-    nav.site li[data-nav="menu"],
-    nav.site li[data-nav="specials"]{display:none}
+    nav.site{display:none}
   }
 
   /* ---- pinned bottom action bar ---- */
