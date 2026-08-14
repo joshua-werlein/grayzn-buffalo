@@ -521,8 +521,8 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .daily-special--dinner:hover{transform:translateY(-6px) rotate(.3deg)}
 
   .welcome-gumby{margin-top:clamp(18px,2.5vw,28px)!important;font-size:clamp(.95rem,1.25vw,1.04rem)!important}
-  .photo-stack{display:block;max-width:none;margin:clamp(24px,3vw,36px) calc(var(--section-inline) * -1) 0;padding:18px 0 30px;overflow:hidden}
-  .photo-track{display:flex;width:max-content;animation:welcome-photo-marquee 105s linear infinite}
+  .photo-stack{display:block;width:100vw;max-width:none;margin:clamp(24px,3vw,36px) 0 0 calc(50% - 50vw);padding:40px 0 48px;overflow:hidden}
+  .photo-track{--marquee-entry-offset:clamp(220px,22vw,340px);display:flex;width:max-content;animation:welcome-photo-marquee 105s linear infinite}
   .photo-sequence{display:flex;align-items:center;gap:clamp(12px,1.8vw,24px);padding-right:clamp(12px,1.8vw,24px);flex:none}
   .photo{flex:none;display:block;width:clamp(180px,15vw,245px)!important;height:clamp(160px,14vw,220px);margin:0!important;overflow:visible;transform:none!important;transition:transform .2s ease,box-shadow .2s ease}
   .photo--landscape{width:clamp(220px,19vw,300px)!important}.photo--square{width:clamp(175px,14vw,230px)!important}.photo--portrait{width:clamp(160px,12vw,195px)!important}
@@ -532,19 +532,25 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .photo:hover{transform:translateY(-12px) rotate(0)!important;z-index:4;box-shadow:3px 5px 0 rgba(76,45,24,.25),10px 14px 22px rgba(43,27,20,.26)}
   .welcome-closing{margin:10px auto 0;padding-bottom:clamp(18px,3vw,32px)}
   .welcome-flourish{display:none}
-  @keyframes welcome-photo-marquee{to{transform:translateX(-50%)}}
+  .photo-stack:focus-within .photo-track{animation-play-state:paused}
+  @keyframes welcome-photo-marquee{from{transform:translateX(calc(-1 * var(--marquee-entry-offset)))}to{transform:translateX(calc(-50% - var(--marquee-entry-offset)))}}
 
   @media (max-width:900px){
     .hero-after__brand{height:auto}
     .hero-after__brand .logo-bar-stage{transform:none}
     .hero-after__brand .home-specials__cta{margin:34px auto 0}
-    .photo-stack{margin-inline:calc(var(--section-inline) * -1)}
-    .photo{width:clamp(170px,52vw,220px)!important;height:clamp(155px,46vw,205px)}
-    .photo--landscape{width:clamp(215px,63vw,280px)!important}.photo--portrait{width:clamp(150px,42vw,180px)!important}
-    .photo-track{animation-duration:82s}
+    .photo-stack{margin-left:calc(50% - 50vw);padding-block:34px 42px}
+    .photo-track{--marquee-entry-offset:220px;animation-duration:132s}
+    .photo{width:clamp(126px,34vw,154px)!important;height:clamp(116px,31vw,138px)}
+    .photo--landscape{width:clamp(168px,45vw,198px)!important;height:clamp(108px,29vw,126px)}
+    .photo--square{width:clamp(128px,35vw,150px)!important;height:clamp(128px,35vw,150px)}
+    .photo--portrait{width:clamp(108px,29vw,126px)!important;height:clamp(150px,40vw,174px)}
+    .photo img{object-fit:contain;background:#f6ecd8}
+    .photo:nth-child(odd){transform:rotate(-2.4deg) translateY(8px)!important}.photo:nth-child(even){transform:rotate(2.2deg) translateY(-6px)!important}
+    .photo:nth-child(3n){transform:rotate(-1.5deg) translateY(2px)!important}.photo:nth-child(4n){transform:rotate(2.7deg) translateY(-9px)!important}
   }
   @media (prefers-reduced-motion:reduce){
-    .photo-stack{overflow-x:auto;scroll-snap-type:x proximity;padding-inline:20px}
+    .photo-stack{overflow-x:auto;scroll-snap-type:x proximity;padding:34px 20px 42px}
     .photo-track{animation:none;width:max-content}
     .photo-sequence[aria-hidden="true"]{display:none}
     .photo{scroll-snap-align:center}
