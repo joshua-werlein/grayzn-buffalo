@@ -54,8 +54,17 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   <div class="hero-copy">
     <div class="logo-stage" aria-hidden="true">
       <img class="logo-layer logo-wordmark" src="/logo-wordmark.webp" alt="" width="900" height="605" decoding="async" />
-      <div class="buffalo-anchor logo-layer">
-        <img class="logo-buffalo" src="/logo-buffalo.webp" alt="" width="900" height="605" fetchpriority="high" decoding="async" />
+      <div class="buffalo-video-anchor logo-layer">
+        <video
+          class="buffalo-video"
+          autoplay
+          muted
+          playsinline
+          preload="auto"
+          aria-hidden="true"
+        >
+          <source src="/grok-buffalo-test.webm" type="video/webm" />
+        </video>
       </div>
     </div>
   </div>
@@ -225,8 +234,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     width:min(95%,500px);aspect-ratio:900 / 605;margin:0 auto}
   .logo-layer{position:absolute;top:var(--layer-y);left:0;width:100%;height:100%;pointer-events:none}
   .logo-wordmark{--layer-y:var(--wordmark-y);z-index:2;transform:scale(1.02);transform-origin:center;opacity:0;animation:logo-layer-fade .4s ease 1.25s forwards;will-change:opacity}
-  .buffalo-anchor{--buffalo-rest-y:-1.72px;--buffalo-track-start-y:-64px;--buffalo-track-24-y:-49.05px;--buffalo-track-48-y:-34.11px;--buffalo-track-72-y:-19.16px;--layer-y:calc(var(--buffalo-y) + var(--buffalo-rest-y));--buffalo-motion-start-y:calc(var(--buffalo-track-start-y) - var(--buffalo-rest-y));--buffalo-motion-24-y:calc(var(--buffalo-track-24-y) - var(--buffalo-rest-y));--buffalo-motion-48-y:calc(var(--buffalo-track-48-y) - var(--buffalo-rest-y));--buffalo-motion-72-y:calc(var(--buffalo-track-72-y) - var(--buffalo-rest-y));z-index:1;transform:translateY(var(--buffalo-motion-start-y));animation:buffalo-anchor-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;animation-fill-mode:forwards;will-change:transform}
-  .logo-buffalo{--buffalo-scale:.86;display:block;width:100%;height:100%;opacity:1;transform:scale(.2);transform-origin:center bottom;animation:buffalo-scale-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;animation-fill-mode:forwards;backface-visibility:hidden;will-change:transform}
+  .logo-buffalo-video{--buffalo-scale:.86;display:block;width:100%;height:100%;opacity:1;transform:scale(.2);transform-origin:center bottom;animation:buffalo-scale-charge 1.65s cubic-bezier(.16,.78,.28,1) forwards;animation-fill-mode:forwards;backface-visibility:hidden;will-change:transform}
   .logo-bar-stage{display:flex;align-items:center;justify-content:center;position:relative;width:min(80vw,360px);height:clamp(90px,20vw,150px);margin:0 auto;pointer-events:none}
   .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(5px);opacity:0;pointer-events:none;animation:logo-bar-fade .4s ease 1.65s forwards;will-change:opacity}
   .hero-after{padding:0;background:var(--cream)}
@@ -240,7 +248,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     .logo-stage{--wordmark-y:-74px;--buffalo-y:8px;
       display:block;position:absolute;top:190px;left:0;right:0;width:min(78vw,560px);aspect-ratio:900 / 605;margin:0 auto;pointer-events:none}
     .logo-wordmark{--layer-y:var(--wordmark-y);z-index:2;transform:scale(1.23);transform-origin:center}
-    .buffalo-anchor{--buffalo-rest-y:-8px;--buffalo-track-start-y:-96px;--buffalo-track-24-y:-71px;--buffalo-track-48-y:-52px;--buffalo-track-72-y:-32.64px;z-index:1}
+    
     .logo-buffalo{--buffalo-scale:.8}
     .logo-wordmark{opacity:0;animation:logo-layer-fade .4s ease 1.25s forwards;will-change:opacity}
     .logo-bar-stage{display:flex;align-items:center;justify-content:center;position:relative;width:min(50vw,400px);height:150px;margin:0 auto;pointer-events:none}
@@ -252,19 +260,19 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .hero-cta-right{transform:translateX(100vw)}
   @keyframes hero-tag-fade{to{opacity:1}}
   @keyframes hero-cta-slide{to{opacity:1;transform:translateX(0)}}
-  @keyframes buffalo-anchor-charge{
-    0%{transform:translateY(var(--buffalo-motion-start-y))}
-    24%{transform:translateY(var(--buffalo-motion-24-y));animation-timing-function:cubic-bezier(.15,.8,.45,1)}
-    48%{transform:translateY(var(--buffalo-motion-48-y));animation-timing-function:linear}
-    72%{transform:translateY(var(--buffalo-motion-72-y));animation-timing-function:cubic-bezier(.2,.7,.65,.9)}
-    100%{transform:translateY(0)}
+  .buffalo-video-anchor {
+    --layer-y: var(--buffalo-y);
+    z-index: 1;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
   }
-  @keyframes buffalo-scale-charge{
-    0%{transform:scale(.2)}
-    24%{transform:scale(.32);animation-timing-function:cubic-bezier(.15,.8,.45,1)}
-    48%{transform:scale(.6);animation-timing-function:linear}
-    72%{transform:scale(.74);animation-timing-function:cubic-bezier(.2,.7,.65,.9)}
-    100%{transform:scale(var(--buffalo-scale))}
+
+  .buffalo-video {
+    display: block;
+    width: 46%;
+    height: auto;
+    object-fit: contain;
   }
   @keyframes logo-layer-fade{to{opacity:1}}
   @keyframes logo-bar-fade{to{opacity:1}}
@@ -330,6 +338,11 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .visit-block a{color:var(--gold);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1.5px;}
   .visit-block a:hover,
   .visit-block a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
+  @media (min-width:1100px) {
+    .buffalo-video {
+      width: 42%;
+    }
+  }
   @media (max-width:900px){ .welcome-grid{grid-template-columns:1fr} .welcome-copy{max-width:52ch}.photo-stack{grid-template-columns:1fr;grid-auto-rows:clamp(180px,62vw,280px)}.photo-stack .photo{max-height:280px} }
   @media (max-width:800px){ .visit-cols{grid-template-columns:1fr;gap:20px} .visit-block p{white-space:normal} }
   @media (max-width:1099px){
@@ -339,10 +352,17 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     .hero-ctas{margin-top:14px;gap:12px;flex-wrap:nowrap}
     .hero-ctas .btn{padding:12px 18px;font-size:.92rem}
   }
-  @media (max-width:480px){ .hero{min-height:max(clamp(460px,55svh,480px),min(109vw,522px))} }
+  @media (max-width:480px){
+    .hero{min-height:max(clamp(460px,55svh,480px),min(109vw,522px))}
+    .logo-bar-stage{width:min(65vw,280px);height:auto}
+    .hero-actions{margin-top:0;padding-top:12px}
+  }
   @media (prefers-reduced-motion: reduce){
-    .hero-tag-enter,.hero-cta-enter,.strip-track{animation:none;opacity:1;transform:none}
-    .buffalo-anchor{animation:none;transform:none}
+      .hero-tag-enter,.hero-cta-enter,.strip-track{animation:none;opacity:1;transform:none}
+      .buffalo-anchor{animation:none;transform:none}
+      .buffalo-video-anchor {
+      display: none;
+    }
     .logo-buffalo{animation:none;opacity:1;transform:scale(var(--buffalo-scale))}
     .logo-wordmark{animation:none;opacity:1}
     .logo-bar-grill{animation:none;opacity:1}
