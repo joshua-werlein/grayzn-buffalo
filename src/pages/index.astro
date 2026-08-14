@@ -22,6 +22,7 @@ const todaySpecial = specials.find((special) => special.day_of_week === business
 const welcomePhotos = await getWelcomePhotos(env);
 // Welcome uploads lead; unique active menu photos fill the remainder by category.
 const usedWelcomePhotoKeys = new Set<string>();
+const usedWelcomeMenuItems = new Set<number>();
 const welcomeTiles = welcomePhotos.flatMap((photo) => {
   // Client uploads lead the photo line and always outrank menu fallbacks.
   if (!photo.photo_key || usedWelcomePhotoKeys.has(photo.photo_key)) return [];
@@ -34,8 +35,9 @@ const welcomeTiles = welcomePhotos.flatMap((photo) => {
 const categoryPhotoQueues = categories.map((category) => {
   const queue = [] as typeof items;
   for (const item of items) {
-    if (item.category_id !== category.id || item.active !== 1 || !item.photo_key || usedWelcomePhotoKeys.has(item.photo_key)) continue;
+    if (item.category_id !== category.id || item.active !== 1 || !item.photo_key || usedWelcomePhotoKeys.has(item.photo_key) || usedWelcomeMenuItems.has(item.id)) continue;
     usedWelcomePhotoKeys.add(item.photo_key);
+    usedWelcomeMenuItems.add(item.id);
     queue.push(item);
   }
   return queue;
@@ -57,7 +59,9 @@ for (let round = 0; categoryPhotoQueues.some((queue) => round < queue.length); r
     });
   }
 }
-const visibleWelcomeTiles = welcomeTiles;
+// The Welcome composition has four slots. Keep the display list unique before
+// rendering so neither an upload nor a menu fallback can repeat in the collage.
+const visibleWelcomeTiles = welcomeTiles.slice(0, 4);
 const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
 ---
 <Base>
@@ -83,7 +87,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
 </header>
 
 <div class="opening-poster">
-<div class="opening-landscape" aria-hidden="true"></div>
+<div class="hero-foreground" aria-hidden="true"></div>
 <section class="hero-after">
   <div class="hero-after__layout">
     <article class="daily-special daily-special--lunch">
@@ -440,7 +444,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .map-frame{border:6px solid #f7ecd6;border-radius:0;box-shadow:3px 3px 0 rgba(43,27,20,.3),9px 12px 22px rgba(43,27,20,.14)}
 
   /* The intro reads as one posted-paper composition: daily boards flank the mark. */
-  .hero-after{padding:clamp(26px,4vw,52px) 24px clamp(22px,3vw,36px);text-align:center;border-bottom:1px solid rgba(91,48,27,.25)}
+  .hero-after{padding:clamp(26px,4vw,52px) 24px clamp(22px,3vw,36px);text-align:center}
   .hero-after__layout{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(300px,1.28fr) minmax(220px,.9fr);grid-template-areas:"lunch brand dinner";align-items:stretch;gap:clamp(20px,3.5vw,52px);max-width:var(--content-wide);margin:0 auto}
   .daily-special{position:relative;isolation:isolate;display:flex;flex-direction:column;justify-content:center;min-width:0;min-height:220px;padding:clamp(22px,2.8vw,34px) clamp(18px,2.5vw,30px);background-color:#173747;background-image:radial-gradient(rgba(247,236,214,.13) .65px,transparent .8px),linear-gradient(115deg,rgba(0,0,0,.16),transparent 22%,transparent 76%,rgba(0,0,0,.13));background-size:5px 5px,100% 100%;color:#f6ecd8;border:2px solid var(--ochre);box-shadow:4px 5px 0 rgba(43,27,20,.28),0 10px 22px rgba(43,27,20,.2);text-align:center}
   .daily-special::before{content:"";position:absolute;z-index:-1;inset:6px;border:1px solid rgba(235,194,109,.62);pointer-events:none}
@@ -546,8 +550,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   /* The lower poster assembles after the hero mark: boards settle with the second line of copy, then Welcome follows. */
   .hero-after,#welcome{overflow-x:clip}
   .welcome-grid{position:relative;z-index:2}
-  .opening-landscape{position:absolute;z-index:1;inset:0 0 auto;height:clamp(640px,52vw,780px);pointer-events:none;background:url('/grayznBackground.webp') center bottom / auto clamp(5000px,445vw,6400px) no-repeat;opacity:.42;will-change:opacity;mask-image:linear-gradient(to bottom,rgba(0,0,0,.72) 0%,rgba(0,0,0,.56) 30%,rgba(0,0,0,.16) 54%,transparent 72%);-webkit-mask-image:linear-gradient(to bottom,rgba(0,0,0,.72) 0%,rgba(0,0,0,.56) 30%,rgba(0,0,0,.16) 54%,transparent 72%);animation:opening-landscape-dissolve 1.2s ease 2.35s both}
-  @keyframes opening-landscape-dissolve{from{opacity:.42}to{opacity:0}}
+  .hero-foreground{position:absolute;z-index:1;inset:clamp(-110px,-6vw,-54px) 0 auto;height:clamp(380px,32vw,560px);pointer-events:none;background:url('/hero-foreground.webp') center bottom / min(1920px,140vw) auto no-repeat;opacity:.94;mask-image:linear-gradient(to bottom,#000 0%,#000 70%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 70%,transparent 100%)}
   .daily-special--lunch,.daily-special--dinner{opacity:0;will-change:transform,opacity}
   .daily-special--lunch{animation:poster-board-left .9s cubic-bezier(.2,.72,.25,1) 1.65s both}
   .daily-special--dinner{animation:poster-board-right .9s cubic-bezier(.2,.72,.25,1) 1.65s both}
@@ -565,13 +568,15 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .welcome-gumby{animation:poster-rise .55s cubic-bezier(.2,.72,.25,1) 4.67s both}
   .photo-stack{animation:welcome-photo-composition .8s cubic-bezier(.2,.72,.25,1) 5.37s both}
   .welcome-closing{animation:poster-rise .5s cubic-bezier(.2,.72,.25,1) 6.24s both}
+  .hero-after::after{content:"";position:absolute;z-index:3;right:clamp(18px,4vw,64px);bottom:0;left:clamp(18px,4vw,64px);height:1px;background:rgba(91,48,27,.25);opacity:0;pointer-events:none;animation:hero-welcome-divider .48s ease 3.12s both}
+  @keyframes hero-welcome-divider{to{opacity:1}}
   @keyframes poster-rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
   @keyframes welcome-photo-composition{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
   @keyframes poster-rule-left{from{opacity:0;transform:translateX(-100vw)}to{opacity:1;transform:translateX(0)}}
   @keyframes poster-rule-right{from{opacity:0;transform:translateX(100vw)}to{opacity:1;transform:translateX(0)}}
 
   @media (max-width:900px){
-    .opening-landscape{height:clamp(540px,140vw,660px)}
+    .hero-foreground{inset:clamp(-62px,-12vw,-34px) 0 auto;height:clamp(310px,92vw,440px);background-size:min(780px,190vw) auto;opacity:.9}
     .hero-after__brand{height:auto}
     .hero-after__brand .logo-bar-stage{transform:none}
     .hero-after__brand .home-specials__cta{margin:34px auto 0}
@@ -585,9 +590,22 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
     .photo:nth-child(odd){transform:rotate(-2.4deg) translateY(8px)!important}.photo:nth-child(even){transform:rotate(2.2deg) translateY(-6px)!important}
     .photo:nth-child(3n){transform:rotate(-1.5deg) translateY(2px)!important}.photo:nth-child(4n){transform:rotate(2.7deg) translateY(-9px)!important}
   }
+  @media (max-width:620px){
+    .photo-stack{width:calc(100% + 24px);margin:24px 0 0 -12px;padding:26px 0 30px;overflow:visible}
+    .photo-track{display:flex;width:100%;transform:none!important;animation:none}
+    .photo-sequence{display:flex;flex:1;flex-wrap:wrap;justify-content:center;gap:14px 8px;padding:0 6px}
+    .photo-sequence[aria-hidden="true"]{display:none}
+    .photo{width:clamp(96px,28vw,128px)!important;height:clamp(92px,26vw,118px);margin:0!important}
+    .photo--landscape{width:clamp(122px,35vw,156px)!important;height:clamp(88px,25vw,108px)}
+    .photo--square{width:clamp(98px,28vw,122px)!important;height:clamp(98px,28vw,122px)}
+    .photo--portrait{width:clamp(82px,24vw,104px)!important;height:clamp(122px,35vw,152px)}
+    .photo img{object-fit:cover;background:#f6ecd8}
+    .welcome-closing{margin-top:18px}
+  }
   @media (prefers-reduced-motion:reduce){
-    .opening-landscape{display:none}
+    .hero-foreground{display:block}
     .daily-special--lunch,.daily-special--dinner,.hero-after .home-specials__cta,.welcome-title h2,.welcome-title__rule,.welcome-title__star,.welcome-intro,.welcome-gumby,.photo-stack,.welcome-closing{animation:none;opacity:1;transform:none}
+    .hero-after::after{animation:none;opacity:1}
     .photo-stack{overflow-x:auto;scroll-snap-type:x proximity;padding:34px 20px 42px}
     .photo-track{animation:none;width:max-content}
     .photo-sequence[aria-hidden="true"]{display:none}
@@ -644,6 +662,13 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
 </style>
 
 <script>
+  document.addEventListener('error', (event) => {
+    const image = event.target;
+    if (image instanceof HTMLImageElement && image.matches('.photo img')) {
+      image.closest<HTMLElement>('.photo')?.remove();
+    }
+  }, true);
+
   document.addEventListener('image-lightbox:open', (event) => {
     const trigger = (event as CustomEvent<{ trigger?: HTMLElement }>).detail?.trigger;
     trigger?.closest<HTMLElement>('.photo-stack')?.setAttribute('data-lightbox-paused', 'true');
