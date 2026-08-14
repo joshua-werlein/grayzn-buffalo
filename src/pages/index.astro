@@ -25,7 +25,7 @@ const welcomeFallbackPhotos = items
   .filter((item) => item.active === 1 && item.photo_key)
   .sort((a, b) => b.id - a.id)
   .filter((item, index, candidates) => candidates.findIndex((candidate) => candidate.photo_key === item.photo_key) === index);
-const usedWelcomePhotoKeys = new Set(welcomePhotos.flatMap((photo) => (photo.photo_key ? [photo.photo_key] : [])));
+const usedWelcomePhotoKeys = new Set<string>();
 let fallbackIndex = 0;
 const nextWelcomeFallback = () => {
   while (fallbackIndex < welcomeFallbackPhotos.length) {
@@ -37,26 +37,13 @@ const nextWelcomeFallback = () => {
   }
   return null;
 };
-const welcomeTiles = welcomePhotos.map((photo) => {
-  // A stored welcome photo key is the authoritative record of a client upload.
-  // Only an empty welcome slot may borrow an active menu item's image.
-  if (photo.photo_key) return { photo, source: 'client-upload' as const, menuItem: null };
-  const fallback = nextWelcomeFallback();
-  return fallback?.photo_key
-    ? {
-        source: 'menu-fallback' as const,
-        photo: {
-          slot: photo.slot,
-          photo_key: fallback.photo_key,
-          alt: fallback.name,
-          caption: photo.caption,
-          orientation: fallback.photo_orientation ?? 'portrait',
-        },
-        menuItem: fallback,
-      }
-    : null;
+const welcomeTiles = welcomePhotos.flatMap((photo) => {
+  // Client uploads lead the photo line and always outrank menu fallbacks.
+  if (!photo.photo_key || usedWelcomePhotoKeys.has(photo.photo_key)) return [];
+  usedWelcomePhotoKeys.add(photo.photo_key);
+  return [{ photo, source: 'client-upload' as const, menuItem: null }];
 });
-while (welcomeTiles.filter(Boolean).length < 5) {
+while (true) {
   const fallback = nextWelcomeFallback();
   if (!fallback?.photo_key) break;
   welcomeTiles.push({
@@ -71,7 +58,8 @@ while (welcomeTiles.filter(Boolean).length < 5) {
     menuItem: fallback,
   });
 }
-const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<typeof photo> => photo !== null);
+const visibleWelcomeTiles = welcomeTiles;
+const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
 ---
 <Base>
 <header class="hero" id="top">
@@ -134,10 +122,14 @@ const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<ty
         <span class="welcome-title__rule" aria-hidden="true"></span>
       </div>
       <p class="welcome-intro">A hometown bar &amp; grill in the heart of Mondovi, Wisconsin. We’re about good food, cold drinks, and the people who make this place feel like home.</p>
+      <p class="welcome-gumby">Longtime locals knew us as Gumby's. New name, same bar.</p>
     </div>
     {visibleWelcomeTiles.length > 0 && (
-      <div class="photo-stack">
-      {visibleWelcomeTiles.slice(0, 5).map((tile) => {
+      <div class="photo-stack" role="region" aria-label="Welcome and menu photos" tabindex="0">
+        <div class="photo-track">
+        {welcomePhotoSequences.map((sequence, sequenceIndex) => (
+          <div class="photo-sequence" aria-hidden={sequenceIndex === 1 ? 'true' : undefined} inert={sequenceIndex === 1 ? true : undefined}>
+          {sequence.map((tile) => {
         const { photo, menuItem } = tile;
         const photoKey = photo.photo_key;
         if (!photoKey) return null;
@@ -152,25 +144,27 @@ const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<ty
             : null;
         return (
           <button
-            class="photo reveal welcome-photo-reveal"
+            class={`photo photo--${photo.orientation}`}
             type="button"
             data-lightbox-src={`/img/${photoKey}`}
             data-lightbox-alt={photo.alt}
             data-lightbox-action-url={menuAction?.url}
             data-lightbox-action-label={menuAction?.label}
             aria-label={photo.alt ? `View larger photo: ${photo.alt}` : 'View larger photo'}
+            tabindex={sequenceIndex === 1 ? -1 : undefined}
           >
             <img src={`/img/${thumbKey(photoKey)}`} alt={photo.alt} loading="lazy" />
             {photo.caption && <span>{photo.caption}</span>}
           </button>
         );
       })}
+          </div>
+        ))}
+        </div>
       </div>
     )}
     <div class="welcome-closing reveal">
-      <p>Longtime locals knew us as Gumby's. New name, same bar.</p>
       <p class="welcome-script">Pull up a chair. You're among friends here.</p>
-      <span class="welcome-flourish" aria-hidden="true">❧</span>
     </div>
   </div>
 </section>
@@ -516,6 +510,44 @@ const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<ty
   @media (max-width:620px){
     .welcome-title h2{white-space:normal}
     .photo-stack{padding-inline:20px}
+  }
+
+  /* The center poster aligns to the boards; the link uses the lower breathing room. */
+  .hero-after__brand{height:300px;display:flex;flex-direction:column}
+  .hero-after__brand .logo-bar-stage{transform:translateY(-28px)}
+  .hero-after__brand .home-specials__cta{margin-top:auto;margin-bottom:16px;align-self:center}
+  .daily-special{transition:transform .22s ease,box-shadow .22s ease,filter .22s ease}
+  .daily-special:hover{transform:translateY(-6px) rotate(-.3deg);box-shadow:6px 9px 0 rgba(43,27,20,.26),0 16px 28px rgba(43,27,20,.25);filter:brightness(1.07)}
+  .daily-special--dinner:hover{transform:translateY(-6px) rotate(.3deg)}
+
+  .welcome-gumby{margin-top:clamp(18px,2.5vw,28px)!important;font-size:clamp(.95rem,1.25vw,1.04rem)!important}
+  .photo-stack{display:block;max-width:none;margin:clamp(24px,3vw,36px) calc(var(--section-inline) * -1) 0;padding:18px 0 30px;overflow:hidden}
+  .photo-track{display:flex;width:max-content;animation:welcome-photo-marquee 105s linear infinite}
+  .photo-sequence{display:flex;align-items:center;gap:clamp(12px,1.8vw,24px);padding-right:clamp(12px,1.8vw,24px);flex:none}
+  .photo{flex:none;display:block;width:clamp(180px,15vw,245px)!important;height:clamp(160px,14vw,220px);margin:0!important;overflow:visible;transform:none!important;transition:transform .2s ease,box-shadow .2s ease}
+  .photo--landscape{width:clamp(220px,19vw,300px)!important}.photo--square{width:clamp(175px,14vw,230px)!important}.photo--portrait{width:clamp(160px,12vw,195px)!important}
+  .photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .photo:nth-child(odd){transform:rotate(-3.1deg) translateY(13px)!important}.photo:nth-child(even){transform:rotate(2.7deg) translateY(-9px)!important}
+  .photo:nth-child(3n){transform:rotate(-1.7deg) translateY(3px)!important}.photo:nth-child(4n){transform:rotate(3.5deg) translateY(-15px)!important}
+  .photo:hover{transform:translateY(-12px) rotate(0)!important;z-index:4;box-shadow:3px 5px 0 rgba(76,45,24,.25),10px 14px 22px rgba(43,27,20,.26)}
+  .welcome-closing{margin:10px auto 0;padding-bottom:clamp(18px,3vw,32px)}
+  .welcome-flourish{display:none}
+  @keyframes welcome-photo-marquee{to{transform:translateX(-50%)}}
+
+  @media (max-width:900px){
+    .hero-after__brand{height:auto}
+    .hero-after__brand .logo-bar-stage{transform:none}
+    .hero-after__brand .home-specials__cta{margin:34px auto 0}
+    .photo-stack{margin-inline:calc(var(--section-inline) * -1)}
+    .photo{width:clamp(170px,52vw,220px)!important;height:clamp(155px,46vw,205px)}
+    .photo--landscape{width:clamp(215px,63vw,280px)!important}.photo--portrait{width:clamp(150px,42vw,180px)!important}
+    .photo-track{animation-duration:82s}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .photo-stack{overflow-x:auto;scroll-snap-type:x proximity;padding-inline:20px}
+    .photo-track{animation:none;width:max-content}
+    .photo-sequence[aria-hidden="true"]{display:none}
+    .photo{scroll-snap-align:center}
   }
 </style>
 
