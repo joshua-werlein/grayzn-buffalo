@@ -84,7 +84,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
 
 <section class="hero-after">
   <div class="hero-after__layout">
-    <article class="daily-special daily-special--lunch reveal">
+    <article class="daily-special daily-special--lunch">
       <p class="daily-special__label"><span aria-hidden="true">★</span> Lunch Special <span aria-hidden="true">★</span></p>
       <p class="daily-special__hours">11 AM–1:30 PM</p>
       {todaySpecial?.lunch_name && <h2>{todaySpecial.lunch_name}</h2>}
@@ -100,7 +100,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
       </div>
       <a class="home-specials__cta" href="/specials">View All Specials <span aria-hidden="true">→</span></a>
     </div>
-    <article class="daily-special daily-special--dinner reveal">
+    <article class="daily-special daily-special--dinner">
       <p class="daily-special__label"><span aria-hidden="true">★</span> Dinner Special <span aria-hidden="true">★</span></p>
       <p class="daily-special__hours">5–10 PM</p>
       {todaySpecial?.night_name && <h2>{todaySpecial.night_name}</h2>}
@@ -112,7 +112,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
 
 <section id="welcome" class="section-parchment">
   <div class="welcome-grid">
-    <div class="welcome-copy reveal">
+    <div class="welcome-copy">
       <div class="welcome-title">
         <span class="welcome-title__rule" aria-hidden="true"></span>
         <span class="welcome-title__star" aria-hidden="true">★</span>
@@ -162,7 +162,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
         </div>
       </div>
     )}
-    <div class="welcome-closing reveal">
+    <div class="welcome-closing">
       <p class="welcome-script">Pull up a chair. You're among friends here.</p>
     </div>
   </div>
@@ -524,7 +524,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
 
   .welcome-gumby{margin-top:clamp(18px,2.5vw,28px)!important;font-size:clamp(.95rem,1.25vw,1.04rem)!important}
   .photo-stack{display:block;width:100vw;max-width:none;margin:clamp(24px,3vw,36px) 0 0 calc(50% - 50vw);padding:40px 0 48px;overflow:hidden}
-  .photo-track{--marquee-entry-offset:clamp(220px,22vw,340px);display:flex;width:max-content;animation:welcome-photo-marquee 105s linear infinite}
+  .photo-track{--marquee-entry-offset:clamp(220px,22vw,340px);display:flex;width:max-content;animation:welcome-photo-marquee 105s linear 5.28s both infinite}
   .photo-sequence{display:flex;align-items:center;gap:clamp(12px,1.8vw,24px);padding-right:clamp(12px,1.8vw,24px);flex:none}
   .photo{flex:none;display:block;width:clamp(180px,15vw,245px)!important;height:clamp(160px,14vw,220px);margin:0!important;overflow:visible;transform:none!important;transition:transform .2s ease,box-shadow .2s ease}
   .photo--landscape{width:clamp(220px,19vw,300px)!important}.photo--square{width:clamp(175px,14vw,230px)!important}.photo--portrait{width:clamp(160px,12vw,195px)!important}
@@ -538,6 +538,28 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .photo::after{content:"";position:absolute;pointer-events:none;inset:-5px;border:1px solid rgba(112,72,35,.2);opacity:.55;transform:rotate(.2deg)}
   .photo-stack[data-lightbox-paused="true"] .photo-track{animation-play-state:paused}
   @keyframes welcome-photo-marquee{from{transform:translateX(calc(-1 * var(--marquee-entry-offset)))}to{transform:translateX(calc(-50% - var(--marquee-entry-offset)))}}
+
+  /* The lower poster assembles after the hero mark: boards settle with the second line of copy, then Welcome follows. */
+  .hero-after,#welcome{overflow-x:clip}
+  .daily-special--lunch,.daily-special--dinner{opacity:0;will-change:transform,opacity}
+  .daily-special--lunch{animation:poster-board-left .9s cubic-bezier(.2,.72,.25,1) 1.65s both}
+  .daily-special--dinner{animation:poster-board-right .9s cubic-bezier(.2,.72,.25,1) 1.65s both}
+  @keyframes poster-board-left{from{opacity:0;transform:translateX(calc(-100% - 8vw))}to{opacity:1;transform:translateX(0)}}
+  @keyframes poster-board-right{from{opacity:0;transform:translateX(calc(100% + 8vw))}to{opacity:1;transform:translateX(0)}}
+
+  .welcome-title h2,.welcome-title__rule,.welcome-title__star,.welcome-intro,.welcome-gumby,.photo-stack,.welcome-closing{opacity:0;will-change:transform,opacity}
+  .welcome-title h2{animation:poster-rise .7s cubic-bezier(.2,.72,.25,1) 2.7s both}
+  .welcome-title__rule,.welcome-title__star{animation-duration:.7s;animation-timing-function:cubic-bezier(.2,.72,.25,1);animation-delay:2.7s;animation-fill-mode:both}
+  .welcome-title__rule:first-child,.welcome-title__star:nth-child(2){animation-name:poster-rule-left}
+  .welcome-title__star:nth-child(4),.welcome-title__rule:last-child{animation-name:poster-rule-right}
+  .welcome-intro{animation:poster-rise .55s cubic-bezier(.2,.72,.25,1) 3.55s both}
+  .welcome-gumby{animation:poster-rise .55s cubic-bezier(.2,.72,.25,1) 4.25s both}
+  .photo-stack{animation:welcome-photo-composition .8s cubic-bezier(.2,.72,.25,1) 4.95s both}
+  .welcome-closing{animation:poster-rise .5s cubic-bezier(.2,.72,.25,1) 5.82s both}
+  @keyframes poster-rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes welcome-photo-composition{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes poster-rule-left{from{opacity:0;transform:translateX(-100vw)}to{opacity:1;transform:translateX(0)}}
+  @keyframes poster-rule-right{from{opacity:0;transform:translateX(100vw)}to{opacity:1;transform:translateX(0)}}
 
   @media (max-width:900px){
     .hero-after__brand{height:auto}
@@ -554,6 +576,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
     .photo:nth-child(3n){transform:rotate(-1.5deg) translateY(2px)!important}.photo:nth-child(4n){transform:rotate(2.7deg) translateY(-9px)!important}
   }
   @media (prefers-reduced-motion:reduce){
+    .daily-special--lunch,.daily-special--dinner,.welcome-title h2,.welcome-title__rule,.welcome-title__star,.welcome-intro,.welcome-gumby,.photo-stack,.welcome-closing{animation:none;opacity:1;transform:none}
     .photo-stack{overflow-x:auto;scroll-snap-type:x proximity;padding:34px 20px 42px}
     .photo-track{animation:none;width:max-content}
     .photo-sequence[aria-hidden="true"]{display:none}
