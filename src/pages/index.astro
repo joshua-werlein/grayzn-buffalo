@@ -57,17 +57,37 @@ const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<ty
 </header>
 
 <section class="hero-after">
-  <div class="logo-bar-stage" aria-hidden="true">
-    <img class="logo-bar-grill" src="/logo-bar-grill.webp" alt="" width="900" height="605" decoding="async" />
+  <div class="hero-after__layout">
+    <article class="daily-special daily-special--lunch reveal">
+      <p class="daily-special__label"><span aria-hidden="true">★</span> Lunch Special <span aria-hidden="true">★</span></p>
+      <p class="daily-special__hours">11 AM–1:30 PM</p>
+      {todaySpecial?.lunch_name && <h2>{todaySpecial.lunch_name}</h2>}
+      {todaySpecial?.lunch_description && <p class="daily-special__description">{todaySpecial.lunch_description}</p>}
+      {todaySpecial?.lunch_tag && <span class="daily-special__tag">{todaySpecial.lunch_tag}</span>}
+    </article>
+    <div class="hero-after__brand">
+      <div class="logo-bar-stage" aria-hidden="true">
+        <img class="logo-bar-grill" src="/logo-bar-grill.webp" alt="" width="900" height="605" decoding="async" />
+      </div>
+      <div class="hero-actions">
+        <p class="hero-tag hero-tag-enter">Burgers, Wraps, Pizzas &amp; cold ones — open daily 10 AM to 2 AM.</p>
+      </div>
+    </div>
+    <article class="daily-special daily-special--dinner reveal">
+      <p class="daily-special__label"><span aria-hidden="true">★</span> Dinner Special <span aria-hidden="true">★</span></p>
+      <p class="daily-special__hours">5–10 PM</p>
+      {todaySpecial?.night_name && <h2>{todaySpecial.night_name}</h2>}
+      {todaySpecial?.night_description && <p class="daily-special__description">{todaySpecial.night_description}</p>}
+      {todaySpecial?.night_tag && <span class="daily-special__tag">{todaySpecial.night_tag}</span>}
+    </article>
   </div>
-  <div class="hero-actions">
-    <p class="hero-tag hero-tag-enter">Burgers, Wraps, Pizzas &amp; cold ones — open daily 10 AM to 2 AM.</p>
-  </div>
+  <a class="home-specials__cta" href="/specials">View All Specials <span aria-hidden="true">→</span></a>
 </section>
 
 <section id="welcome" class="section-parchment">
   <div class="welcome-grid">
     <div class="welcome-copy reveal">
+      <p>A hometown bar &amp; grill in the heart of Mondovi, Wisconsin. We’re about good food, cold drinks, and the people who make this place feel like home.</p>
       <div class="welcome-title">
         <span class="welcome-title__rule" aria-hidden="true"></span>
         <span class="welcome-title__star" aria-hidden="true">★</span>
@@ -75,7 +95,6 @@ const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<ty
         <span class="welcome-title__star" aria-hidden="true">★</span>
         <span class="welcome-title__rule" aria-hidden="true"></span>
       </div>
-      <p>A hometown bar &amp; grill in the heart of Mondovi, Wisconsin. We’re about good food, cold drinks, and the people who make this place feel like home.</p>
       <p>Longtime locals knew us as Gumby's. New name, same bar.</p>
     </div>
     {visibleWelcomeTiles.length > 0 && (
@@ -110,33 +129,6 @@ const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<ty
       })}
       </div>
     )}
-  </div>
-</section>
-
-<section id="home-specials" class="section-parchment">
-  <div class="home-specials__inner">
-    <div class="home-specials__heading reveal">
-      <span class="home-specials__rule" aria-hidden="true"></span>
-      <span aria-hidden="true">★</span>
-      <h2>Today’s Specials</h2>
-      <span aria-hidden="true">★</span>
-      <span class="home-specials__rule" aria-hidden="true"></span>
-    </div>
-    <div class="home-specials__cards reveal">
-      <article class="daily-special daily-special--lunch">
-        <p class="daily-special__label">Lunch Special <span>11 AM–1:30 PM</span></p>
-        {todaySpecial?.lunch_name && <h3>{todaySpecial.lunch_name}</h3>}
-        {todaySpecial?.lunch_description && <p>{todaySpecial.lunch_description}</p>}
-        {todaySpecial?.lunch_tag && <span class="daily-special__tag">{todaySpecial.lunch_tag}</span>}
-      </article>
-      <article class="daily-special daily-special--night">
-        <p class="daily-special__label">Late Night Special <span>5–10 PM</span></p>
-        {todaySpecial?.night_name && <h3>{todaySpecial.night_name}</h3>}
-        {todaySpecial?.night_description && <p>{todaySpecial.night_description}</p>}
-        {todaySpecial?.night_tag && <span class="daily-special__tag">{todaySpecial.night_tag}</span>}
-      </article>
-    </div>
-    <a class="home-specials__cta" href="/specials">View All Specials <span aria-hidden="true">→</span></a>
   </div>
 </section>
 
@@ -336,22 +328,6 @@ const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<ty
   .photo:hover,.photo.welcome-photo-reveal.in:hover{transform:translateY(-3px)}
   .photo span{padding:8px 10px;font-size:.72rem;letter-spacing:.1em}
 
-  #home-specials{padding-block:clamp(34px,5vw,58px);border-top:1px solid rgba(91,48,27,.25);border-bottom:1px solid rgba(91,48,27,.25)}
-  .home-specials__inner{max-width:var(--content-wide);margin:0 auto;text-align:center}
-  .home-specials__heading{display:grid;grid-template-columns:minmax(28px,1fr) auto auto auto minmax(28px,1fr);align-items:center;gap:clamp(8px,1.2vw,15px);max-width:720px;margin:0 auto clamp(22px,3vw,30px);color:var(--brick)}
-  .home-specials__heading h2{font-family:var(--display);font-size:clamp(1.8rem,3.4vw,2.7rem);line-height:1.04}
-  .home-specials__heading > span:not(.home-specials__rule){font-size:1rem}
-  .home-specials__rule{height:2px;background:currentColor;opacity:.62}
-  .home-specials__cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));max-width:860px;margin:0 auto;border:2px solid var(--ink);box-shadow:4px 5px 0 rgba(71,40,23,.23),0 12px 22px rgba(53,30,18,.14);background:var(--surface-parchment)}
-  .daily-special{min-width:0;padding:clamp(22px,3.2vw,34px);background-color:rgba(255,248,225,.52);background-image:linear-gradient(90deg,rgba(101,54,29,.06),transparent 16%,transparent 84%,rgba(101,54,29,.05));color:var(--ink)}
-  .daily-special + .daily-special{border-left:2px solid var(--ink)}
-  .daily-special--lunch{border-top:6px solid var(--brick)}
-  .daily-special--night{border-top:6px solid var(--denim)}
-  .daily-special__label{font-family:var(--label);font-weight:700;font-size:.82rem;letter-spacing:.16em;text-transform:uppercase;color:var(--brick);line-height:1.25}
-  .daily-special__label span{display:block;margin-top:4px;font-size:.72rem;letter-spacing:.09em;color:var(--text-muted)}
-  .daily-special h3{font-family:var(--display);font-size:clamp(1.35rem,2.6vw,2rem);line-height:1.12;margin:12px 0 7px}
-  .daily-special > p:not(.daily-special__label){max-width:34ch;margin:0 auto;color:var(--text-muted)}
-  .daily-special__tag{display:inline-block;margin-top:14px;padding:4px 9px;background:var(--ochre);color:var(--ink);font-family:var(--label);font-size:.72rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase}
   .home-specials__cta{display:inline-flex;gap:10px;align-items:center;margin-top:22px;color:var(--ink);font-family:var(--label);font-weight:700;font-size:.84rem;letter-spacing:.15em;text-transform:uppercase;text-decoration:none;border-bottom:2px solid var(--brick);padding-bottom:3px}
   .home-specials__cta:hover,.home-specials__cta:focus-visible{color:var(--brick);border-bottom-color:var(--ink)}
 
@@ -400,11 +376,8 @@ const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<ty
     .menu-cards{grid-template-columns:1fr;gap:12px}
     .menu-card{min-height:0}
     .menu-card p{margin-bottom:14px}
-    .welcome-title,.home-specials__heading{grid-template-columns:minmax(16px,1fr) auto auto auto minmax(16px,1fr);gap:6px}
+    .welcome-title{grid-template-columns:minmax(16px,1fr) auto auto auto minmax(16px,1fr);gap:6px}
     .welcome-title h2{font-size:clamp(1.4rem,7.1vw,1.8rem)}
-    .home-specials__cards{grid-template-columns:1fr}
-    .daily-special + .daily-special{border-left:0;border-top:2px solid var(--ink)}
-    .daily-special{padding:24px 22px}
   }
 
   /* Printed paper, posted photos, and railroad-stationery surfaces. */
@@ -423,6 +396,47 @@ const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<ty
   #visit::after{content:'';position:absolute;z-index:-1;right:clamp(10px,6vw,90px);bottom:-18px;width:min(42vw,360px);height:260px;background:url('/logo-buffalo.webp') center / contain no-repeat;opacity:.075;filter:sepia(1) contrast(.8)}
   .visit-heading{color:var(--ink);font-family:var(--display)}.visit-kicker{color:var(--brick)}.visit-cols{border-top:2px solid var(--ink);padding-top:16px}.visit-block{border-bottom:1px dashed var(--rule)}.visit-block h3{color:var(--brick)}.visit-block p,.visit-block:first-child p,.visit-block a{color:var(--ink)}
   .map-frame{border:6px solid #f7ecd6;border-radius:0;box-shadow:3px 3px 0 rgba(43,27,20,.3),9px 12px 22px rgba(43,27,20,.14)}
+
+  /* The intro reads as one posted-paper composition: daily boards flank the mark. */
+  .hero-after{padding:clamp(26px,4vw,52px) 24px clamp(22px,3vw,36px);text-align:center;border-bottom:1px solid rgba(91,48,27,.25)}
+  .hero-after__layout{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(300px,1.28fr) minmax(220px,.9fr);grid-template-areas:"lunch brand dinner";align-items:stretch;gap:clamp(20px,3.5vw,52px);max-width:var(--content-wide);margin:0 auto}
+  .daily-special{position:relative;isolation:isolate;display:flex;flex-direction:column;justify-content:center;min-width:0;min-height:220px;padding:clamp(22px,2.8vw,34px) clamp(18px,2.5vw,30px);background-color:#173747;background-image:radial-gradient(rgba(247,236,214,.13) .65px,transparent .8px),linear-gradient(115deg,rgba(0,0,0,.16),transparent 22%,transparent 76%,rgba(0,0,0,.13));background-size:5px 5px,100% 100%;color:#f6ecd8;border:2px solid var(--ochre);box-shadow:4px 5px 0 rgba(43,27,20,.28),0 10px 22px rgba(43,27,20,.2);text-align:center}
+  .daily-special::before{content:"";position:absolute;z-index:-1;inset:6px;border:1px solid rgba(235,194,109,.62);pointer-events:none}
+  .daily-special--lunch{grid-area:lunch;border-top:2px solid var(--ochre)}
+  .daily-special--dinner{grid-area:dinner;border-top:2px solid var(--ochre)}
+  .daily-special__label{display:flex;justify-content:center;gap:10px;margin:0;color:#f6ecd8;font-family:var(--label);font-weight:700;font-size:clamp(.8rem,1.2vw,.95rem);letter-spacing:.14em;text-transform:uppercase;line-height:1.25}
+  .daily-special__label span{display:inline;margin:0;color:var(--ochre);font-size:.88em;letter-spacing:0}
+  .daily-special__hours{margin:6px 0 14px;padding-bottom:11px;border-bottom:1px dashed rgba(246,236,216,.64);color:#ead9b9;font-family:var(--label);font-size:.72rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+  .daily-special h2{margin:0 0 8px;color:#f8efd8;font-family:var(--display);font-size:clamp(1.35rem,2.15vw,2rem);line-height:1.05}
+  .daily-special__description{margin:0 auto;color:#f6ecd8;line-height:1.35}
+  .daily-special__tag{display:inline-block;margin-top:14px;padding:4px 9px;border:1px solid rgba(235,194,109,.75);color:var(--ochre);font-family:var(--label);font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;background:transparent}
+  .hero-after__brand{grid-area:brand;align-self:center;min-width:0}
+  .hero-after__brand .logo-bar-stage{width:min(100%,400px);height:150px}
+  .hero-after__brand .hero-actions{margin-top:-26px;padding:14px 10px 0}
+  .hero-after .home-specials__cta{margin-top:clamp(18px,2.5vw,28px);color:var(--ink)}
+
+  #welcome{padding:clamp(40px,6vw,72px) 24px clamp(48px,7vw,84px);border-bottom:1px solid rgba(91,48,27,.25)}
+  .welcome-grid{display:block;max-width:var(--content-wide);margin:0 auto}
+  .welcome-copy{max-width:760px;margin:0 auto;text-align:center;padding:0}
+  .welcome-copy p{max-width:62ch;margin:0 auto;color:var(--text-muted);font-size:clamp(1rem,1.45vw,1.15rem);line-height:1.45}
+  .welcome-title{margin:clamp(18px,2.5vw,28px) 0 12px}
+  .welcome-copy .welcome-title + p{font-size:clamp(.95rem,1.25vw,1.04rem)}
+  .photo-stack{grid-template-columns:.95fr 1.15fr .95fr;grid-auto-rows:clamp(220px,22vw,310px);max-width:900px;margin:clamp(20px,3vw,32px) auto 0;padding:16px 34px 28px}
+
+  @media (max-width:900px){
+    .hero-after__layout{grid-template-columns:1fr;grid-template-areas:"brand" "lunch" "dinner";max-width:520px;gap:20px}
+    .hero-after__brand{padding-bottom:2px}
+    .daily-special{padding:26px 28px}
+    .photo-stack{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:clamp(170px,48vw,260px);max-width:660px}
+  }
+  @media (max-width:620px){
+    .hero-after{padding-inline:16px}
+    .hero-after__brand .logo-bar-stage{width:min(65vw,280px);height:auto}
+    .hero-after__brand .hero-actions{margin-top:0;padding-top:18px}
+    #welcome{padding-inline:16px}
+    .welcome-copy p{max-width:36ch}
+    .photo-stack{padding-inline:20px}
+  }
 </style>
 
 <style is:global>
