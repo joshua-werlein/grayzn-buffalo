@@ -26,8 +26,10 @@
 
     const close = () => {
       if (lightbox.hidden) return;
+      const closingTrigger = trigger;
       lightbox.classList.remove('is-open');
       document.body.classList.remove('lightbox-open');
+      document.dispatchEvent(new CustomEvent('image-lightbox:close', { detail: { trigger: closingTrigger } }));
       window.clearTimeout(closeTimer);
       closeTimer = window.setTimeout(() => {
         lightbox.hidden = true;
@@ -64,6 +66,7 @@
       }
       lightbox.hidden = false;
       document.body.classList.add('lightbox-open');
+      document.dispatchEvent(new CustomEvent('image-lightbox:open', { detail: { trigger: nextTrigger } }));
       requestAnimationFrame(() => lightbox.classList.add('is-open'));
       closeButton.focus();
     };

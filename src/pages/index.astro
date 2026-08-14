@@ -3,7 +3,7 @@ import Base from '../layouts/Base.astro';
 import { getMenu, getSpecials, getWelcomePhotos, thumbKey } from '../lib/db';
 
 const env = (Astro.locals as any).runtime?.env ?? {};
-const { items } = await getMenu(env);
+const { categories, items } = await getMenu(env);
 const specials = await getSpecials(env);
 const weekdayByShortName: Record<string, number> = {
   Sun: 0,
@@ -20,43 +20,42 @@ const businessWeekday = weekdayByShortName[
 ] ?? new Date().getDay();
 const todaySpecial = specials.find((special) => special.day_of_week === businessWeekday) ?? specials[0];
 const welcomePhotos = await getWelcomePhotos(env);
-// A stable selection of the newest menu photos fills only empty Welcome slots.
-const welcomeFallbackPhotos = items
-  .filter((item) => item.active === 1 && item.photo_key)
-  .sort((a, b) => b.id - a.id)
-  .filter((item, index, candidates) => candidates.findIndex((candidate) => candidate.photo_key === item.photo_key) === index);
+// Welcome uploads lead; unique active menu photos fill the remainder by category.
 const usedWelcomePhotoKeys = new Set<string>();
-let fallbackIndex = 0;
-const nextWelcomeFallback = () => {
-  while (fallbackIndex < welcomeFallbackPhotos.length) {
-    const fallback = welcomeFallbackPhotos[fallbackIndex++];
-    if (fallback.photo_key && !usedWelcomePhotoKeys.has(fallback.photo_key)) {
-      usedWelcomePhotoKeys.add(fallback.photo_key);
-      return fallback;
-    }
-  }
-  return null;
-};
 const welcomeTiles = welcomePhotos.flatMap((photo) => {
   // Client uploads lead the photo line and always outrank menu fallbacks.
   if (!photo.photo_key || usedWelcomePhotoKeys.has(photo.photo_key)) return [];
   usedWelcomePhotoKeys.add(photo.photo_key);
   return [{ photo, source: 'client-upload' as const, menuItem: null }];
 });
-while (true) {
-  const fallback = nextWelcomeFallback();
-  if (!fallback?.photo_key) break;
-  welcomeTiles.push({
-    source: 'menu-fallback' as const,
-    photo: {
-      slot: welcomeTiles.length + 1,
-      photo_key: fallback.photo_key,
-      alt: fallback.name,
-      caption: '',
-      orientation: fallback.photo_orientation ?? 'portrait',
-    },
-    menuItem: fallback,
-  });
+
+// The menu sequence cycles through each public category before returning for
+// another photo, so a long category cannot visually monopolize the marquee.
+const categoryPhotoQueues = categories.map((category) => {
+  const queue = [] as typeof items;
+  for (const item of items) {
+    if (item.category_id !== category.id || item.active !== 1 || !item.photo_key || usedWelcomePhotoKeys.has(item.photo_key)) continue;
+    usedWelcomePhotoKeys.add(item.photo_key);
+    queue.push(item);
+  }
+  return queue;
+});
+for (let round = 0; categoryPhotoQueues.some((queue) => round < queue.length); round += 1) {
+  for (const queue of categoryPhotoQueues) {
+    const fallback = queue[round];
+    if (!fallback?.photo_key) continue;
+    welcomeTiles.push({
+      source: 'menu-fallback' as const,
+      photo: {
+        slot: welcomeTiles.length + 1,
+        photo_key: fallback.photo_key,
+        alt: fallback.name,
+        caption: '',
+        orientation: fallback.photo_orientation ?? 'portrait',
+      },
+      menuItem: fallback,
+    });
+  }
 }
 const visibleWelcomeTiles = welcomeTiles;
 const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
@@ -228,6 +227,9 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
     min-height:min(84dvh,720px);
     display:flex;align-items:flex-end;justify-content:center;text-align:center;
     background:url('/grayznBackground.webp') center bottom / cover no-repeat}
+  .hero::after{content:"";position:absolute;z-index:2;inset:auto 0 0;height:clamp(86px,15vw,170px);pointer-events:none;
+    background-image:linear-gradient(to bottom,rgba(238,224,196,0),rgba(238,224,196,.22) 36%,rgba(238,224,196,.72) 73%,var(--page-parchment)),radial-gradient(rgba(77,45,24,.08) .65px,transparent .75px);
+    background-size:100% 100%,5px 5px}
   .hero-copy{position:absolute;inset:0;z-index:3;pointer-events:none}
   .logo-stage{--wordmark-y:-105px;--buffalo-y:0px;
     display:block;position:absolute;top:clamp(180px,45vw,210px);left:0;right:0;
@@ -287,7 +289,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .photo.welcome-photo-reveal:nth-child(2){transition-delay:.14s}
   .photo.welcome-photo-reveal:nth-child(3){transition-delay:.28s}
   .photo.welcome-photo-reveal:nth-child(4){transition-delay:.42s}
-  .photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:saturate(.84) sepia(.08) contrast(.94) brightness(1.04)}
   .photo:hover{transform:translateY(-6px)}
   .photo.welcome-photo-reveal.in:hover{transform:translateY(-6px)}
   .photo:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
@@ -532,7 +534,9 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .photo:hover{transform:translateY(-12px) rotate(0)!important;z-index:4;box-shadow:3px 5px 0 rgba(76,45,24,.25),10px 14px 22px rgba(43,27,20,.26)}
   .welcome-closing{margin:10px auto 0;padding-bottom:clamp(18px,3vw,32px)}
   .welcome-flourish{display:none}
-  .photo-stack:focus-within .photo-track{animation-play-state:paused}
+  .photo{background-color:#ead9b7;background-image:radial-gradient(rgba(89,57,31,.11) .6px,transparent .8px);background-size:4px 4px}
+  .photo::after{content:"";position:absolute;pointer-events:none;inset:-5px;border:1px solid rgba(112,72,35,.2);opacity:.55;transform:rotate(.2deg)}
+  .photo-stack[data-lightbox-paused="true"] .photo-track{animation-play-state:paused}
   @keyframes welcome-photo-marquee{from{transform:translateX(calc(-1 * var(--marquee-entry-offset)))}to{transform:translateX(calc(-50% - var(--marquee-entry-offset)))}}
 
   @media (max-width:900px){
@@ -606,6 +610,15 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
 </style>
 
 <script>
+  document.addEventListener('image-lightbox:open', (event) => {
+    const trigger = (event as CustomEvent<{ trigger?: HTMLElement }>).detail?.trigger;
+    trigger?.closest<HTMLElement>('.photo-stack')?.setAttribute('data-lightbox-paused', 'true');
+  });
+  document.addEventListener('image-lightbox:close', (event) => {
+    const trigger = (event as CustomEvent<{ trigger?: HTMLElement }>).detail?.trigger;
+    trigger?.closest<HTMLElement>('.photo-stack')?.removeAttribute('data-lightbox-paused');
+  });
+
   const social = document.getElementById('social');
   const feed = document.getElementById('fbFeed');
 

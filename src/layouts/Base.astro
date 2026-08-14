@@ -1,6 +1,7 @@
 ---
 import { getSetting } from '../lib/db';
 import ImageLightbox from '../components/ImageLightbox.astro';
+import PreFooterLandscape from '../components/PreFooterLandscape.astro';
 import '@fontsource/alfa-slab-one/latin-400.css';
 import '@fontsource/barlow/latin-400.css';
 import '@fontsource/barlow/latin-500.css';
@@ -13,6 +14,7 @@ const { title = "Grayz'n Buffalo Bar & Grill — Mondovi, WI",
         description = "Grayz'n Buffalo Bar & Grill in Mondovi, WI. Burgers, Wraps, Pizzas & cold ones — open daily 10 AM to 2 AM." } = Astro.props;
 const path = Astro.url.pathname;
 const isHome = path === '/';
+const isPublicPage = !path.startsWith('/admin');
 const siteUrl = 'https://grayznbuffalo.com';
 const productionHosts = new Set(['grayznbuffalo.com', 'www.grayznbuffalo.com']);
 const noindex = path.startsWith('/admin') || !productionHosts.has(Astro.url.hostname);
@@ -333,6 +335,8 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 </nav>
 
 <main><slot /></main>
+
+{isPublicPage && <PreFooterLandscape />}
 
 <ImageLightbox />
 

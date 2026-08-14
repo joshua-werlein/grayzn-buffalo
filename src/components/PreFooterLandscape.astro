@@ -1,0 +1,22 @@
+---
+// Decorative shared public-page footer lead-in. The empty field hook reserves a
+// natural pasture position for a future small ambient buffalo treatment.
+---
+<section class="pre-footer-landscape" aria-hidden="true">
+  <div class="pre-footer-landscape__bluffs"></div>
+  <div class="pre-footer-landscape__pasture">
+    <div class="pre-footer-landscape__buffalo-zone"></div>
+  </div>
+</section>
+
+<style>
+  .pre-footer-landscape{position:relative;isolation:isolate;height:clamp(150px,21vw,260px);overflow:hidden;background-color:#cdbb8d;background-image:linear-gradient(to bottom,rgba(246,232,200,.72),rgba(197,174,121,.22) 44%,rgba(69,62,39,.56) 100%),radial-gradient(ellipse at 18% 72%,rgba(76,90,53,.62) 0 9%,transparent 9.6%),radial-gradient(ellipse at 78% 67%,rgba(74,86,51,.56) 0 11%,transparent 11.7%),linear-gradient(176deg,transparent 0 47%,rgba(100,116,68,.55) 47.4% 61%,rgba(77,92,53,.78) 61.4% 100%)}
+  .pre-footer-landscape::before{content:"";position:absolute;z-index:-1;inset:0;background-image:radial-gradient(ellipse at 50% 0,rgba(255,247,218,.42),transparent 57%),repeating-linear-gradient(93deg,rgba(72,55,29,.07) 0 1px,transparent 1px 28px);mix-blend-mode:multiply;opacity:.72}
+  .pre-footer-landscape::after{content:"";position:absolute;z-index:3;inset:auto 0 0;height:45%;background:linear-gradient(to bottom,transparent,rgba(27,19,13,.9) 92%,#21130e);pointer-events:none}
+  .pre-footer-landscape__bluffs{position:absolute;z-index:0;left:-5%;right:-5%;bottom:29%;height:47%;background:linear-gradient(118deg,rgba(112,105,70,.88),rgba(143,137,89,.45));clip-path:polygon(0 75%,8% 48%,17% 63%,28% 34%,39% 57%,49% 27%,58% 53%,69% 31%,81% 61%,91% 41%,100% 68%,100% 100%,0 100%);filter:blur(.25px)}
+  .pre-footer-landscape__pasture{position:absolute;z-index:1;inset:42% 0 0;background-image:repeating-linear-gradient(102deg,transparent 0 16px,rgba(231,213,155,.18) 17px 18px,transparent 19px 35px),linear-gradient(174deg,rgba(125,139,78,.2),rgba(58,71,39,.92));transform:perspective(360px) rotateX(8deg);transform-origin:top}
+  .pre-footer-landscape__pasture::before{content:"";position:absolute;inset:8% 0 0;background:repeating-radial-gradient(ellipse at 18% 100%,rgba(27,45,27,.58) 0 2px,transparent 3px 13px);opacity:.45}
+  .pre-footer-landscape__buffalo-zone{position:absolute;left:clamp(14%,27vw,34%);bottom:17%;width:clamp(54px,7vw,92px);height:clamp(22px,3vw,34px)}
+  @media (max-width:640px){.pre-footer-landscape{height:clamp(132px,42vw,180px)}.pre-footer-landscape__bluffs{bottom:34%;height:43%}.pre-footer-landscape::after{height:50%}.pre-footer-landscape__buffalo-zone{left:27%;bottom:18%}}
+  @media (prefers-reduced-motion:reduce){.pre-footer-landscape__pasture{transform:none}}
+</style>
