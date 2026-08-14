@@ -4,19 +4,19 @@ import SpecialsBoard from '../components/SpecialsBoard.astro';
 import { getMenu, getWelcomePhotos, thumbKey } from '../lib/db';
 
 const env = (Astro.locals as any).runtime?.env ?? {};
-const { categories, items } = await getMenu(env);
+const { items } = await getMenu(env);
 const welcomePhotos = await getWelcomePhotos(env);
-// Keep these separate from the opening strip: a stable selection of the last
-// four menu photos fills any empty Welcome slot without animation or timers.
+// A stable selection of the newest menu photos fills only empty Welcome slots.
 const welcomeFallbackPhotos = items
   .filter((item) => item.photo_key)
   .sort((a, b) => b.id - a.id)
   .slice(0, 4);
-const welcomeTiles = welcomePhotos.map((photo, index) => {
+let fallbackIndex = 0;
+const welcomeTiles = welcomePhotos.map((photo) => {
   // A stored welcome photo key is the authoritative record of a client upload.
   // Only an empty welcome slot may borrow an active menu item's image.
   if (photo.photo_key) return { photo, source: 'client-upload' as const, menuItem: null };
-  const fallback = welcomeFallbackPhotos[index];
+  const fallback = welcomeFallbackPhotos[fallbackIndex++];
   return fallback?.photo_key
     ? {
         source: 'menu-fallback' as const,
@@ -32,21 +32,6 @@ const welcomeTiles = welcomePhotos.map((photo, index) => {
     : null;
 });
 const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<typeof photo> => photo !== null);
-const photoGroups = categories
-  .map((category) => items.filter((item) => item.category_id === category.id && item.photo_key))
-  .filter((group) => group.length > 0);
-const stripPhotos = [] as typeof items;
-const longestPhotoGroup = Math.max(0, ...photoGroups.map((group) => group.length));
-
-// Lead with one photo from every category, then return for each category's
-// second photo, third photo, and so on. This keeps the strip varied instead
-// of showing a run of similar dishes from the same menu section.
-for (let position = 0; position < longestPhotoGroup; position += 1) {
-  for (const group of photoGroups) {
-    const item = group[position];
-    if (item) stripPhotos.push(item);
-  }
-}
 ---
 <Base>
 <header class="hero" id="top">
@@ -76,67 +61,19 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   </div>
   <div class="hero-actions">
     <p class="hero-tag hero-tag-enter">Burgers, Wraps, Pizzas &amp; cold ones — open daily 10 AM to 2 AM.</p>
-    <div class="hero-ctas">
-      <a class="btn btn-primary hero-cta-enter hero-cta-left" href="/specials">Today's Special</a>
-      <a class="btn btn-ghost hero-cta-enter hero-cta-right" href="/menu">See the Menu</a>
-    </div>
   </div>
-
-  {stripPhotos.length > 0 && (
-    <div class="strip" role="region" aria-label="Menu photos" tabindex="0">
-    <div class="strip-track">
-      <div class="strip-sequence">
-        {stripPhotos.map((item) => (
-          <div class="strip-item">
-            <img data-photo-route src={`/img/${thumbKey(item.photo_key!)}`} alt={item.name} width="250" height="170" loading="lazy" decoding="async" />
-          </div>
-        ))}
-      </div>
-      <div class="strip-sequence" aria-hidden="true">
-        {stripPhotos.map((item) => (
-          <div class="strip-item">
-            <img data-photo-route src={`/img/${thumbKey(item.photo_key!)}`} alt="" width="250" height="170" loading="lazy" decoding="async" />
-          </div>
-        ))}
-      </div>
-    </div>
-    </div>
-  )}
-</section>
-
-<script>
-  document.addEventListener('error', (event) => {
-    const image = event.target;
-    if (!(image instanceof HTMLImageElement) || !image.matches('img[data-photo-route]')) return;
-    if (image.dataset.photoRetried === 'true') return;
-
-    image.dataset.photoRetried = 'true';
-    const url = new URL(image.src, window.location.href);
-    url.searchParams.set('retry', '1');
-    image.src = url.toString();
-  }, true);
-</script>
-
-<section id="specials" class="section-tavern home-specials">
-  <div class="section-head reveal">
-    <span class="kicker">Today at the Grayz'n</span>
-    <h2>Today's Specials</h2>
-    <span class="vintage-rule" aria-hidden="true"></span>
-  </div>
-  <SpecialsBoard />
 </section>
 
 <section id="welcome" class="section-parchment">
   <div class="welcome-grid">
     <div class="welcome-copy reveal">
-      <h2>Small Town.<br />Big Appetite.</h2>
-      <span class="kicker">Welcome</span>
+      <h2>WELCOME TO GRAYZ'N BUFFALO</h2>
       <p>Right on Eau Claire Street in downtown Mondovi. Burgers, Pizzas, Wraps, and fries in checkered paper.</p>
       <p>Longtime locals knew us as Gumby's. New name, same bar.</p>
     </div>
     {visibleWelcomeTiles.length > 0 && (
       <div class="photo-stack">
-      {visibleWelcomeTiles.map((tile) => {
+      {visibleWelcomeTiles.slice(0, 3).map((tile) => {
         const { photo, menuItem } = tile;
         const photoKey = photo.photo_key;
         if (!photoKey) return null;
@@ -167,6 +104,15 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
       </div>
     )}
   </div>
+</section>
+
+<section id="specials" class="section-tavern home-specials">
+  <div class="section-head reveal">
+    <span class="kicker">Today at the Grayz'n</span>
+    <h2>Today's Specials</h2>
+    <span class="vintage-rule" aria-hidden="true"></span>
+  </div>
+  <SpecialsBoard />
 </section>
 
 <section id="menu-preview">
@@ -241,7 +187,6 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .hero-actions{margin-top:-30px;padding:clamp(18px,4vw,28px) 24px clamp(30px,5vw,44px);text-align:center}
   .hero-tag{font-size:clamp(1.05rem,2.4vw,1.4rem);color:var(--ink);
     font-weight:600;letter-spacing:.01em}
-  .hero-ctas{margin-top:22px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
   @media (min-width:1100px){
     .hero{min-height:542px}
     .hero-copy{position:absolute;inset:0;max-width:none;margin:0;padding:0}
@@ -255,11 +200,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     .logo-bar-grill{display:block;width:100%;height:auto;transform:translateY(2px);opacity:0;pointer-events:none;animation:logo-bar-fade .4s ease 1.65s forwards;will-change:opacity}
   }
   .hero-tag-enter{opacity:0;animation:hero-tag-fade .4s ease 2.15s forwards}
-  .hero-cta-enter{opacity:1;animation:hero-cta-slide 1.8s cubic-bezier(.08,.9,.2,1) 1.65s forwards}
-  .hero-cta-left{transform:translateX(-100vw)}
-  .hero-cta-right{transform:translateX(100vw)}
   @keyframes hero-tag-fade{to{opacity:1}}
-  @keyframes hero-cta-slide{to{opacity:1;transform:translateX(0)}}
   .buffalo-video-anchor {
     --layer-y: var(--buffalo-y);
     z-index: 1;
@@ -276,17 +217,6 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   }
   @keyframes logo-layer-fade{to{opacity:1}}
   @keyframes logo-bar-fade{to{opacity:1}}
-  .strip{background:var(--ink);padding:18px 0;overflow:hidden}
-  .strip-track{display:flex;width:max-content;animation:slide 36s linear infinite}
-  .strip-sequence{display:flex;gap:16px;padding-right:16px;flex:none}
-  @keyframes slide{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-  .strip-item{width:250px;height:170px;border-radius:10px;overflow:hidden;flex:none;
-    border:3px solid var(--cream);box-shadow:0 6px 16px rgba(0,0,0,.4);
-    position:relative;background:linear-gradient(150deg,var(--amber),var(--crimson))}
-  .strip-item img{width:100%;height:100%;object-fit:cover;display:block}
-  .strip-item.ph{display:flex;align-items:center;justify-content:center;
-    font-family:var(--label);font-weight:600;font-size:.75rem;letter-spacing:.14em;
-    text-transform:uppercase;color:var(--cream);text-shadow:0 1px 6px rgba(0,0,0,.5)}
   .dark{background:var(--ink);color:var(--cream)}
   #welcome{padding-block:clamp(34px,5vw,58px)}
   .welcome-grid{display:grid;grid-template-columns:minmax(0,.8fr) minmax(420px,1.2fr);gap:clamp(24px,3vw,42px);max-width:1240px;margin:0 auto;align-items:start}
@@ -349,8 +279,6 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     .hero{min-height:clamp(460px,55svh,500px);background-position:center bottom}
     .logo-bar-stage{height:clamp(90px,20vw,150px)}
     .hero-actions{padding:0 20px 24px}
-    .hero-ctas{margin-top:14px;gap:12px;flex-wrap:nowrap}
-    .hero-ctas .btn{padding:12px 18px;font-size:.92rem}
   }
   @media (max-width:480px){
     .hero{min-height:max(clamp(460px,55svh,480px),min(109vw,522px))}
@@ -358,7 +286,7 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     .hero-actions{margin-top:0;padding-top:24px}
   }
   @media (prefers-reduced-motion: reduce){
-      .hero-tag-enter,.hero-cta-enter,.strip-track{animation:none;opacity:1;transform:none}
+    .hero-tag-enter{animation:none;opacity:1;transform:none}
       .buffalo-anchor{animation:none;transform:none}
       .buffalo-video-anchor {
       display: none;
@@ -366,16 +294,8 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
     .logo-buffalo{animation:none;opacity:1;transform:scale(var(--buffalo-scale))}
     .logo-wordmark{animation:none;opacity:1}
     .logo-bar-grill{animation:none;opacity:1}
-    .strip{overflow-x:auto;overscroll-behavior-x:contain}
-    .strip-sequence[aria-hidden="true"]{display:none}
     .photo.welcome-photo-reveal{opacity:1;transform:none;transition:none}
   }
-  @media (hover: hover) and (pointer: fine){
-    .strip:hover .strip-track,
-    .strip:focus .strip-track{animation-play-state:paused}
-    .strip:focus-visible{outline:2px solid var(--cream);outline-offset:-2px}
-  }
-
   /* ---- Homepage vintage poster system ---- */
   .home-specials{padding-block:clamp(42px,6vw,72px);background:var(--surface-wood)}
   .home-specials .section-head{margin-bottom:clamp(24px,4vw,34px)}
@@ -386,11 +306,9 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .welcome-grid{grid-template-columns:minmax(0,.72fr) minmax(0,1.28fr);gap:clamp(28px,5vw,64px);max-width:var(--content-wide);align-items:start}
   .welcome-copy{max-width:34ch;padding-top:clamp(4px,1vw,16px)}
   .welcome-copy h2{font-size:clamp(2rem,3.6vw,3.1rem);line-height:1.04;margin:8px 0 14px}
-  .welcome-copy .kicker{color:var(--brick);letter-spacing:.18em}
   .welcome-copy p{margin:12px 0;color:var(--text-muted);font-size:1.04rem}
-  .photo-stack{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:clamp(150px,15vw,220px);gap:10px;max-width:680px}
+  .photo-stack{grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:clamp(175px,17vw,240px);gap:0;max-width:720px;padding:10px 14px 20px}
   .photo{max-height:none;aspect-ratio:auto;border:2px solid var(--ink);border-radius:var(--panel-radius);background:var(--surface-aged);box-shadow:var(--panel-shadow)}
-  .photo:nth-child(2),.photo:nth-child(3){border-color:var(--brick)}
   .photo img{object-fit:cover}
   .photo:hover,.photo.welcome-photo-reveal.in:hover{transform:translateY(-3px)}
   .photo span{padding:8px 10px;font-size:.72rem;letter-spacing:.1em}
@@ -415,8 +333,8 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   .social-cta{text-align:center;margin-top:28px}
 
   #visit{display:flex;flex-direction:column;gap:22px;padding-block:clamp(42px,6vw,72px);background:var(--surface-wood)}
-  .visit-kicker{order:1;align-self:flex-start;color:var(--ochre);max-width:var(--content-wide);width:100%;margin-inline:auto}
-  .visit-heading{order:2;max-width:var(--content-wide);width:100%;margin:0 auto;color:var(--cream);text-align:left;font-size:clamp(2rem,3.6vw,3.1rem)}
+  .visit-heading{order:1;max-width:var(--content-wide);width:100%;margin:0 auto;color:var(--cream);text-align:left;font-size:clamp(2rem,3.6vw,3.1rem)}
+  .visit-kicker{order:2;align-self:flex-start;color:var(--ochre);max-width:var(--content-wide);width:100%;margin-inline:auto}
   .visit-cols{order:3;display:grid;grid-template-columns:1fr;gap:14px;max-width:none;width:100%;margin:0;text-align:left}
   .visit-block{padding:0 0 13px;border-bottom:1px solid var(--rule-light)}
   .visit-block h3{color:var(--ochre);margin-bottom:2px;letter-spacing:.15em}
@@ -444,10 +362,10 @@ for (let position = 0; position < longestPhotoGroup; position += 1) {
   /* Printed paper, posted photos, and railroad-stationery surfaces. */
   #welcome{position:relative;background-color:var(--page-parchment);background-image:radial-gradient(rgba(77,45,24,.1) .65px,transparent .75px),linear-gradient(90deg,rgba(111,65,29,.07),transparent 15%,transparent 85%,rgba(111,65,29,.06));background-size:5px 5px,100% 100%}
   .welcome-copy h2{font-family:var(--display);line-height:1.05}.welcome-copy p{max-width:35ch}
-  .photo-stack{gap:clamp(10px,1.8vw,18px);padding:7px}
+  .photo-stack{gap:0;padding:10px 14px 20px}
   .photo{border:8px solid #f6ecd8;border-radius:0;box-shadow:2px 3px 0 rgba(76,45,24,.22),7px 10px 18px rgba(43,27,20,.2);overflow:visible;background:#f6ecd8}
   .photo img{inset:0;width:100%;height:100%;border:1px solid rgba(57,35,21,.32)}
-  .photo:nth-child(1){transform:rotate(-1.2deg)}.photo:nth-child(2){transform:rotate(1.35deg) translateY(8px)}.photo:nth-child(3){transform:rotate(.7deg) translateY(-2px)}.photo:nth-child(4){transform:rotate(-1deg) translateY(6px)}
+  .photo:nth-child(1){z-index:1;transform:rotate(-2deg) translateY(10px);margin-right:-12px}.photo:nth-child(2){z-index:2;transform:rotate(1.4deg) translateY(-4px);margin-inline:-8px}.photo:nth-child(3){z-index:1;transform:rotate(-1.1deg) translateY(14px);margin-left:-12px}
   .photo:hover,.photo.welcome-photo-reveal.in:hover{transform:translateY(-5px) rotate(0)}
   #menu-preview{background-color:#d9c39a;background-image:repeating-linear-gradient(90deg,rgba(74,45,23,.05) 0 1px,transparent 1px 28px),linear-gradient(120deg,rgba(255,248,225,.45),rgba(134,87,40,.08));border-top:2px solid rgba(64,37,20,.25);border-bottom:2px solid rgba(64,37,20,.25)}
   .menu-card{border:2px solid var(--ink);border-radius:0;box-shadow:4px 4px 0 rgba(43,27,20,.25),0 10px 20px rgba(43,27,20,.12);background-color:var(--surface-parchment);background-image:linear-gradient(90deg,rgba(97,55,25,.05),transparent 16%,transparent 84%,rgba(97,55,25,.04));min-height:260px}
