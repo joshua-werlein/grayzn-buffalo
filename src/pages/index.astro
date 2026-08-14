@@ -5,19 +5,43 @@ import { getMenu, getSpecials, getWelcomePhotos, thumbKey } from '../lib/db';
 const env = (Astro.locals as any).runtime?.env ?? {};
 const { items } = await getMenu(env);
 const specials = await getSpecials(env);
-const todaySpecial = specials.find((special) => special.day_of_week === new Date().getDay()) ?? specials[0];
+const weekdayByShortName: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+// Cloudflare isolates use UTC by default; specials follow Mondovi's calendar day.
+const businessWeekday = weekdayByShortName[
+  new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short' }).format(new Date())
+] ?? new Date().getDay();
+const todaySpecial = specials.find((special) => special.day_of_week === businessWeekday) ?? specials[0];
 const welcomePhotos = await getWelcomePhotos(env);
 // A stable selection of the newest menu photos fills only empty Welcome slots.
 const welcomeFallbackPhotos = items
-  .filter((item) => item.photo_key)
+  .filter((item) => item.active === 1 && item.photo_key)
   .sort((a, b) => b.id - a.id)
-  .slice(0, 4);
+  .filter((item, index, candidates) => candidates.findIndex((candidate) => candidate.photo_key === item.photo_key) === index);
+const usedWelcomePhotoKeys = new Set(welcomePhotos.flatMap((photo) => (photo.photo_key ? [photo.photo_key] : [])));
 let fallbackIndex = 0;
+const nextWelcomeFallback = () => {
+  while (fallbackIndex < welcomeFallbackPhotos.length) {
+    const fallback = welcomeFallbackPhotos[fallbackIndex++];
+    if (fallback.photo_key && !usedWelcomePhotoKeys.has(fallback.photo_key)) {
+      usedWelcomePhotoKeys.add(fallback.photo_key);
+      return fallback;
+    }
+  }
+  return null;
+};
 const welcomeTiles = welcomePhotos.map((photo) => {
   // A stored welcome photo key is the authoritative record of a client upload.
   // Only an empty welcome slot may borrow an active menu item's image.
   if (photo.photo_key) return { photo, source: 'client-upload' as const, menuItem: null };
-  const fallback = welcomeFallbackPhotos[fallbackIndex++];
+  const fallback = nextWelcomeFallback();
   return fallback?.photo_key
     ? {
         source: 'menu-fallback' as const,
@@ -32,6 +56,21 @@ const welcomeTiles = welcomePhotos.map((photo) => {
       }
     : null;
 });
+while (welcomeTiles.filter(Boolean).length < 5) {
+  const fallback = nextWelcomeFallback();
+  if (!fallback?.photo_key) break;
+  welcomeTiles.push({
+    source: 'menu-fallback' as const,
+    photo: {
+      slot: welcomeTiles.length + 1,
+      photo_key: fallback.photo_key,
+      alt: fallback.name,
+      caption: '',
+      orientation: fallback.photo_orientation ?? 'portrait',
+    },
+    menuItem: fallback,
+  });
+}
 const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<typeof photo> => photo !== null);
 ---
 <Base>
@@ -70,8 +109,9 @@ const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<ty
         <img class="logo-bar-grill" src="/logo-bar-grill.webp" alt="" width="900" height="605" decoding="async" />
       </div>
       <div class="hero-actions">
-        <p class="hero-tag hero-tag-enter">Burgers, Wraps, Pizzas &amp; cold ones — open daily 10 AM to 2 AM.</p>
+        <p class="hero-tag hero-tag-enter"><span>Burgers, Wraps, Pizzas &amp; cold ones.</span><span>Open daily 10 AM to 2 AM.</span></p>
       </div>
+      <a class="home-specials__cta" href="/specials">View All Specials <span aria-hidden="true">→</span></a>
     </div>
     <article class="daily-special daily-special--dinner reveal">
       <p class="daily-special__label"><span aria-hidden="true">★</span> Dinner Special <span aria-hidden="true">★</span></p>
@@ -81,13 +121,11 @@ const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<ty
       {todaySpecial?.night_tag && <span class="daily-special__tag">{todaySpecial.night_tag}</span>}
     </article>
   </div>
-  <a class="home-specials__cta" href="/specials">View All Specials <span aria-hidden="true">→</span></a>
 </section>
 
 <section id="welcome" class="section-parchment">
   <div class="welcome-grid">
     <div class="welcome-copy reveal">
-      <p>A hometown bar &amp; grill in the heart of Mondovi, Wisconsin. We’re about good food, cold drinks, and the people who make this place feel like home.</p>
       <div class="welcome-title">
         <span class="welcome-title__rule" aria-hidden="true"></span>
         <span class="welcome-title__star" aria-hidden="true">★</span>
@@ -95,11 +133,11 @@ const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<ty
         <span class="welcome-title__star" aria-hidden="true">★</span>
         <span class="welcome-title__rule" aria-hidden="true"></span>
       </div>
-      <p>Longtime locals knew us as Gumby's. New name, same bar.</p>
+      <p class="welcome-intro">A hometown bar &amp; grill in the heart of Mondovi, Wisconsin. We’re about good food, cold drinks, and the people who make this place feel like home.</p>
     </div>
     {visibleWelcomeTiles.length > 0 && (
       <div class="photo-stack">
-      {visibleWelcomeTiles.slice(0, 3).map((tile) => {
+      {visibleWelcomeTiles.slice(0, 5).map((tile) => {
         const { photo, menuItem } = tile;
         const photoKey = photo.photo_key;
         if (!photoKey) return null;
@@ -129,6 +167,11 @@ const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<ty
       })}
       </div>
     )}
+    <div class="welcome-closing reveal">
+      <p>Longtime locals knew us as Gumby's. New name, same bar.</p>
+      <p class="welcome-script">Pull up a chair. You're among friends here.</p>
+      <span class="welcome-flourish" aria-hidden="true">❧</span>
+    </div>
   </div>
 </section>
 
@@ -435,6 +478,43 @@ const visibleWelcomeTiles = welcomeTiles.filter((photo): photo is NonNullable<ty
     .hero-after__brand .hero-actions{margin-top:0;padding-top:18px}
     #welcome{padding-inline:16px}
     .welcome-copy p{max-width:36ch}
+    .photo-stack{padding-inline:20px}
+  }
+
+  /* Final poster proportions: the center returns to its pre-composition mark scale. */
+  .hero-after{padding:clamp(14px,2.25vw,28px) clamp(18px,4vw,64px) clamp(20px,3vw,32px)}
+  .hero-after__layout{grid-template-columns:minmax(280px,1fr) minmax(400px,460px) minmax(280px,1fr);gap:clamp(32px,4vw,64px);max-width:1360px}
+  .daily-special{min-height:300px;padding:clamp(26px,3vw,38px) clamp(22px,2.75vw,34px)}
+  .hero-after__brand{align-self:start}
+  .hero-after__brand .logo-bar-stage{width:min(50vw,400px);height:150px}
+  .hero-after__brand .hero-actions{margin-top:-30px;padding:clamp(18px,4vw,28px) 24px 8px}
+  .hero-tag span{display:block}
+  .hero-after__brand .home-specials__cta{margin-top:4px}
+
+  .welcome-title{grid-template-columns:minmax(24px,1fr) auto auto auto minmax(24px,1fr);margin:0 0 16px}
+  .welcome-title h2{font-size:clamp(1.55rem,2.65vw,2.5rem);white-space:nowrap}
+  .welcome-intro{max-width:62ch!important}
+  .photo-stack{grid-template-columns:repeat(5,minmax(0,1fr));grid-auto-rows:clamp(170px,16vw,238px);gap:10px;max-width:1100px;margin:clamp(22px,3vw,34px) auto 0;padding:20px 32px 30px}
+  .photo{margin:0!important;width:auto!important;grid-column:auto!important;justify-self:stretch!important}
+  .photo:nth-child(1){z-index:1;transform:rotate(-2.8deg) translateY(12px)}
+  .photo:nth-child(2){z-index:2;transform:rotate(2deg) translateY(-5px)}
+  .photo:nth-child(3){z-index:1;transform:rotate(-1.9deg) translateY(15px)}
+  .photo:nth-child(4){z-index:2;transform:rotate(2.5deg) translateY(-8px)}
+  .photo:nth-child(5){z-index:1;transform:rotate(-2.2deg) translateY(10px)}
+  .welcome-closing{max-width:660px;margin:14px auto 0;text-align:center;color:var(--text-muted)}
+  .welcome-closing > p:first-child{margin:0;font-size:clamp(.95rem,1.3vw,1.08rem)}
+  .welcome-script{margin:10px 0 0;color:var(--denim);font-family:cursive;font-size:clamp(1.25rem,2.1vw,1.7rem);line-height:1.2}
+  .welcome-flourish{display:block;margin:4px auto 0;color:var(--brick);font-size:2rem;line-height:1;transform:rotate(-12deg)}
+
+  @media (max-width:900px){
+    .hero-after__layout{grid-template-columns:1fr;grid-template-areas:"brand" "lunch" "dinner";max-width:560px;gap:20px}
+    .hero-after__brand{align-self:auto}
+    .daily-special{min-height:220px}
+    .photo-stack{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:clamp(170px,48vw,260px);max-width:660px}
+    .photo:nth-child(5){grid-column:1 / -1;width:58%!important;justify-self:center!important}
+  }
+  @media (max-width:620px){
+    .welcome-title h2{white-space:normal}
     .photo-stack{padding-inline:20px}
   }
 </style>
