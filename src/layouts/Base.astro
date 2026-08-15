@@ -344,6 +344,13 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     .footer-composition--home .footer-copy{transform:translateY(-20px)}
   }
 
+  /* Surface Duo's short landscape needs the same centered crop, just a shorter scene. */
+  @media (min-width:500px) and (max-width:599px) and (max-height:760px){
+    .footer-composition--home{
+      --mobile-footer-scene-height:1320px;
+    }
+  }
+
   /* On narrow phones, give Facebook the maker-credit corner instead. */
   @media (max-width:500px){
     .footer-credit{display:none}
