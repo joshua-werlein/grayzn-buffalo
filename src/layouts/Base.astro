@@ -65,7 +65,6 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 {isHome && (
   <>
     <link rel="preload" as="image" href="/grayznBackground.webp" fetchpriority="high" />
-    <link rel="preload" as="image" href="/hero-foreground.webp" />
     <link rel="preload" as="image" href="/logo-wordmark.webp" />
     <link rel="preload" as="image" href="/logo-buffalo.webp" fetchpriority="high" />
     <link rel="preload" as="image" href="/logo-bar-grill.webp" />
@@ -225,7 +224,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     nav.site a.link.active{color:var(--ink);text-decoration-color:var(--crimson)}
     .footer-composition--home{min-height:clamp(792px,55vw,1126px);background-color:#21130e;background-image:url('/footer-landscape.webp');background-position:center top;background-size:100% auto;background-repeat:no-repeat}
     .footer-composition--home #visit#visit{position:relative;z-index:1;padding:0;background:transparent;border:0;box-shadow:none}
-    .footer-composition--home #visit#visit .visit-content{position:relative;top:25px;padding:calc(clamp(42px,6vw,72px) + 35px) clamp(18px,4vw,64px) clamp(42px,6vw,72px);background:transparent}
+    .footer-composition--home #visit#visit .visit-content{position:relative;top:0;padding:clamp(42px,6vw,72px) clamp(18px,4vw,64px);background:transparent}
     .footer-composition--home #visit#visit .visit-block{border-bottom:0}
     .footer-composition--home footer{position:relative;z-index:1;min-height:0;margin-top:0;padding:clamp(200px,14vw,270px) 20px 30px;background:transparent;border-top:0;box-shadow:none}
     .footer-layout{max-width:1440px;padding-inline:clamp(50px,7vw,130px)}
