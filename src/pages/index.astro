@@ -438,10 +438,13 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .photo img{inset:0;width:100%;height:100%;border:1px solid rgba(57,35,21,.32)}
   .photo:nth-child(1){z-index:1;transform:rotate(-3deg) translateY(18px);margin-right:-28px}.photo:nth-child(2){z-index:2;transform:rotate(1.8deg) translateY(-7px);margin-inline:-18px}.photo:nth-child(3){z-index:1;transform:rotate(-1.7deg) translateY(22px);margin-left:-28px}
   .photo:hover,.photo.welcome-photo-reveal.in:hover{transform:translateY(-5px) rotate(0)}
-  #menu-preview{background-color:#d9c39a;background-image:repeating-linear-gradient(90deg,rgba(74,45,23,.05) 0 1px,transparent 1px 28px),linear-gradient(120deg,rgba(255,248,225,.45),rgba(134,87,40,.08));border-top:2px solid rgba(64,37,20,.25);border-bottom:2px solid rgba(64,37,20,.25)}
+  #menu-preview{position:relative;isolation:isolate;background-color:#493222;background-image:repeating-linear-gradient(90deg,rgba(247,225,178,.055) 0 1px,transparent 1px 30px),linear-gradient(90deg,rgba(22,13,8,.2),transparent 16%,transparent 84%,rgba(22,13,8,.28)),linear-gradient(120deg,#5b3e29,#352217);border:0;box-shadow:inset 0 1px rgba(246,220,169,.1),inset 0 -1px rgba(14,8,5,.45)}
+  #menu-preview::before,#menu-preview::after{content:"";position:absolute;z-index:0;right:0;left:0;height:9px;pointer-events:none;background:linear-gradient(to bottom,rgba(24,14,9,.96) 0 1px,rgba(211,169,100,.42) 1px 2px,transparent 2px 5px,rgba(20,12,8,.74) 5px 6px,rgba(238,206,145,.2) 6px 7px,rgba(23,14,9,.9) 7px 9px)}
+  #menu-preview::before{top:0}#menu-preview::after{bottom:0;transform:scaleY(-1)}#menu-preview > *{position:relative;z-index:1}
+  #menu-preview .section-head :is(h1,h2){color:var(--cream)}#menu-preview .section-head p{color:var(--cream-2)}#menu-preview .section-head .kicker{color:#e3bd75}
   /* The menu links read as aged saloon notices, with paper and printing made entirely in CSS. */
-  .menu-card{--poster-paper:#f1deb5;--poster-ink:#3c2416;--poster-accent:#6e4323;--poster-tilt:-.5deg;--poster-hover-tilt:-.15deg;position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:flex-start;min-height:286px;padding:clamp(26px,3vw,36px) clamp(24px,3vw,34px) clamp(24px,3vw,30px);overflow:hidden;border:1px solid rgba(63,37,20,.9);border-radius:0;background-color:var(--poster-paper);background-image:radial-gradient(ellipse at 5% 7%,rgba(82,48,22,.2),transparent 19%),radial-gradient(ellipse at 93% 94%,rgba(82,48,22,.18),transparent 21%),radial-gradient(ellipse at 17% 82%,rgba(126,79,37,.1),transparent 17%),linear-gradient(102deg,rgba(80,45,19,.1),transparent 15%,transparent 84%,rgba(80,45,19,.12)),url('/parchment-texture.webp');background-size:auto,auto,auto,100% 100%,300px 300px;background-blend-mode:multiply,multiply,multiply,normal,multiply;box-shadow:2px 3px 0 rgba(51,29,15,.25),8px 13px 20px rgba(43,27,20,.18);color:var(--poster-ink);transform:rotate(var(--poster-tilt));transition:transform .2s ease,box-shadow .2s ease}
-  .menu-card::before{content:"";position:absolute;z-index:0;inset:7px;border:1px solid color-mix(in srgb,var(--poster-ink) 72%,transparent);box-shadow:inset 0 0 0 3px rgba(255,245,214,.18),inset 0 0 20px rgba(68,38,18,.14);pointer-events:none}
+  .menu-card{--poster-paper:#f1deb5;--poster-ink:#3c2416;--poster-accent:#6e4323;--poster-tilt:-.9deg;--poster-hover-tilt:-.25deg;position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:flex-start;min-height:286px;padding:clamp(26px,3vw,36px) clamp(24px,3vw,34px) clamp(24px,3vw,30px);overflow:hidden;border:1px solid rgba(63,37,20,.9);border-radius:0;background-color:var(--poster-paper);background-image:radial-gradient(ellipse at 5% 7%,rgba(82,48,22,.2),transparent 19%),radial-gradient(ellipse at 93% 94%,rgba(82,48,22,.18),transparent 21%),radial-gradient(ellipse at 17% 82%,rgba(126,79,37,.1),transparent 17%),linear-gradient(102deg,rgba(80,45,19,.1),transparent 15%,transparent 84%,rgba(80,45,19,.12)),url('/parchment-texture.webp');background-size:auto,auto,auto,100% 100%,300px 300px;background-blend-mode:multiply,multiply,multiply,normal,multiply;box-shadow:2px 3px 0 rgba(51,29,15,.25),8px 13px 20px rgba(43,27,20,.18);color:var(--poster-ink);transform:rotate(var(--poster-tilt));transition:transform .2s ease,box-shadow .2s ease}
+  .menu-card::before{content:"";position:absolute;z-index:0;inset:7px;border:1px solid rgba(57,33,17,.82);box-shadow:inset 0 0 0 3px rgba(255,245,214,.2),inset 0 0 20px rgba(68,38,18,.14);pointer-events:none}
   .menu-card > *{position:relative;z-index:1}
   .menu-card__eyebrow{margin:0;color:var(--poster-accent);font-family:var(--label);font-size:.76rem;font-weight:700;letter-spacing:.2em;line-height:1.2;text-transform:uppercase}
   .menu-card__ornament{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;width:100%;margin:11px 0 16px;color:var(--poster-accent)}
@@ -452,8 +455,8 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .menu-card .link-arrow{display:inline-flex;align-items:center;gap:8px;margin-top:auto;padding:10px 0 7px;border-top:3px double color-mix(in srgb,var(--poster-accent) 82%,transparent);border-bottom:1px solid color-mix(in srgb,var(--poster-accent) 68%,transparent);color:var(--poster-ink);font-family:var(--label);font-size:.83rem;font-weight:700;letter-spacing:.14em;line-height:1.1;text-decoration:none;text-transform:uppercase}
   .menu-card .link-arrow::before{content:'★';font-size:.65em;color:var(--poster-accent)}
   .menu-card .link-arrow:hover,.menu-card .link-arrow:focus-visible{color:var(--brick);text-decoration:none}
-  .menu-card--late{--poster-paper:#e7c98f;--poster-ink:#3a2213;--poster-accent:#875122;--poster-tilt:.4deg;--poster-hover-tilt:.12deg}
-  .menu-card--specials{--poster-paper:#efdbb5;--poster-ink:#3a2117;--poster-accent:var(--brick);--poster-tilt:-.3deg;--poster-hover-tilt:-.08deg}
+  .menu-card--late{--poster-paper:#e7c98f;--poster-ink:#3a2213;--poster-accent:#875122;--poster-tilt:.7deg;--poster-hover-tilt:.18deg}
+  .menu-card--specials{--poster-paper:#efdbb5;--poster-ink:#3a2117;--poster-accent:var(--brick);--poster-tilt:-.65deg;--poster-hover-tilt:-.16deg}
   .menu-card--late .menu-card__ornament{margin-bottom:15px}.menu-card--specials .menu-card__ornament{margin-top:13px}
   .menu-card.reveal.in{transform:rotate(var(--poster-tilt))}
   .menu-card:hover{transform:translateY(-3px) rotate(var(--poster-hover-tilt));box-shadow:3px 5px 0 rgba(51,29,15,.25),10px 17px 24px rgba(43,27,20,.22)}
@@ -728,14 +731,16 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   #social .fb-item:nth-child(2) .fb-card:hover{transform:translateY(-13px) rotate(var(--post-hover-tilt))}
   #social .fb-item:nth-child(3) .fb-card:hover{transform:translateY(2px) rotate(var(--post-hover-tilt))}
   #social .fb-item:nth-child(4) .fb-card:hover{transform:translateY(-7px) rotate(var(--post-hover-tilt))}
-  #social .fb-card-header{display:block;margin:2px 3px 6px;color:var(--ink);font-family:var(--display);font-size:clamp(.88rem,1.25vw,1.08rem);line-height:1.18;text-align:center}
-  #social .fb-card-header p{display:-webkit-box;margin:0;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;white-space:pre-line}
+  /* Image captions are separate bulletin clippings so the printed artwork keeps its full poster area. */
+  #social .fb-caption{width:calc(100% - 24px);margin-top:15px;padding:9px 11px;border:1px solid rgba(74,45,23,.62);background-color:#e8d2a6;background-image:radial-gradient(rgba(79,47,23,.1) .6px,transparent .75px),linear-gradient(100deg,rgba(91,53,24,.1),transparent 20%,transparent 82%,rgba(91,53,24,.08));background-size:5px 5px,100% 100%;box-shadow:2px 3px 0 rgba(58,34,18,.18);color:var(--ink-2);font-family:var(--body);font-size:clamp(.85rem,1.1vw,.96rem);line-height:1.35;text-align:center;white-space:pre-line}
+  #social .fb-caption p{display:-webkit-box;margin:0;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:4;line-clamp:4}
   /* The printed artwork and metadata stay parallel with the one rotating poster sheet. */
-  #social .fb-card-header,#social .fb-media,#social .fb-media img,#social .fb-footer{transform:none}
+  #social .fb-media,#social .fb-media img,#social .fb-footer{transform:none}
   #social .fb-media{position:relative;z-index:0;display:grid;flex:1 1 auto;min-height:0;width:100%;margin-top:8px;padding:0;border:0;background:transparent;box-shadow:none;cursor:zoom-in}
   #social .fb-media:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
   #social .fb-media img{display:block;width:100%;height:100%;min-height:0;object-fit:contain;filter:sepia(.05) saturate(.96) contrast(.99);background:transparent}
-  #social .fb-text-media{display:flex;flex:1 1 auto;align-items:center;justify-content:center;min-height:0;padding:16px;background:transparent;color:var(--ink);font-family:var(--display);font-size:clamp(1.1rem,1.6vw,1.45rem);line-height:1.25;text-align:center}
+  #social .fb-text-media{display:-webkit-box;flex:1 1 auto;min-height:0;margin:0;padding:clamp(12px,2vw,20px);overflow:hidden;color:var(--ink);font-family:var(--body);font-size:clamp(.95rem,1.35vw,1.08rem);line-height:1.45;text-align:center;white-space:pre-line;-webkit-box-orient:vertical;-webkit-line-clamp:9;line-clamp:9}
+  #social .fb-text-media--short{display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:clamp(1.1rem,1.6vw,1.45rem);line-height:1.25}
   #social .fb-footer{display:flex;align-items:center;justify-content:center;min-height:30px;padding:7px 3px 0;color:var(--ink);font-family:var(--display);font-size:clamp(.64rem,.9vw,.76rem);font-weight:700;letter-spacing:.1em;text-align:center;text-transform:uppercase}
   #social .fb-date{color:var(--ink)}
   #social .fb-post-link{display:inline-flex;align-items:center;justify-content:center;min-height:30px;margin-top:15px;padding:6px 13px;border:1px solid rgba(238,224,196,.6);background:var(--brick);box-shadow:inset 0 1px rgba(255,255,255,.18),0 2px 0 rgba(67,30,24,.38);color:var(--cream);font-family:var(--label);font-size:.72rem;font-weight:700;letter-spacing:.12em;line-height:1;text-decoration:none;text-transform:uppercase;white-space:nowrap}
@@ -747,7 +752,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   #social .social-cta .btn::before,#social .social-cta .btn::after{content:'★';margin:0 10px;color:var(--gold);font-size:.75em}
   #social .social-cta .btn:hover,#social .social-cta .btn:focus-visible{background:var(--brick-hover);transform:translateY(-2px);box-shadow:inset 0 1px rgba(255,255,255,.2),0 5px 0 rgba(67,30,24,.35)}
   @media (max-width:1100px){#social .fb-grid,#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{max-width:760px;grid-template-columns:repeat(2,minmax(0,1fr))}}
-  @media (max-width:600px){#social .fb-grid,#social .fb-grid[data-count="2"],#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{max-width:440px;grid-template-columns:1fr;gap:30px;padding-inline:22px}#social .fb-item{--post-tilt:-.7deg;--post-hover-tilt:-.3deg}#social .fb-item:nth-child(even){--post-tilt:.7deg;--post-hover-tilt:.3deg}#social .fb-item .fb-card,#social .fb-item:nth-child(n) .fb-card{transform:rotate(var(--post-tilt))}#social .fb-card::after{top:-10px;width:15px;height:15px}#social .fb-card:hover,#social .fb-item:nth-child(n) .fb-card:hover{transform:translateY(-2px) rotate(var(--post-hover-tilt))}#social .fb-card-header{font-size:clamp(.85rem,4vw,1rem)}}
+  @media (max-width:600px){#social .fb-grid,#social .fb-grid[data-count="2"],#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{max-width:440px;grid-template-columns:1fr;gap:30px;padding-inline:22px}#social .fb-item{--post-tilt:-.7deg;--post-hover-tilt:-.3deg}#social .fb-item:nth-child(even){--post-tilt:.7deg;--post-hover-tilt:.3deg}#social .fb-item .fb-card,#social .fb-item:nth-child(n) .fb-card{transform:rotate(var(--post-tilt))}#social .fb-card::after{top:-10px;width:15px;height:15px}#social .fb-card:hover,#social .fb-item:nth-child(n) .fb-card:hover{transform:translateY(-2px) rotate(var(--post-hover-tilt))}#social .fb-caption{width:calc(100% - 16px);font-size:clamp(.86rem,4vw,.98rem)}}
   @media (prefers-reduced-motion:reduce){#social .fb-card{transition:none}#social .fb-card:hover,#social .fb-item:nth-child(n) .fb-card:hover{transform:rotate(var(--post-tilt))}}
 </style>
 
@@ -819,37 +824,29 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
         const card = document.createElement('article');
         card.className = 'fb-card';
 
-        if (post.message) {
-          const header = document.createElement('div');
-          header.className = 'fb-card-header';
-          const caption = document.createElement('p');
-          caption.textContent = post.message;
-          header.append(caption);
-          card.append(header);
-        }
-
         if (post.imageUrl) {
           const media = document.createElement('button');
           media.type = 'button';
           media.className = 'fb-media';
           media.dataset.lightboxSrc = post.imageUrl;
-          media.dataset.lightboxAlt = post.message ? `Facebook post: ${post.message}` : 'Facebook post image';
+          media.dataset.lightboxAlt = 'Facebook post image';
+          if (post.message) media.dataset.lightboxCaption = post.message;
           media.dataset.lightboxActionUrl = post.permalinkUrl;
           media.dataset.lightboxActionLabel = 'View on Facebook';
           media.dataset.lightboxActionNewTab = 'true';
           media.setAttribute('aria-label', 'View Facebook post image larger');
           const image = document.createElement('img');
           image.src = post.imageUrl;
-          image.alt = post.message ? `Facebook post: ${post.message}` : '';
+          image.alt = '';
           image.loading = 'lazy';
           media.append(image);
           card.append(media);
         } else {
-          const fallback = document.createElement('div');
-          fallback.className = 'fb-text-media';
-          fallback.setAttribute('aria-hidden', 'true');
-          fallback.textContent = "Grayz'n Buffalo";
-          card.append(fallback);
+          const textNotice = document.createElement('p');
+          textNotice.className = 'fb-text-media';
+          if (post.message && post.message.trim().length <= 84) textNotice.classList.add('fb-text-media--short');
+          textNotice.textContent = post.message || "Grayz'n Buffalo";
+          card.append(textNotice);
         }
 
         const footer = document.createElement('div');
@@ -864,6 +861,17 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
 
         card.append(footer);
 
+        if (post.imageUrl && post.message) {
+          const caption = document.createElement('div');
+          caption.className = 'fb-caption';
+          const captionText = document.createElement('p');
+          captionText.textContent = post.message;
+          caption.append(captionText);
+          item.append(card, caption);
+        } else {
+          item.append(card);
+        }
+
         const postLink = document.createElement('a');
         postLink.className = 'fb-post-link';
         postLink.href = post.permalinkUrl;
@@ -871,7 +879,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
         postLink.rel = 'noopener';
         postLink.textContent = 'View Post';
 
-        item.append(card, postLink);
+        item.append(postLink);
         feed.append(item);
       }
 
