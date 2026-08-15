@@ -234,9 +234,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
     min-height:min(84dvh,720px);
     display:flex;align-items:flex-end;justify-content:center;text-align:center;
     background:url('/grayznBackground.webp') center bottom / cover no-repeat}
-  .hero::after{content:"";position:absolute;z-index:2;inset:auto 0 0;height:clamp(62px,10vw,112px);pointer-events:none;
-    background-image:linear-gradient(to bottom,rgba(238,224,196,0),rgba(238,224,196,.14) 48%,rgba(238,224,196,.58) 80%,var(--page-parchment)),radial-gradient(rgba(77,45,24,.08) .65px,transparent .75px);
-    background-size:100% 100%,5px 5px}
+  .hero::after{content:none}
   .hero-copy{position:absolute;inset:0;z-index:3;pointer-events:none}
   .logo-stage{--wordmark-y:-105px;--buffalo-y:0px;
     display:block;position:absolute;top:clamp(180px,45vw,210px);left:0;right:0;
@@ -485,7 +483,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   }
 
   /* Final poster proportions: the center returns to its pre-composition mark scale. */
-  .opening-poster{position:relative;isolation:isolate;overflow:clip}
+  .opening-poster{position:relative;isolation:isolate;overflow:visible}
   .hero-after{isolation:isolate;overflow:hidden;padding:clamp(14px,2.25vw,28px) clamp(18px,4vw,64px) clamp(20px,3vw,32px)}
   .hero-after__layout{position:relative;z-index:2;grid-template-columns:minmax(280px,1fr) minmax(400px,460px) minmax(280px,1fr);gap:clamp(32px,4vw,64px);max-width:1360px}
   .daily-special{min-height:300px;padding:clamp(26px,3vw,38px) clamp(22px,2.75vw,34px)}
@@ -550,7 +548,8 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   /* The lower poster assembles after the hero mark: boards settle with the second line of copy, then Welcome follows. */
   .hero-after,#welcome{overflow-x:clip}
   .welcome-grid{position:relative;z-index:2}
-  .hero-foreground{position:absolute;z-index:1;inset:0;pointer-events:none;background:url('/hero-foreground.webp') center calc(100% - clamp(56px,5vw,96px)) / min(1920px,140vw) auto no-repeat;opacity:.94;mask-image:linear-gradient(to bottom,#000 0%,#000 74%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 74%,transparent 100%)}
+  .hero-after{overflow:visible}
+  .hero-foreground{position:absolute;z-index:1;inset:clamp(-100px,-6vw,-58px) 0 0;pointer-events:none;background:url('/hero-foreground.webp') center calc(100% - clamp(24px,2vw,48px)) / min(1920px,140vw) auto no-repeat;opacity:.96;mask-image:linear-gradient(to bottom,#000 0%,#000 82%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 82%,transparent 100%)}
   .daily-special--lunch,.daily-special--dinner{opacity:0;will-change:transform,opacity}
   .daily-special--lunch{animation:poster-board-left .9s cubic-bezier(.2,.72,.25,1) 1.65s both}
   .daily-special--dinner{animation:poster-board-right .9s cubic-bezier(.2,.72,.25,1) 1.65s both}
@@ -576,7 +575,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   @keyframes poster-rule-right{from{opacity:0;transform:translateX(100vw)}to{opacity:1;transform:translateX(0)}}
 
   @media (max-width:900px){
-    .hero-foreground{inset:0;background-size:auto 180%;background-position:center calc(100% - 32px);opacity:.9;mask-image:linear-gradient(to bottom,#000 0%,#000 78%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 78%,transparent 100%)}
+    .hero-foreground{inset:-48px 0 0;background-size:auto 190%;background-position:center calc(100% - 16px);opacity:.94;mask-image:linear-gradient(to bottom,#000 0%,#000 84%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 84%,transparent 100%)}
     .hero-after__brand{height:auto}
     .hero-after__brand .logo-bar-stage{transform:none}
     .hero-after__brand .home-specials__cta{margin:34px auto 0}

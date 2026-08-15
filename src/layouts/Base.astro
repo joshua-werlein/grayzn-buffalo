@@ -171,13 +171,14 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   footer a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
   .footer-layout{position:relative;max-width:1100px;margin:0 auto}
   .footer-center{display:flex;flex-direction:column;align-items:center;min-width:0}
-  .footer-copy{margin:0}
-  .footer-social{display:inline-flex;align-items:center;justify-content:center;color:#1877F2;line-height:22px;transition:opacity .2s}
+  .footer-mainline{display:contents}
+  .footer-copy{order:1;margin:0}
+  .footer-social{order:3;display:inline-flex;align-items:center;justify-content:center;color:#1877F2;line-height:22px;transition:opacity .2s}
   .footer-social:hover{opacity:.8}
   .footer-social:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
   .footer-credit{position:absolute;right:0;bottom:0;margin:0;line-height:22px;opacity:.6;white-space:nowrap}
   .footer-credit a{color:inherit}
-  .footer-legal{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 18px;margin:7px 0;}
+  .footer-legal{order:2;display:flex;flex-wrap:wrap;justify-content:center;gap:8px 18px;margin:7px 0;}
   .footer-legal a{color:var(--cream-2);font-size:.78rem;text-underline-offset:3px;}
   .footer-legal a:hover,
   .footer-legal a:focus-visible{color:var(--gold);}
@@ -222,6 +223,19 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     nav.site a.link{color:var(--ink);font-weight:700;font-size:1.3rem}
     nav.site a.link:hover,nav.site a.link:focus-visible{color:var(--ink);text-decoration-color:var(--crimson);outline:2px solid var(--crimson);outline-offset:5px}
     nav.site a.link.active{color:var(--ink);text-decoration-color:var(--crimson)}
+    #visit#visit{position:relative;z-index:2;background-color:transparent;background-image:linear-gradient(to bottom,rgba(238,224,196,.96),rgba(238,224,196,.56) 68%,rgba(238,224,196,0));}
+    footer{position:relative;z-index:1;margin-top:clamp(-300px,-16vw,-190px);padding-bottom:30px}
+    .footer-layout{max-width:1440px;padding-inline:clamp(50px,7vw,130px)}
+    .footer-center{display:flex;align-items:center}
+    .footer-mainline{display:flex;align-items:center;justify-content:center;gap:12px;min-width:0}
+    .footer-copy{font-size:1rem;line-height:1.35}
+    .footer-social{flex:0 0 auto;line-height:1}
+    .footer-social svg{width:31px;height:31px}
+    .footer-legal{gap:8px 32px;margin:14px 0 0}
+    .footer-legal a{font-size:.9rem}
+    .staff-door{left:clamp(8px,2vw,34px);bottom:-15px;padding:12px;opacity:.26}
+    .staff-door img{width:60px}
+    .footer-credit{right:clamp(8px,2vw,34px);bottom:0;font-size:.96rem;opacity:.72}
   }
   @media (max-width:1099px){ nav.site .brand img{height:52px} nav.site ul{gap:14px} nav.site a.link{font-size:.8rem} }
   @media (prefers-reduced-motion: reduce){
@@ -340,16 +354,18 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 <footer>
   <div class="footer-layout">
     <div class="footer-center">
-      <p class="footer-copy">© {new Date().getFullYear()} Grayz'n Buffalo Bar &amp; Grill · <a class="nowrap" href="https://www.google.com/maps/search/?api=1&query=102+S+Eau+Claire+St,+Mondovi,+WI+54755" target="_blank" rel="noopener">102 S Eau Claire St, Mondovi, WI</a> · <a class="nowrap" href="tel:+17159264431">(715) 926-4431</a></p>
+      <div class="footer-mainline">
+        <p class="footer-copy">© {new Date().getFullYear()} Grayz'n Buffalo Bar &amp; Grill · <a class="nowrap" href="https://www.google.com/maps/search/?api=1&query=102+S+Eau+Claire+St,+Mondovi,+WI+54755" target="_blank" rel="noopener">102 S Eau Claire St, Mondovi, WI</a> · <a class="nowrap" href="tel:+17159264431">(715) 926-4431</a></p>
+        <a href="https://www.facebook.com/grayznbuffalo/" aria-label="Grayz'n Buffalo on Facebook" class="footer-social">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5 3.66 9.15 8.44 9.94v-7.03H7.9v-2.9h2.54V9.85c0-2.51 1.49-3.9 3.77-3.9 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.9h-2.34V22c4.78-.79 8.44-4.94 8.44-9.94Z"/>
+          </svg>
+        </a>
+      </div>
       <nav class="footer-legal" aria-label="Legal">
         <a href="/privacy">Privacy</a>
         <a href="/accessibility">Accessibility</a>
       </nav>
-      <a href="https://www.facebook.com/grayznbuffalo/" aria-label="Grayz'n Buffalo on Facebook" class="footer-social">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5 3.66 9.15 8.44 9.94v-7.03H7.9v-2.9h2.54V9.85c0-2.51 1.49-3.9 3.77-3.9 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.9h-2.34V22c4.78-.79 8.44-4.94 8.44-9.94Z"/>
-        </svg>
-      </a>
     </div>
     <a class="staff-door" href="/admin" rel="nofollow" aria-label="Staff login">
       <img src="/buffalo-mark.svg" alt="" width="40" height="23" loading="lazy" />
