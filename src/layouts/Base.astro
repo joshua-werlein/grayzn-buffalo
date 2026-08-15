@@ -347,7 +347,11 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   /* Surface Duo's short landscape needs the same centered crop, just a shorter scene. */
   @media (min-width:500px) and (max-width:599px) and (max-height:760px){
     .footer-composition--home{
+      /* Crop only the surplus parchment sky: artwork scale stays fixed while
+         the wood moves up with the absolute footer. */
       --mobile-footer-scene-height:1320px;
+      min-height:1210px;
+      background-position:center -110px;
     }
   }
 
