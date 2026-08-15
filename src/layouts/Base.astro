@@ -293,6 +293,51 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     .install-prompt{bottom:calc(78px + env(safe-area-inset-bottom))}
   }
 
+  /* On narrow screens, keep Directions, the landscape, and the wood board as
+     one cropped scene rather than shrinking the full 2048px source to fit. */
+  @media (max-width:1099px){
+    body:has(.footer-composition--home){padding-bottom:0}
+    .footer-composition--home{
+      --mobile-footer-scene-height:clamp(1320px,310vw,1400px);
+      position:relative;
+      min-height:var(--mobile-footer-scene-height);
+      background-color:#21130e;
+      background-image:url('/footer-landscape.webp');
+      background-position:center top;
+      background-size:auto var(--mobile-footer-scene-height);
+      background-repeat:no-repeat;
+    }
+    .footer-composition--home #visit#visit{position:relative;z-index:1;padding:0;background:transparent;border:0;box-shadow:none}
+    .footer-composition--home #visit#visit .visit-content{
+      gap:clamp(14px,4vw,22px);
+      padding:clamp(30px,8vw,54px) clamp(18px,5vw,42px);
+      background:transparent;
+    }
+    .footer-composition--home #visit#visit .visit-block{border-bottom:1px dashed var(--rule)}
+    .footer-composition--home #visit#visit .map-frame{height:clamp(230px,64vw,360px)}
+    .footer-composition--home footer{
+      position:absolute;z-index:1;right:0;bottom:0;left:0;
+      min-height:0;margin:0;
+      padding:0 20px calc(74px + env(safe-area-inset-bottom));
+      background:transparent;border-top:0;box-shadow:none;
+    }
+    .footer-composition--home .footer-layout{max-width:520px}
+    .footer-composition--home .staff-door{bottom:calc(72px + env(safe-area-inset-bottom));left:0}
+  }
+
+  @media (min-width:600px) and (max-width:1099px){
+    .footer-composition--home #visit#visit .visit-content{display:grid;grid-template-columns:minmax(220px,.82fr) minmax(0,1.18fr);column-gap:clamp(24px,5vw,52px);align-items:start}
+    .footer-composition--home #visit#visit .visit-heading,
+    .footer-composition--home #visit#visit .visit-kicker{grid-column:1;width:auto;margin:0}
+    .footer-composition--home #visit#visit .visit-cols{grid-column:1;grid-row:3}
+    .footer-composition--home #visit#visit .map-frame{grid-column:2;grid-row:1 / span 3;height:clamp(300px,42vw,360px);min-height:0}
+  }
+
+  @media (max-width:500px){
+    .footer-composition--home .footer-credit{display:block;position:static;margin:8px 0 0;line-height:22px;white-space:normal}
+    .footer-composition--home .footer-social{position:absolute;right:0;bottom:calc(92px + env(safe-area-inset-bottom))}
+  }
+
   /* On narrow phones, give Facebook the maker-credit corner instead. */
   @media (max-width:500px){
     .footer-credit{display:none}
