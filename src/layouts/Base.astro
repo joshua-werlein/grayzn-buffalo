@@ -321,11 +321,14 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
       padding:0 20px calc(74px + env(safe-area-inset-bottom));
       background:transparent;border-top:0;box-shadow:none;
     }
-    .footer-composition--home .footer-layout{max-width:520px}
+    .footer-composition--home .footer-layout{position:static;max-width:none}
+    .footer-composition--home .footer-center{max-width:520px;margin-inline:auto}
+    .footer-composition--home .footer-credit{display:none}
     .footer-composition--home .staff-door{bottom:calc(72px + env(safe-area-inset-bottom));left:0}
+    .footer-composition--home .footer-social{position:absolute;right:0;bottom:calc(72px + env(safe-area-inset-bottom))}
   }
 
-  @media (min-width:600px) and (max-width:1099px){
+  @media (min-width:980px) and (max-width:1099px){
     .footer-composition--home #visit#visit .visit-content{display:grid;grid-template-columns:minmax(220px,.82fr) minmax(0,1.18fr);column-gap:clamp(24px,5vw,52px);align-items:start}
     .footer-composition--home #visit#visit .visit-heading,
     .footer-composition--home #visit#visit .visit-kicker{grid-column:1;width:auto;margin:0}
@@ -333,9 +336,8 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     .footer-composition--home #visit#visit .map-frame{grid-column:2;grid-row:1 / span 3;height:clamp(300px,42vw,360px);min-height:0}
   }
 
-  @media (max-width:500px){
-    .footer-composition--home .footer-credit{display:block;position:static;margin:8px 0 0;line-height:22px;white-space:normal}
-    .footer-composition--home .footer-social{position:absolute;right:0;bottom:calc(92px + env(safe-area-inset-bottom))}
+  @media (min-width:600px) and (max-width:979px){
+    .footer-composition--home #visit#visit .visit-content{display:flex;flex-direction:column}
   }
 
   /* On narrow phones, give Facebook the maker-credit corner instead. */
