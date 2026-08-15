@@ -99,7 +99,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
         <img class="logo-bar-grill" src="/logo-bar-grill.webp" alt="" width="900" height="605" decoding="async" />
       </div>
       <div class="hero-actions">
-        <p class="hero-tag hero-tag-enter"><span>Burgers, Wraps, Pizzas &amp; cold ones.</span><span>Open daily 10 AM to 2 AM.</span></p>
+        <p class="hero-tag hero-tag-enter"><span>Open daily 10 AM to 2 AM.</span></p>
       </div>
       <a class="home-specials__cta" href="/specials">View All Specials <span aria-hidden="true">→</span></a>
     </div>
@@ -233,7 +233,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
 
 <style>
   .hero{--hero-scene-height:min(84dvh,720px);position:relative;z-index:2;isolation:isolate;overflow:hidden;min-height:0;padding-top:var(--hero-scene-height);display:block;text-align:center;background:var(--page-parchment)}
-  .hero::before{content:"";position:absolute;z-index:0;inset:0;background:url('/grayznBackground.webp') center bottom / cover no-repeat;mask-image:linear-gradient(to bottom,#000 0%,#000 77%,rgba(0,0,0,.85) 87%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 77%,rgba(0,0,0,.85) 87%,transparent 100%);pointer-events:none}
+  .hero::before{content:"";position:absolute;z-index:0;inset:0;background:url('/grayznBackground.webp') center bottom / cover no-repeat;mask-image:linear-gradient(to bottom,#000 0%,#000 77%,rgba(0,0,0,.85) 87%,transparent calc(100% + 5px));-webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 77%,rgba(0,0,0,.85) 87%,transparent calc(100% + 5px));pointer-events:none}
   .hero::after{content:none}
   .hero-copy{position:absolute;inset:0;z-index:3;pointer-events:none}
   .logo-stage{--wordmark-y:-105px;--buffalo-y:0px;
@@ -448,7 +448,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .visit-content .visit-kicker{order:2;align-self:flex-start;max-width:var(--content-wide);width:100%;margin-inline:auto}
   .visit-content .visit-cols{order:3;display:grid;grid-template-columns:1fr;gap:14px;max-width:none;width:100%;margin:0;text-align:left}
   .visit-content .visit-block{padding:0 0 13px;border-bottom:1px solid var(--rule-light)}
-  .visit-content .visit-block a:hover,.visit-content .visit-block a:focus-visible{color:var(--gold);text-decoration-thickness:2px}
+  .visit-content .visit-block a:hover,.visit-content .visit-block a:focus-visible{color:var(--cream);text-decoration-thickness:2px}
   .visit-content .map-frame{order:4;width:100%;max-width:none;height:clamp(250px,46vw,360px);margin:0}
   @media (min-width:900px){.visit-content{display:grid;grid-template-columns:minmax(280px,.82fr) minmax(0,1.18fr);column-gap:clamp(32px,6vw,76px);align-items:start}.visit-content .visit-kicker,.visit-content .visit-heading{grid-column:1;width:auto;margin:0}.visit-content .visit-cols{grid-column:1;grid-row:3}.visit-content .map-frame{grid-column:2;grid-row:1 / span 3;height:100%;min-height:330px}}
 
@@ -497,13 +497,15 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .opening-poster{position:relative;z-index:1;isolation:isolate;overflow:visible;margin-top:0}
   .hero-after{isolation:isolate;overflow:hidden;padding:clamp(14px,2.25vw,28px) clamp(18px,4vw,64px) clamp(20px,3vw,32px);background:transparent;background-image:none}
   .hero-after__layout{position:relative;z-index:2;grid-template-columns:minmax(280px,1fr) minmax(400px,460px) minmax(280px,1fr);gap:clamp(32px,4vw,64px);max-width:1360px}
-  .logo-bar-stage{isolation:isolate}
-  .logo-bar-stage::before{content:"";position:absolute;z-index:0;inset:-18% -14%;background:radial-gradient(ellipse at center,color-mix(in srgb,var(--cream) 72%,transparent) 0%,color-mix(in srgb,var(--cream) 42%,transparent) 46%,transparent 76%);filter:blur(8px);pointer-events:none}
+  .hero-after__brand{position:relative;isolation:isolate}
+  .hero-after__brand::before{content:"";position:absolute;z-index:0;inset:48px -18% -4px;background:radial-gradient(ellipse at 50% 46%,color-mix(in srgb,var(--cream) 72%,transparent) 0%,color-mix(in srgb,var(--cream) 42%,transparent) 52%,transparent 78%);filter:blur(8px);opacity:0;pointer-events:none;animation:logo-bar-haze-fade .4s ease 1.65s forwards}
+  .logo-bar-stage,.hero-after__brand .hero-actions,.hero-after__brand .home-specials__cta{position:relative;z-index:1}
   .logo-bar-grill{position:relative;z-index:1}
+  @keyframes logo-bar-haze-fade{to{opacity:1}}
   .daily-special{min-height:300px;padding:clamp(26px,3vw,38px) clamp(22px,2.75vw,34px)}
   .hero-after__brand{align-self:start}
   .hero-after__brand .logo-bar-stage{width:min(50vw,400px);height:150px}
-  .hero-after__brand .hero-actions{margin-top:-30px;padding:clamp(18px,4vw,28px) 24px 8px}
+  .hero-after__brand .hero-actions{margin-top:80px;padding:0 24px 8px}
   .hero-tag span{display:block}
   .hero-after__brand .home-specials__cta{margin-top:4px}
 
@@ -536,8 +538,8 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
 
   /* The center poster aligns to the boards; the link uses the lower breathing room. */
   .hero-after__brand{height:300px;display:flex;flex-direction:column}
-  .hero-after__brand .logo-bar-stage{transform:translateY(-28px)}
-  .hero-after__brand .home-specials__cta{margin-top:auto;margin-bottom:16px;align-self:center}
+  .hero-after__brand .logo-bar-stage{transform:translateY(72px)}
+  .hero-after__brand .home-specials__cta{margin-top:auto;margin-bottom:0;align-self:center}
   .daily-special{transition:transform .22s ease,box-shadow .22s ease,filter .22s ease}
   .daily-special:hover{transform:translateY(-6px) rotate(-.3deg);box-shadow:6px 9px 0 rgba(43,27,20,.26),0 16px 28px rgba(43,27,20,.25);filter:brightness(1.07)}
   .daily-special--dinner:hover{transform:translateY(-6px) rotate(.3deg)}
@@ -590,6 +592,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   @media (max-width:900px){
     .hero-after__brand{height:auto}
     .hero-after__brand .logo-bar-stage{transform:none}
+    .hero-after__brand .hero-actions{margin-top:0;padding:18px 20px 8px}
     .hero-after__brand .home-specials__cta{margin:34px auto 0}
     .photo-stack{margin-left:calc(50% - 50vw);padding-block:34px 42px}
     .photo-track{--marquee-entry-offset:220px;animation-duration:132s}
@@ -614,7 +617,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
     .welcome-closing{margin-top:18px}
   }
   @media (prefers-reduced-motion:reduce){
-    .daily-special--lunch,.daily-special--dinner,.hero-after .home-specials__cta,.welcome-title h2,.welcome-title__rule,.welcome-title__star,.welcome-intro,.welcome-gumby,.photo-stack,.welcome-closing{animation:none;opacity:1;transform:none}
+    .daily-special--lunch,.daily-special--dinner,.hero-after .home-specials__cta,.hero-after__brand::before,.welcome-title h2,.welcome-title__rule,.welcome-title__star,.welcome-intro,.welcome-gumby,.photo-stack,.welcome-closing{animation:none;opacity:1;transform:none}
     .photo-stack{overflow-x:auto;scroll-snap-type:x proximity;padding:34px 20px 42px}
     .photo-track{animation:none;width:max-content}
     .photo-sequence[aria-hidden="true"]{display:none}
