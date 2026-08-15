@@ -604,6 +604,57 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
     .photo:nth-child(odd){transform:rotate(-2.4deg) translateY(8px)!important}.photo:nth-child(even){transform:rotate(2.2deg) translateY(-6px)!important}
     .photo:nth-child(3n){transform:rotate(-1.5deg) translateY(2px)!important}.photo:nth-child(4n){transform:rotate(2.7deg) translateY(-9px)!important}
   }
+
+  /* Responsive poster composition: keep the branding stack bound to the boards,
+     rather than inheriting desktop dimensions after the columns have collapsed. */
+  @media (min-width:900px) and (max-width:1099px){
+    .hero-after{padding-inline:clamp(20px,4vw,44px)}
+    .hero-after__layout{
+      grid-template-columns:minmax(180px,1fr) minmax(260px,1.2fr) minmax(180px,1fr);
+      grid-template-areas:"lunch brand dinner";
+      gap:clamp(16px,2.5vw,28px);
+      max-width:none;
+      align-items:center;
+    }
+    .daily-special{min-height:250px;padding:24px 18px}
+    .hero-after__brand{height:250px;display:grid;grid-template-rows:128px 1fr auto;align-self:stretch}
+    .hero-after__brand .logo-bar-stage{width:min(100%,310px);height:128px;transform:none}
+    .hero-after__brand .hero-actions{display:flex;align-items:center;justify-content:center;margin:0;padding:0 12px}
+    .hero-after__brand .hero-tag{margin:0}
+    .hero-after__brand .home-specials__cta{align-self:center;justify-self:center;margin:0 0 2px}
+    .hero-after__brand::before{inset:18px -10% -6px;filter:blur(7px)}
+  }
+
+  @media (min-width:600px) and (max-width:899px){
+    .hero-after{padding:18px clamp(20px,5vw,42px) 26px}
+    .hero-after__layout{
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      grid-template-areas:"brand brand" "lunch dinner";
+      gap:20px;
+      max-width:680px;
+      align-items:stretch;
+    }
+    .hero-after__brand{height:226px;display:grid;grid-template-rows:122px 1fr auto;align-self:stretch}
+    .hero-after__brand .logo-bar-stage{width:min(100%,290px);height:122px;transform:none}
+    .hero-after__brand .hero-actions{display:flex;align-items:center;justify-content:center;margin:0;padding:0 12px}
+    .hero-after__brand .hero-tag{margin:0}
+    .hero-after__brand .home-specials__cta{align-self:center;justify-self:center;margin:0 0 2px}
+    .hero-after__brand::before{inset:16px -12% -6px;filter:blur(7px)}
+    .daily-special{min-height:230px;padding:24px 18px}
+  }
+
+  @media (max-width:599px){
+    .hero-after{padding:14px 16px 24px}
+    .hero-after__layout{grid-template-columns:1fr;grid-template-areas:"brand" "lunch" "dinner";gap:16px;max-width:430px}
+    .hero-after__brand{height:auto;display:grid;grid-template-rows:120px auto auto;gap:8px;align-self:auto}
+    .hero-after__brand .logo-bar-stage{width:min(70vw,265px);height:120px;transform:none}
+    .hero-after__brand .hero-actions{display:flex;align-items:center;justify-content:center;margin:0;padding:0 12px;min-height:34px}
+    .hero-after__brand .hero-tag{margin:0}
+    .hero-after__brand .home-specials__cta{align-self:center;justify-self:center;margin:0 0 2px}
+    .hero-after__brand::before{inset:12px -14% -7px;filter:blur(6px)}
+    .daily-special{min-height:200px;padding:22px 20px}
+  }
+
   @media (max-width:620px){
     .photo-stack{width:calc(100% + 24px);margin:24px 0 0 -12px;padding:26px 0 30px;overflow:visible}
     .photo-track{display:flex;width:100%;transform:none!important;animation:none}
