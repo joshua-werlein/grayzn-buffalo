@@ -448,6 +448,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .visit-content .visit-kicker{order:2;align-self:flex-start;max-width:var(--content-wide);width:100%;margin-inline:auto}
   .visit-content .visit-cols{order:3;display:grid;grid-template-columns:1fr;gap:14px;max-width:none;width:100%;margin:0;text-align:left}
   .visit-content .visit-block{padding:0 0 13px;border-bottom:1px solid var(--rule-light)}
+  .visit-content .visit-block a:hover,.visit-content .visit-block a:focus-visible{color:var(--gold);text-decoration-thickness:2px}
   .visit-content .map-frame{order:4;width:100%;max-width:none;height:clamp(250px,46vw,360px);margin:0}
   @media (min-width:900px){.visit-content{display:grid;grid-template-columns:minmax(280px,.82fr) minmax(0,1.18fr);column-gap:clamp(32px,6vw,76px);align-items:start}.visit-content .visit-kicker,.visit-content .visit-heading{grid-column:1;width:auto;margin:0}.visit-content .visit-cols{grid-column:1;grid-row:3}.visit-content .map-frame{grid-column:2;grid-row:1 / span 3;height:100%;min-height:330px}}
 
@@ -496,6 +497,9 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .opening-poster{position:relative;z-index:1;isolation:isolate;overflow:visible;margin-top:0}
   .hero-after{isolation:isolate;overflow:hidden;padding:clamp(14px,2.25vw,28px) clamp(18px,4vw,64px) clamp(20px,3vw,32px);background:transparent;background-image:none}
   .hero-after__layout{position:relative;z-index:2;grid-template-columns:minmax(280px,1fr) minmax(400px,460px) minmax(280px,1fr);gap:clamp(32px,4vw,64px);max-width:1360px}
+  .logo-bar-stage{isolation:isolate}
+  .logo-bar-stage::before{content:"";position:absolute;z-index:0;inset:-18% -14%;background:radial-gradient(ellipse at center,color-mix(in srgb,var(--cream) 72%,transparent) 0%,color-mix(in srgb,var(--cream) 42%,transparent) 46%,transparent 76%);filter:blur(8px);pointer-events:none}
+  .logo-bar-grill{position:relative;z-index:1}
   .daily-special{min-height:300px;padding:clamp(26px,3vw,38px) clamp(22px,2.75vw,34px)}
   .hero-after__brand{align-self:start}
   .hero-after__brand .logo-bar-stage{width:min(50vw,400px);height:150px}
@@ -576,7 +580,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .welcome-gumby{animation:poster-rise .55s cubic-bezier(.2,.72,.25,1) 4.67s both}
   .photo-stack{animation:welcome-photo-composition .8s cubic-bezier(.2,.72,.25,1) 5.37s both}
   .welcome-closing{animation:poster-rise .5s cubic-bezier(.2,.72,.25,1) 6.24s both}
-  .hero-after::after{content:none}
+  .hero-after::after{content:"";position:absolute;z-index:3;right:clamp(18px,4vw,64px);bottom:0;left:clamp(18px,4vw,64px);height:1px;background:linear-gradient(to right,transparent 0%,var(--ochre) 18%,var(--ochre) 82%,transparent 100%);opacity:.62;pointer-events:none}
   @keyframes hero-welcome-divider{to{opacity:1}}
   @keyframes poster-rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
   @keyframes welcome-photo-composition{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
