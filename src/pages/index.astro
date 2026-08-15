@@ -688,27 +688,27 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   #social .fb-grid[data-count="1"]{max-width:390px;grid-template-columns:1fr}
   #social .fb-grid[data-count="2"]{max-width:720px;grid-template-columns:repeat(2,minmax(0,1fr))}
   #social .fb-grid[data-count="3"]{max-width:1020px;grid-template-columns:repeat(3,minmax(0,1fr))}
-  #social .fb-card{--post-tilt:-1deg;--post-hover-tilt:-.4deg;position:relative;z-index:0;display:flex;flex-direction:column;min-width:0;overflow:visible;padding:18px;background-color:#efdcb5;background-image:radial-gradient(ellipse at 50% 50%,transparent 51%,rgba(92,55,25,.1) 76%,rgba(70,40,20,.32) 100%),radial-gradient(circle at 7% 8%,rgba(88,49,20,.22),transparent 18%),radial-gradient(circle at 93% 92%,rgba(82,46,19,.24),transparent 19%),url('/parchment-texture.webp');background-size:100% 100%,auto,auto,240px 240px;background-repeat:no-repeat,no-repeat,no-repeat,repeat;background-blend-mode:multiply,multiply,multiply,normal;border:1px solid rgba(66,39,20,.82);box-shadow:inset 0 0 0 2px rgba(255,243,208,.34),inset 0 0 18px rgba(86,47,19,.24),1px 3px 2px rgba(65,40,22,.28),9px 17px 24px rgba(43,27,20,.26);transform:rotate(var(--post-tilt));transition:transform .2s ease,box-shadow .2s ease}
-  /* One weathered sheet: the overlay ages its printed artwork with the paper. */
-  #social .fb-card::before{content:"";position:absolute;z-index:1;inset:0;background:radial-gradient(ellipse at 50% 50%,transparent 50%,rgba(105,61,25,.035) 72%,rgba(67,38,18,.19) 100%),url('/parchment-texture.webp');background-size:100% 100%,240px 240px;background-repeat:no-repeat,repeat;mix-blend-mode:multiply;opacity:.34;pointer-events:none}
+  /* The generated sheets are the cards themselves; only the whole sheet rotates. */
+  #social .fb-card{--post-tilt:-1deg;--post-hover-tilt:-.4deg;--poster-sheet:url('/images/facebook/fb-poster-1.webp');position:relative;z-index:0;display:flex;flex-direction:column;min-width:0;aspect-ratio:2 / 3;overflow:visible;padding:clamp(27px,2.35vw,34px) clamp(24px,2vw,30px) clamp(25px,2.15vw,32px);background:var(--poster-sheet) center / 100% 100% no-repeat;border:0;box-shadow:2px 4px 3px rgba(65,40,22,.22),8px 15px 22px rgba(43,27,20,.24);transform:rotate(var(--post-tilt));transition:transform .2s ease,box-shadow .2s ease}
+  #social .fb-card::before{display:none}
   #social .fb-card::after{content:"";position:absolute;z-index:2;top:-11px;left:50%;width:16px;height:16px;border:1px solid #4a351e;border-radius:50%;background:radial-gradient(circle at 31% 25%,#d7b465 0 11%,#a47b37 31%,#765326 58%,#48321e 100%);box-shadow:inset -2px -2px 2px rgba(52,31,14,.4),inset 1px 1px 1px rgba(238,210,133,.52),2px 4px 4px rgba(43,27,20,.48);transform:translateX(-50%);pointer-events:none}
-  #social .fb-card:nth-child(2){--post-tilt:.6deg;--post-hover-tilt:.25deg;transform:translateY(-10px) rotate(var(--post-tilt))}
-  #social .fb-card:nth-child(3){--post-tilt:-.4deg;--post-hover-tilt:-.15deg;transform:translateY(5px) rotate(var(--post-tilt))}
-  #social .fb-card:nth-child(4){--post-tilt:.8deg;--post-hover-tilt:.35deg;transform:translateY(-4px) rotate(var(--post-tilt))}
-  #social .fb-card:hover{transform:translateY(-3px) rotate(var(--post-hover-tilt));box-shadow:inset 0 0 0 2px rgba(255,248,224,.38),inset 0 0 15px rgba(102,59,25,.12),1px 5px 3px rgba(65,40,22,.24),10px 20px 28px rgba(43,27,20,.28)}
+  #social .fb-card:nth-child(4n + 2){--poster-sheet:url('/images/facebook/fb-poster-2.webp');--post-tilt:.6deg;--post-hover-tilt:.25deg;transform:translateY(-10px) rotate(var(--post-tilt))}
+  #social .fb-card:nth-child(4n + 3){--poster-sheet:url('/images/facebook/fb-poster-3.webp');--post-tilt:-.4deg;--post-hover-tilt:-.15deg;transform:translateY(5px) rotate(var(--post-tilt))}
+  #social .fb-card:nth-child(4n + 4){--poster-sheet:url('/images/facebook/fb-poster-4.webp');--post-tilt:.8deg;--post-hover-tilt:.35deg;transform:translateY(-4px) rotate(var(--post-tilt))}
+  #social .fb-card:hover{transform:translateY(-3px) rotate(var(--post-hover-tilt));box-shadow:2px 5px 3px rgba(65,40,22,.22),10px 20px 27px rgba(43,27,20,.27)}
   #social .fb-card:nth-child(2):hover{transform:translateY(-13px) rotate(var(--post-hover-tilt))}
   #social .fb-card:nth-child(3):hover{transform:translateY(2px) rotate(var(--post-hover-tilt))}
   #social .fb-card:nth-child(4):hover{transform:translateY(-7px) rotate(var(--post-hover-tilt))}
-  #social .fb-card-header{display:block;max-height:132px;overflow:auto;padding:6px 5px 10px;color:var(--ink);font-size:.92rem;line-height:1.35}
+  #social .fb-card-header{display:block;max-height:112px;overflow:auto;padding:6px 5px 8px;color:var(--ink);font-size:.92rem;line-height:1.35}
   #social .fb-card-header:empty{display:none}
   #social .fb-card-header p{margin:0;white-space:pre-line}
   /* The printed artwork and metadata stay parallel with the one rotating poster sheet. */
   #social .fb-card-header,#social .fb-media,#social .fb-media img,#social .fb-footer{transform:none}
-  #social .fb-media{position:relative;z-index:0;display:block;flex:1 1 auto;width:100%;margin-top:12px;padding:0;border:0;background:transparent;box-shadow:none;cursor:zoom-in}
+  #social .fb-media{position:relative;z-index:0;display:block;flex:1 1 auto;width:100%;margin-top:10px;padding:0;border:0;background:transparent;box-shadow:none;cursor:zoom-in}
   #social .fb-media:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
-  #social .fb-media img{display:block;width:100%;height:clamp(230px,23vw,330px);object-fit:contain;filter:sepia(.05) saturate(.96) contrast(.99);background:transparent}
+  #social .fb-media img{display:block;width:100%;height:clamp(185px,16vw,230px);object-fit:contain;filter:sepia(.05) saturate(.96) contrast(.99);background:transparent}
   #social .fb-text-media{display:flex;flex:1 1 auto;align-items:center;justify-content:center;min-height:230px;padding:22px;background:transparent;color:var(--ink);font-family:var(--display);font-size:clamp(1.1rem,1.6vw,1.45rem);line-height:1.25;text-align:center}
-  #social .fb-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:42px;padding:10px 5px 0;color:var(--ink);font-family:var(--label);font-size:.76rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+  #social .fb-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:42px;padding:8px 5px 0;color:var(--ink);font-family:var(--label);font-size:.76rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
   #social .fb-date{color:var(--text-muted)}
   #social .fb-post-link{color:var(--brick);text-decoration:underline;text-decoration-color:var(--ochre);text-decoration-thickness:1px;text-underline-offset:3px;white-space:nowrap}
   #social .fb-post-link:hover,#social .fb-post-link:focus-visible{color:var(--ink);text-decoration-thickness:2px}
@@ -719,7 +719,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   #social .social-cta .btn::before,#social .social-cta .btn::after{content:'★';margin:0 10px;color:var(--gold);font-size:.75em}
   #social .social-cta .btn:hover,#social .social-cta .btn:focus-visible{background:var(--brick-hover);transform:translateY(-2px);box-shadow:inset 0 1px rgba(255,255,255,.2),0 5px 0 rgba(67,30,24,.35)}
   @media (max-width:1100px){#social .fb-grid,#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{max-width:760px;grid-template-columns:repeat(2,minmax(0,1fr))}}
-  @media (max-width:600px){#social .fb-grid,#social .fb-grid[data-count="2"],#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{max-width:440px;grid-template-columns:1fr;gap:30px;padding-inline:22px}#social .fb-card,#social .fb-card:nth-child(n){--post-tilt:-.7deg;--post-hover-tilt:-.3deg;transform:rotate(var(--post-tilt))}#social .fb-card:nth-child(even){--post-tilt:.7deg;--post-hover-tilt:.3deg}#social .fb-card::after{top:-10px;width:15px;height:15px}#social .fb-card:hover,#social .fb-card:nth-child(n):hover{transform:translateY(-2px) rotate(var(--post-hover-tilt))}#social .fb-media img{height:clamp(260px,82vw,360px)}}
+  @media (max-width:600px){#social .fb-grid,#social .fb-grid[data-count="2"],#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{max-width:440px;grid-template-columns:1fr;gap:30px;padding-inline:22px}#social .fb-card,#social .fb-card:nth-child(n){--post-tilt:-.7deg;--post-hover-tilt:-.3deg;transform:rotate(var(--post-tilt))}#social .fb-card:nth-child(even){--post-tilt:.7deg;--post-hover-tilt:.3deg}#social .fb-card::after{top:-10px;width:15px;height:15px}#social .fb-card:hover,#social .fb-card:nth-child(n):hover{transform:translateY(-2px) rotate(var(--post-hover-tilt))}#social .fb-media img{height:clamp(180px,62vw,300px)}}
   @media (prefers-reduced-motion:reduce){#social .fb-card{transition:none}#social .fb-card:hover,#social .fb-card:nth-child(n):hover{transform:rotate(var(--post-tilt))}}
 </style>
 
