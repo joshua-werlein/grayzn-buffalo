@@ -128,7 +128,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
         <span class="welcome-title__star" aria-hidden="true">★</span>
         <span class="welcome-title__rule" aria-hidden="true"></span>
       </div>
-      <p class="welcome-intro">Proudly rooted in Mondovi, Wisconsin — where the people are friendly,<br />the stories are plentiful, and the buffalo spirit runs strong.<br />We’re glad you’re here. Pull up a chair and make yourself at home.</p>
+      <p class="welcome-intro">Proudly rooted in Mondovi, Wisconsin — where the people are friendly,<br /> the stories are plentiful, and the buffalo spirit runs strong.<br /> We’re glad you’re here. Pull up a chair and make yourself at home.</p>
     </div>
     {visibleWelcomeTiles.length > 0 && (
       <div class="photo-stack" role="region" aria-label="Welcome and menu photos" tabindex="0">
@@ -700,7 +700,10 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
     .photo--portrait{width:clamp(82px,24vw,104px)!important;height:clamp(122px,35vw,152px)}
     .photo img{object-fit:cover;background:#f6ecd8}
     .welcome-closing{margin-top:18px}
+    .welcome-script{gap:8px;font-size:clamp(1.1rem,5.2vw,1.35rem)}
+    .welcome-script::before,.welcome-script::after{content:"❦"}
   }
+  @media (max-width:360px){.welcome-script::before,.welcome-script::after{display:none}}
   @media (prefers-reduced-motion:reduce){
     .daily-special--lunch,.daily-special--dinner,.hero-after .home-specials__cta,.hero-after__brand::before,.welcome-title h2,.welcome-title__rule,.welcome-title__star,.welcome-intro,.photo-stack,.welcome-closing{animation:none;opacity:1;transform:none}
     .photo-stack{overflow-x:auto;scroll-snap-type:x proximity;padding:34px 20px 42px}
