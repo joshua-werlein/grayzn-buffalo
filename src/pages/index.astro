@@ -65,7 +65,17 @@ for (let round = 0; categoryPhotoQueues.some((queue) => round < queue.length); r
 // The Welcome composition has four slots. Keep the display list unique before
 // rendering so neither an upload nor a menu fallback can repeat in the collage.
 const visibleWelcomeTiles = welcomeTiles.slice(0, 4);
-const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
+const welcomePhotoSlots = Array.from({ length: visibleWelcomeTiles.length }, (_, slotIndex) =>
+  welcomeTiles.filter((_, tileIndex) => tileIndex % visibleWelcomeTiles.length === slotIndex),
+);
+// photo2.webp has an opaque checkerboard center, so it cannot safely overlay a live photo.
+// Reuse the three transparent holder variants in a non-adjacent pattern instead.
+const welcomeHolderAssets = [
+  '/images/welcome/photo1.webp',
+  '/images/welcome/photo3.webp',
+  '/images/welcome/photo4.webp',
+  '/images/welcome/photo1.webp',
+];
 ---
 <Base>
 <header class="hero" id="top">
@@ -130,12 +140,11 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
       </div>
       <p class="welcome-intro">Proudly rooted in Mondovi, Wisconsin — where the people are friendly,<br /> the stories are plentiful, and the buffalo spirit runs strong.<br /> We’re glad you’re here. Pull up a chair and make yourself at home.</p>
     </div>
-    {visibleWelcomeTiles.length > 0 && (
+    {welcomePhotoSlots.length > 0 && (
       <div class="photo-stack" role="region" aria-label="Welcome and menu photos" tabindex="0">
-        <div class="photo-track">
-        {welcomePhotoSequences.map((sequence, sequenceIndex) => (
-          <div class="photo-sequence" aria-hidden={sequenceIndex === 1 ? 'true' : undefined} inert={sequenceIndex === 1 ? true : undefined}>
-          {sequence.map((tile) => {
+        {welcomePhotoSlots.map((slot, slotIndex) => (
+          <div class={`photo-position photo-position--${slotIndex + 1}`}>
+          {slot.map((tile, photoIndex) => {
         const { photo, menuItem } = tile;
         const photoKey = photo.photo_key;
         if (!photoKey) return null;
@@ -150,23 +159,25 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
             : null;
         return (
           <button
-            class={`photo photo--${photo.orientation}`}
+            class={`photo photo--${photo.orientation}${photoIndex === 0 ? ' is-active' : ''}`}
             type="button"
             data-lightbox-src={`/img/${photoKey}`}
             data-lightbox-alt={photo.alt}
             data-lightbox-action-url={menuAction?.url}
             data-lightbox-action-label={menuAction?.label}
             aria-label={photo.alt ? `View larger photo: ${photo.alt}` : 'View larger photo'}
-            tabindex={sequenceIndex === 1 ? -1 : undefined}
+            aria-hidden={photoIndex === 0 ? undefined : 'true'}
+            inert={photoIndex === 0 ? undefined : true}
+            tabindex={photoIndex === 0 ? undefined : -1}
           >
             <img src={`/img/${thumbKey(photoKey)}`} alt={photo.alt} loading="lazy" />
             {photo.caption && <span>{photo.caption}</span>}
           </button>
         );
       })}
+            <img class="photo-holder" src={welcomeHolderAssets[slotIndex % welcomeHolderAssets.length]} alt="" aria-hidden="true" />
           </div>
         ))}
-        </div>
       </div>
     )}
     <div class="welcome-closing">
@@ -451,7 +462,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .photo img{inset:0;width:100%;height:100%;border:1px solid rgba(57,35,21,.32)}
   .photo:nth-child(1){z-index:1;transform:rotate(-3deg) translateY(18px);margin-right:-28px}.photo:nth-child(2){z-index:2;transform:rotate(1.8deg) translateY(-7px);margin-inline:-18px}.photo:nth-child(3){z-index:1;transform:rotate(-1.7deg) translateY(22px);margin-left:-28px}
   .photo:hover,.photo.welcome-photo-reveal.in:hover{transform:translateY(-5px) rotate(0)}
-  #menu-preview{position:relative;isolation:isolate;background-color:#493222;background-image:linear-gradient(rgba(27,16,10,.22),rgba(27,16,10,.22)),url('/images/menu/menu-wood.webp');background-size:100% 100%,860px 860px;background-repeat:no-repeat,repeat;border:0;box-shadow:inset 0 1px rgba(246,220,169,.1),inset 0 -1px rgba(14,8,5,.45)}
+  #menu-preview{position:relative;isolation:isolate;background-color:#493222;background-image:linear-gradient(rgba(27,16,10,.22),rgba(27,16,10,.22)),url('/images/menu/menu-background.webp');background-size:100% 100%,cover;background-repeat:no-repeat;border:0;box-shadow:inset 0 1px rgba(246,220,169,.1),inset 0 -1px rgba(14,8,5,.45)}
   #menu-preview::before,#menu-preview::after{content:"";position:absolute;z-index:0;right:0;left:0;height:9px;pointer-events:none;background:linear-gradient(to bottom,rgba(24,14,9,.96) 0 1px,rgba(211,169,100,.42) 1px 2px,transparent 2px 5px,rgba(20,12,8,.74) 5px 6px,rgba(238,206,145,.2) 6px 7px,rgba(23,14,9,.9) 7px 9px)}
   #menu-preview::before{top:0}#menu-preview::after{bottom:0;transform:scaleY(-1)}#menu-preview > *{position:relative;z-index:1}
   #menu-preview .section-head :is(h1,h2){color:var(--cream)}#menu-preview .section-head p{color:var(--cream-2)}#menu-preview .section-head .kicker{color:#e3bd75}
@@ -580,21 +591,8 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   .daily-special:hover{transform:translateY(-6px) rotate(-.3deg);box-shadow:6px 9px 0 rgba(43,27,20,.26),0 16px 28px rgba(43,27,20,.25);filter:brightness(1.07)}
   .daily-special--dinner:hover{transform:translateY(-6px) rotate(.3deg)}
 
-  .photo-stack{display:block;width:100vw;max-width:none;margin:clamp(24px,3vw,36px) 0 0 calc(50% - 50vw);padding:40px 0 48px;overflow:hidden}
-  .photo-track{--marquee-entry-offset:clamp(220px,22vw,340px);display:flex;width:max-content;animation:welcome-photo-marquee 105s linear 5.7s both infinite}
-  .photo-sequence{display:flex;align-items:center;gap:clamp(12px,1.8vw,24px);padding-right:clamp(12px,1.8vw,24px);flex:none}
-  .photo{flex:none;display:block;width:clamp(180px,15vw,245px)!important;height:clamp(160px,14vw,220px);margin:0!important;overflow:visible;transform:none!important;transition:transform .2s ease,box-shadow .2s ease}
-  .photo--landscape{width:clamp(220px,19vw,300px)!important}.photo--square{width:clamp(175px,14vw,230px)!important}.photo--portrait{width:clamp(160px,12vw,195px)!important}
-  .photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-  .photo:nth-child(odd){transform:rotate(-3.1deg) translateY(13px)!important}.photo:nth-child(even){transform:rotate(2.7deg) translateY(-9px)!important}
-  .photo:nth-child(3n){transform:rotate(-1.7deg) translateY(3px)!important}.photo:nth-child(4n){transform:rotate(3.5deg) translateY(-15px)!important}
-  .photo:hover{transform:translateY(-12px) rotate(0)!important;z-index:4;box-shadow:3px 5px 0 rgba(76,45,24,.25),10px 14px 22px rgba(43,27,20,.26)}
   .welcome-closing{margin:10px auto 0;padding-bottom:clamp(18px,3vw,32px)}
   .welcome-flourish{display:none}
-  .photo{background-color:#ead9b7;background-image:radial-gradient(rgba(89,57,31,.11) .6px,transparent .8px);background-size:4px 4px}
-  .photo::after{content:"";position:absolute;pointer-events:none;inset:-5px;border:1px solid rgba(112,72,35,.2);opacity:.55;transform:rotate(.2deg)}
-  .photo-stack[data-lightbox-paused="true"] .photo-track{animation-play-state:paused}
-  @keyframes welcome-photo-marquee{from{transform:translateX(calc(-1 * var(--marquee-entry-offset)))}to{transform:translateX(calc(-50% - var(--marquee-entry-offset)))}}
 
   /* The lower poster assembles after the hero mark: boards settle with the second line of copy, then Welcome follows. */
   .hero-after,#welcome{overflow-x:clip}
@@ -628,15 +626,6 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
     .hero-after__brand .logo-bar-stage{transform:none}
     .hero-after__brand .hero-actions{display:block;flex:none;margin-top:0;padding:18px 20px 8px}
     .hero-after__brand .home-specials__cta{margin:34px auto 0}
-    .photo-stack{margin-left:calc(50% - 50vw);padding-block:34px 42px}
-    .photo-track{--marquee-entry-offset:220px;animation-duration:132s}
-    .photo{width:clamp(126px,34vw,154px)!important;height:clamp(116px,31vw,138px)}
-    .photo--landscape{width:clamp(168px,45vw,198px)!important;height:clamp(108px,29vw,126px)}
-    .photo--square{width:clamp(128px,35vw,150px)!important;height:clamp(128px,35vw,150px)}
-    .photo--portrait{width:clamp(108px,29vw,126px)!important;height:clamp(150px,40vw,174px)}
-    .photo img{object-fit:contain;background:#f6ecd8}
-    .photo:nth-child(odd){transform:rotate(-2.4deg) translateY(8px)!important}.photo:nth-child(even){transform:rotate(2.2deg) translateY(-6px)!important}
-    .photo:nth-child(3n){transform:rotate(-1.5deg) translateY(2px)!important}.photo:nth-child(4n){transform:rotate(2.7deg) translateY(-9px)!important}
   }
 
   /* Responsive poster composition: keep the branding stack bound to the boards,
@@ -690,15 +679,6 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   }
 
   @media (max-width:620px){
-    .photo-stack{width:calc(100% + 24px);margin:24px 0 0 -12px;padding:26px 0 30px;overflow:visible}
-    .photo-track{display:flex;width:100%;transform:none!important;animation:none}
-    .photo-sequence{display:flex;flex:1;flex-wrap:wrap;justify-content:center;gap:14px 8px;padding:0 6px}
-    .photo-sequence[aria-hidden="true"]{display:none}
-    .photo{width:clamp(96px,28vw,128px)!important;height:clamp(92px,26vw,118px);margin:0!important}
-    .photo--landscape{width:clamp(122px,35vw,156px)!important;height:clamp(88px,25vw,108px)}
-    .photo--square{width:clamp(98px,28vw,122px)!important;height:clamp(98px,28vw,122px)}
-    .photo--portrait{width:clamp(82px,24vw,104px)!important;height:clamp(122px,35vw,152px)}
-    .photo img{object-fit:cover;background:#f6ecd8}
     .welcome-closing{margin-top:18px}
     .welcome-script{gap:8px;font-size:clamp(1.1rem,5.2vw,1.35rem)}
     .welcome-script::before,.welcome-script::after{content:"❦"}
@@ -706,10 +686,54 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   @media (max-width:360px){.welcome-script::before,.welcome-script::after{display:none}}
   @media (prefers-reduced-motion:reduce){
     .daily-special--lunch,.daily-special--dinner,.hero-after .home-specials__cta,.hero-after__brand::before,.welcome-title h2,.welcome-title__rule,.welcome-title__star,.welcome-intro,.photo-stack,.welcome-closing{animation:none;opacity:1;transform:none}
-    .photo-stack{overflow-x:auto;scroll-snap-type:x proximity;padding:34px 20px 42px}
-    .photo-track{animation:none;width:max-content}
-    .photo-sequence[aria-hidden="true"]{display:none}
-    .photo{scroll-snap-align:center}
+  }
+
+  /* Barn-door Welcome and tavern-table Menu environments. */
+  #welcome{padding:clamp(54px,6vw,88px) clamp(16px,4vw,48px) clamp(42px,5vw,72px);background:#21160f url('/images/welcome/welcome-background.webp') center / cover no-repeat;color:#f1d9a4}
+  #welcome .welcome-grid{display:block;max-width:1280px;margin:0 auto}
+  #welcome .welcome-copy{max-width:760px;margin:0 auto;text-align:center}
+  #welcome .welcome-title{margin:0 0 14px;color:#f1d9a4}
+  #welcome .welcome-copy p{max-width:68ch;color:#f7e5bc;font-size:clamp(.98rem,1.3vw,1.1rem);line-height:1.42;text-shadow:0 1px 2px rgba(24,12,7,.75)}
+  #welcome .photo-stack{display:grid;width:min(100%,1120px);margin:clamp(22px,3vw,34px) auto 0;padding:0;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(10px,1.8vw,24px);overflow:visible}
+  #welcome .photo-position{--photo-tilt:-2deg;position:relative;height:clamp(255px,28vw,370px);min-width:0;transform:rotate(var(--photo-tilt));filter:drop-shadow(3px 8px 6px rgba(16,8,4,.5));transition:transform .2s ease,filter .2s ease}
+  #welcome .photo-position--2{--photo-tilt:1.6deg;top:10px}
+  #welcome .photo-position--3{--photo-tilt:-1.3deg;top:-5px}
+  #welcome .photo-position--4{--photo-tilt:2.1deg;top:8px}
+  #welcome .photo-position:hover{z-index:2;transform:translateY(-5px) rotate(0);filter:drop-shadow(4px 13px 10px rgba(16,8,4,.58))}
+  #welcome .photo-position .photo{position:absolute;z-index:0;inset:9% 8% 23%;display:block;width:auto!important;height:auto!important;margin:0!important;padding:0;overflow:hidden;border:0!important;border-radius:0!important;background:#1f120b;box-shadow:none!important;opacity:0;pointer-events:none;transform:none!important;transition:opacity 1.1s ease;cursor:zoom-in}
+  #welcome .photo-position .photo.is-active{opacity:1;pointer-events:auto}
+  #welcome .photo-position .photo img{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:cover;filter:saturate(.88) sepia(.08) contrast(.96)}
+  #welcome .photo-position .photo span{position:absolute;right:0;bottom:0;left:0;width:auto;padding:5px 7px;background:linear-gradient(transparent,rgba(25,13,7,.8));color:var(--cream);font-size:.62rem}
+  #welcome .photo-holder{position:absolute;z-index:1;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none}
+  #welcome .welcome-closing{max-width:760px;margin:clamp(16px,2vw,24px) auto 0;padding:0;color:#f1d9a4}
+  #welcome .welcome-script{color:#f1d9a4;text-shadow:0 1px 2px rgba(24,12,7,.85)}
+
+  #menu-preview{min-height:clamp(880px,72vw,1080px);padding:clamp(58px,6vw,94px) clamp(16px,4vw,48px) clamp(52px,5vw,84px);background:#21140d url('/images/menu/menu-background.webp') center top / cover no-repeat;box-shadow:none}
+  #menu-preview::before,#menu-preview::after{content:none}
+  #menu-preview .section-head{position:relative;margin:0 auto;text-shadow:0 2px 4px rgba(0,0,0,.65)}
+  #menu-preview .menu-cards{position:relative;z-index:1;max-width:1120px;margin:clamp(170px,16vw,250px) auto 0;gap:clamp(16px,2.5vw,30px);align-items:end}
+  #menu-preview .menu-card{min-height:0;aspect-ratio:4 / 3;filter:drop-shadow(4px 14px 8px rgba(7,3,1,.7));transform:rotate(var(--poster-tilt)) translateY(0)}
+  #menu-preview .menu-card--daily{--poster-tilt:-1.6deg}
+  #menu-preview .menu-card--late{--poster-tilt:.25deg}
+  #menu-preview .menu-card--specials{--poster-tilt:1.5deg}
+  #menu-preview .menu-card:hover,#menu-preview .menu-card:focus-visible,#menu-preview .menu-card.reveal.in:hover,#menu-preview .menu-card.reveal.in:focus-visible{transform:translateY(-5px) rotate(var(--poster-tilt));filter:drop-shadow(4px 20px 11px rgba(7,3,1,.76))}
+
+  @media (max-width:900px){
+    #welcome{background-position:center top;background-size:auto 100%}
+    #welcome .photo-stack{grid-template-columns:repeat(2,minmax(0,1fr));max-width:610px;gap:12px 22px}
+    #welcome .photo-position{height:clamp(250px,52vw,330px)}
+    #menu-preview{min-height:0;background-size:auto 900px;background-repeat:no-repeat;background-color:#25160d}
+    #menu-preview .menu-cards{margin-top:clamp(160px,20vw,210px);max-width:760px}
+  }
+  @media (max-width:620px){
+    #welcome{padding-inline:12px;background-size:auto 100%;background-position:center top}
+    #welcome .welcome-copy p br{display:none}
+    #welcome .photo-stack{width:100%;margin-top:20px;gap:8px 12px}
+    #welcome .photo-position{height:clamp(210px,60vw,290px)}
+    #welcome .photo-position--2{top:5px}#welcome .photo-position--3{top:0}#welcome .photo-position--4{top:5px}
+    #menu-preview{padding-inline:16px;background-size:auto 760px}
+    #menu-preview .menu-cards{grid-template-columns:1fr;margin-top:clamp(130px,28vw,180px);max-width:360px;gap:24px}
+    #menu-preview .menu-card{width:100%;max-width:340px;justify-self:center}
   }
 </style>
 
@@ -807,6 +831,38 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
     const trigger = (event as CustomEvent<{ trigger?: HTMLElement }>).detail?.trigger;
     trigger?.closest<HTMLElement>('.photo-stack')?.removeAttribute('data-lightbox-paused');
   });
+
+  const welcomePhotoStack = document.querySelector<HTMLElement>('#welcome .photo-stack');
+  const prefersReducedWelcomeMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  function showWelcomePhoto(slot: HTMLElement, nextIndex: number) {
+    const photos = [...slot.querySelectorAll<HTMLButtonElement>('.photo')];
+    if (photos.length < 2) return;
+
+    photos.forEach((photo, photoIndex) => {
+      const active = photoIndex === nextIndex;
+      photo.classList.toggle('is-active', active);
+      photo.toggleAttribute('inert', !active);
+      photo.toggleAttribute('aria-hidden', !active);
+      photo.tabIndex = active ? 0 : -1;
+    });
+  }
+
+  if (welcomePhotoStack && !prefersReducedWelcomeMotion.matches) {
+    [...welcomePhotoStack.querySelectorAll<HTMLElement>('.photo-position')].forEach((slot, slotIndex) => {
+      const photos = [...slot.querySelectorAll<HTMLButtonElement>('.photo')];
+      if (photos.length < 2) return;
+
+      let currentIndex = 0;
+      window.setTimeout(() => {
+        window.setInterval(() => {
+          if (welcomePhotoStack.dataset.lightboxPaused === 'true') return;
+          currentIndex = (currentIndex + 1) % photos.length;
+          showWelcomePhoto(slot, currentIndex);
+        }, 12000);
+      }, 5000 + (slotIndex * 1800));
+    });
+  }
 
   const social = document.getElementById('social');
   const feed = document.getElementById('fbFeed');
