@@ -768,7 +768,7 @@ const welcomeHolderAssets = [
     #welcome .welcome-closing{margin-top:16px}
     #welcome .welcome-script__visual{gap:8px}
     #welcome .welcome-script__flourish{width:clamp(54px,16vw,72px)}
-    #menu-preview{padding-inline:16px;background-size:auto 760px}
+    #menu-preview{padding-inline:16px;background-color:#25160d;background-image:url('/images/menu/menu-wood.webp');background-position:center top;background-size:860px 860px;background-repeat:repeat-y}
     #menu-preview .menu-cards{grid-template-columns:1fr;margin-top:clamp(130px,28vw,180px);max-width:360px;gap:24px}
     #menu-preview .menu-card{width:100%;max-width:340px;justify-self:center}
   }
@@ -784,7 +784,7 @@ const welcomeHolderAssets = [
 
 <style is:global>
   /* Feed cards are created in the browser, so these selectors must not carry Astro's scope attribute. */
-  #social{position:relative;isolation:isolate;padding-block:clamp(50px,7vw,86px);background-color:#d8d1c5;background-image:url('/images/facebook/facebook-wall.webp');background-size:1600px auto;background-repeat:repeat}
+  #social{position:relative;isolation:isolate;padding-top:clamp(50px,7vw,86px);padding-bottom:var(--social-wall-padding,0px);background-color:#d8d1c5;background-image:url('/images/facebook/facebook-wall.webp');background-position:center -64px;background-size:1600px auto;background-repeat:repeat-y}
   #social::before,#social::after{content:"";position:absolute;z-index:0;right:0;left:0;height:6px;pointer-events:none}
   #social::before{top:0;background:linear-gradient(to bottom,rgba(67,42,23,.62) 0 1px,transparent 1px 4px,rgba(104,68,34,.3) 4px 5px,transparent 5px)}
   #social::after{bottom:0;background:linear-gradient(to top,rgba(67,42,23,.62) 0 1px,transparent 1px 4px,rgba(104,68,34,.3) 4px 5px,transparent 5px)}
@@ -850,7 +850,7 @@ const welcomeHolderAssets = [
   #social .fb-post-link:hover,#social .fb-post-link:focus-visible{background:#3a2518;color:var(--cream);box-shadow:inset 0 1px rgba(255,240,205,.2),inset 0 -1px rgba(0,0,0,.32),0 2px 0 rgba(43,27,20,.44)}
   #social .fb-unavailable{grid-column:1 / -1;justify-self:center;width:min(100%,34rem);margin:6px auto 0;padding:30px;border:2px solid rgba(83,51,26,.55);background:#f0dfbd;box-shadow:3px 4px 0 rgba(43,27,20,.18);color:var(--text-muted);text-align:center;font-size:1.05rem}
   #social .fb-unavailable-arrow{display:block;margin-top:8px;color:var(--brick);font-family:var(--display);font-size:2rem;line-height:1}
-  #social .social-cta{margin-top:clamp(30px,4vw,46px);text-align:center}
+  #social .social-cta{margin-top:clamp(12px,1.5vw,20px);text-align:center}
   #social .social-cta .btn{position:relative;border:1px solid rgba(238,224,196,.56);background:var(--brick);box-shadow:inset 0 1px rgba(255,255,255,.2),0 3px 0 rgba(67,30,24,.35);color:var(--cream)}
   #social .social-cta .btn::before,#social .social-cta .btn::after{content:'★';margin:0 10px;color:var(--gold);font-size:.75em}
   #social .social-cta .btn:hover,#social .social-cta .btn:focus-visible{background:var(--brick-hover);transform:translateY(-2px);box-shadow:inset 0 1px rgba(255,255,255,.2),0 5px 0 rgba(67,30,24,.35)}
@@ -916,6 +916,24 @@ const welcomeHolderAssets = [
   const billboardBottomActions = document.querySelector<HTMLElement>('.fb-bottom-actions');
   const facebookDesktopQuery = window.matchMedia('(min-width: 1101px)');
   let billboardSliceSignature = '';
+  const facebookWallSeams = [0, 115, 230, 344, 458, 572, 685, 790];
+
+  function alignFacebookSectionToWallSeam() {
+    if (!social || social.hidden) return;
+
+    social.style.removeProperty('--social-wall-padding');
+    const cta = social.querySelector<HTMLElement>('.social-cta');
+    const minimumEnd = Math.max(
+      social.offsetHeight,
+      (cta?.offsetTop ?? 0) + (cta?.offsetHeight ?? 0) + 16,
+    );
+    const cycle = Math.floor(minimumEnd / 900);
+    const nextSeam = [...facebookWallSeams.map((seam) => seam + (cycle * 900)), ...facebookWallSeams.map((seam) => seam + ((cycle + 1) * 900))]
+      .find((seam) => seam >= minimumEnd);
+
+    if (nextSeam === undefined) return;
+    social.style.setProperty('--social-wall-padding', `${Math.max(0, nextSeam - social.offsetHeight)}px`);
+  }
 
   function syncFacebookPostLinks() {
     if (!feed || !billboardBottomActions) return;
@@ -972,7 +990,11 @@ const welcomeHolderAssets = [
     syncBillboardMiddleSlices();
   }
 
-  facebookDesktopQuery.addEventListener('change', syncFacebookPostLinks);
+  facebookDesktopQuery.addEventListener('change', () => {
+    syncFacebookPostLinks();
+    requestAnimationFrame(alignFacebookSectionToWallSeam);
+  });
+  window.addEventListener('resize', alignFacebookSectionToWallSeam);
 
   function showFacebookFallback() {
     if (!feed || !social) return;
@@ -994,6 +1016,7 @@ const welcomeHolderAssets = [
 
     delete feed.dataset.count;
     social.hidden = false;
+    requestAnimationFrame(alignFacebookSectionToWallSeam);
   }
 
   function loadFacebookFeed() {
@@ -1084,6 +1107,7 @@ const welcomeHolderAssets = [
         feed.dataset.count = String(feed.childElementCount);
         syncFacebookPostLinks();
         social.hidden = false;
+        requestAnimationFrame(alignFacebookSectionToWallSeam);
       } else {
         showFacebookFallback();
       }
