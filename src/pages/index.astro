@@ -617,7 +617,7 @@ const welcomeHolderAssets = [
   @keyframes poster-board-left{from{opacity:0;transform:translateX(calc(-100% - 8vw))}to{opacity:1;transform:translateX(0)}}
   @keyframes poster-board-right{from{opacity:0;transform:translateX(calc(100% + 8vw))}to{opacity:1;transform:translateX(0)}}
 
-  .welcome-title h2,.welcome-title__rule,.welcome-title__star,.welcome-intro,.photo-stack,.welcome-closing{opacity:0;will-change:transform,opacity}
+  .welcome-title h2,.welcome-title__rule,.welcome-title__star,.welcome-intro,.welcome-divider,.photo-stack,.welcome-closing{opacity:0;will-change:transform,opacity}
   .hero-after .home-specials__cta{opacity:0;transform:translateY(6px);will-change:transform,opacity;animation:poster-cta .45s ease 2.58s both}
   @keyframes poster-cta{to{opacity:1;transform:translateY(0)}}
   .welcome-title h2{animation:poster-rise .7s cubic-bezier(.2,.72,.25,1) 3.12s both}
@@ -625,6 +625,7 @@ const welcomeHolderAssets = [
   .welcome-title__rule:first-child,.welcome-title__star:nth-child(2){animation-name:poster-rule-left}
   .welcome-title__star:nth-child(4),.welcome-title__rule:last-child{animation-name:poster-rule-right}
   .welcome-intro{animation:poster-rise .55s cubic-bezier(.2,.72,.25,1) 3.97s both}
+  .welcome-divider{animation:hero-welcome-divider .35s ease 4.55s both}
   .photo-stack{animation:welcome-photo-composition .8s cubic-bezier(.2,.72,.25,1) 5.37s both}
   .welcome-closing{animation:poster-rise .5s cubic-bezier(.2,.72,.25,1) 6.24s both}
   .hero-after::after{content:"";position:absolute;z-index:3;right:clamp(18px,4vw,64px);bottom:0;left:clamp(18px,4vw,64px);height:1px;background:linear-gradient(to right,transparent 0%,var(--ochre) 18%,var(--ochre) 82%,transparent 100%);opacity:.62;pointer-events:none}
@@ -698,7 +699,7 @@ const welcomeHolderAssets = [
   }
   @media (max-width:360px){.welcome-script::before,.welcome-script::after{display:none}}
   @media (prefers-reduced-motion:reduce){
-    .daily-special--lunch,.daily-special--dinner,.hero-after .home-specials__cta,.hero-after__brand::before,.welcome-title h2,.welcome-title__rule,.welcome-title__star,.welcome-intro,.photo-stack,.welcome-closing{animation:none;opacity:1;transform:none}
+    .daily-special--lunch,.daily-special--dinner,.hero-after .home-specials__cta,.hero-after__brand::before,.welcome-title h2,.welcome-title__rule,.welcome-title__star,.welcome-intro,.welcome-divider,.photo-stack,.welcome-closing{animation:none;opacity:1;transform:none}
   }
 
   /* Barn-door Welcome and tavern-table Menu environments. */
