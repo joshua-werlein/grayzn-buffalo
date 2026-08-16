@@ -218,6 +218,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
       <span class="fb-board-label">Straight from Facebook</span>
     </div>
     <div class="fb-billboard__middle">
+      <div class="fb-billboard__middle-slices" aria-hidden="true"></div>
       <div class="fb-grid" id="fbFeed">
         <p style="text-align:center;color:var(--ink-2)">Recent posts appear here once the Facebook feed Worker is connected.</p>
       </div>
@@ -726,11 +727,15 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   #menu-preview .menu-heading .kicker,#menu-preview .menu-heading p{grid-column:1 / -1}
   #menu-preview .menu-heading .kicker{margin-top:2px}
   #menu-preview .menu-heading p{margin:0}
-  /* The approved full-width artwork supplies one top, repeatable two-plank middle, and one bottom. */
+  /* The approved full-width artwork supplies one top, alternating two-plank middle, and one bottom. */
   #social .fb-billboard{width:min(calc(100% - 28px),1320px);margin:0 auto}
   #social .fb-billboard__top,#social .fb-billboard__bottom{width:100%;background-repeat:no-repeat;background-size:100% auto}
   #social .fb-billboard__top{position:relative;aspect-ratio:1600 / 221;background-image:url('/images/facebook/facebook-billboard-top.webp');background-position:center top}
-  #social .fb-billboard__middle{position:relative;isolation:isolate;min-height:0;padding:clamp(130px,11vw,160px) clamp(68px,9vw,124px) clamp(18px,2vw,28px);box-sizing:border-box;background-color:#6d7978;background-image:url('/images/facebook/facebook-billboard-middle.webp');background-position:center top;background-size:100% auto;background-repeat:repeat-y}
+  #social .fb-billboard__middle{position:relative;isolation:isolate;min-height:0;overflow:hidden;padding:clamp(130px,11vw,160px) clamp(68px,9vw,124px) clamp(18px,2vw,28px);box-sizing:border-box;background-color:#6d7978}
+  #social .fb-billboard__middle-slices{position:absolute;z-index:0;inset:0;display:flex;flex-direction:column;overflow:hidden;pointer-events:none}
+  #social .fb-billboard__middle-slice{flex:0 0 auto;width:100%;background:center top / 100% auto no-repeat}
+  #social .fb-billboard__middle-slice--a{aspect-ratio:1600 / 194;background-image:url('/images/facebook/facebook-billboard-middle-a.webp')}
+  #social .fb-billboard__middle-slice--b{aspect-ratio:1600 / 220;background-image:url('/images/facebook/facebook-billboard-middle-b.webp')}
   #social .fb-billboard__bottom{aspect-ratio:1600 / 261;background-image:url('/images/facebook/facebook-billboard-bottom.webp');background-position:center top}
   #social .fb-billboard:has(.fb-grid[data-count="1"]){max-width:520px}
   #social .fb-billboard:has(.fb-grid[data-count="2"]){max-width:820px}
@@ -796,6 +801,38 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
 
   const social = document.getElementById('social');
   const feed = document.getElementById('fbFeed');
+  const billboardMiddle = document.querySelector<HTMLElement>('.fb-billboard__middle');
+  const billboardMiddleSlices = document.querySelector<HTMLElement>('.fb-billboard__middle-slices');
+  let billboardSliceSignature = '';
+
+  function syncBillboardMiddleSlices() {
+    if (!billboardMiddle || !billboardMiddleSlices) return;
+
+    const width = billboardMiddle.clientWidth;
+    const height = billboardMiddle.clientHeight;
+    if (!width || !height) return;
+
+    const sliceCycleHeight = width * ((194 + 220) / 1600);
+    const sliceCount = Math.ceil(height / sliceCycleHeight) * 2 + 2;
+    const signature = `${Math.round(width)}:${Math.round(height)}:${sliceCount}`;
+    if (signature === billboardSliceSignature) return;
+
+    const slices = document.createDocumentFragment();
+    for (let index = 0; index < sliceCount; index += 1) {
+      const slice = document.createElement('div');
+      slice.className = `fb-billboard__middle-slice fb-billboard__middle-slice--${index % 2 === 0 ? 'a' : 'b'}`;
+      slices.append(slice);
+    }
+
+    billboardMiddleSlices.replaceChildren(slices);
+    billboardSliceSignature = signature;
+  }
+
+  if (billboardMiddle && billboardMiddleSlices) {
+    const billboardSliceObserver = new ResizeObserver(syncBillboardMiddleSlices);
+    billboardSliceObserver.observe(billboardMiddle);
+    syncBillboardMiddleSlices();
+  }
 
   function showFacebookFallback() {
     if (!feed || !social) return;
