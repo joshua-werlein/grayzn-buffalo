@@ -729,14 +729,14 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
   #menu-preview .menu-heading .kicker,#menu-preview .menu-heading p{grid-column:1 / -1}
   #menu-preview .menu-heading .kicker{margin-top:2px}
   #menu-preview .menu-heading p{margin:0}
-  /* The approved full-width artwork supplies one top, repeated four-plank middle, and one bottom. */
+  /* The approved full-width artwork supplies one top, repeated two-plank middle, and one bottom. */
   #social .fb-billboard{width:min(calc(100% - 28px),1320px);margin:0 auto}
   #social .fb-billboard__top,#social .fb-billboard__bottom{width:100%;background-repeat:no-repeat;background-size:100% auto}
   #social .fb-billboard__top{position:relative;aspect-ratio:1600 / 221;background-image:url('/images/facebook/facebook-billboard-top.webp');background-position:center top}
   #social .fb-billboard__middle{position:relative;isolation:isolate;min-height:0;overflow:hidden;padding:clamp(16px,2vw,26px) clamp(68px,9vw,124px) clamp(14px,1.5vw,20px);box-sizing:border-box}
   #social .fb-billboard__middle-slices{position:absolute;z-index:0;inset:0;display:flex;flex-direction:column;overflow:hidden;pointer-events:none}
-  /* The four-board source includes wider rail margins than the top and bottom slices. Narrowing it to their shared visible rail span keeps the wall exposed outside the frame. */
-  #social .fb-billboard__middle-slice{display:block;flex:0 0 auto;width:94.24%;margin-inline:auto;object-fit:fill;transform:translateX(.53%)}
+  /* This two-board source shares the top and bottom slices' rail bounds at both joins, so it renders at the billboard's full effective width. */
+  #social .fb-billboard__middle-slice{display:block;flex:0 0 auto;width:100%;object-fit:fill}
   #social .fb-billboard__bottom{position:relative;aspect-ratio:1600 / 261;background-image:url('/images/facebook/facebook-billboard-bottom.webp');background-position:center top}
   #social .fb-bottom-actions{position:absolute;z-index:1;top:0;right:clamp(68px,9vw,124px);left:clamp(68px,9vw,124px);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(18px,2.4vw,32px);height:68%;padding-top:clamp(20px,2.7vw,34px);box-sizing:border-box;align-items:start;justify-items:center}
   #social .fb-bottom-actions[data-count="1"]{grid-template-columns:1fr}
@@ -840,9 +840,9 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
     const height = billboardMiddle.clientHeight;
     if (!width || !height) return;
 
-    const sliceHeight = width / 4;
+    const sliceHeight = width / 8;
     const sliceCount = facebookDesktopQuery.matches
-      ? 2
+      ? 4
       : Math.max(1, Math.ceil(height / sliceHeight));
     const signature = `${Math.round(width)}:${Math.round(height)}:${sliceCount}`;
     if (signature === billboardSliceSignature) return;
@@ -851,7 +851,7 @@ const welcomePhotoSequences = [visibleWelcomeTiles, visibleWelcomeTiles];
     for (let index = 0; index < sliceCount; index += 1) {
       const slice = document.createElement('img');
       slice.className = 'fb-billboard__middle-slice';
-      slice.src = '/images/facebook/facebook-billboard-middle.webp';
+      slice.src = '/images/facebook/facebook-billboard-middle-medium.webp';
       slice.style.height = `${sliceHeight}px`;
       slice.dataset.slice = 'middle';
       slice.alt = '';
