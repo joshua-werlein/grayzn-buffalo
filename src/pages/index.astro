@@ -68,13 +68,11 @@ const visibleWelcomeTiles = welcomeTiles.slice(0, 4);
 const welcomePhotoSlots = Array.from({ length: visibleWelcomeTiles.length }, (_, slotIndex) =>
   welcomeTiles.filter((_, tileIndex) => tileIndex % visibleWelcomeTiles.length === slotIndex),
 );
-// photo2.webp has an opaque checkerboard center, so it cannot safely overlay a live photo.
-// Reuse the three transparent holder variants in a non-adjacent pattern instead.
 const welcomeHolderAssets = [
   '/images/welcome/photo1.webp',
+  '/images/welcome/photo2.webp',
   '/images/welcome/photo3.webp',
   '/images/welcome/photo4.webp',
-  '/images/welcome/photo1.webp',
 ];
 ---
 <Base>
@@ -140,11 +138,13 @@ const welcomeHolderAssets = [
       </div>
       <p class="welcome-intro">Proudly rooted in Mondovi, Wisconsin — where the people are friendly,<br /> the stories are plentiful, and the buffalo spirit runs strong.<br /> We’re glad you’re here. Pull up a chair and make yourself at home.</p>
     </div>
+    <img class="welcome-divider" src="/images/welcome/center-divider.webp" alt="" aria-hidden="true" />
     {welcomePhotoSlots.length > 0 && (
       <div class="photo-stack" role="region" aria-label="Welcome and menu photos" tabindex="0">
         {welcomePhotoSlots.map((slot, slotIndex) => (
           <div class={`photo-position photo-position--${slotIndex + 1}`}>
-          {slot.map((tile, photoIndex) => {
+            <div class="photo-viewport">
+            {slot.map((tile, photoIndex) => {
         const { photo, menuItem } = tile;
         const photoKey = photo.photo_key;
         if (!photoKey) return null;
@@ -175,13 +175,18 @@ const welcomeHolderAssets = [
           </button>
         );
       })}
+            </div>
             <img class="photo-holder" src={welcomeHolderAssets[slotIndex % welcomeHolderAssets.length]} alt="" aria-hidden="true" />
           </div>
         ))}
       </div>
     )}
     <div class="welcome-closing">
-      <p class="welcome-script"><span class="welcome-script__text">Good Food. Cold Drinks. Great People.</span></p>
+      <p class="welcome-script">
+        <img class="welcome-script__flourish" src="/images/welcome/side-flourish.webp" alt="" aria-hidden="true" />
+        <span class="welcome-script__text">Good Food. Cold Drinks. Great People.</span>
+        <img class="welcome-script__flourish welcome-script__flourish--right" src="/images/welcome/side-flourish.webp" alt="" aria-hidden="true" />
+      </p>
     </div>
   </div>
 </section>
@@ -694,24 +699,29 @@ const welcomeHolderAssets = [
   #welcome .welcome-copy{max-width:760px;margin:0 auto;text-align:center}
   #welcome .welcome-title{margin:0 0 14px;color:#f1d9a4}
   #welcome .welcome-copy p{max-width:68ch;color:#f7e5bc;font-size:clamp(.98rem,1.3vw,1.1rem);line-height:1.42;text-shadow:0 1px 2px rgba(24,12,7,.75)}
-  #welcome .photo-stack{display:grid;width:min(100%,1120px);margin:clamp(22px,3vw,34px) auto 0;padding:0;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(10px,1.8vw,24px);overflow:visible}
-  #welcome .photo-position{--photo-tilt:-2deg;position:relative;height:clamp(255px,28vw,370px);min-width:0;transform:rotate(var(--photo-tilt));filter:drop-shadow(3px 8px 6px rgba(16,8,4,.5));transition:transform .2s ease,filter .2s ease}
+  #welcome .welcome-divider{display:block;width:clamp(180px,15vw,230px);height:auto;margin:clamp(12px,1.6vw,18px) auto 2px;pointer-events:none}
+  #welcome .photo-stack{display:grid;width:min(100%,950px);margin:clamp(14px,2vw,22px) auto 0;padding:0;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(14px,1.8vw,24px);overflow:visible}
+  #welcome .photo-position{--photo-tilt:-2deg;position:relative;height:clamp(250px,19vw,275px);min-width:0;transform:rotate(var(--photo-tilt));filter:drop-shadow(3px 8px 6px rgba(16,8,4,.5));transition:transform .2s ease,filter .2s ease}
   #welcome .photo-position--2{--photo-tilt:1.6deg;top:10px}
   #welcome .photo-position--3{--photo-tilt:-1.3deg;top:-5px}
   #welcome .photo-position--4{--photo-tilt:2.1deg;top:8px}
   #welcome .photo-position:hover{z-index:2;transform:translateY(-5px) rotate(0);filter:drop-shadow(4px 13px 10px rgba(16,8,4,.58))}
-  #welcome .photo-position .photo{position:absolute;z-index:0;inset:9% 8% 23%;display:block;width:auto!important;height:auto!important;margin:0!important;padding:0;overflow:hidden;border:0!important;border-radius:0!important;background:#1f120b;box-shadow:none!important;opacity:0;pointer-events:none;transform:none!important;transition:opacity 1.1s ease;cursor:zoom-in}
+  #welcome .photo-viewport{position:absolute;z-index:0;inset:9% 8% 23%;overflow:hidden;isolation:isolate;clip-path:inset(0);background:#1f120b}
+  #welcome .photo-position .photo{position:absolute;inset:0;display:block;width:100%!important;height:100%!important;margin:0!important;padding:0;overflow:hidden;border:0!important;border-radius:0!important;background:#1f120b;box-shadow:none!important;opacity:0;pointer-events:none;transform:none!important;transition:opacity 1.1s ease;cursor:zoom-in}
   #welcome .photo-position .photo.is-active{opacity:1;pointer-events:auto}
-  #welcome .photo-position .photo img{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:cover;filter:saturate(.88) sepia(.08) contrast(.96)}
+  #welcome .photo-position .photo img{position:absolute;inset:0;display:block;width:100%;height:100%;border:0;object-fit:cover;filter:saturate(.88) sepia(.08) contrast(.96)}
   #welcome .photo-position .photo span{position:absolute;right:0;bottom:0;left:0;width:auto;padding:5px 7px;background:linear-gradient(transparent,rgba(25,13,7,.8));color:var(--cream);font-size:.62rem}
   #welcome .photo-holder{position:absolute;z-index:1;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none}
-  #welcome .welcome-closing{max-width:760px;margin:clamp(16px,2vw,24px) auto 0;padding:0;color:#f1d9a4}
-  #welcome .welcome-script{color:#f1d9a4;text-shadow:0 1px 2px rgba(24,12,7,.85)}
+  #welcome .welcome-closing{max-width:760px;margin:clamp(28px,3vw,40px) auto 0;padding:0;color:#f1d9a4}
+  #welcome .welcome-script{gap:clamp(10px,1.8vw,18px);color:#f1d9a4;text-shadow:0 1px 2px rgba(24,12,7,.85)}
+  #welcome .welcome-script::before,#welcome .welcome-script::after{content:none}
+  #welcome .welcome-script__flourish{display:block;width:clamp(72px,9vw,120px);height:auto;flex:0 1 auto;opacity:.92;pointer-events:none}
+  #welcome .welcome-script__flourish--right{transform:scaleX(-1)}
 
   #menu-preview{min-height:clamp(880px,72vw,1080px);padding:clamp(58px,6vw,94px) clamp(16px,4vw,48px) clamp(52px,5vw,84px);background:#21140d url('/images/menu/menu-background.webp') center top / cover no-repeat;box-shadow:none}
   #menu-preview::before,#menu-preview::after{content:none}
   #menu-preview .section-head{position:relative;margin:0 auto;text-shadow:0 2px 4px rgba(0,0,0,.65)}
-  #menu-preview .menu-cards{position:relative;z-index:1;max-width:1120px;margin:clamp(170px,16vw,250px) auto 0;gap:clamp(16px,2.5vw,30px);align-items:end}
+  #menu-preview .menu-cards{position:relative;z-index:1;max-width:1280px;margin:clamp(150px,13vw,205px) auto 0;gap:clamp(16px,2.5vw,30px);align-items:end}
   #menu-preview .menu-card{min-height:0;aspect-ratio:4 / 3;filter:drop-shadow(4px 14px 8px rgba(7,3,1,.7));transform:rotate(var(--poster-tilt)) translateY(0)}
   #menu-preview .menu-card--daily{--poster-tilt:-1.6deg}
   #menu-preview .menu-card--late{--poster-tilt:.25deg}
@@ -720,6 +730,7 @@ const welcomeHolderAssets = [
 
   @media (max-width:900px){
     #welcome{background-position:center top;background-size:auto 100%}
+    #welcome .welcome-divider{width:clamp(160px,28vw,210px)}
     #welcome .photo-stack{grid-template-columns:repeat(2,minmax(0,1fr));max-width:610px;gap:12px 22px}
     #welcome .photo-position{height:clamp(250px,52vw,330px)}
     #menu-preview{min-height:0;background-size:auto 900px;background-repeat:no-repeat;background-color:#25160d}
@@ -731,6 +742,9 @@ const welcomeHolderAssets = [
     #welcome .photo-stack{width:100%;margin-top:20px;gap:8px 12px}
     #welcome .photo-position{height:clamp(210px,60vw,290px)}
     #welcome .photo-position--2{top:5px}#welcome .photo-position--3{top:0}#welcome .photo-position--4{top:5px}
+    #welcome .welcome-closing{margin-top:26px}
+    #welcome .welcome-script{gap:8px}
+    #welcome .welcome-script__flourish{width:clamp(54px,16vw,72px)}
     #menu-preview{padding-inline:16px;background-size:auto 760px}
     #menu-preview .menu-cards{grid-template-columns:1fr;margin-top:clamp(130px,28vw,180px);max-width:360px;gap:24px}
     #menu-preview .menu-card{width:100%;max-width:340px;justify-self:center}
@@ -790,7 +804,7 @@ const welcomeHolderAssets = [
   #social .fb-item:nth-child(2) .fb-card:hover,#social .fb-item:nth-child(3) .fb-card:hover,#social .fb-item:nth-child(4) .fb-card:hover{transform:translateY(-3px) rotate(var(--post-hover-tilt))}
   /* The caption art is a fixed placard; its live text is clipped within the printed center field. */
   #social .fb-caption{grid-row:1;display:grid;place-items:center;width:min(calc(100% - 12px),220px);aspect-ratio:420 / 280;margin:clamp(16px,1.6vw,20px) 0 8px;padding:clamp(26px,3.2vw,34px) clamp(32px,4vw,42px);box-sizing:border-box;background:url('/images/facebook/facebook-caption.webp') center / 100% 100% no-repeat;color:#392315;font-family:var(--body);font-size:clamp(.82rem,1.05vw,.94rem);line-height:1.28;text-align:center;text-shadow:0 1px rgba(255,243,214,.45);white-space:pre-line}
-  #social .fb-caption p{display:-webkit-box;width:100%;margin:0;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2}
+  #social .fb-caption p{display:-webkit-box;width:100%;margin:0;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3}
   /* The printed artwork and metadata stay parallel with the one rotating poster sheet. */
   #social .fb-media,#social .fb-media img,#social .fb-footer{transform:none}
   #social .fb-media{position:relative;z-index:0;display:grid;flex:1 1 auto;min-height:0;width:100%;margin-top:8px;padding:0;border:0;background:transparent;box-shadow:none;cursor:zoom-in}
