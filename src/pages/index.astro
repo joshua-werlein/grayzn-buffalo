@@ -709,7 +709,7 @@ const welcomeHolderAssets = [
   #welcome .welcome-copy p{max-width:68ch;color:#f7e5bc;font-size:clamp(.98rem,1.3vw,1.1rem);line-height:1.42;text-shadow:0 1px 2px rgba(24,12,7,.75)}
   #welcome .welcome-intro{margin:clamp(42px,3.4vw,52px) auto 0}
   #welcome .welcome-divider{display:block;width:clamp(180px,15vw,230px);height:auto;margin:4px auto 0;pointer-events:none}
-  #welcome .photo-stack{display:grid;width:min(100%,950px);margin:6px auto 0;padding:0;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(14px,1.8vw,24px);overflow:visible}
+  #welcome .photo-stack{position:relative;top:-10px;display:grid;width:min(100%,950px);margin:6px auto 0;padding:0;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(14px,1.8vw,24px);overflow:visible}
   #welcome .photo-position{--photo-tilt:-2deg;position:relative;height:clamp(238px,18vw,260px);min-width:0;transform:rotate(var(--photo-tilt));filter:drop-shadow(3px 8px 6px rgba(16,8,4,.5));transition:transform .2s ease,filter .2s ease}
   #welcome .photo-position--2{--photo-tilt:1.6deg;top:10px}
   #welcome .photo-position--3{--photo-tilt:-1.3deg;top:-5px}
@@ -721,7 +721,7 @@ const welcomeHolderAssets = [
   #welcome .photo-position .photo img{position:absolute;inset:0;display:block;width:100%;height:100%;border:0;object-fit:cover;filter:saturate(.88) sepia(.08) contrast(.96)}
   #welcome .photo-position .photo span{position:absolute;right:0;bottom:0;left:0;width:auto;padding:5px 7px;background:linear-gradient(transparent,rgba(25,13,7,.8));color:var(--cream);font-size:.62rem}
   #welcome .photo-holder{position:absolute;z-index:1;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none}
-  #welcome .welcome-closing{max-width:760px;margin:10px auto 0;padding:0;color:#f1d9a4}
+  #welcome .welcome-closing{position:relative;top:12px;max-width:760px;margin:10px auto 0;padding:0;color:#f1d9a4}
   #welcome .welcome-script{display:block;margin:0;color:#f1d9a4;text-align:center;text-shadow:0 1px 2px rgba(24,12,7,.85)}
   #welcome .welcome-script__visual{display:flex;align-items:center;justify-content:center;gap:clamp(10px,1.8vw,18px);white-space:nowrap}
   #welcome .welcome-script::before,#welcome .welcome-script::after{content:none}
