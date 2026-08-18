@@ -1063,19 +1063,20 @@ const welcomeHolderAssets = [
       for (const post of payload.posts.slice(0, 4)) {
         if (!post?.permalinkUrl) continue;
 
+        const imageUrl = typeof post.imageUrl === 'string' ? post.imageUrl.trim() : '';
+        const normalizedCaption = normalizeFacebookCaption(post.message);
         const item = document.createElement('div');
         item.className = 'fb-item';
 
         const card = document.createElement('article');
         card.className = 'fb-card';
 
-        if (post.imageUrl) {
+        if (imageUrl) {
           const media = document.createElement('button');
           media.type = 'button';
           media.className = 'fb-media';
-          media.dataset.lightboxSrc = post.imageUrl;
+          media.dataset.lightboxSrc = imageUrl;
           media.dataset.lightboxAlt = 'Facebook post image';
-          const normalizedCaption = normalizeFacebookCaption(post.message);
           if (normalizedCaption) {
             media.dataset.lightboxCaption = normalizedCaption;
             media.dataset.lightboxLayout = 'facebook-caption';
@@ -1085,7 +1086,7 @@ const welcomeHolderAssets = [
           media.dataset.lightboxActionNewTab = 'true';
           media.setAttribute('aria-label', 'View Facebook post image larger');
           const image = document.createElement('img');
-          image.src = post.imageUrl;
+          image.src = imageUrl;
           image.alt = '';
           image.loading = 'lazy';
           media.append(image);
@@ -1110,13 +1111,20 @@ const welcomeHolderAssets = [
 
         card.append(footer);
 
-        const caption = document.createElement('div');
-        caption.className = 'fb-caption';
-        caption.style.setProperty('--caption-sheet', `url("${facebookCaptionAssets[feed.childElementCount]}")`);
-        const captionText = document.createElement('p');
-        captionText.textContent = normalizeFacebookCaption(post.message) || 'See Facebook for full post details.';
-        caption.append(captionText);
-        item.append(caption, card);
+        // Image posts receive the smaller caption card only when the API supplied
+        // caption text. Text-only posts already render their text in the large card.
+        // Keep the existing no-image/no-caption fallback card unchanged.
+        if ((imageUrl && normalizedCaption) || (!imageUrl && !normalizedCaption)) {
+          const caption = document.createElement('div');
+          caption.className = 'fb-caption';
+          caption.style.setProperty('--caption-sheet', `url("${facebookCaptionAssets[feed.childElementCount]}")`);
+          const captionText = document.createElement('p');
+          captionText.textContent = normalizedCaption || 'See Facebook for full post details.';
+          caption.append(captionText);
+          item.append(caption);
+        }
+
+        item.append(card);
 
         const postLink = document.createElement('a');
         postLink.className = 'fb-post-link';
