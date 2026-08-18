@@ -939,6 +939,7 @@ const welcomeHolderAssets = [
       .filter(Boolean)
       .join('\n')
       .trim() ?? '';
+  const trimFacebookLightboxText = (message?: string | null) => message?.trim() ?? '';
   const facebookDesktopQuery = window.matchMedia('(min-width: 1101px)');
   let billboardSliceSignature = '';
   const facebookWallSeams = [0, 115, 230, 344, 458, 572, 685, 790];
@@ -1107,7 +1108,9 @@ const welcomeHolderAssets = [
           textNotice.textContent = normalizedCaption || post.message || "Grayz'n Buffalo";
           if (textNotice instanceof HTMLButtonElement) {
             textNotice.type = 'button';
-            textNotice.dataset.lightboxText = post.message;
+            // Keep original internal formatting for the modal, while removing only
+            // leading and trailing blank space that would create empty parchment space.
+            textNotice.dataset.lightboxText = trimFacebookLightboxText(post.message);
             textNotice.dataset.lightboxLayout = 'facebook-text';
             textNotice.dataset.lightboxActionUrl = post.permalinkUrl;
             textNotice.dataset.lightboxActionLabel = 'View on Facebook';
