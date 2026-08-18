@@ -34,6 +34,7 @@
       const closingTrigger = trigger;
       lightbox.classList.remove('is-open');
       lightbox.classList.remove('has-caption');
+      lightbox.classList.remove('is-facebook-image');
       lightbox.classList.remove('is-facebook-caption');
       lightbox.classList.remove('is-facebook-text');
       document.body.classList.remove('lightbox-open');
@@ -59,6 +60,7 @@
       const src = nextTrigger.dataset.lightboxSrc;
       const textContent = nextTrigger.dataset.lightboxText;
       const isTextMode = nextTrigger.dataset.lightboxLayout === 'facebook-text' && Boolean(textContent);
+      const isFacebookImage = nextTrigger.dataset.lightboxLayout === 'facebook-image' || nextTrigger.dataset.lightboxLayout === 'facebook-caption';
       if (!src && !isTextMode) return;
       window.clearTimeout(closeTimer);
       trigger = nextTrigger;
@@ -78,6 +80,7 @@
       title.textContent = isTextMode ? 'Facebook post' : 'Image preview';
       closeButton.setAttribute('aria-label', isTextMode ? 'Close Facebook post' : 'Close image preview');
       lightbox.classList.toggle('has-caption', Boolean(captionText));
+      lightbox.classList.toggle('is-facebook-image', isFacebookImage && !isTextMode);
       lightbox.classList.toggle('is-facebook-caption', nextTrigger.dataset.lightboxLayout === 'facebook-caption' && Boolean(captionText));
       lightbox.classList.toggle('is-facebook-text', isTextMode);
       const actionUrl = nextTrigger.dataset.lightboxActionUrl;
@@ -163,15 +166,20 @@
   .image-lightbox__action{margin-top:14px;text-align:center}
   .image-lightbox__action[hidden]{display:none}
   /* Facebook images with copy use the dialog height as a shared budget, not a fixed caption deduction. */
+  .image-lightbox:is(.is-facebook-image,.is-facebook-text){--facebook-surface:linear-gradient(rgba(247,234,211,.9),rgba(229,203,158,.92)),url('/images/facebook/facebook-caption-1.webp') center / cover}
+  .image-lightbox.is-facebook-image{overflow:hidden}
+  .image-lightbox.is-facebook-image:not(.is-facebook-caption) .image-lightbox__dialog{display:grid;grid-template-rows:minmax(0,1fr) auto;width:min(1100px,100%);height:min(780px,calc(100dvh - (var(--lightbox-gutter) * 2)));max-height:calc(100dvh - (var(--lightbox-gutter) * 2));padding:clamp(22px,3vw,34px);box-sizing:border-box;border:1px solid rgba(83,51,26,.5);border-radius:14px;background:var(--facebook-surface);box-shadow:0 22px 70px rgba(0,0,0,.56)}
+  .image-lightbox.is-facebook-image:not(.is-facebook-caption) .image-lightbox__image{max-width:100%;max-height:100%;object-fit:contain}
+  .image-lightbox.is-facebook-image:not(.is-facebook-caption) .image-lightbox__action{margin:14px 0 0}
   .image-lightbox.is-facebook-caption{overflow:hidden}
-  .image-lightbox.is-facebook-caption .image-lightbox__dialog{display:grid;grid-template-columns:minmax(0,62fr) minmax(260px,38fr);grid-template-rows:minmax(0,1fr) auto;column-gap:clamp(20px,3vw,42px);width:min(1320px,100%);height:min(780px,calc(100dvh - (var(--lightbox-gutter) * 2)));max-height:calc(100dvh - (var(--lightbox-gutter) * 2));padding:clamp(22px,2.5vw,34px);box-sizing:border-box;border:1px solid rgba(238,224,196,.28);border-radius:14px;background:linear-gradient(135deg,rgba(42,25,17,.98),rgba(25,14,10,.98));box-shadow:0 22px 70px rgba(0,0,0,.56)}
+  .image-lightbox.is-facebook-caption .image-lightbox__dialog{display:grid;grid-template-columns:minmax(0,62fr) minmax(260px,38fr);grid-template-rows:minmax(0,1fr) auto;column-gap:clamp(20px,3vw,42px);width:min(1320px,100%);height:min(780px,calc(100dvh - (var(--lightbox-gutter) * 2)));max-height:calc(100dvh - (var(--lightbox-gutter) * 2));padding:clamp(22px,2.5vw,34px);box-sizing:border-box;border:1px solid rgba(83,51,26,.5);border-radius:14px;background:var(--facebook-surface);box-shadow:0 22px 70px rgba(0,0,0,.56)}
   .image-lightbox.is-facebook-caption .image-lightbox__image{grid-column:1;grid-row:1 / span 2;align-self:center;justify-self:center;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
-  .image-lightbox.is-facebook-caption .image-lightbox__caption{grid-column:2;grid-row:1;align-self:stretch;width:auto;min-height:0;max-height:100%;margin:0;padding:clamp(52px,5vw,60px) clamp(14px,1.8vw,20px) clamp(14px,1.8vw,20px);overflow:auto;border-color:rgba(238,224,196,.32);background:rgba(16,9,6,.36);font-size:clamp(.94rem,1.15vw,1.05rem);line-height:1.55;scrollbar-color:var(--gold) rgba(0,0,0,.22)}
+  .image-lightbox.is-facebook-caption .image-lightbox__caption{grid-column:2;grid-row:1;align-self:stretch;width:auto;min-height:0;max-height:100%;margin:0;padding:clamp(52px,5vw,60px) clamp(14px,1.8vw,20px) clamp(14px,1.8vw,20px);overflow:auto;border-color:rgba(83,51,26,.36);background:rgba(247,234,211,.7);color:var(--ink);font-size:clamp(.94rem,1.15vw,1.05rem);line-height:1.55;scrollbar-color:var(--gold) rgba(83,51,26,.16)}
   .image-lightbox.is-facebook-caption .image-lightbox__action{grid-column:2;grid-row:2;justify-self:start;margin:14px 0 0}
   .image-lightbox.is-facebook-caption .image-lightbox__close{top:12px;right:12px}
   .image-lightbox.is-facebook-text{overflow:hidden}
-  .image-lightbox.is-facebook-text .image-lightbox__dialog{display:grid;grid-template-rows:minmax(0,1fr) auto;width:min(720px,100%);height:min(780px,calc(100dvh - (var(--lightbox-gutter) * 2)));max-height:calc(100dvh - (var(--lightbox-gutter) * 2));padding:clamp(58px,7vw,72px) clamp(22px,4vw,46px) clamp(22px,4vw,32px);box-sizing:border-box;border:1px solid rgba(83,51,26,.5);border-radius:14px;background:linear-gradient(rgba(247,234,211,.96),rgba(229,203,158,.97)),url('/images/facebook/facebook-caption-1.webp') center / cover;box-shadow:0 22px 70px rgba(0,0,0,.56)}
-  .image-lightbox.is-facebook-text .image-lightbox__text{min-height:0;margin:0;overflow:auto;color:var(--ink);font:400 clamp(1rem,1.6vw,1.12rem)/1.6 var(--body);text-align:left;white-space:pre-wrap;scrollbar-color:var(--gold) rgba(83,51,26,.16)}
+  .image-lightbox.is-facebook-text .image-lightbox__dialog{display:grid;grid-template-rows:minmax(0,1fr) auto;width:min(720px,100%);height:min(780px,calc(100dvh - (var(--lightbox-gutter) * 2)));max-height:calc(100dvh - (var(--lightbox-gutter) * 2));padding:clamp(58px,7vw,72px) clamp(22px,4vw,46px) clamp(22px,4vw,32px);box-sizing:border-box;border:1px solid rgba(83,51,26,.5);border-radius:14px;background:var(--facebook-surface);box-shadow:0 22px 70px rgba(0,0,0,.56)}
+  .image-lightbox.is-facebook-text .image-lightbox__text{align-self:stretch;width:100%;min-height:0;margin:0;overflow:auto;color:var(--ink);font:400 clamp(1rem,1.6vw,1.12rem)/1.6 var(--body);text-align:left;white-space:pre-wrap;scrollbar-color:var(--gold) rgba(83,51,26,.16)}
   .image-lightbox.is-facebook-text .image-lightbox__action{justify-self:center;margin:14px 0 0}
   .image-lightbox.is-facebook-text .image-lightbox__close{top:12px;right:12px}
   :global(body.lightbox-open){overflow:hidden}

@@ -1085,6 +1085,8 @@ const welcomeHolderAssets = [
           if (normalizedCaption) {
             media.dataset.lightboxCaption = normalizedCaption;
             media.dataset.lightboxLayout = 'facebook-caption';
+          } else {
+            media.dataset.lightboxLayout = 'facebook-image';
           }
           media.dataset.lightboxActionUrl = post.permalinkUrl;
           media.dataset.lightboxActionLabel = 'View on Facebook';
