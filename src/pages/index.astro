@@ -850,7 +850,9 @@ const welcomeHolderAssets = [
   #social .fb-media{position:relative;z-index:0;display:grid;flex:1 1 auto;min-height:0;width:100%;margin-top:8px;padding:0;border:0;background:transparent;box-shadow:none;cursor:zoom-in}
   #social .fb-media:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
   #social .fb-media img{display:block;width:100%;height:100%;min-height:0;object-fit:contain;filter:sepia(.05) saturate(.96) contrast(.99);background:transparent}
-  #social .fb-text-media{display:-webkit-box;flex:1 1 auto;min-height:0;margin:0;padding:clamp(12px,2vw,20px);overflow:hidden;color:var(--ink);font-family:var(--body);font-size:clamp(.95rem,1.35vw,1.08rem);line-height:1.45;text-align:center;white-space:pre-line;-webkit-box-orient:vertical;-webkit-line-clamp:9;line-clamp:9}
+  #social .fb-text-media{display:-webkit-box;flex:1 1 auto;min-height:0;margin:0;padding:clamp(12px,2vw,20px);overflow:hidden;border:0;background:transparent;color:var(--ink);font-family:var(--body);font-size:clamp(.95rem,1.35vw,1.08rem);line-height:1.45;text-align:center;white-space:pre-line;-webkit-box-orient:vertical;-webkit-line-clamp:9;line-clamp:9}
+  #social button.fb-text-media[data-lightbox-text]{cursor:zoom-in}
+  #social button.fb-text-media[data-lightbox-text]:focus-visible{outline:3px solid var(--gold);outline-offset:-3px}
   #social .fb-text-media--short{display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:clamp(1.1rem,1.6vw,1.45rem);line-height:1.25}
   #social .fb-footer{display:flex;align-items:center;justify-content:center;min-height:30px;padding:7px 3px 0;color:var(--ink);font-family:var(--display);font-size:clamp(.64rem,.9vw,.76rem);font-weight:700;letter-spacing:.1em;text-align:center;text-transform:uppercase}
   #social .fb-date{color:var(--ink)}
@@ -1092,10 +1094,21 @@ const welcomeHolderAssets = [
           media.append(image);
           card.append(media);
         } else {
-          const textNotice = document.createElement('p');
+          const textNotice = normalizedCaption
+            ? document.createElement('button')
+            : document.createElement('p');
           textNotice.className = 'fb-text-media';
           if (post.message && post.message.trim().length <= 84) textNotice.classList.add('fb-text-media--short');
           textNotice.textContent = post.message || "Grayz'n Buffalo";
+          if (textNotice instanceof HTMLButtonElement) {
+            textNotice.type = 'button';
+            textNotice.dataset.lightboxText = post.message;
+            textNotice.dataset.lightboxLayout = 'facebook-text';
+            textNotice.dataset.lightboxActionUrl = post.permalinkUrl;
+            textNotice.dataset.lightboxActionLabel = 'View on Facebook';
+            textNotice.dataset.lightboxActionNewTab = 'true';
+            textNotice.setAttribute('aria-label', 'Read full Facebook post');
+          }
           card.append(textNotice);
         }
 

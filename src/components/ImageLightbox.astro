@@ -1,10 +1,11 @@
 <div class="image-lightbox" data-image-lightbox hidden>
   <div class="image-lightbox__backdrop" data-lightbox-close></div>
   <section class="image-lightbox__dialog" role="dialog" aria-modal="true" aria-labelledby="image-lightbox-title" tabindex="-1">
-    <h2 id="image-lightbox-title" class="sr-only">Image preview</h2>
+    <h2 id="image-lightbox-title" class="sr-only" data-lightbox-title>Image preview</h2>
     <button class="image-lightbox__close" type="button" data-lightbox-close aria-label="Close image preview">&times;</button>
     <img class="image-lightbox__image" data-lightbox-image alt="" />
     <p class="image-lightbox__caption" data-lightbox-caption hidden></p>
+    <p class="image-lightbox__text" data-lightbox-text hidden></p>
     <a class="image-lightbox__action btn btn-primary" data-lightbox-action hidden></a>
   </section>
 </div>
@@ -16,9 +17,11 @@
 
     const image = lightbox.querySelector<HTMLImageElement>('[data-lightbox-image]');
     const closeButton = lightbox.querySelector<HTMLButtonElement>('.image-lightbox__close');
+    const title = lightbox.querySelector<HTMLElement>('[data-lightbox-title]');
     const caption = lightbox.querySelector<HTMLElement>('[data-lightbox-caption]');
+    const text = lightbox.querySelector<HTMLElement>('[data-lightbox-text]');
     const action = lightbox.querySelector<HTMLAnchorElement>('[data-lightbox-action]');
-    if (!image || !closeButton || !caption || !action) return;
+    if (!image || !closeButton || !title || !caption || !text || !action) return;
     let trigger: HTMLElement | null = null;
     let closeTimer: number | undefined;
 
@@ -32,14 +35,20 @@
       lightbox.classList.remove('is-open');
       lightbox.classList.remove('has-caption');
       lightbox.classList.remove('is-facebook-caption');
+      lightbox.classList.remove('is-facebook-text');
       document.body.classList.remove('lightbox-open');
       document.dispatchEvent(new CustomEvent('image-lightbox:close', { detail: { trigger: closingTrigger } }));
       window.clearTimeout(closeTimer);
       closeTimer = window.setTimeout(() => {
         lightbox.hidden = true;
         image.removeAttribute('src');
+        image.hidden = false;
         caption.textContent = '';
         caption.hidden = true;
+        text.textContent = '';
+        text.hidden = true;
+        title.textContent = 'Image preview';
+        closeButton.setAttribute('aria-label', 'Close image preview');
         action.removeAttribute('href');
         action.hidden = true;
       }, 180);
@@ -48,16 +57,29 @@
 
     const open = (nextTrigger: HTMLElement) => {
       const src = nextTrigger.dataset.lightboxSrc;
-      if (!src) return;
+      const textContent = nextTrigger.dataset.lightboxText;
+      const isTextMode = nextTrigger.dataset.lightboxLayout === 'facebook-text' && Boolean(textContent);
+      if (!src && !isTextMode) return;
       window.clearTimeout(closeTimer);
       trigger = nextTrigger;
-      image.src = src;
-      image.alt = nextTrigger.dataset.lightboxAlt ?? '';
+      image.hidden = isTextMode;
+      if (src) {
+        image.src = src;
+        image.alt = nextTrigger.dataset.lightboxAlt ?? '';
+      } else {
+        image.removeAttribute('src');
+        image.alt = '';
+      }
       const captionText = nextTrigger.dataset.lightboxCaption;
       caption.textContent = captionText ?? '';
-      caption.hidden = !captionText;
+      caption.hidden = !captionText || isTextMode;
+      text.textContent = isTextMode ? textContent ?? '' : '';
+      text.hidden = !isTextMode;
+      title.textContent = isTextMode ? 'Facebook post' : 'Image preview';
+      closeButton.setAttribute('aria-label', isTextMode ? 'Close Facebook post' : 'Close image preview');
       lightbox.classList.toggle('has-caption', Boolean(captionText));
       lightbox.classList.toggle('is-facebook-caption', nextTrigger.dataset.lightboxLayout === 'facebook-caption' && Boolean(captionText));
+      lightbox.classList.toggle('is-facebook-text', isTextMode);
       const actionUrl = nextTrigger.dataset.lightboxActionUrl;
       if (actionUrl) {
         action.href = actionUrl;
@@ -84,7 +106,7 @@
 
     document.addEventListener('click', (event) => {
       const target = event.target as Element;
-      const opener = target.closest<HTMLElement>('[data-lightbox-src]');
+      const opener = target.closest<HTMLElement>('[data-lightbox-src], [data-lightbox-text]');
       if (opener) {
         event.preventDefault();
         open(opener);
@@ -137,6 +159,7 @@
   .image-lightbox__close:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
   .image-lightbox__caption{width:min(100%,760px);margin:14px auto 0;padding:10px 14px;border:1px solid rgba(238,224,196,.36);background:rgba(38,23,17,.88);color:var(--cream);font:400 clamp(.9rem,1.4vw,1rem)/1.45 var(--body);text-align:left;white-space:pre-line}
   .image-lightbox__caption[hidden]{display:none}
+  .image-lightbox__text[hidden]{display:none}
   .image-lightbox__action{margin-top:14px;text-align:center}
   .image-lightbox__action[hidden]{display:none}
   /* Facebook images with copy use the dialog height as a shared budget, not a fixed caption deduction. */
@@ -146,8 +169,13 @@
   .image-lightbox.is-facebook-caption .image-lightbox__caption{grid-column:2;grid-row:1;align-self:stretch;width:auto;min-height:0;max-height:100%;margin:0;padding:clamp(52px,5vw,60px) clamp(14px,1.8vw,20px) clamp(14px,1.8vw,20px);overflow:auto;border-color:rgba(238,224,196,.32);background:rgba(16,9,6,.36);font-size:clamp(.94rem,1.15vw,1.05rem);line-height:1.55;scrollbar-color:var(--gold) rgba(0,0,0,.22)}
   .image-lightbox.is-facebook-caption .image-lightbox__action{grid-column:2;grid-row:2;justify-self:start;margin:14px 0 0}
   .image-lightbox.is-facebook-caption .image-lightbox__close{top:12px;right:12px}
+  .image-lightbox.is-facebook-text{overflow:hidden}
+  .image-lightbox.is-facebook-text .image-lightbox__dialog{display:grid;grid-template-rows:minmax(0,1fr) auto;width:min(720px,100%);height:min(780px,calc(100dvh - (var(--lightbox-gutter) * 2)));max-height:calc(100dvh - (var(--lightbox-gutter) * 2));padding:clamp(58px,7vw,72px) clamp(22px,4vw,46px) clamp(22px,4vw,32px);box-sizing:border-box;border:1px solid rgba(83,51,26,.5);border-radius:14px;background:linear-gradient(rgba(247,234,211,.96),rgba(229,203,158,.97)),url('/images/facebook/facebook-caption-1.webp') center / cover;box-shadow:0 22px 70px rgba(0,0,0,.56)}
+  .image-lightbox.is-facebook-text .image-lightbox__text{min-height:0;margin:0;overflow:auto;color:var(--ink);font:400 clamp(1rem,1.6vw,1.12rem)/1.6 var(--body);text-align:left;white-space:pre-wrap;scrollbar-color:var(--gold) rgba(83,51,26,.16)}
+  .image-lightbox.is-facebook-text .image-lightbox__action{justify-self:center;margin:14px 0 0}
+  .image-lightbox.is-facebook-text .image-lightbox__close{top:12px;right:12px}
   :global(body.lightbox-open){overflow:hidden}
   @supports (height:100dvh){.image-lightbox__image{max-height:calc(100dvh - (var(--lightbox-gutter) * 2) - 80px)}.image-lightbox.has-caption .image-lightbox__image{max-height:calc(100dvh - (var(--lightbox-gutter) * 2) - 180px)}}
-  @media (max-width:800px){.image-lightbox.is-facebook-caption .image-lightbox__dialog{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;row-gap:12px;width:min(680px,100%);height:calc(100dvh - (var(--lightbox-gutter) * 2));padding:clamp(16px,4vw,24px)}.image-lightbox.is-facebook-caption .image-lightbox__image{grid-column:1;grid-row:1;max-height:min(34dvh,290px)}.image-lightbox.is-facebook-caption .image-lightbox__caption{grid-column:1;grid-row:2;max-height:none;padding:12px 14px;font-size:clamp(.9rem,3.8vw,1rem);line-height:1.48}.image-lightbox.is-facebook-caption .image-lightbox__action{grid-column:1;grid-row:3;justify-self:center;margin:0}.image-lightbox.is-facebook-caption .image-lightbox__close{top:8px;right:8px}}
+  @media (max-width:800px){.image-lightbox.is-facebook-caption .image-lightbox__dialog{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;row-gap:12px;width:min(680px,100%);height:calc(100dvh - (var(--lightbox-gutter) * 2));padding:clamp(16px,4vw,24px)}.image-lightbox.is-facebook-caption .image-lightbox__image{grid-column:1;grid-row:1;max-height:min(34dvh,290px)}.image-lightbox.is-facebook-caption .image-lightbox__caption{grid-column:1;grid-row:2;max-height:none;padding:12px 14px;font-size:clamp(.9rem,3.8vw,1rem);line-height:1.48}.image-lightbox.is-facebook-caption .image-lightbox__action{grid-column:1;grid-row:3;justify-self:center;margin:0}.image-lightbox.is-facebook-caption .image-lightbox__close{top:8px;right:8px}.image-lightbox.is-facebook-text .image-lightbox__dialog{height:calc(100dvh - (var(--lightbox-gutter) * 2));padding:clamp(54px,13vw,68px) clamp(18px,6vw,26px) clamp(18px,5vw,24px)}.image-lightbox.is-facebook-text .image-lightbox__text{font-size:clamp(.98rem,4vw,1.06rem);line-height:1.55}.image-lightbox.is-facebook-text .image-lightbox__close{top:8px;right:8px}}
   @media (prefers-reduced-motion:reduce){.image-lightbox,.image-lightbox__dialog{transition:none}}
 </style>
