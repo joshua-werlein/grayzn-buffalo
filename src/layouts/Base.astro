@@ -333,8 +333,6 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
       background:none;
     }
     .footer-composition--home footer{
-      min-height:max(280px,68.359375vw);
-      padding-bottom:0;
       background-color:var(--surface-parchment);
       background-image:url('/parchment-texture.webp');
       background-position:center;
@@ -342,21 +340,14 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
       background-repeat:repeat;
       isolation:isolate;
     }
-    .footer-composition--home .footer-layout{bottom:5px}
     .footer-composition--home footer::before{
       content:"";position:absolute;z-index:0;inset:0;pointer-events:none;
       background-image:url('/footer-landscape.webp');
-      background-position:center bottom;
+      background-position:center top;
       background-size:100% auto;
       background-repeat:no-repeat;
       -webkit-mask-image:linear-gradient(to bottom,transparent 0,rgba(0,0,0,.55) 72px,#000 120px);
       mask-image:linear-gradient(to bottom,transparent 0,rgba(0,0,0,.55) 72px,#000 120px);
-    }
-    .footer-composition--home .footer-action-bed--home{
-      height:calc(76px + env(safe-area-inset-bottom));
-      border-top:1px solid rgba(238,224,196,.1);
-      background-color:#21130e;
-      background-image:repeating-linear-gradient(0deg,rgba(238,224,196,.04) 0 1px,transparent 1px 18px),linear-gradient(90deg,rgba(0,0,0,.28),transparent 22%,transparent 78%,rgba(0,0,0,.28));
     }
     .footer-composition--home #visit#visit{position:relative;z-index:1;padding:0;background:transparent;border:0;box-shadow:none}
     .footer-composition--home #visit#visit .visit-content{
@@ -470,7 +461,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     <p class="footer-credit">Built by <a href="https://joshuawerlein.com">Joshua Werlein</a></p>
   </div>
 </footer>
-{isHome ? <div class="footer-action-bed footer-action-bed--home" aria-hidden="true"></div> : <div class="footer-action-bed" aria-hidden="true"></div>}
+{!isHome && <div class="footer-action-bed" aria-hidden="true"></div>}
 </div>
 
 <aside class="install-prompt" id="installPrompt" hidden aria-labelledby="installPromptTitle">
