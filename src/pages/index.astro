@@ -90,7 +90,7 @@ const welcomeHolderAssets = [
           preload="auto"
           aria-hidden="true"
         >
-          <source src="/Kling-buffalo-hero.webm" type="video/webm" />
+          <source src="/Kling-buffalo-hero-alpha.webm" type="video/webm" />
         </video>
       </div>
     </div>
@@ -315,9 +315,19 @@ const welcomeHolderAssets = [
 
   .buffalo-video {
     display: block;
-    width: 46%;
+    width: 84%;
     height: auto;
     object-fit: contain;
+    transform: scale(.62);
+    transform-origin: center bottom;
+    animation: buffalo-video-grow 5.04s cubic-bezier(.2,.72,.25,1) forwards;
+    will-change: transform;
+  }
+  @keyframes buffalo-video-grow{
+    0%{transform:scale(.62)}
+    58%{transform:scale(.82)}
+    86%{transform:scale(1.2)}
+    100%{transform:scale(1.14)}
   }
   @keyframes logo-layer-fade{to{opacity:1}}
   @keyframes logo-bar-fade{to{opacity:1}}
@@ -374,7 +384,7 @@ const welcomeHolderAssets = [
   .visit-block a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
   @media (min-width:1100px) {
     .buffalo-video {
-      width: 42%;
+      width: 84%;
     }
   }
   @media (max-width:900px){ .welcome-grid{grid-template-columns:1fr} .welcome-copy{max-width:52ch}.photo-stack{grid-template-columns:1fr;grid-auto-rows:clamp(180px,62vw,280px)}.photo-stack .photo{max-height:280px} }
