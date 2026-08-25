@@ -300,6 +300,17 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 
     /* Keep interior-page controls clear of both the raised Home control and bar. */
     body{padding-bottom:calc(134px + env(safe-area-inset-bottom))}
+    .footer-composition:not(.footer-composition--home) footer{
+      position:relative;margin-bottom:calc(-134px - env(safe-area-inset-bottom));
+      padding-bottom:calc(158px + env(safe-area-inset-bottom));
+    }
+    .footer-composition:not(.footer-composition--home) footer::after{
+      content:"";position:absolute;right:0;bottom:0;left:0;height:calc(134px + env(safe-area-inset-bottom));
+      border-top:1px solid rgba(238,224,196,.1);
+      background-color:#21130e;
+      background-image:repeating-linear-gradient(0deg,rgba(238,224,196,.04) 0 1px,transparent 1px 18px),linear-gradient(90deg,rgba(0,0,0,.28),transparent 22%,transparent 78%,rgba(0,0,0,.28));
+      pointer-events:none;
+    }
 
     .footer-social svg{width:24px;height:24px}
     .install-prompt{bottom:calc(78px + env(safe-area-inset-bottom))}
