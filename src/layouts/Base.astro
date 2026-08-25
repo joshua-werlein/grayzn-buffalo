@@ -333,11 +333,15 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
       background:none;
     }
     .footer-composition--home footer{
-      min-height:calc(max(280px,68.359375vw) + 74px + env(safe-area-inset-bottom));
-      padding-bottom:calc(74px + env(safe-area-inset-bottom));
-      background-position:center calc(100% - 74px - env(safe-area-inset-bottom));
+      min-height:calc(max(280px,68.359375vw) + 62px + env(safe-area-inset-bottom));
+      padding-bottom:calc(62px + env(safe-area-inset-bottom));
+      background-color:var(--surface-parchment);
+      background-image:url('/footer-landscape.webp'),url('/parchment-texture.webp');
+      background-position:center calc(100% - 62px - env(safe-area-inset-bottom)),center top;
+      background-size:100% auto,cover;
+      background-repeat:no-repeat,repeat;
     }
-    .footer-composition--home .footer-layout{bottom:calc(5px + 74px + env(safe-area-inset-bottom))}
+    .footer-composition--home .footer-layout{bottom:calc(5px + 62px + env(safe-area-inset-bottom))}
     .footer-composition--home #visit#visit{position:relative;z-index:1;padding:0;background:transparent;border:0;box-shadow:none}
     .footer-composition--home #visit#visit .visit-content{
       gap:clamp(14px,4vw,22px);
