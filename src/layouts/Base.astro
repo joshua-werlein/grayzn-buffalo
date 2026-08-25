@@ -385,9 +385,11 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     }
   }
 
-  /* On narrow phones, give Facebook the maker-credit corner instead. */
-  @media (max-width:500px){
+  /* The mobile/tablet footer reserves the maker-credit corner for Facebook. */
+  @media (max-width:1099px){
     .footer-credit{display:none}
+  }
+  @media (max-width:500px){
     .footer-social{position:absolute;right:0;bottom:0}
   }
 
