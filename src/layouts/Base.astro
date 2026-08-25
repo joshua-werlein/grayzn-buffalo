@@ -263,7 +263,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   }
 
   /* ---- pinned bottom action bar ---- */
-  .action-bar{display:none}
+  .action-bar,.action-bar-home{display:none}
   @media (max-width:1099px){
     .action-bar{
       display:grid;grid-template-columns:repeat(3,1fr);
@@ -286,8 +286,20 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     .action-bar a:focus-visible{outline:2px solid var(--gold);outline-offset:-3px}
     .action-bar a[aria-current="page"]{color:var(--gold)}
 
-    /* keep the footer clear of the bar */
-    body{padding-bottom:calc(58px + env(safe-area-inset-bottom))}
+    .action-bar-home{
+      display:flex;align-items:center;justify-content:center;
+      position:fixed;left:50%;bottom:calc(70px + env(safe-area-inset-bottom));z-index:61;
+      width:64px;height:64px;border:2px solid rgba(238,224,196,.78);border-radius:50%;
+      background:var(--brick);box-shadow:0 5px 13px rgba(20,10,6,.42),inset 0 1px rgba(255,255,255,.16);
+      transform:translateX(-50%);text-decoration:none;
+    }
+    .action-bar-home img{display:block;width:44px;height:auto}
+    .action-bar-home:hover{background:var(--brick-hover)}
+    .action-bar-home:active{background:var(--btn-crimson-hover);transform:translateX(-50%) translateY(1px)}
+    .action-bar-home:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
+
+    /* Keep interior-page controls clear of both the raised Home control and bar. */
+    body{padding-bottom:calc(134px + env(safe-area-inset-bottom))}
 
     .footer-social svg{width:24px;height:24px}
     .install-prompt{bottom:calc(78px + env(safe-area-inset-bottom))}
@@ -410,6 +422,11 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     <span>Specials</span>
   </a>
 </nav>
+{!isHome && (
+  <a class="action-bar-home" href="/" aria-label="Go to the Grayz'n Buffalo home page">
+    <img src="/buffalo-mark.svg" alt="" width="44" height="26" />
+  </a>
+)}
 
 <main><slot /></main>
 
