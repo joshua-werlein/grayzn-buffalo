@@ -351,6 +351,11 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
       -webkit-mask-image:linear-gradient(to bottom,transparent 0,rgba(0,0,0,.55) 72px,#000 120px);
       mask-image:linear-gradient(to bottom,transparent 0,rgba(0,0,0,.55) 72px,#000 120px);
     }
+    .footer-composition--home footer::after{
+      content:"";position:absolute;z-index:0;right:0;bottom:0;left:0;height:34px;pointer-events:none;
+      background-color:#21130e;
+      background-image:repeating-linear-gradient(0deg,rgba(238,224,196,.04) 0 1px,transparent 1px 18px),linear-gradient(90deg,rgba(0,0,0,.28),transparent 22%,transparent 78%,rgba(0,0,0,.28));
+    }
     .footer-composition--home #visit#visit{position:relative;z-index:1;padding:0;background:transparent;border:0;box-shadow:none}
     .footer-composition--home #visit#visit .visit-content{
       gap:clamp(14px,4vw,22px);
