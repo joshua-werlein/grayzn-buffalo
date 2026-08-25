@@ -307,10 +307,18 @@ const welcomeHolderAssets = [
   @keyframes hero-tag-fade{to{opacity:1}}
   .buffalo-video-anchor {
     --layer-y: var(--buffalo-y);
+    --buffalo-start-y: clamp(112px, 11vw, 144px);
+    --buffalo-end-y: clamp(28px, 4vw, 56px);
     z-index: 1;
     display: flex;
     align-items: flex-end;
     justify-content: center;
+    transform: translateY(var(--buffalo-start-y));
+    will-change: transform;
+  }
+
+  .buffalo-video-anchor.is-playing {
+    animation: buffalo-vertical-track var(--buffalo-motion-duration, 7.2s) linear var(--buffalo-motion-delay, 0s) both;
   }
 
   .buffalo-video {
@@ -318,8 +326,11 @@ const welcomeHolderAssets = [
     width: 132%;
     height: auto;
     object-fit: contain;
-    transform:translateY(clamp(28px,4vw,56px));
     transform-origin:center bottom;
+  }
+  @keyframes buffalo-vertical-track {
+    from { transform: translateY(var(--buffalo-start-y)); }
+    to { transform: translateY(var(--buffalo-end-y)); }
   }
   @keyframes logo-layer-fade{to{opacity:1}}
   @keyframes logo-bar-fade{to{opacity:1}}
@@ -874,6 +885,28 @@ const welcomeHolderAssets = [
 </style>
 
 <script>
+  const heroBuffaloVideo = document.querySelector<HTMLVideoElement>('.buffalo-video');
+  const heroBuffaloAnchor = document.querySelector<HTMLElement>('.buffalo-video-anchor');
+
+  if (heroBuffaloVideo && heroBuffaloAnchor) {
+    let buffaloTrackStarted = false;
+
+    const startBuffaloTrack = () => {
+      if (buffaloTrackStarted) return;
+      buffaloTrackStarted = true;
+
+      const duration = Number.isFinite(heroBuffaloVideo.duration) && heroBuffaloVideo.duration > 0
+        ? heroBuffaloVideo.duration
+        : 7.2;
+      heroBuffaloAnchor.style.setProperty('--buffalo-motion-duration', `${duration}s`);
+      heroBuffaloAnchor.style.setProperty('--buffalo-motion-delay', `-${Math.min(heroBuffaloVideo.currentTime, duration)}s`);
+      heroBuffaloAnchor.classList.add('is-playing');
+    };
+
+    heroBuffaloVideo.addEventListener('playing', startBuffaloTrack, { once: true });
+    if (!heroBuffaloVideo.paused && !heroBuffaloVideo.ended) startBuffaloTrack();
+  }
+
   document.addEventListener('error', (event) => {
     const image = event.target;
     if (image instanceof HTMLImageElement && image.matches('.photo img')) {
@@ -1189,4 +1222,3 @@ const welcomeHolderAssets = [
   } else {
     window.addEventListener('load', scheduleFacebookFeed, { once: true });
   }
-</script>
