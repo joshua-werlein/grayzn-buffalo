@@ -169,7 +169,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   footer a:hover,
   footer a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
   .footer-layout{position:relative;max-width:1100px;margin:0 auto}
-  .footer-contact{display:none}
+  .footer-scene,.footer-contact{display:none}
   .footer-center{display:flex;flex-direction:column;align-items:center;min-width:0}
   .footer-mainline{display:contents}
   .footer-copy{order:1;margin:0}
@@ -299,39 +299,34 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     .action-bar-home:active{background:var(--btn-crimson-hover);transform:translateX(-50%) translateY(1px)}
     .action-bar-home:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
 
-    /* Footer details stay on the artwork's own plank band; only Home gets a lower board. */
+    /* The fixed controls remain above a real, in-flow wood board. */
     body{padding-bottom:0}
     .footer-composition footer{
-      position:relative;min-height:calc(100vw * .68359375 + 96px);padding:0 20px;
+      min-height:0;padding:0;background-color:#21130e;background-image:none;
+    }
+    .footer-composition:not(.footer-composition--home) footer{background-image:none}
+    .footer-composition .footer-scene{
+      display:block;position:relative;aspect-ratio:2048 / 1400;
+      background:url('/footer-landscape.webp') center top / 100% auto no-repeat;
     }
     .footer-composition .footer-layout{
-      position:absolute;z-index:2;right:0;bottom:calc(62px + env(safe-area-inset-bottom));left:0;max-width:none;padding:0 46px;
+      position:relative;z-index:2;max-width:none;margin:0;padding:16px 46px calc(142px + env(safe-area-inset-bottom));
+      background-color:#21130e;background-image:url('/footer-board-extension.webp.webp');background-position:center top;background-size:100% auto;background-repeat:repeat-y;
     }
     .footer-composition .footer-copy{font-size:clamp(.62rem,1.25vw,.78rem);line-height:1.2}
     .footer-composition .footer-legal{margin:3px 0 0}
     .footer-composition .footer-legal a{font-size:clamp(.62rem,1.1vw,.78rem)}
-    .footer-composition .staff-door{left:0;bottom:0;padding:8px}
-    .footer-composition .footer-social{position:absolute;right:8px;bottom:0}
-    .footer-composition .footer-credit{bottom:0}
+    .footer-composition .staff-door{position:static;margin:8px auto 0;padding:8px}
+    .footer-composition .footer-social{position:static}
     .footer-contact{
-      /* The board starts in the final ~18% of the 68.359vw scene. Account for
-         that image depth and the footer's 96px mobile wood continuation. */
-      display:block;position:absolute;z-index:1;left:50%;bottom:calc(88px + 12.5vw + env(safe-area-inset-bottom));
+      /* Anchor to the scenic foreground, not the page or board extension. */
+      display:block;position:absolute;z-index:1;left:50%;bottom:15%;
       width:clamp(190px,58vw,260px);max-width:calc(100% - 28px);transform:translateX(-50%);
       line-height:0;text-decoration:none;filter:drop-shadow(0 5px 5px rgba(30,18,10,.28));
     }
     .footer-contact img{display:block;width:100%;height:auto}
     .footer-contact:hover{filter:drop-shadow(0 7px 7px rgba(30,18,10,.38)) brightness(1.035)}
     .footer-contact:focus-visible{outline:3px solid var(--gold);outline-offset:5px;border-radius:8px}
-    .footer-composition .footer-action-bed{
-      display:none;
-    }
-    .footer-composition footer::after{
-      content:"";position:absolute;z-index:0;right:0;bottom:0;left:0;height:calc(96px + env(safe-area-inset-bottom));pointer-events:none;
-      background-color:#21130e;
-      background-image:repeating-linear-gradient(0deg,rgba(238,224,196,.04) 0 1px,transparent 1px 18px),linear-gradient(90deg,rgba(0,0,0,.28),transparent 22%,transparent 78%,rgba(0,0,0,.28));
-    }
-
     .footer-social svg{width:24px;height:24px}
     .install-prompt{bottom:calc(78px + env(safe-area-inset-bottom))}
   }
@@ -354,12 +349,8 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
       background-repeat:repeat;
       isolation:isolate;
     }
-    .footer-composition--home footer::before{
-      content:"";position:absolute;z-index:0;inset:0;pointer-events:none;
-      background-image:url('/footer-landscape.webp');
-      background-position:center top;
-      background-size:100% auto;
-      background-repeat:no-repeat;
+    .footer-composition--home footer::before{content:none}
+    .footer-composition--home .footer-scene{
       -webkit-mask-image:linear-gradient(to bottom,transparent 0,rgba(0,0,0,.55) 72px,#000 120px);
       mask-image:linear-gradient(to bottom,transparent 0,rgba(0,0,0,.55) 72px,#000 120px);
     }
@@ -454,9 +445,11 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 <div class:list={{ 'footer-composition': true, 'footer-composition--home': isHome }}>
   {isHome && <slot name="home-footer" />}
 <footer>
-  <a class="footer-contact" href="/contact" aria-label="Contact Us">
-    <img src="/footer-contact.webp" alt="" width="1600" height="1100" loading="lazy" />
-  </a>
+  <div class="footer-scene">
+    <a class="footer-contact" href="/contact" aria-label="Contact Us">
+      <img src="/footer-contact.webp" alt="" width="1600" height="1100" loading="lazy" />
+    </a>
+  </div>
   <div class="footer-layout">
     <div class="footer-center">
       <div class="footer-mainline">
@@ -478,7 +471,6 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     <p class="footer-credit">Built by <a href="https://joshuawerlein.com">Joshua Werlein</a></p>
   </div>
 </footer>
-{!isHome && <div class="footer-action-bed" aria-hidden="true"></div>}
 </div>
 
 <aside class="install-prompt" id="installPrompt" hidden aria-labelledby="installPromptTitle">
