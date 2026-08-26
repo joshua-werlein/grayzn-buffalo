@@ -169,6 +169,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   footer a:hover,
   footer a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
   .footer-layout{position:relative;max-width:1100px;margin:0 auto}
+  .footer-contact{display:none}
   .footer-center{display:flex;flex-direction:column;align-items:center;min-width:0}
   .footer-mainline{display:contents}
   .footer-copy{order:1;margin:0}
@@ -301,10 +302,10 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     /* Footer details stay on the artwork's own plank band; only Home gets a lower board. */
     body{padding-bottom:0}
     .footer-composition footer{
-      position:relative;min-height:max(280px,calc(100vw * .68359375));padding:0 20px;
+      position:relative;min-height:calc(100vw * .68359375 + 96px);padding:0 20px;
     }
     .footer-composition .footer-layout{
-      position:absolute;z-index:1;right:0;bottom:5px;left:0;max-width:none;padding:0 46px;
+      position:absolute;z-index:2;right:0;bottom:calc(62px + env(safe-area-inset-bottom));left:0;max-width:none;padding:0 46px;
     }
     .footer-composition .footer-copy{font-size:clamp(.62rem,1.25vw,.78rem);line-height:1.2}
     .footer-composition .footer-legal{margin:3px 0 0}
@@ -312,9 +313,19 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     .footer-composition .staff-door{left:0;bottom:0;padding:8px}
     .footer-composition .footer-social{position:absolute;right:8px;bottom:0}
     .footer-composition .footer-credit{bottom:0}
-    .footer-composition:not(.footer-composition--home) .footer-action-bed{
-      height:calc(134px + env(safe-area-inset-bottom));
-      border-top:1px solid rgba(238,224,196,.1);
+    .footer-contact{
+      display:block;position:absolute;z-index:1;left:50%;bottom:calc(88px + env(safe-area-inset-bottom));
+      width:clamp(250px,82vw,390px);max-width:calc(100% - 28px);transform:translateX(-50%);
+      line-height:0;text-decoration:none;filter:drop-shadow(0 5px 5px rgba(30,18,10,.28));
+    }
+    .footer-contact img{display:block;width:100%;height:auto}
+    .footer-contact:hover{filter:drop-shadow(0 7px 7px rgba(30,18,10,.38)) brightness(1.035)}
+    .footer-contact:focus-visible{outline:3px solid var(--gold);outline-offset:5px;border-radius:8px}
+    .footer-composition .footer-action-bed{
+      display:none;
+    }
+    .footer-composition footer::after{
+      content:"";position:absolute;z-index:0;right:0;bottom:0;left:0;height:calc(96px + env(safe-area-inset-bottom));pointer-events:none;
       background-color:#21130e;
       background-image:repeating-linear-gradient(0deg,rgba(238,224,196,.04) 0 1px,transparent 1px 18px),linear-gradient(90deg,rgba(0,0,0,.28),transparent 22%,transparent 78%,rgba(0,0,0,.28));
     }
@@ -330,9 +341,8 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     .footer-composition--home{
       position:relative;
       min-height:0;
-      padding-bottom:calc(58px + env(safe-area-inset-bottom));
-      background-color:#21130e;
-      background-image:repeating-linear-gradient(0deg,rgba(238,224,196,.04) 0 1px,transparent 1px 18px),linear-gradient(90deg,rgba(0,0,0,.28),transparent 22%,transparent 78%,rgba(0,0,0,.28));
+      padding-bottom:0;
+      background:transparent;
     }
     .footer-composition--home footer{
       background-color:var(--surface-parchment);
@@ -350,11 +360,6 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
       background-repeat:no-repeat;
       -webkit-mask-image:linear-gradient(to bottom,transparent 0,rgba(0,0,0,.55) 72px,#000 120px);
       mask-image:linear-gradient(to bottom,transparent 0,rgba(0,0,0,.55) 72px,#000 120px);
-    }
-    .footer-composition--home footer::after{
-      content:"";position:absolute;z-index:0;right:0;bottom:0;left:0;height:34px;pointer-events:none;
-      background-color:#21130e;
-      background-image:repeating-linear-gradient(0deg,rgba(238,224,196,.04) 0 1px,transparent 1px 18px),linear-gradient(90deg,rgba(0,0,0,.28),transparent 22%,transparent 78%,rgba(0,0,0,.28));
     }
     .footer-composition--home #visit#visit{position:relative;z-index:1;padding:0;background:transparent;border:0;box-shadow:none}
     .footer-composition--home #visit#visit .visit-content{
@@ -447,6 +452,9 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
 <div class:list={{ 'footer-composition': true, 'footer-composition--home': isHome }}>
   {isHome && <slot name="home-footer" />}
 <footer>
+  <a class="footer-contact" href="/contact" aria-label="Contact Us">
+    <img src="/footer-contact.webp" alt="" width="1600" height="1100" loading="lazy" />
+  </a>
   <div class="footer-layout">
     <div class="footer-center">
       <div class="footer-mainline">
