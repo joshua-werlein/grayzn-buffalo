@@ -97,6 +97,14 @@ const welcomeHolderAssets = [
   </div>
 <div class="opening-poster">
 <section class="hero-after">
+  {todaySpecial?.allday_name && (
+    <div class="allday-banner">
+      <p class="allday-banner__label"><span aria-hidden="true">★</span> All Day Special <span aria-hidden="true">★</span></p>
+      <h2 class="allday-banner__name">{todaySpecial.allday_name}</h2>
+      {todaySpecial.allday_description && <p class="allday-banner__description">{todaySpecial.allday_description}</p>}
+      {todaySpecial.allday_tag && <span class="allday-banner__tag">{todaySpecial.allday_tag}</span>}
+    </div>
+  )}
   <div class="hero-after__layout">
     <article class="daily-special daily-special--lunch">
       <p class="daily-special__label"><span aria-hidden="true">★</span> Lunch Special <span aria-hidden="true">★</span></p>
@@ -115,7 +123,7 @@ const welcomeHolderAssets = [
       <a class="home-specials__cta" href="/specials">View All Specials <span aria-hidden="true">→</span></a>
     </div>
     <article class="daily-special daily-special--dinner">
-      <p class="daily-special__label"><span aria-hidden="true">★</span> Dinner Special <span aria-hidden="true">★</span></p>
+      <p class="daily-special__label"><span aria-hidden="true">★</span> Nightly Special <span aria-hidden="true">★</span></p>
       <p class="daily-special__hours">5–10 PM</p>
       {todaySpecial?.night_name && <h2>{todaySpecial.night_name}</h2>}
       {todaySpecial?.night_description && <p class="daily-special__description">{todaySpecial.night_description}</p>}
@@ -535,6 +543,13 @@ const welcomeHolderAssets = [
   .daily-special h2{margin:0 0 8px;color:#f8efd8;font-family:var(--display);font-size:clamp(1.35rem,2.15vw,2rem);line-height:1.05}
   .daily-special__description{margin:0 auto;color:#f6ecd8;line-height:1.35}
   .daily-special__tag{display:inline-block;margin-top:14px;padding:4px 9px;border:1px solid rgba(235,194,109,.75);color:var(--ochre);font-family:var(--label);font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;background:transparent}
+  .allday-banner{position:relative;isolation:isolate;display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;column-gap:clamp(14px,2.5vw,24px);row-gap:6px;max-width:var(--content-wide);margin:0 auto clamp(18px,2.8vw,28px);padding:clamp(14px,2vw,20px) clamp(20px,3vw,32px);background-color:#173747;background-image:radial-gradient(rgba(247,236,214,.13) .65px,transparent .8px),linear-gradient(115deg,rgba(0,0,0,.16),transparent 22%,transparent 76%,rgba(0,0,0,.13));background-size:5px 5px,100% 100%;color:#f6ecd8;border:2px solid var(--ochre);box-shadow:4px 5px 0 rgba(43,27,20,.28),0 10px 22px rgba(43,27,20,.2);text-align:center}
+  .allday-banner::before{content:"";position:absolute;z-index:-1;inset:6px;border:1px solid rgba(235,194,109,.62);pointer-events:none}
+  .allday-banner__label{margin:0;color:#f6ecd8;font-family:var(--label);font-weight:700;font-size:clamp(.78rem,1.1vw,.92rem);letter-spacing:.14em;text-transform:uppercase;line-height:1.25}
+  .allday-banner__label span{color:var(--ochre);font-size:.88em;letter-spacing:0}
+  .allday-banner__name{margin:0;color:#f8efd8;font-family:var(--display);font-size:clamp(1.15rem,1.9vw,1.55rem);line-height:1.05}
+  .allday-banner__description{margin:0;color:#f6ecd8;line-height:1.35}
+  .allday-banner__tag{display:inline-block;padding:4px 9px;border:1px solid rgba(235,194,109,.75);color:var(--ochre);font-family:var(--label);font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;background:transparent}
   .hero-after__brand{grid-area:brand;align-self:center;min-width:0}
   .hero-after__brand .logo-bar-stage{width:min(100%,400px);height:150px}
   .hero-after__brand .hero-actions{margin-top:-26px;padding:14px 10px 0}
@@ -621,6 +636,7 @@ const welcomeHolderAssets = [
   .hero-after,#welcome{overflow-x:clip}
   .welcome-grid{position:relative;z-index:2}
   .hero-after{overflow:visible}
+  .allday-banner{opacity:0;will-change:transform,opacity;animation:poster-rise .5s cubic-bezier(.2,.72,.25,1) 1.05s both}
   .daily-special--lunch,.daily-special--dinner{opacity:0;will-change:transform,opacity}
   .daily-special--lunch{animation:poster-board-left .9s cubic-bezier(.2,.72,.25,1) 1.65s both}
   .daily-special--dinner{animation:poster-board-right .9s cubic-bezier(.2,.72,.25,1) 1.65s both}
@@ -709,7 +725,7 @@ const welcomeHolderAssets = [
   }
   @media (max-width:360px){.welcome-script::before,.welcome-script::after{display:none}}
   @media (prefers-reduced-motion:reduce){
-    .daily-special--lunch,.daily-special--dinner,.hero-after .home-specials__cta,.hero-after__brand::before,.welcome-title h2,.welcome-title__rule,.welcome-title__star,.welcome-intro,.welcome-divider,.photo-stack,.welcome-closing{animation:none;opacity:1;transform:none}
+    .allday-banner,.daily-special--lunch,.daily-special--dinner,.hero-after .home-specials__cta,.hero-after__brand::before,.welcome-title h2,.welcome-title__rule,.welcome-title__star,.welcome-intro,.welcome-divider,.photo-stack,.welcome-closing{animation:none;opacity:1;transform:none}
   }
 
   /* Barn-door Welcome and tavern-table Menu environments. */

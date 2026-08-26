@@ -13,17 +13,20 @@ if (Astro.request.method === 'POST') {
     await env.DB.prepare(`INSERT INTO specials (
         day_of_week, name, description, tag,
         lunch_name, lunch_description, lunch_tag,
-        night_name, night_description, night_tag
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        night_name, night_description, night_tag,
+        allday_name, allday_description, allday_tag
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
       ON CONFLICT(day_of_week) DO UPDATE SET
         name=?2, description=?3, tag=?4,
         lunch_name=?5, lunch_description=?6, lunch_tag=?7,
-        night_name=?8, night_description=?9, night_tag=?10`)
+        night_name=?8, night_description=?9, night_tag=?10,
+        allday_name=?11, allday_description=?12, allday_tag=?13`)
       .bind(
         Number(f.get('day_of_week')),
         value('night_name'), value('night_description'), value('night_tag') || null,
         value('lunch_name'), value('lunch_description'), value('lunch_tag') || null,
         value('night_name'), value('night_description'), value('night_tag') || null,
+        value('allday_name'), value('allday_description'), value('allday_tag') || null,
       ).run();
     notice = `${DAYS[Number(f.get('day_of_week'))]} updated.`;
   } catch { notice = 'Database not connected yet — see README.'; }
@@ -42,6 +45,7 @@ try { specials = (await env.DB.prepare('SELECT * FROM specials ORDER BY day_of_w
 const byDay = (i:number) => specials.find(s => s.day_of_week === i) ?? {
   lunch_name: '', lunch_description: '', lunch_tag: '',
   night_name: '', night_description: '', night_tag: '',
+  allday_name: '', allday_description: '', allday_tag: '',
 };
 ---
 <Base title="Admin · Specials — Grayz'n Buffalo">
@@ -56,6 +60,16 @@ const byDay = (i:number) => specials.find(s => s.day_of_week === i) ?? {
       <form method="post" class="day-form">
         <h3>{d}</h3>
         <input type="hidden" name="day_of_week" value={i} />
+        <fieldset class="service-form allday-form">
+          <legend>All Day Special <span>All day</span></legend>
+          <p class="hint-block">Leave blank to hide the all-day special for {d}.</p>
+          <label for={`allday-name-${i}`}>Special name <span class="hint">optional</span></label>
+          <input id={`allday-name-${i}`} name="allday_name" value={s.allday_name ?? ''} />
+          <label for={`allday-description-${i}`}>Description <span class="hint">optional</span></label>
+          <input id={`allday-description-${i}`} name="allday_description" value={s.allday_description ?? ''} />
+          <label for={`allday-tag-${i}`}>Tag <span class="hint">optional</span></label>
+          <input id={`allday-tag-${i}`} name="allday_tag" value={s.allday_tag ?? ''} />
+        </fieldset>
         <fieldset class="service-form lunch-form">
           <legend>Lunch Special <span>11 AM–1:30 PM</span></legend>
           <label for={`lunch-name-${i}`}>Special name <span class="hint">optional</span></label>
@@ -138,11 +152,13 @@ const byDay = (i:number) => specials.find(s => s.day_of_week === i) ?? {
   .service-form{min-width:0;border:1px solid rgba(36,22,16,.16);border-radius:10px;padding:14px;display:grid;gap:7px}
   .service-form legend{padding:0 5px;font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:.88rem}
   .service-form legend span{font-weight:500;letter-spacing:0;text-transform:none;color:var(--ink-2)}
+  .allday-form{grid-column:1 / -1;border-top:4px solid var(--ochre)}
   .lunch-form{border-top:4px solid var(--amber)}
   .night-form{border-top:4px solid var(--crimson)}
   .day-form label{font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.78rem}
   .day-form input{width:100%;padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream)}
   .hint{text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-2)}
+  .hint-block{margin:0;font-size:.82rem;color:var(--ink-2)}
   .day-form button{grid-column:1 / -1;justify-self:start}
   .day-form[aria-busy="true"]{opacity:.7}
   .back{text-align:center;margin-top:10px}

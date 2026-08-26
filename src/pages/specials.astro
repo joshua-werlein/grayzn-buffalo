@@ -37,6 +37,14 @@ const recurring = [
     {week.map((s) => (
       <li class="day-card" data-day={s.day_of_week}>
         <span class="day-name">{DAYS[s.day_of_week]}</span>
+        {s.allday_name && (
+          <section class="day-allday">
+            <p class="service-label">All Day Special</p>
+            <h3>{s.allday_name}</h3>
+            {s.allday_description && <p class="day-desc">{s.allday_description}</p>}
+            {s.allday_tag && <span class="tag-pill">{s.allday_tag}</span>}
+          </section>
+        )}
         <div class="day-services">
           <section class="day-service lunch-service">
             <p class="service-label">Lunch Special <span>11 AM–1:30 PM</span></p>
@@ -125,6 +133,12 @@ const recurring = [
   .tag-pill{align-self:flex-start;margin-top:4px;font-family:var(--label);font-weight:700;
     letter-spacing:.1em;text-transform:uppercase;font-size:.72rem;
     background:var(--gold);color:var(--ink);padding:4px 12px;border-radius:999px}
+
+  /* all-day */
+  .day-allday{margin-top:12px;padding:12px 14px;border:1px solid var(--rule-light);border-left:4px solid var(--ochre);background:rgba(196,151,75,.08)}
+  .day-allday .service-label{color:var(--ochre)}
+  .day-allday h3{margin:4px 0 4px}
+  .day-allday .day-desc{margin-bottom:4px}
 
   /* today */
   .day-card.is-today{grid-column:1 / -1;max-width:820px;width:100%;justify-self:center;

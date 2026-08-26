@@ -7,6 +7,12 @@ const specials = await getSpecials(env);
   <div class="board-days" id="dayTabs" role="tablist" aria-label="Choose a day for specials"></div>
   <div class="board-body">
     <div class="board-day-label" id="boardDay"></div>
+    <div class="board-allday" id="alldayBlock" hidden>
+      <p class="board-allday__label">All Day</p>
+      <h3 class="board-allday__name" id="alldayName"></h3>
+      <p class="board-allday__desc" id="alldayDesc"></p>
+      <span class="tag" id="alldayTag" hidden></span>
+    </div>
     <div class="board-services">
       <article class="service-card lunch-service">
         <p class="service-label">Lunch Special <span>11 AM–1:30 PM</span></p>
@@ -36,6 +42,12 @@ const specials = await getSpecials(env);
   .board-days :global(.today-dot){display:block;font-size:.58rem;letter-spacing:.16em;color:var(--ochre)}
   .board-body{padding:clamp(22px,4vw,38px);text-align:center;background:linear-gradient(90deg,transparent,rgba(255,248,222,.035),transparent)}
   .board-day-label{font-family:var(--label);font-weight:700;letter-spacing:.24em;text-transform:uppercase;color:var(--ochre);font-size:.82rem}
+  .board-allday{margin-top:16px;padding:10px clamp(16px,3vw,24px);border:1px solid var(--ochre);border-left:4px solid var(--ochre);background:rgba(196,151,75,.1);display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;column-gap:14px;row-gap:2px;text-align:left}
+  .board-allday[hidden]{display:none}
+  .board-allday__label{margin:0;flex:0 0 auto;font-family:var(--label);font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--brick);font-size:.76rem}
+  .board-allday__name{margin:0;flex:0 0 auto;font-family:var(--display);font-weight:400;font-size:clamp(1.05rem,2vw,1.3rem);color:var(--cream)}
+  .board-allday__desc{margin:0;flex:1 1 220px;color:var(--cream-2);font-size:.92rem}
+  .board-allday .tag{margin-top:0;flex:0 0 auto}
   .board-services{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;margin-top:16px;border-top:1px solid var(--rule-light);border-bottom:1px solid var(--rule-light)}
   .service-card{min-width:0;padding:clamp(18px,3vw,26px);border:0;border-radius:0;background:rgba(4,20,30,.16)}
   .service-card + .service-card{border-left:1px solid var(--rule-light)}
@@ -58,6 +70,7 @@ const specials = await getSpecials(env);
   const todayIdx = new Date().getDay();
   const tabs = document.getElementById('dayTabs')!;
   const elDay = document.getElementById('boardDay')!;
+  const PREFIX: Record<'lunch' | 'night' | 'allday', string> = { lunch: 'lunch', night: 'night', allday: 'allday' };
   const parts = {
     lunch: {
       name: document.getElementById('lunchName')!, desc: document.getElementById('lunchDesc')!, tag: document.getElementById('lunchTag')! as HTMLElement,
@@ -68,22 +81,37 @@ const specials = await getSpecials(env);
       fallbackName: 'Nightly special', fallbackDesc: 'Ask at the bar about tonight’s special.',
     },
   };
+  const alldayBlock = document.getElementById('alldayBlock')! as HTMLElement;
+  const alldayName = document.getElementById('alldayName')!;
+  const alldayDesc = document.getElementById('alldayDesc')!;
+  const alldayTag = document.getElementById('alldayTag')! as HTMLElement;
 
   function bydow(i:number){ return SPECIALS.find((s:any)=>s.day_of_week===i) || {}; }
   function showPart(key: 'lunch' | 'night', special: any) {
     const part = parts[key];
-    const prefix = key === 'lunch' ? 'lunch' : 'night';
+    const prefix = PREFIX[key];
     part.name.textContent = special[`${prefix}_name`] || part.fallbackName;
     part.desc.textContent = special[`${prefix}_description`] || part.fallbackDesc;
     const tag = special[`${prefix}_tag`];
     part.tag.textContent = tag || '';
     part.tag.hidden = !tag;
   }
+  function showAllday(special: any) {
+    const name = special[`${PREFIX.allday}_name`];
+    alldayBlock.hidden = !name;
+    if (!name) return;
+    alldayName.textContent = name;
+    alldayDesc.textContent = special[`${PREFIX.allday}_description`] || '';
+    const tag = special[`${PREFIX.allday}_tag`];
+    alldayTag.textContent = tag || '';
+    alldayTag.hidden = !tag;
+  }
   function show(i:number){
     const s = bydow(i);
     elDay.textContent = (i === todayIdx ? 'Today · ' : '') + DAYS[i];
     showPart('lunch', s);
     showPart('night', s);
+    showAllday(s);
     [...tabs.children].forEach((b,bi)=>{
       const selected = bi === i;
       b.setAttribute('aria-selected', selected ? 'true' : 'false');

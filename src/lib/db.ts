@@ -7,6 +7,9 @@ export type Special = {
   night_name: string;
   night_description: string;
   night_tag: string | null;
+  allday_name: string;
+  allday_description: string;
+  allday_tag: string | null;
 };
 export type PhotoOrientation = 'portrait' | 'square' | 'landscape';
 export type Item = { id: number; category_id: number; name: string; description: string; sort: number; active: number; photo_key: string | null; late_night: number; photo_orientation?: PhotoOrientation };
@@ -32,6 +35,9 @@ const toSpecial = (row: any): Special => ({
   night_name: String(row.night_name ?? row.name ?? ''),
   night_description: String(row.night_description ?? row.description ?? ''),
   night_tag: row.night_tag ?? row.tag ?? null,
+  allday_name: String(row.allday_name ?? ''),
+  allday_description: String(row.allday_description ?? ''),
+  allday_tag: row.allday_tag ?? null,
 });
 
 // Fallback only fires when D1 is unreachable (astro dev / build with no
@@ -66,7 +72,7 @@ const FALLBACK_ITEMS: Item[] = [
 export async function getSpecials(env: any): Promise<Special[]> {
   try {
     const { results } = await env.DB.prepare(
-      'SELECT day_of_week, lunch_name, lunch_description, lunch_tag, night_name, night_description, night_tag FROM specials ORDER BY day_of_week'
+      'SELECT day_of_week, lunch_name, lunch_description, lunch_tag, night_name, night_description, night_tag, allday_name, allday_description, allday_tag FROM specials ORDER BY day_of_week'
     ).all();
     if (results?.length) return results.map(toSpecial);
   } catch {}
