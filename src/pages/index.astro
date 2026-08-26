@@ -489,7 +489,7 @@ const welcomeHolderAssets = [
   }
 
   /* Printed paper, posted photos, and railroad-stationery surfaces. */
-  .hero-after,#welcome{position:relative;background-color:var(--page-parchment);background-image:radial-gradient(rgba(77,45,24,.1) .65px,transparent .75px),linear-gradient(90deg,rgba(111,65,29,.07),transparent 15%,transparent 85%,rgba(111,65,29,.06));background-size:5px 5px,100% 100%}
+  #welcome{position:relative;background-color:var(--page-parchment);background-image:radial-gradient(rgba(77,45,24,.1) .65px,transparent .75px),linear-gradient(90deg,rgba(111,65,29,.07),transparent 15%,transparent 85%,rgba(111,65,29,.06));background-size:5px 5px,100% 100%}
   .welcome-copy h2{font-family:var(--display);line-height:1.05}.welcome-copy p{max-width:35ch}
   .photo-stack{gap:0;padding:16px 22px 28px}
   .photo{border:8px solid #f6ecd8;border-radius:0;box-shadow:2px 3px 0 rgba(76,45,24,.22),7px 10px 18px rgba(43,27,20,.2);overflow:visible;background:#f6ecd8}
@@ -543,7 +543,7 @@ const welcomeHolderAssets = [
   .daily-special h2{margin:0 0 8px;color:#f8efd8;font-family:var(--display);font-size:clamp(1.35rem,2.15vw,2rem);line-height:1.05}
   .daily-special__description{margin:0 auto;color:#f6ecd8;line-height:1.35}
   .daily-special__tag{display:inline-block;margin-top:14px;padding:4px 9px;border:1px solid rgba(235,194,109,.75);color:var(--ochre);font-family:var(--label);font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;background:transparent}
-  .allday-banner{position:relative;isolation:isolate;display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;column-gap:clamp(12px,2vw,20px);row-gap:4px;width:min(var(--content-wide),100% - clamp(36px,8vw,128px));margin:clamp(22px,3.2vw,32px) auto;padding:clamp(10px,1.6vw,14px) clamp(18px,3vw,28px);background-color:#173747;background-image:radial-gradient(rgba(247,236,214,.13) .65px,transparent .8px),linear-gradient(115deg,rgba(0,0,0,.16),transparent 22%,transparent 76%,rgba(0,0,0,.13));background-size:5px 5px,100% 100%;color:#f6ecd8;border:2px solid var(--ochre);box-shadow:4px 5px 0 rgba(43,27,20,.28),0 10px 22px rgba(43,27,20,.2);text-align:center}
+  .allday-banner{position:relative;isolation:isolate;display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;column-gap:clamp(12px,2vw,20px);row-gap:4px;width:min(var(--content-wide),100% - clamp(36px,8vw,128px));margin:clamp(10px,1.4vw,16px) auto clamp(16px,2.2vw,24px);padding:clamp(10px,1.6vw,14px) clamp(18px,3vw,28px);background-color:#173747;background-image:radial-gradient(rgba(247,236,214,.13) .65px,transparent .8px),linear-gradient(115deg,rgba(0,0,0,.16),transparent 22%,transparent 76%,rgba(0,0,0,.13));background-size:5px 5px,100% 100%;color:#f6ecd8;border:2px solid var(--ochre);box-shadow:4px 5px 0 rgba(43,27,20,.28),0 10px 22px rgba(43,27,20,.2);text-align:center}
   .allday-banner::before{content:"";position:absolute;z-index:-1;inset:6px;border:1px solid rgba(235,194,109,.62);pointer-events:none}
   .allday-banner__label{margin:0;color:#f6ecd8;font-family:var(--label);font-weight:700;font-size:clamp(.78rem,1.1vw,.92rem);letter-spacing:.14em;text-transform:uppercase;line-height:1.25}
   .allday-banner__label span{color:var(--ochre);font-size:.88em;letter-spacing:0}
@@ -653,7 +653,6 @@ const welcomeHolderAssets = [
   .welcome-divider{animation:hero-welcome-divider .35s ease 4.55s both}
   .photo-stack{animation:welcome-photo-composition .8s cubic-bezier(.2,.72,.25,1) 5.37s both}
   .welcome-closing{animation:poster-rise .5s cubic-bezier(.2,.72,.25,1) 6.24s both}
-  .hero-after::after{content:"";position:absolute;z-index:3;right:clamp(18px,4vw,64px);bottom:0;left:clamp(18px,4vw,64px);height:1px;background:linear-gradient(to right,transparent 0%,var(--ochre) 18%,var(--ochre) 82%,transparent 100%);opacity:.62;pointer-events:none}
   @keyframes hero-welcome-divider{to{opacity:1}}
   @keyframes poster-rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
   @keyframes welcome-photo-composition{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
