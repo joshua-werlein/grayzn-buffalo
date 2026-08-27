@@ -1,170 +1,96 @@
 ---
 import Base from '../../layouts/Base.astro';
 import { isAuthed } from '../../lib/auth';
+import { hasPriceNotation, isIsoCalendarDate } from '../../lib/weekly-specials';
+
 const env = (Astro.locals as any).runtime?.env ?? {};
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
-
-const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+type DayValues = { lunch_content: string; nightly_content: string; allday_content: string };
+const blankDay = (): DayValues => ({ lunch_content: '', nightly_content: '', allday_content: '' });
 let notice = '';
+let error = '';
+let weekStart = '';
+let weekEnd = '';
+let dayValues = DAYS.map(blankDay);
+const readValues = (form: FormData) => DAYS.map((_, day) => ({
+  lunch_content: String(form.get(`lunch_${day}`) ?? '').trim(),
+  nightly_content: String(form.get(`nightly_${day}`) ?? '').trim(),
+  allday_content: String(form.get(`allday_${day}`) ?? '').trim(),
+}));
+
 if (Astro.request.method === 'POST') {
-  const f = await Astro.request.formData();
+  const form = await Astro.request.formData();
+  weekStart = String(form.get('week_start_date') ?? '').trim();
+  weekEnd = String(form.get('week_end_date') ?? '').trim();
+  dayValues = readValues(form);
   try {
-    const value = (key: string) => String(f.get(key) ?? '').trim();
-    await env.DB.prepare(`INSERT INTO specials (
-        day_of_week, name, description, tag,
-        lunch_name, lunch_description, lunch_tag,
-        night_name, night_description, night_tag,
-        allday_name, allday_description, allday_tag
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
-      ON CONFLICT(day_of_week) DO UPDATE SET
-        name=?2, description=?3, tag=?4,
-        lunch_name=?5, lunch_description=?6, lunch_tag=?7,
-        night_name=?8, night_description=?9, night_tag=?10,
-        allday_name=?11, allday_description=?12, allday_tag=?13`)
-      .bind(
-        Number(f.get('day_of_week')),
-        value('night_name'), value('night_description'), value('night_tag') || null,
-        value('lunch_name'), value('lunch_description'), value('lunch_tag') || null,
-        value('night_name'), value('night_description'), value('night_tag') || null,
-        value('allday_name'), value('allday_description'), value('allday_tag') || null,
-      ).run();
-    notice = `${DAYS[Number(f.get('day_of_week'))]} updated.`;
-  } catch { notice = 'Database not connected yet — see README.'; }
+    if (!isIsoCalendarDate(weekStart) || !isIsoCalendarDate(weekEnd)) throw new Error('Enter valid week start and end dates.');
+    if (weekStart > weekEnd) throw new Error('Week start must be on or before week end.');
+    const allContent = dayValues.flatMap((day) => [day.allday_content, day.lunch_content, day.nightly_content]);
+    if (!allContent.some(Boolean)) throw new Error('Enter at least one weekly special before saving.');
+    if (allContent.some((value) => value.length > 1800)) throw new Error('Each field must be 1,800 characters or fewer.');
+    if (allContent.some(hasPriceNotation)) throw new Error('Do not enter prices. Remove dollar signs, cents, or written dollar amounts.');
+    const overlap = await env.DB.prepare(
+      `SELECT id FROM weekly_specials WHERE week_start_date <= ?2 AND week_end_date >= ?1
+       AND NOT (week_start_date = ?1 AND week_end_date = ?2) LIMIT 1`,
+    ).bind(weekStart, weekEnd).first();
+    if (overlap) throw new Error('Those dates overlap another weekly entry. Choose a non-overlapping date range.');
+    const existing = await env.DB.prepare(
+      'SELECT id FROM weekly_specials WHERE week_start_date = ?1 AND week_end_date = ?2',
+    ).bind(weekStart, weekEnd).first();
+    let weeklyId: number;
+    if (existing) {
+      weeklyId = Number((existing as any).id);
+      await env.DB.prepare('UPDATE weekly_specials SET updated_at = CURRENT_TIMESTAMP WHERE id = ?1').bind(weeklyId).run();
+    } else {
+      const result = await env.DB.prepare('INSERT INTO weekly_specials (week_start_date, week_end_date) VALUES (?1, ?2)').bind(weekStart, weekEnd).run();
+      weeklyId = Number(result.meta.last_row_id);
+    }
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM weekly_special_days WHERE weekly_special_id = ?1').bind(weeklyId),
+      ...dayValues.map((day, dayOfWeek) => env.DB.prepare(
+        `INSERT INTO weekly_special_days (weekly_special_id, day_of_week, lunch_content, nightly_content, allday_content)
+         VALUES (?1, ?2, ?3, ?4, ?5)`,
+      ).bind(weeklyId, dayOfWeek, day.lunch_content, day.nightly_content, day.allday_content)),
+    ]);
+    notice = 'Weekly specials saved.';
+  } catch (caught) { error = caught instanceof Error ? caught.message : 'Could not save weekly specials.'; }
+}
+if (!weekStart && !weekEnd) {
+  try {
+    const latest: any = await env.DB.prepare('SELECT id, week_start_date, week_end_date FROM weekly_specials ORDER BY week_end_date DESC LIMIT 1').first();
+    if (latest) {
+      weekStart = String(latest.week_start_date); weekEnd = String(latest.week_end_date);
+      const { results } = await env.DB.prepare('SELECT day_of_week, lunch_content, nightly_content, allday_content FROM weekly_special_days WHERE weekly_special_id = ?1').bind(latest.id).all();
+      for (const row of results ?? []) dayValues[Number((row as any).day_of_week)] = {
+        lunch_content: String((row as any).lunch_content ?? ''), nightly_content: String((row as any).nightly_content ?? ''), allday_content: String((row as any).allday_content ?? ''),
+      };
+    }
+  } catch {}
 }
 if (Astro.request.method === 'POST' && Astro.request.headers.get('accept')?.includes('application/json')) {
-  return new Response(JSON.stringify({
-    ok: !notice.startsWith('Database not connected yet'),
-    message: notice,
-  }), {
-    status: notice.startsWith('Database not connected yet') ? 503 : 200,
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
-  });
+  return new Response(JSON.stringify({ ok: !error, message: error || notice }), { status: error ? 400 : 200, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
 }
-let specials: any[] = [];
-try { specials = (await env.DB.prepare('SELECT * FROM specials ORDER BY day_of_week').all()).results ?? []; } catch {}
-const byDay = (i:number) => specials.find(s => s.day_of_week === i) ?? {
-  lunch_name: '', lunch_description: '', lunch_tag: '',
-  night_name: '', night_description: '', night_tag: '',
-  allday_name: '', allday_description: '', allday_tag: '',
-};
 ---
-<Base title="Admin · Specials — Grayz'n Buffalo">
+<Base title="Admin · Weekly Specials — Grayz'n Buffalo">
 <section>
-  <div class="section-head">
-    <h2>Daily Specials</h2>
-    <p class="back back-top"><a href="/admin">← Back to admin</a></p>
-    {notice && <p><strong>{notice}</strong></p>}
-  </div>
-  <div class="admin-wrap">
-    {DAYS.map((d, i) => { const s = byDay(i); return (
-      <form method="post" class="day-form">
-        <h3>{d}</h3>
-        <input type="hidden" name="day_of_week" value={i} />
-        <fieldset class="service-form allday-form">
-          <legend>All Day Special <span>All day</span></legend>
-          <p class="hint-block">Leave blank to hide the all-day special for {d}.</p>
-          <label for={`allday-name-${i}`}>Special name <span class="hint">optional</span></label>
-          <input id={`allday-name-${i}`} name="allday_name" value={s.allday_name ?? ''} />
-          <label for={`allday-description-${i}`}>Description <span class="hint">optional</span></label>
-          <input id={`allday-description-${i}`} name="allday_description" value={s.allday_description ?? ''} />
-          <label for={`allday-tag-${i}`}>Tag <span class="hint">optional</span></label>
-          <input id={`allday-tag-${i}`} name="allday_tag" value={s.allday_tag ?? ''} />
-        </fieldset>
-        <fieldset class="service-form lunch-form">
-          <legend>Lunch Special <span>11 AM–1:30 PM</span></legend>
-          <label for={`lunch-name-${i}`}>Special name <span class="hint">optional</span></label>
-          <input id={`lunch-name-${i}`} name="lunch_name" value={s.lunch_name ?? ''} />
-          <label for={`lunch-description-${i}`}>Description <span class="hint">optional</span></label>
-          <input id={`lunch-description-${i}`} name="lunch_description" value={s.lunch_description ?? ''} />
-          <label for={`lunch-tag-${i}`}>Tag <span class="hint">optional</span></label>
-          <input id={`lunch-tag-${i}`} name="lunch_tag" value={s.lunch_tag ?? ''} />
-        </fieldset>
-        <fieldset class="service-form night-form">
-          <legend>Nightly Special <span>5–10 PM</span></legend>
-          <label for={`night-name-${i}`}>Special name <span class="hint">optional</span></label>
-          <input id={`night-name-${i}`} name="night_name" value={s.night_name ?? ''} />
-          <label for={`night-description-${i}`}>Description <span class="hint">optional</span></label>
-          <input id={`night-description-${i}`} name="night_description" value={s.night_description ?? ''} />
-          <label for={`night-tag-${i}`}>Tag <span class="hint">optional</span></label>
-          <input id={`night-tag-${i}`} name="night_tag" value={s.night_tag ?? ''} />
-        </fieldset>
-        <button class="btn btn-primary" type="submit">Save {d}</button>
-      </form>
-    ); })}
-    <p style="text-align:center"><a href="/admin">← Back to admin</a></p>
-  </div>
+  <div class="section-head"><h2>Weekly Specials</h2><p class="back"><a href="/admin">← Back to admin</a></p>{notice && <p><strong>{notice}</strong></p>}{error && <p class="error"><strong>{error}</strong></p>}</div>
+  <form method="post" class="weekly-form">
+    <fieldset class="week-dates"><legend>Week dates</legend><label for="week-start">Week starting</label><input id="week-start" name="week_start_date" type="date" value={weekStart} required /><label for="week-end">Week ending</label><input id="week-end" name="week_end_date" type="date" value={weekEnd} required /></fieldset>
+    <p class="instructions">Enter one day’s specials in each field. Nightly specials may use multiple lines. Do not enter prices.</p>
+    <div class="day-grid">{DAYS.map((day, index) => (
+      <fieldset class="day-fields"><legend>{day}</legend>
+        <label for={`allday-${index}`}>All Day</label><textarea id={`allday-${index}`} name={`allday_${index}`} rows="2">{dayValues[index].allday_content}</textarea>
+        <label for={`lunch-${index}`}>Lunch <span>11 AM–1:30 PM</span></label><textarea id={`lunch-${index}`} name={`lunch_${index}`} rows="2">{dayValues[index].lunch_content}</textarea>
+        <label for={`nightly-${index}`}>Nightly <span>5–10 PM</span></label><textarea id={`nightly-${index}`} name={`nightly_${index}`} rows="3">{dayValues[index].nightly_content}</textarea>
+      </fieldset>
+    ))}</div>
+    <button class="btn btn-primary" type="submit">Save All Weekly Specials</button>
+  </form>
 </section>
-<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 </Base>
-
-<script>
-  const toastEl = document.getElementById('toast')!;
-  let toastTimer: number | undefined;
-
-  function toast(message: string, kind: 'ok' | 'bad' | 'busy' = 'ok') {
-    window.clearTimeout(toastTimer);
-    toastEl.textContent = message;
-    toastEl.className = `toast show ${kind}`;
-    toastEl.hidden = false;
-    if (kind !== 'busy') {
-      toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 3200);
-    }
-  }
-
-  document.querySelectorAll<HTMLFormElement>('.day-form').forEach((form) => {
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
-      const label = submit?.textContent ?? 'Save special';
-      if (submit) {
-        submit.disabled = true;
-        submit.textContent = 'Saving…';
-      }
-      form.setAttribute('aria-busy', 'true');
-
-      try {
-        toast('Saving special…', 'busy');
-        const response = await fetch('/admin/specials', {
-          method: 'POST',
-          headers: { Accept: 'application/json' },
-          body: new FormData(form),
-        });
-        const data = await response.json();
-        if (!response.ok || !data.ok) throw new Error(data.message ?? 'Could not save the special.');
-        toast(data.message ?? 'Special updated.');
-      } catch (error) {
-        toast(error instanceof Error ? error.message : 'Could not save the special.', 'bad');
-      } finally {
-        form.removeAttribute('aria-busy');
-        if (submit) {
-          submit.disabled = false;
-          submit.textContent = label;
-        }
-      }
-    });
-  });
-</script>
-
+<script>const form = document.querySelector<HTMLFormElement>('.weekly-form'); form?.addEventListener('submit', () => form.setAttribute('aria-busy', 'true'));</script>
 <style>
-  .admin-wrap{max-width:680px;margin:0 auto}
-  .day-form{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(36,22,16,.1);margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
-  .day-form h3{font-family:var(--display);grid-column:1 / -1}
-  .service-form{min-width:0;border:1px solid rgba(36,22,16,.16);border-radius:10px;padding:14px;display:grid;gap:7px}
-  .service-form legend{padding:0 5px;font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:.88rem}
-  .service-form legend span{font-weight:500;letter-spacing:0;text-transform:none;color:var(--ink-2)}
-  .allday-form{grid-column:1 / -1;border-top:4px solid var(--ochre)}
-  .lunch-form{border-top:4px solid var(--amber)}
-  .night-form{border-top:4px solid var(--crimson)}
-  .day-form label{font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.78rem}
-  .day-form input{width:100%;padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream)}
-  .hint{text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-2)}
-  .hint-block{margin:0;font-size:.82rem;color:var(--ink-2)}
-  .day-form button{grid-column:1 / -1;justify-self:start}
-  .day-form[aria-busy="true"]{opacity:.7}
-  .back{text-align:center;margin-top:10px}
-  .toast{position:fixed;left:50%;transform:translate(-50%,20px);bottom:calc(24px + env(safe-area-inset-bottom));z-index:200;max-width:min(92vw,420px);padding:14px 22px;border-radius:10px;text-align:center;font-family:var(--label);font-weight:700;letter-spacing:.04em;box-shadow:0 10px 30px rgba(0,0,0,.35);opacity:0;transition:opacity .22s ease,transform .22s ease;pointer-events:none}
-  .toast.show{opacity:1;transform:translate(-50%,0)}.toast.ok{background:var(--gold);color:var(--ink)}.toast.bad{background:#8d1626;color:var(--cream)}.toast.busy{background:var(--ink);color:var(--cream)}
-  @media (max-width:820px){.toast{bottom:calc(74px + env(safe-area-inset-bottom))}}
-  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
-  @media (max-width:620px){.day-form{grid-template-columns:1fr}}
+  .weekly-form{max-width:1040px;margin:0 auto;background:#fff;border-radius:12px;padding:20px;box-shadow:0 6px 16px rgba(36,22,16,.1)}.week-dates{border:0;display:grid;grid-template-columns:auto minmax(150px,1fr) auto minmax(150px,1fr);gap:8px 12px;align-items:center}legend{font-family:var(--label);font-weight:700;letter-spacing:.1em;text-transform:uppercase}.week-dates legend{grid-column:1 / -1}label{font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.78rem}.day-fields label span{text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-2)}input,textarea{width:100%;padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit;line-height:1.35}textarea{resize:vertical}.instructions{margin:18px 0;color:var(--ink-2)}.day-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.day-fields{min-width:0;border:1px solid rgba(36,22,16,.16);border-radius:10px;padding:14px;display:grid;gap:6px}.day-fields:nth-child(3n+1){border-top:4px solid var(--ochre)}.day-fields:nth-child(3n+2){border-top:4px solid var(--amber)}.day-fields:nth-child(3n){border-top:4px solid var(--crimson)}button{margin-top:20px}.error{color:var(--crimson)}.back{text-align:center;margin-top:10px}.weekly-form[aria-busy="true"]{opacity:.7}@media (max-width:680px){.weekly-form{padding:16px}.week-dates{grid-template-columns:1fr}.day-grid{grid-template-columns:1fr}}
 </style>

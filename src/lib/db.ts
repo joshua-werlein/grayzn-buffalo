@@ -79,6 +79,76 @@ export async function getSpecials(env: any): Promise<Special[]> {
   return FALLBACK_SPECIALS.map(toSpecial);
 }
 
+export type WeeklySpecial = {
+  id: number;
+  week_start_date: string;
+  week_end_date: string;
+  created_at: string;
+  updated_at: string;
+  days: WeeklySpecialDay[];
+};
+
+export type WeeklySpecialDay = {
+  day_of_week: number;
+  lunch_content: string;
+  nightly_content: string;
+  allday_content: string;
+};
+
+export type ApplicableWeeklySpecial =
+  | { status: 'current'; special: WeeklySpecial }
+  | { status: 'expired'; special: WeeklySpecial }
+  | { status: 'missing' };
+
+function toWeeklySpecial(row: any, days: WeeklySpecialDay[]): WeeklySpecial {
+  return {
+    id: Number(row.id),
+    week_start_date: String(row.week_start_date),
+    week_end_date: String(row.week_end_date),
+    created_at: String(row.created_at ?? ''),
+    updated_at: String(row.updated_at ?? ''),
+    days,
+  };
+}
+
+async function weeklySpecialWithDays(env: any, row: any): Promise<WeeklySpecial> {
+  const { results } = await env.DB.prepare(
+    `SELECT day_of_week, lunch_content, nightly_content, allday_content
+     FROM weekly_special_days WHERE weekly_special_id = ?1 ORDER BY day_of_week`,
+  ).bind(row.id).all();
+  const days = (results ?? []).map((day: any) => ({
+    day_of_week: Number(day.day_of_week),
+    lunch_content: String(day.lunch_content ?? ''),
+    nightly_content: String(day.nightly_content ?? ''),
+    allday_content: String(day.allday_content ?? ''),
+  }));
+  return toWeeklySpecial(row, days);
+}
+
+/** Returns a current entry, or the most recently expired one for an honest notice. */
+export async function getApplicableWeeklySpecial(env: any, calendarDate: string): Promise<ApplicableWeeklySpecial> {
+  try {
+    const current = await env.DB.prepare(
+      `SELECT id, week_start_date, week_end_date, created_at, updated_at
+       FROM weekly_specials
+       WHERE week_start_date <= ?1 AND week_end_date >= ?1
+       ORDER BY week_start_date DESC
+       LIMIT 1`,
+    ).bind(calendarDate).first();
+    if (current) return { status: 'current', special: await weeklySpecialWithDays(env, current) };
+
+    const expired = await env.DB.prepare(
+      `SELECT id, week_start_date, week_end_date, created_at, updated_at
+       FROM weekly_specials
+       WHERE week_end_date < ?1
+       ORDER BY week_end_date DESC
+       LIMIT 1`,
+    ).bind(calendarDate).first();
+    if (expired) return { status: 'expired', special: await weeklySpecialWithDays(env, expired) };
+  } catch {}
+  return { status: 'missing' };
+}
+
 export async function getMenu(env: any): Promise<{ categories: Category[]; items: Item[] }> {
   try {
     const cats = await env.DB.prepare('SELECT * FROM categories ORDER BY sort').all();

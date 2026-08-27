@@ -1,196 +1,40 @@
 ---
 import Base from '../layouts/Base.astro';
-import { getSpecials, getSetting } from '../lib/db';
-
+import { getApplicableWeeklySpecial, getSetting, type WeeklySpecialDay } from '../lib/db';
+import { chicagoCalendarDate, chicagoWeekday, formatWeeklyDateRange } from '../lib/weekly-specials';
 const env = (Astro.locals as any).runtime?.env ?? {};
-const [specials, deliveryPaused] = await Promise.all([
-  getSpecials(env),
-  getSetting(env, 'delivery_paused', '0'),
-]);
-
+const today = chicagoCalendarDate();
+const todayDay = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].indexOf(chicagoWeekday());
+const [weekly, deliveryDisplay] = await Promise.all([getApplicableWeeklySpecial(env, today), getSetting(env, 'delivery_display', 'available')]);
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const week = [...specials].sort((a, b) => a.day_of_week - b.day_of_week);
-const deliveryPausedFlag = deliveryPaused === '1';
-
-// Recurring deals — hardcoded constants (stable, like delivery). No prices.
-const recurring = [
-  { name: 'Lunch Specials', when: '11 AM – 1:30 PM' },
-  { name: 'Nightly Specials', when: '5 – 10 PM' },
-  { name: 'Happy Hour', when: 'Mon–Fri · 5 – 6:30 PM' },
-  { name: 'Mexican Night', when: 'Tuesdays · 5 – 10 PM' },
-];
+const emptyDay = (day_of_week: number): WeeklySpecialDay => ({ day_of_week, lunch_content: '', nightly_content: '', allday_content: '' });
+const week = weekly.status === 'current' ? DAYS.map((_, index) => weekly.special.days.find((day) => day.day_of_week === index) ?? emptyDay(index)) : [];
+const range = weekly.status === 'missing' ? '' : formatWeeklyDateRange(weekly.special.week_start_date, weekly.special.week_end_date);
+const recurring = [{ name: 'Lunch Specials', when: '11 AM – 1:30 PM' }, { name: 'Nightly Specials', when: '5 – 10 PM' }, { name: 'Friday Fish', when: 'Fridays · 5 – 10 PM' }, { name: 'Happy Hour', when: 'Mon–Fri · 5 – 6:30 PM' }, { name: 'Mexican Night', when: 'Tuesdays · 5 – 10 PM' }];
 ---
-<Base
-  title="Specials — Grayz'n Buffalo Bar & Grill, Mondovi WI"
-  description="This week's daily specials at Grayz'n Buffalo Bar & Grill in Mondovi, WI — a different deal every day, plus Mexican Night on Tuesdays, happy hour, lunch and nightly specials."
->
+<Base title="Specials — Grayz'n Buffalo Bar & Grill, Mondovi WI" description="This week's specials at Grayz'n Buffalo Bar & Grill in Mondovi, WI.">
 <section class="specials-page section-tavern">
-  <div class="section-head interior-heading">
-    <span class="kicker">Fresh from the kitchen</span>
-    <h1>This Week's Specials</h1>
-    <span class="vintage-rule" aria-hidden="true"></span>
-    <p>A different deal every day of the week. Staff post the details to Facebook — this is the full lineup.</p>
+  <div class="section-head interior-heading"><span class="kicker">Fresh from the kitchen</span><h1>This Week's Specials</h1><span class="vintage-rule" aria-hidden="true"></span>
+    {weekly.status === 'current' ? <p>Weekly Specials — {range}</p> : weekly.status === 'expired' ? <p>Weekly Specials — {range} · Expired</p> : <p>Check Facebook or call us for the current specials.</p>}
   </div>
-
-  <!-- ── The whole week, all at once ─────────────────────────────── -->
-  <ul class="week" aria-label="Daily specials">
-    {week.map((s) => (
-      <li class="day-card" data-day={s.day_of_week}>
-        <span class="day-name">{DAYS[s.day_of_week]}</span>
-        {s.allday_name && (
-          <section class="day-allday">
-            <p class="service-label">All Day Special</p>
-            <h3>{s.allday_name}</h3>
-            {s.allday_description && <p class="day-desc">{s.allday_description}</p>}
-            {s.allday_tag && <span class="tag-pill">{s.allday_tag}</span>}
-          </section>
-        )}
+  {weekly.status === 'current' ? (
+    <ul class="week" aria-label={`Weekly specials, ${range}`}>
+      {week.map((special) => <li class:list={['day-card', { 'is-today': special.day_of_week === todayDay }]}>
+        {special.day_of_week === todayDay && <span class="today-badge">Today</span>}<span class="day-name">{DAYS[special.day_of_week]}</span>
+        {special.allday_content && <section class="day-allday"><p class="service-label">All Day Special</p><p class="day-desc">{special.allday_content}</p></section>}
         <div class="day-services">
-          <section class="day-service lunch-service">
-            <p class="service-label">Lunch Special <span>11 AM–1:30 PM</span></p>
-            <h3>{s.lunch_name || 'Lunch special'}</h3>
-            <p class="day-desc">{s.lunch_description || 'Ask at the bar about today’s lunch special.'}</p>
-            {s.lunch_tag && <span class="tag-pill">{s.lunch_tag}</span>}
-          </section>
-          <section class="day-service night-service">
-            <p class="service-label">Nightly Special <span>5–10 PM</span></p>
-            <h3>{s.night_name || 'Nightly special'}</h3>
-            <p class="day-desc">{s.night_description || 'Ask at the bar about tonight’s special.'}</p>
-            {s.night_tag && <span class="tag-pill">{s.night_tag}</span>}
-          </section>
+          <section class="day-service lunch-service"><p class="service-label">Lunch Special <span>11 AM–1:30 PM</span></p><p class="day-desc">{special.lunch_content || 'Ask at the bar about today’s lunch special.'}</p></section>
+          <section class="day-service night-service"><p class="service-label">Nightly Special <span>5–10 PM</span></p><p class="day-desc night-lines">{special.nightly_content || 'Ask at the bar about tonight’s special.'}</p></section>
         </div>
-      </li>
-    ))}
-  </ul>
-
-  <!-- ── Every week (recurring) ──────────────────────────────────── -->
-  <div class="recurring-head">
-    <span class="kicker">Every week</span>
-    <h3 class="recurring-title">On the regular</h3>
-  </div>
-  <ul class="recurring" aria-label="Recurring specials">
-    {recurring.map((r) => (
-      <li class="rec-card">
-        <span class="rec-name">{r.name}</span>
-        <span class="rec-when">{r.when}</span>
-      </li>
-    ))}
-  </ul>
-
-  <!-- ── Delivery (mirrors the pause switch) ─────────────────────── -->
-  <div class={`delivery-block${deliveryPausedFlag ? ' paused' : ''}`}>
-    {deliveryPausedFlag ? (
-      <p><strong>Delivery is paused right now</strong> — call us for details.</p>
-    ) : (
-      <p><strong>Delivery</strong> — Monday–Friday, 11 AM – 1:30 PM, within Mondovi city limits.</p>
-    )}
-  </div>
-
-  <!-- ── CTA ─────────────────────────────────────────────────────── -->
-  <div class="specials-cta">
-    <a class="btn btn-primary" href="tel:+17159264431">Call (715) 926-4431</a>
-    <a class="btn btn-ghost" href="https://www.facebook.com/grayznbuffalo/" target="_blank" rel="noopener">See it on Facebook</a>
-  </div>
+      </li>)}
+    </ul>
+  ) : <div class="weekly-notice" role="status"><strong>{weekly.status === 'expired' ? 'These specials have ended.' : 'No current weekly specials are posted.'}</strong><p>These specials have ended. Please check Facebook or call us for the current specials.</p></div>}
+  <div class="recurring-head"><span class="kicker">Every week</span><h3 class="recurring-title">On the regular</h3></div>
+  <ul class="recurring" aria-label="Recurring specials">{recurring.map((item) => <li class="rec-card"><span class="rec-name">{item.name}</span><span class="rec-when">{item.when}</span></li>)}</ul>
+  {deliveryDisplay !== 'hidden' && <div class:list={['delivery-block', { paused: deliveryDisplay === 'unavailable' }]}>{deliveryDisplay === 'unavailable' ? <p><strong>Delivery is unavailable at this time</strong> — call us for details.</p> : <p><strong>Delivery</strong> — Monday–Friday, 11 AM – 1:30 PM, within Mondovi city limits.</p>}</div>}
+  <div class="specials-cta"><a class="btn btn-primary" href="tel:+17159264431">Call (715) 926-4431</a><a class="btn btn-ghost" href="https://www.facebook.com/grayznbuffalo/" target="_blank" rel="noopener">See it on Facebook</a></div>
 </section>
 </Base>
-
-<script>
-  // Mark today from the visitor's local clock (server time is UTC).
-  const today = new Date().getDay();
-  const card = document.querySelector(`.day-card[data-day="${today}"]`);
-  if (card) {
-    card.classList.add('is-today');
-    card.parentElement?.prepend(card);
-    const badge = document.createElement('span');
-    badge.className = 'today-badge';
-    badge.textContent = 'Today';
-    card.prepend(badge);
-  }
-</script>
-
 <style>
-  .specials-page{background:var(--ink);color:var(--cream);min-height:70vh;padding-top:clamp(28px,4vw,48px)}
-  .specials-page .section-head .kicker{color:var(--amber)}
-  .specials-page .section-head :is(h1,h2){color:var(--gold)}
-  .specials-page .section-head p{color:var(--cream-2)}
-
-  /* ── week grid ── */
-  .week{list-style:none;margin:0 auto;padding:0;max-width:1120px;
-    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
-  .day-card{position:relative;background:#2c1c13;border:1px solid rgba(247,234,211,.14);
-    border-radius:14px;padding:22px 24px;
-    box-shadow:0 6px 18px rgba(0,0,0,.3)}
-  .day-name{font-family:var(--label);font-weight:700;letter-spacing:.18em;
-    text-transform:uppercase;font-size:.8rem;color:var(--amber)}
-  .day-services{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}
-  .day-service{padding:13px;border-radius:9px;background:rgba(0,0,0,.13);border-top:4px solid var(--amber)}
-  .day-service.night-service{border-top-color:var(--crimson)}
-  .service-label{font-family:var(--label);font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);font-size:.76rem}
-  .service-label span{display:block;color:var(--cream-2);font-size:.68rem;letter-spacing:.07em;margin-top:2px}
-  .day-card h3{font-family:var(--display);font-weight:400;font-size:1.18rem;
-    line-height:1.15;color:var(--cream)}
-  .day-desc{color:var(--cream-2);font-size:.95rem;margin:0}
-  .tag-pill{align-self:flex-start;margin-top:4px;font-family:var(--label);font-weight:700;
-    letter-spacing:.1em;text-transform:uppercase;font-size:.72rem;
-    background:var(--gold);color:var(--ink);padding:4px 12px;border-radius:999px}
-
-  /* all-day */
-  .day-allday{margin-top:12px;padding:12px 14px;border:1px solid var(--rule-light);border-left:4px solid var(--ochre);background:rgba(196,151,75,.08)}
-  .day-allday .service-label{color:var(--ochre)}
-  .day-allday h3{margin:4px 0 4px}
-  .day-allday .day-desc{margin-bottom:4px}
-
-  /* today */
-  .day-card.is-today{grid-column:1 / -1;max-width:820px;width:100%;justify-self:center;
-    border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),0 8px 22px rgba(0,0,0,.4)}
-  .today-badge{position:absolute;top:-10px;right:14px;font-family:var(--label);font-weight:700;
-    letter-spacing:.12em;text-transform:uppercase;font-size:.68rem;
-    background:var(--crimson);color:#fff5e9;padding:3px 12px;border-radius:999px;
-    box-shadow:0 3px 8px rgba(0,0,0,.35)}
-
-  /* ── recurring ── */
-  .recurring-head{text-align:center;max-width:760px;margin:56px auto 22px}
-  .recurring-head .kicker{color:var(--amber)}
-  .recurring-title{font-family:var(--display);font-weight:400;color:var(--gold);
-    font-size:clamp(1.5rem,3.5vw,2.1rem);margin-top:6px}
-  .recurring{list-style:none;margin:0 auto;padding:0;max-width:1120px;
-    display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}
-  .rec-card{background:transparent;border:1.5px solid rgba(255,182,39,.4);
-    border-radius:12px;padding:18px 20px;text-align:center;
-    display:flex;flex-direction:column;gap:5px}
-  .rec-name{font-family:var(--display);font-weight:400;font-size:1.15rem;color:var(--cream)}
-  .rec-when{font-family:var(--label);font-weight:600;letter-spacing:.06em;
-    text-transform:uppercase;font-size:.82rem;color:var(--amber)}
-
-  /* ── delivery ── */
-  .delivery-block{max-width:820px;margin:44px auto 0;text-align:center;
-    background:rgba(255,210,63,.12);border:1.5px solid var(--gold);
-    border-radius:12px;padding:16px 22px}
-  .delivery-block p{margin:0;color:var(--cream);font-size:1.02rem}
-  .delivery-block strong{color:var(--gold)}
-  .delivery-block.paused{background:rgba(215,38,61,.14);border-color:var(--crimson)}
-  .delivery-block.paused strong{color:#ff9fae}
-
-  /* ── cta ── */
-  .specials-cta{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:44px auto 0}
-
-  @media (max-width:680px){
-    .week{grid-template-columns:1fr}
-    .day-card.is-today{grid-column:auto}
-    .day-services{grid-template-columns:1fr}
-  }
-
-  .specials-page{padding-top:clamp(32px,5vw,54px);background:var(--surface-wood)}.specials-page .section-head{margin-bottom:28px}.specials-page .section-head .kicker,.specials-page .section-head :is(h1,h2){color:var(--ochre)}.specials-page .vintage-rule{background:var(--brick)}
-  .week{max-width:var(--content-wide);gap:10px}.day-card{border:1px solid var(--rule-light);border-left:5px solid var(--ochre);border-radius:var(--panel-radius);padding:18px 20px;background:rgba(0,0,0,.12);box-shadow:none}.day-card:nth-child(even){border-left-color:var(--brick)}
-  .day-services{gap:0;margin-top:10px;border-top:1px solid var(--rule-light)}.day-service{padding:13px 0;border:0;border-radius:0;background:transparent;border-top:0}.day-service + .day-service{padding-left:16px;border-left:1px solid var(--rule-light)}
-  .day-card.is-today{max-width:var(--content-standard);border:2px solid var(--ochre);border-left:7px solid var(--brick);box-shadow:var(--panel-shadow-dark)}.today-badge{top:-12px;right:12px;border-radius:2px;background:var(--brick)}
-  .recurring-head{margin:40px auto 16px}.recurring{max-width:var(--content-wide);gap:10px}.rec-card{border:1px solid var(--rule-light);border-radius:var(--panel-radius);padding:14px}.delivery-block{border-radius:var(--panel-radius);border-color:var(--ochre);padding:14px 18px}.specials-cta{margin-top:30px}
-  @media (max-width:680px){.day-service + .day-service{padding-left:0;margin-top:12px;padding-top:12px;border-left:0;border-top:1px solid var(--rule-light)}}
-
-  .specials-page{background-color:var(--denim);background-image:linear-gradient(115deg,rgba(255,255,255,.045),transparent 30%,rgba(0,0,0,.2)),repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 5px);border-top:4px solid #112b38}
-  .specials-page .section-head{padding-bottom:18px;border-bottom:1px solid var(--rule-light)}.specials-page .section-head .kicker{color:var(--cream-2)}.specials-page .section-head :is(h1,h2){color:var(--cream)}.specials-page .vintage-rule{background:linear-gradient(90deg,transparent,var(--ochre),transparent)}
-  .week{gap:16px}.day-card{border:2px solid rgba(235,216,177,.65);border-left:7px solid var(--ochre);border-radius:0;background:rgba(11,38,50,.48);box-shadow:3px 4px 0 rgba(10,22,28,.38)}.day-card:nth-child(even){border-left-color:var(--brick)}
-  .day-card.is-today{border:2px solid var(--cream);border-left:8px solid var(--brick);box-shadow:0 0 0 2px var(--ochre),4px 5px 0 rgba(10,22,28,.42)}.today-badge{border-radius:0;background:var(--brick);border:1px solid var(--cream)}
-  .day-services{border-top-color:rgba(235,216,177,.5)}.day-service + .day-service{border-left-color:rgba(235,216,177,.5)}.service-label{color:var(--cream-2)}.day-card h3{color:var(--cream)}.tag-pill{border-radius:0;background:var(--ochre)}
-  .rec-card{border-radius:0;background:rgba(11,38,50,.32);border-color:rgba(235,216,177,.5)}.delivery-block{border-radius:0;background:rgba(7,29,40,.35);border-color:var(--ochre)}
+  .specials-page{background-color:var(--denim);background-image:linear-gradient(115deg,rgba(255,255,255,.045),transparent 30%,rgba(0,0,0,.2)),repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 5px);border-top:4px solid #112b38;color:var(--cream);min-height:70vh;padding-top:clamp(32px,5vw,54px)}.specials-page .section-head{padding-bottom:18px;border-bottom:1px solid var(--rule-light);margin-bottom:28px}.specials-page .section-head .kicker,.specials-page .section-head :is(h1,h2){color:var(--cream)}.specials-page .vintage-rule{background:linear-gradient(90deg,transparent,var(--ochre),transparent)}.week{list-style:none;margin:0 auto;padding:0;max-width:var(--content-wide);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.day-card{position:relative;border:2px solid rgba(235,216,177,.65);border-left:7px solid var(--ochre);border-radius:0;background:rgba(11,38,50,.48);box-shadow:3px 4px 0 rgba(10,22,28,.38);padding:18px 20px}.day-card:nth-child(even){border-left-color:var(--brick)}.day-card.is-today{grid-column:1 / -1;max-width:var(--content-standard);width:100%;justify-self:center;border:2px solid var(--cream);border-left:8px solid var(--brick);box-shadow:0 0 0 2px var(--ochre),4px 5px 0 rgba(10,22,28,.42)}.today-badge{position:absolute;top:-12px;right:12px;background:var(--brick);border:1px solid var(--cream);padding:3px 12px;font:700 .68rem var(--label);letter-spacing:.12em;text-transform:uppercase}.day-name{font:700 .8rem var(--label);letter-spacing:.18em;text-transform:uppercase;color:var(--amber)}.day-services{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;margin-top:10px;border-top:1px solid rgba(235,216,177,.5)}.day-service{padding:13px 0}.day-service + .day-service{padding-left:16px;border-left:1px solid rgba(235,216,177,.5)}.service-label{font:700 .76rem var(--label);letter-spacing:.14em;text-transform:uppercase;color:var(--cream-2)}.service-label span{display:block;font-size:.68rem;letter-spacing:.07em;margin-top:2px}.day-desc{margin:0;color:var(--cream-2);white-space:pre-line}.day-allday{margin-top:12px;padding:12px 14px;border:1px solid var(--rule-light);border-left:4px solid var(--ochre);background:rgba(196,151,75,.08)}.weekly-notice{max-width:820px;margin:0 auto;padding:20px;border:2px solid var(--ochre);background:rgba(11,38,50,.48);text-align:center}.weekly-notice p{margin:6px 0 0}.recurring-head{text-align:center;max-width:760px;margin:40px auto 16px}.recurring-head .kicker{color:var(--amber)}.recurring-title{font:400 clamp(1.5rem,3.5vw,2.1rem) var(--display);color:var(--gold);margin-top:6px}.recurring{list-style:none;margin:0 auto;padding:0;max-width:var(--content-wide);display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}.rec-card{border:1px solid rgba(235,216,177,.5);background:rgba(11,38,50,.32);padding:14px;text-align:center;display:flex;flex-direction:column;gap:5px}.rec-name{font:400 1.15rem var(--display);color:var(--cream)}.rec-when{font:600 .82rem var(--label);letter-spacing:.06em;text-transform:uppercase;color:var(--amber)}.delivery-block{max-width:820px;margin:44px auto 0;text-align:center;background:rgba(7,29,40,.35);border:1px solid var(--ochre);padding:14px 18px}.delivery-block p{margin:0}.delivery-block strong{color:var(--gold)}.delivery-block.paused{border-color:var(--crimson)}.specials-cta{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:30px auto 0}@media (max-width:680px){.week{grid-template-columns:1fr}.day-card.is-today{grid-column:auto}.day-service + .day-service{padding-left:0;margin-top:12px;padding-top:12px;border-left:0;border-top:1px solid rgba(235,216,177,.5)}}
 </style>

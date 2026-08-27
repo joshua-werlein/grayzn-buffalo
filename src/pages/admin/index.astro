@@ -48,12 +48,11 @@ if (Astro.request.method === 'POST') {
     }
 
   } else if (action === 'save-delivery-status' && authed) {
-    // Checkbox only: present ('1') => paused, absent => running.
-    // (No hidden fallback input — a duplicate name made get() always read "0".)
     try {
-      const paused = form.get('delivery_paused') === '1';
-      await setSetting(env, 'delivery_paused', paused ? '1' : '0');
-      notice = paused ? 'Delivery paused.' : 'Delivery is running.';
+      const deliveryDisplay = String(form.get('delivery_display') ?? 'available');
+      if (!['available', 'unavailable', 'hidden'].includes(deliveryDisplay)) throw new Error('Invalid delivery setting.');
+      await setSetting(env, 'delivery_display', deliveryDisplay);
+      notice = deliveryDisplay === 'hidden' ? 'Delivery announcement hidden.' : `Delivery marked ${deliveryDisplay}.`;
     } catch {
       notice = 'Database not connected yet — see README.';
     }
@@ -63,7 +62,7 @@ if (Astro.request.method === 'POST') {
 const announcements = authed
   ? await Promise.all(['announcement_1', 'announcement_2', 'announcement_3'].map((key) => getSetting(env, key, '')))
   : ['', '', ''];
-const deliveryPaused = authed && (await getSetting(env, 'delivery_paused', '0')) === '1';
+const deliveryDisplay = authed ? await getSetting(env, 'delivery_display', 'available') : 'available';
 ---
 <Base title="Admin — Grayz'n Buffalo">
 <section style="min-height:60vh">
@@ -101,11 +100,13 @@ const deliveryPaused = authed && (await getSetting(env, 'delivery_paused', '0'))
       <form method="post" class="delivery-form">
         <input type="hidden" name="action" value="save-delivery-status" />
         <p class="delivery-title">Delivery status</p>
-        <p class="hint">The public delivery message remains visible and switches between running and paused wording.</p>
-        <label class="delivery-switch" for="delivery-paused">
-          <input id="delivery-paused" name="delivery_paused" type="checkbox" value="1" role="switch" checked={deliveryPaused} />
-          <span data-switch-label>{deliveryPaused ? 'Delivery paused' : 'Delivery is running'}</span>
-        </label>
+        <p class="hint">Choose whether to show availability, an unavailable message, or no delivery announcement at all.</p>
+        <label for="delivery-display">Delivery display</label>
+        <select id="delivery-display" name="delivery_display">
+          <option value="available" selected={deliveryDisplay === 'available'}>Available — show delivery hours</option>
+          <option value="unavailable" selected={deliveryDisplay === 'unavailable'}>Unavailable — show the unavailable message</option>
+          <option value="hidden" selected={deliveryDisplay === 'hidden'}>Hidden — show no delivery announcement</option>
+        </select>
         <button class="btn btn-primary" type="submit">Save delivery status</button>
       </form>
 
@@ -133,29 +134,16 @@ const deliveryPaused = authed && (await getSetting(env, 'delivery_paused', '0'))
   <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 )}
 
-<script is:inline>
-  // Flip the switch label live so staff see the state before saving.
-  const sw = document.getElementById('delivery-paused');
-  const lbl = sw && sw.parentElement.querySelector('[data-switch-label]');
-  if (sw && lbl) {
-    sw.addEventListener('change', () => {
-      lbl.textContent = sw.checked ? 'Delivery paused' : 'Delivery is running';
-    });
-  }
-</script>
-
 <style>
   .panel{max-width:460px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;box-shadow:0 8px 22px rgba(36,22,16,.12);text-align:center}
   .panel label,.panel legend{display:block;text-align:left;margin-bottom:6px;font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.85rem}
-  .panel input{display:block;width:100%;margin:6px 0 14px;padding:12px;border:2px solid rgba(36,22,16,.2);border-radius:8px;font-size:1rem;background:var(--cream)}
+  .panel input,.panel select{display:block;width:100%;margin:6px 0 14px;padding:12px;border:2px solid rgba(36,22,16,.2);border-radius:8px;font-size:1rem;background:var(--cream)}
   .admin-links{list-style:none;display:flex;gap:12px;justify-content:center;margin-top:16px;flex-wrap:wrap}
   .announce-form{margin-top:26px;padding-top:22px;border-top:1px solid rgba(36,22,16,.12);text-align:left}
   .announce-form fieldset{border:0;padding:0;margin:0}
   .announce-form .hint,.delivery-form .hint{font-size:.85rem;color:var(--ink-2);margin:0 0 10px}
   .delivery-form{margin-top:26px;padding-top:22px;border-top:1px solid rgba(36,22,16,.12);text-align:left}
   .delivery-title{font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.85rem}
-  .delivery-switch{display:flex!important;align-items:center;gap:10px;margin:10px 0 14px!important;text-transform:none!important;letter-spacing:0!important;font-family:var(--body)!important;font-size:1rem!important}
-  .delivery-switch input{width:20px!important;height:20px;margin:0!important;padding:0!important;accent-color:var(--crimson)}
   .cf-turnstile{margin:0 0 16px;display:flex;justify-content:center;min-height:65px}
   .err{color:var(--crimson);font-weight:600;margin-bottom:12px}
   .warn{background:var(--amber);color:var(--ink);font-weight:700;padding:8px 12px;border-radius:8px;margin-bottom:14px;font-size:.9rem}

@@ -1,24 +1,15 @@
 ---
 import Base from '../layouts/Base.astro';
-import { getMenu, getSpecials, getWelcomePhotos, thumbKey, type Item, type WelcomePhoto } from '../lib/db';
+import { getMenu, getApplicableWeeklySpecial, getWelcomePhotos, thumbKey, type Item, type WelcomePhoto } from '../lib/db';
+import { chicagoCalendarDate, chicagoWeekday, formatWeeklyDateRange } from '../lib/weekly-specials';
 
 const env = (Astro.locals as any).runtime?.env ?? {};
 const { categories, items } = await getMenu(env);
-const specials = await getSpecials(env);
-const weekdayByShortName: Record<string, number> = {
-  Sun: 0,
-  Mon: 1,
-  Tue: 2,
-  Wed: 3,
-  Thu: 4,
-  Fri: 5,
-  Sat: 6,
-};
-// Cloudflare isolates use UTC by default; specials follow Mondovi's calendar day.
-const businessWeekday = weekdayByShortName[
-  new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short' }).format(new Date())
-] ?? new Date().getDay();
-const todaySpecial = specials.find((special) => special.day_of_week === businessWeekday) ?? specials[0];
+const today = chicagoCalendarDate();
+const weeklySpecial = await getApplicableWeeklySpecial(env, today);
+const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const todayDay = days.indexOf(chicagoWeekday());
+const weeklyRange = weeklySpecial.status === 'missing' ? '' : formatWeeklyDateRange(weeklySpecial.special.week_start_date, weeklySpecial.special.week_end_date);
 const welcomePhotos = await getWelcomePhotos(env);
 type WelcomeTile =
   | { source: 'client-upload'; photo: WelcomePhoto; menuItem: null }
@@ -98,13 +89,6 @@ const welcomeHolderAssets = [
 <div class="opening-poster">
 <section class="hero-after">
   <div class="hero-after__layout">
-    <article class="daily-special daily-special--lunch">
-      <p class="daily-special__label"><span aria-hidden="true">★</span> Lunch Special <span aria-hidden="true">★</span></p>
-      <p class="daily-special__hours">11 AM–1:30 PM</p>
-      {todaySpecial?.lunch_name && <h2>{todaySpecial.lunch_name}</h2>}
-      {todaySpecial?.lunch_description && <p class="daily-special__description">{todaySpecial.lunch_description}</p>}
-      {todaySpecial?.lunch_tag && <span class="daily-special__tag">{todaySpecial.lunch_tag}</span>}
-    </article>
     <div class="hero-after__brand">
       <div class="logo-bar-stage" aria-hidden="true">
         <img class="logo-bar-grill" src="/logo-bar-grill.webp" alt="" width="900" height="605" decoding="async" />
@@ -112,30 +96,21 @@ const welcomeHolderAssets = [
       <div class="hero-actions">
         <p class="hero-tag hero-tag-enter"><span>Open daily 10 AM to 2 AM.</span></p>
       </div>
-      <a class="home-specials__cta" href="/specials">View All Specials <span aria-hidden="true">→</span></a>
     </div>
-    <article class="daily-special daily-special--dinner">
-      <p class="daily-special__label"><span aria-hidden="true">★</span> Nightly Special <span aria-hidden="true">★</span></p>
-      <p class="daily-special__hours">5–10 PM</p>
-      {todaySpecial?.night_name && <h2>{todaySpecial.night_name}</h2>}
-      {todaySpecial?.night_description && <p class="daily-special__description">{todaySpecial.night_description}</p>}
-      {todaySpecial?.night_tag && <span class="daily-special__tag">{todaySpecial.night_tag}</span>}
-    </article>
   </div>
 </section>
 </div>
 </header>
 
-{todaySpecial?.allday_name && (
-  <div class="allday-banner">
-    <p class="allday-banner__label"><span aria-hidden="true">★</span> All Day Special <span aria-hidden="true">★</span></p>
-    <div class="allday-banner__details">
-      <h2 class="allday-banner__name">{todaySpecial.allday_name}</h2>
-      {todaySpecial.allday_description && <p class="allday-banner__description">{todaySpecial.allday_description}</p>}
-      {todaySpecial.allday_tag && <span class="allday-banner__tag">{todaySpecial.allday_tag}</span>}
-    </div>
+<section class="home-weekly" aria-labelledby="home-weekly-title">
+  <div class="home-weekly__card">
+    <p class="home-weekly__label"><span aria-hidden="true">★</span> ALL WEEK SPECIALS <span aria-hidden="true">★</span></p>
+    {weeklySpecial.status === 'current' ? (
+      <><h2 id="home-weekly-title">Weekly Specials — {weeklyRange}</h2><div class="home-weekly__days">{weeklySpecial.special.days.map((day) => <article class:list={['home-weekly__day', { 'is-today': day.day_of_week === todayDay }]}>{day.day_of_week === todayDay && <span class="home-weekly__today">TODAY</span>}<h3>{days[day.day_of_week]}</h3>{day.allday_content && <p><strong>All Day:</strong> {day.allday_content}</p>}{day.lunch_content && <p><strong>Lunch:</strong> {day.lunch_content}</p>}{day.nightly_content && <p><strong>Nightly:</strong> {day.nightly_content}</p>}</article>)}</div></>
+    ) : <><h2 id="home-weekly-title">{weeklySpecial.status === 'expired' ? 'These specials have ended.' : 'Current specials coming soon.'}</h2><p class="home-weekly__fallback">Please check Facebook or call us for the current specials.</p></>}
+    <a class="home-weekly__cta" href="/specials">View All Specials <span aria-hidden="true">→</span></a>
   </div>
-)}
+</section>
 
 <section id="welcome" class="section-parchment">
   <div class="welcome-grid">
@@ -626,7 +601,7 @@ const welcomeHolderAssets = [
 
   /* The center poster aligns to the boards; the link uses the lower breathing room. */
   .hero-after__brand{height:300px;display:flex;flex-direction:column}
-  .hero-after__brand .logo-bar-stage{transform:translateY(72px)}
+  .hero-after__brand .logo-bar-stage{transform:translateY(20px)}
   .hero-after__brand .home-specials__cta{margin-top:auto;margin-bottom:0;align-self:center}
    @media (min-width:1100px){ .hero-after__brand .hero-actions{margin-top:36px} }
   .daily-special{transition:transform .22s ease,box-shadow .22s ease,filter .22s ease}
@@ -819,6 +794,11 @@ const welcomeHolderAssets = [
     #welcome .welcome-script__compact span{animation:none;opacity:0;transform:none}
     #welcome .welcome-script__compact span:first-child{opacity:1}
   }
+  .home-weekly{padding:clamp(24px,4vw,44px) var(--section-inline);background:var(--cream)}
+  .home-weekly__card{max-width:1120px;margin:0 auto;padding:clamp(20px,3vw,32px);border:3px solid var(--gold);background-color:var(--denim);background-image:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 5px);box-shadow:4px 5px 0 rgba(43,27,20,.25);color:var(--cream);text-align:center}
+  .home-weekly__label{font:700 .9rem var(--label);letter-spacing:.15em;color:var(--cream-2);text-transform:uppercase}.home-weekly h2{margin-top:5px;font:400 clamp(1.25rem,3vw,1.9rem) var(--display);color:var(--cream)}
+  .home-weekly__days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-top:18px;text-align:left}.home-weekly__day{position:relative;padding:10px;border:1px solid rgba(235,216,177,.42);min-width:0}.home-weekly__day h3{font:700 .8rem var(--label);letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}.home-weekly__day p{margin:5px 0 0;font-size:.86rem;line-height:1.3;white-space:pre-line}.home-weekly__day.is-today{border:2px solid var(--cream);background:rgba(178,138,79,.18)}.home-weekly__today{display:inline-block;margin-bottom:4px;padding:2px 6px;background:var(--brick);font:700 .65rem var(--label);letter-spacing:.1em}.home-weekly__fallback{margin-top:10px}.home-weekly__cta{display:inline-flex;gap:8px;margin-top:20px;color:var(--cream);font:700 .82rem var(--label);letter-spacing:.14em;text-transform:uppercase;text-decoration:none;border-bottom:2px solid var(--gold);padding-bottom:3px}.home-weekly__cta:hover,.home-weekly__cta:focus-visible{color:var(--gold)}
+  @media (max-width:900px){.home-weekly__days{grid-template-columns:repeat(2,minmax(0,1fr))}}@media (max-width:520px){.home-weekly{padding:18px 12px}.home-weekly__days{grid-template-columns:1fr}.home-weekly__card{padding:18px}.home-weekly__day{padding:11px}}
 </style>
 
 <style is:global>
