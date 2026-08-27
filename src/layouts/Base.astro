@@ -320,7 +320,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
       background:url('/footer-landscape.webp') center top / 100% auto no-repeat;
     }
     .footer-composition .footer-layout{
-      position:absolute;z-index:2;right:0;bottom:clamp(-30px,calc(14vw - 75px),0px);left:0;min-height:0;max-width:none;margin:0;padding:4px 46px 5px;
+      position:absolute;z-index:2;right:0;bottom:0;left:0;min-height:0;max-width:none;margin:0;padding:4px 46px 5px;
       overflow:visible;background:none;
     }
     .footer-composition .footer-copy{font-size:clamp(.8125rem,2.8vw,.875rem);line-height:1.4}
@@ -348,12 +348,10 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   /* Narrow screens use a cropped extra landing board so the Home control clears
      the coordinated footer row without creating another full information board. */
   @media (max-width:499px){
-    .footer-composition .footer-layout{bottom:clamp(-44px,calc(8vw - 66px),-22px)}
     .footer-composition .footer-home-bed{height:calc(204px + env(safe-area-inset-bottom))}
   }
 
   @media (min-width:500px) and (max-width:599px){
-    .footer-composition .footer-layout{bottom:-18px}
     .footer-composition .footer-home-bed{height:calc(194px + env(safe-area-inset-bottom))}
   }
 
