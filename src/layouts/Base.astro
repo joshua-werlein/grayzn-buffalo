@@ -113,7 +113,6 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   html{scroll-behavior:smooth;overflow-x:clip}
   body{font-family:var(--body);background:var(--cream);color:var(--ink);line-height:1.6;
     min-height:100vh;display:flex;flex-direction:column;overflow-x:clip;width:100%}
-  body.admin-page{background-color:var(--surface-parchment);background-image:url('/parchment-texture.webp');background-position:center;background-repeat:repeat}
   .announce{background:var(--crimson);color:var(--cream);text-align:center;
     padding:9px clamp(16px,4vw,48px);font-family:var(--label);font-weight:700;
     letter-spacing:.04em;font-size:.95rem;line-height:1.35;
@@ -254,10 +253,10 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 
     /* Admin pages use a compact, content-sized wood footer instead of the public scene. */
     .footer-composition.footer-composition--admin:not(.footer-composition--home){
-      padding:0;
+      min-height:0;margin:0;padding:0;
       background:#21130e;
     }
-    .footer-composition.footer-composition--admin:not(.footer-composition--home) footer{background:none}
+    .footer-composition.footer-composition--admin:not(.footer-composition--home) footer{min-height:0;margin:0;padding:0;background:#21130e}
     .footer-composition.footer-composition--admin:not(.footer-composition--home) .footer-scene{display:block;position:relative;aspect-ratio:auto;background:none}
     .footer-composition.footer-composition--admin:not(.footer-composition--home) .footer-layout{
       position:relative;z-index:0;right:auto;bottom:auto;left:auto;
@@ -409,10 +408,10 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   @media (max-width:1099px){
     body:has(.footer-composition--home){padding-bottom:0}
     .footer-composition--admin{
-      padding:0;
+      min-height:0;margin:0;padding:0;
       background:#21130e;
     }
-    .footer-composition--admin footer{background:transparent}
+    .footer-composition--admin footer{min-height:0;margin:0;padding:0;background:#21130e}
     .footer-composition--admin .footer-scene{display:block;position:relative;z-index:auto;aspect-ratio:auto;background:none}
     .footer-composition--admin .footer-layout{
       position:relative;z-index:0;right:auto;bottom:auto;left:auto;
@@ -477,7 +476,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 
 </style>
 </head>
-<body class:list={{ 'admin-page': isAdmin }}>
+<body>
 <header class={"site-chrome" + (isHome ? " site-chrome-home" : "")}>
   <nav class="site">
     <a class="brand" href="/" aria-label="Grayz'n Buffalo home">
