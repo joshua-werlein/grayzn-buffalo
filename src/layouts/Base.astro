@@ -20,19 +20,19 @@ const canonicalUrl = new URL(path, siteUrl).toString();
 const socialImage = `${siteUrl}/social-share-black-white.png`;
 const socialImageAlt = "Grayz'n Buffalo Bar & Grill in Mondovi, Wisconsin";
 const env = (Astro.locals as any).runtime?.env ?? {};
-const [announcement1, announcement2, announcement3, deliveryPaused] = await Promise.all([
+const [announcement1, announcement2, announcement3, deliveryDisplaySetting] = await Promise.all([
   getSetting(env, 'announcement_1', ''),
   getSetting(env, 'announcement_2', ''),
   getSetting(env, 'announcement_3', ''),
-  getSetting(env, 'delivery_paused', '0'),
+  getSetting(env, 'delivery_display', 'available'),
 ]);
 const announcements = [announcement1, announcement2, announcement3]
   .map((message) => message.trim())
   .filter(Boolean);
-// Delivery is always shown. Running copy is split so the city-limits qualifier
-// breaks to its own line on mobile and never breaks mid-phrase. 
-const deliveryPausedFlag = deliveryPaused === '1';
-const deliveryPausedMsg = 'Delivery is unavailable at this time';
+const deliveryDisplay = ['available', 'unavailable', 'hidden'].includes(deliveryDisplaySetting)
+  ? deliveryDisplaySetting
+  : 'available';
+const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 ---
 <!DOCTYPE html>
 <html lang="en">
@@ -463,11 +463,13 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
   </nav>
   <div class="announce" role="region" aria-label="Announcement">
     <ul class="announce-list">
-      <li class="delivery-notice">
-        {deliveryPausedFlag
-          ? deliveryPausedMsg
-          : (<span class="dmain">Delivery M–F 11 AM–1:30 PM</span>)}
-      </li>
+      {deliveryDisplay !== 'hidden' && (
+        <li class="delivery-notice">
+          {deliveryDisplay === 'unavailable'
+            ? deliveryUnavailableMsg
+            : (<span class="dmain">Delivery M–F 11 AM–1:30 PM</span>)}
+        </li>
+      )}
       {announcements.map((message) => <li>{message}</li>)}
     </ul>
   </div>

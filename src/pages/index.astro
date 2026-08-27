@@ -53,11 +53,14 @@ for (let round = 0; categoryPhotoQueues.some((queue) => round < queue.length); r
     });
   }
 }
-// The Welcome composition has four slots. Keep the display list unique before
-// rendering so neither an upload nor a menu fallback can repeat in the collage.
-const visibleWelcomeTiles = welcomeTiles.slice(0, 4);
-const welcomePhotoSlots = Array.from({ length: visibleWelcomeTiles.length }, (_, slotIndex) =>
-  welcomeTiles.filter((_, tileIndex) => tileIndex % visibleWelcomeTiles.length === slotIndex),
+// The Welcome composition always has at most four HOLDERS, but a holder can cycle
+// through several photos. Collect up to twelve tiles (three per holder) so there is
+// enough material for the rotation in index's client script to actually rotate;
+// holder count is derived separately so it never exceeds four regardless of the cap.
+const cappedWelcomeTiles = welcomeTiles.slice(0, 12);
+const welcomeSlotCount = Math.min(4, cappedWelcomeTiles.length);
+const welcomePhotoSlots = Array.from({ length: welcomeSlotCount }, (_, slotIndex) =>
+  cappedWelcomeTiles.filter((_, tileIndex) => tileIndex % welcomeSlotCount === slotIndex),
 );
 const welcomeHolderAssets = [
   '/images/welcome/photo1.webp',
@@ -156,7 +159,7 @@ const welcomeHolderAssets = [
             inert={photoIndex === 0 ? undefined : true}
             tabindex={photoIndex === 0 ? undefined : -1}
           >
-            <img src={`/img/${thumbKey(photoKey)}`} alt={photo.alt} loading="lazy" />
+            <img src={`/img/${thumbKey(photoKey)}`} data-full-src={`/img/${photoKey}`} alt={photo.alt} loading="lazy" />
             {photo.caption && <span>{photo.caption}</span>}
           </button>
         );
@@ -331,14 +334,8 @@ const welcomeHolderAssets = [
   .photo{height:100%;max-height:220px;min-height:0;aspect-ratio:4/3;border:0;border-radius:12px;position:relative;overflow:hidden;
     background:var(--cream-2);
     box-shadow:0 10px 26px rgba(36,22,16,.22);display:flex;align-items:flex-end;transition:transform .3s ease;cursor:zoom-in}
-  .photo.welcome-photo-reveal{opacity:0;transform:translateX(56px);transition:opacity .65s ease,transform .65s cubic-bezier(.19,.74,.36,1)}
-  .photo.welcome-photo-reveal.in{opacity:1;transform:translateX(0)}
-  .photo.welcome-photo-reveal:nth-child(2){transition-delay:.14s}
-  .photo.welcome-photo-reveal:nth-child(3){transition-delay:.28s}
-  .photo.welcome-photo-reveal:nth-child(4){transition-delay:.42s}
   .photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:saturate(.84) sepia(.08) contrast(.94) brightness(1.04)}
   .photo:hover{transform:translateY(-6px)}
-  .photo.welcome-photo-reveal.in:hover{transform:translateY(-6px)}
   .photo:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
   .photo span{position:relative;width:100%;padding:10px 12px;font-family:var(--label);font-weight:600;font-size:.8rem;
     letter-spacing:.12em;text-transform:uppercase;color:var(--cream);
@@ -397,7 +394,6 @@ const welcomeHolderAssets = [
     .logo-buffalo{animation:none;opacity:1;transform:scale(var(--buffalo-scale))}
     .logo-wordmark{animation:none;opacity:1}
     .logo-bar-grill{animation:none;opacity:1}
-    .photo.welcome-photo-reveal{opacity:1;transform:none;transition:none}
   }
   /* ---- Homepage vintage poster system ---- */
   #welcome{padding-block:clamp(42px,6vw,72px);background:var(--page-parchment)}
@@ -411,7 +407,7 @@ const welcomeHolderAssets = [
   .photo-stack{grid-template-columns:.95fr 1.15fr .95fr;grid-auto-rows:clamp(210px,20vw,270px);gap:0;max-width:800px;padding:16px 22px 28px}
   .photo{max-height:none;aspect-ratio:auto;border:2px solid var(--ink);border-radius:var(--panel-radius);background:var(--surface-aged);box-shadow:var(--panel-shadow)}
   .photo img{object-fit:cover}
-  .photo:hover,.photo.welcome-photo-reveal.in:hover{transform:translateY(-3px)}
+  .photo:hover{transform:translateY(-3px)}
   .photo span{padding:8px 10px;font-size:.72rem;letter-spacing:.1em}
 
   .home-specials__cta{display:inline-flex;gap:10px;align-items:center;margin-top:22px;color:var(--ink);font-family:var(--label);font-weight:700;font-size:.84rem;letter-spacing:.15em;text-transform:uppercase;text-decoration:none;border-bottom:2px solid var(--brick);padding-bottom:3px;transition:color .2s ease,border-color .2s ease}
@@ -473,7 +469,7 @@ const welcomeHolderAssets = [
   .photo{border:8px solid #f6ecd8;border-radius:0;box-shadow:2px 3px 0 rgba(76,45,24,.22),7px 10px 18px rgba(43,27,20,.2);overflow:visible;background:#f6ecd8}
   .photo img{inset:0;width:100%;height:100%;border:1px solid rgba(57,35,21,.32)}
   .photo:nth-child(1){z-index:1;transform:rotate(-3deg) translateY(18px);margin-right:-28px}.photo:nth-child(2){z-index:2;transform:rotate(1.8deg) translateY(-7px);margin-inline:-18px}.photo:nth-child(3){z-index:1;transform:rotate(-1.7deg) translateY(22px);margin-left:-28px}
-  .photo:hover,.photo.welcome-photo-reveal.in:hover{transform:translateY(-5px) rotate(0)}
+  .photo:hover{transform:translateY(-5px) rotate(0)}
   #menu-preview{position:relative;isolation:isolate;background-color:#493222;background-image:linear-gradient(rgba(27,16,10,.22),rgba(27,16,10,.22)),url('/images/menu/menu-background.webp');background-size:100% 100%,cover;background-repeat:no-repeat;border:0;box-shadow:inset 0 1px rgba(246,220,169,.1),inset 0 -1px rgba(14,8,5,.45)}
   #menu-preview::before,#menu-preview::after{content:"";position:absolute;z-index:0;right:0;left:0;height:9px;pointer-events:none;background:linear-gradient(to bottom,rgba(24,14,9,.96) 0 1px,rgba(211,169,100,.42) 1px 2px,transparent 2px 5px,rgba(20,12,8,.74) 5px 6px,rgba(238,206,145,.2) 6px 7px,rgba(23,14,9,.9) 7px 9px)}
   #menu-preview::before{top:0}#menu-preview::after{bottom:0;transform:scaleY(-1)}#menu-preview > *{position:relative;z-index:1}
@@ -625,14 +621,14 @@ const welcomeHolderAssets = [
   .welcome-title h2,.welcome-title__rule,.welcome-title__star,.welcome-intro,.welcome-divider,.photo-stack,.welcome-closing{opacity:0;will-change:transform,opacity}
   .hero-after .home-specials__cta{opacity:0;transform:translateY(6px);will-change:transform,opacity;animation:poster-cta .45s ease 2.58s both}
   @keyframes poster-cta{to{opacity:1;transform:translateY(0)}}
-  .welcome-title h2{animation:poster-rise .7s cubic-bezier(.2,.72,.25,1) 3.12s both}
-  .welcome-title__rule,.welcome-title__star{animation-duration:.7s;animation-timing-function:cubic-bezier(.2,.72,.25,1);animation-delay:3.12s;animation-fill-mode:both}
+  .welcome-title h2{animation:poster-rise .7s cubic-bezier(.2,.72,.25,1) 2.6s both}
+  .welcome-title__rule,.welcome-title__star{animation-duration:.7s;animation-timing-function:cubic-bezier(.2,.72,.25,1);animation-delay:2.6s;animation-fill-mode:both}
   .welcome-title__rule:first-child,.welcome-title__star:nth-child(2){animation-name:poster-rule-left}
   .welcome-title__star:nth-child(4),.welcome-title__rule:last-child{animation-name:poster-rule-right}
-  .welcome-intro{animation:poster-rise .55s cubic-bezier(.2,.72,.25,1) 3.97s both}
-  .welcome-divider{animation:hero-welcome-divider .35s ease 4.55s both}
-  .photo-stack{animation:welcome-photo-composition .8s cubic-bezier(.2,.72,.25,1) 5.37s both}
-  .welcome-closing{animation:poster-rise .5s cubic-bezier(.2,.72,.25,1) 6.24s both}
+  .welcome-intro{animation:poster-rise .55s cubic-bezier(.2,.72,.25,1) 2.75s both}
+  .welcome-divider{animation:hero-welcome-divider .35s ease 2.85s both}
+  .photo-stack{animation:welcome-photo-composition .8s cubic-bezier(.2,.72,.25,1) 3s both}
+  .welcome-closing{animation:poster-rise .5s cubic-bezier(.2,.72,.25,1) 3.2s both}
   @keyframes hero-welcome-divider{to{opacity:1}}
   @keyframes poster-rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
   @keyframes welcome-photo-composition{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
@@ -729,6 +725,13 @@ const welcomeHolderAssets = [
   #welcome .photo-position .photo{position:absolute;inset:0;display:block;width:100%!important;height:100%!important;margin:0!important;padding:0;overflow:hidden;border:0!important;border-radius:0!important;background:#1f120b;box-shadow:none!important;opacity:0;pointer-events:none;transform:none!important;transition:opacity 1.1s ease;cursor:zoom-in}
   #welcome .photo-position .photo.is-active{opacity:1;pointer-events:auto}
   #welcome .photo-position .photo img{position:absolute;inset:0;display:block;width:100%;height:100%;border:0;object-fit:cover;filter:saturate(.88) sepia(.08) contrast(.96)}
+  /* Viewports run ~82-88% wide by ~70-72% tall (moderately landscape-shaped), so a
+     portrait source crops on the vertical axis; bias upward since food and faces
+     usually sit above centre. Square/landscape sources crop far less severely and
+     stay centred. */
+  #welcome .photo-position .photo--portrait img{object-position:50% 35%}
+  #welcome .photo-position .photo--square img{object-position:50% 50%}
+  #welcome .photo-position .photo--landscape img{object-position:50% 50%}
   #welcome .photo-position .photo span{position:absolute;right:0;bottom:0;left:0;width:auto;padding:5px 7px;background:linear-gradient(transparent,rgba(25,13,7,.8));color:var(--cream);font-size:.62rem}
   #welcome .photo-holder{position:absolute;z-index:1;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none}
   #welcome .welcome-closing{position:relative;top:12px;max-width:760px;margin:10px auto 0;padding:0;color:#f1d9a4}
@@ -908,9 +911,16 @@ const welcomeHolderAssets = [
 
   document.addEventListener('error', (event) => {
     const image = event.target;
-    if (image instanceof HTMLImageElement && image.matches('.photo img')) {
-      image.closest<HTMLElement>('.photo')?.remove();
+    if (!(image instanceof HTMLImageElement) || !image.matches('.photo img')) return;
+    // A failed thumbnail gets one retry against the full-size R2 object before the
+    // tile is removed. The dataset flag stops a failing full-size image from
+    // re-triggering the retry forever.
+    if (!image.dataset.retriedFullSize && image.dataset.fullSrc) {
+      image.dataset.retriedFullSize = 'true';
+      image.src = image.dataset.fullSrc;
+      return;
     }
+    image.closest<HTMLElement>('.photo')?.remove();
   }, true);
 
   document.addEventListener('image-lightbox:open', (event) => {
