@@ -11,6 +11,7 @@ const emptyDay = (day_of_week: number): WeeklySpecialDay => ({ day_of_week, lunc
 const week = weekly.status === 'current'
   ? DAYS.map((_, index) => weekly.special.days.find((day) => day.day_of_week === index) ?? emptyDay(index))
   : [];
+const hasDayContent = (day: WeeklySpecialDay) => Boolean(day.lunch_content || day.all_day_1_content || day.all_day_2_content || day.nightly_content);
 const range = weekly.status === 'missing' ? '' : formatWeeklyDateRange(weekly.special.week_start_date, weekly.special.week_end_date);
 const recurring = [{ name: 'Lunch Specials', when: '11 AM – 1:30 PM' }, { name: 'Nightly Specials', when: '5 – 10 PM' }, { name: 'Friday Fish', when: 'Fridays · 5 – 10 PM' }, { name: 'Happy Hour', when: 'Mon–Fri · 5 – 6:30 PM' }, { name: 'Mexican Night', when: 'Tuesdays · 5 – 10 PM' }];
 ---
@@ -23,12 +24,12 @@ const recurring = [{ name: 'Lunch Specials', when: '11 AM – 1:30 PM' }, { name
     <ul class="week" aria-label={`Weekly specials, ${range}`}>
       {week.map((special) => <li class:list={['day-card', { 'is-today': special.day_of_week === todayDay }]}>
         {special.day_of_week === todayDay && <span class="today-badge">Today</span>}<span class="day-name">{DAYS[special.day_of_week]}</span>
-        <div class="day-services">
+        {hasDayContent(special) ? <div class="day-services">
           <section class="day-service lunch-service"><p class="service-label">Lunch <span>11 AM–1:30 PM</span></p><p class="day-desc">{special.lunch_content || 'Ask at the bar about today’s lunch special.'}</p></section>
           {special.all_day_1_content && <section class="day-service"><p class="service-label">All Day Special 1</p><p class="day-desc">{special.all_day_1_content}</p></section>}
           {special.all_day_2_content && <section class="day-service"><p class="service-label">All Day Special 2</p><p class="day-desc">{special.all_day_2_content}</p></section>}
           <section class="day-service night-service"><p class="service-label">Nightly Special <span>5–10 PM</span></p><p class="day-desc night-lines">{special.nightly_content || 'Ask at the bar about tonight’s special.'}</p></section>
-        </div>
+        </div> : <p class="no-special">No special posted.</p>}
       </li>)}
     </ul>
   ) : <div class="weekly-notice" role="status"><strong>{weekly.status === 'expired' ? 'These specials have ended.' : 'No current weekly specials are posted.'}</strong><p>These specials have ended. Please check Facebook or call us for the current specials.</p></div>}
