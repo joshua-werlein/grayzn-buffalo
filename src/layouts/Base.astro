@@ -113,6 +113,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   html{scroll-behavior:smooth;overflow-x:clip}
   body{font-family:var(--body);background:var(--cream);color:var(--ink);line-height:1.6;
     min-height:100vh;display:flex;flex-direction:column;overflow-x:clip;width:100%}
+  body.admin-page{background-color:var(--surface-parchment);background-image:url('/parchment-texture.webp');background-position:center;background-repeat:repeat}
   .announce{background:var(--crimson);color:var(--cream);text-align:center;
     padding:9px clamp(16px,4vw,48px);font-family:var(--label);font-weight:700;
     letter-spacing:.04em;font-size:.95rem;line-height:1.35;
@@ -251,20 +252,25 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .footer-contact img{display:block;width:100%;height:auto}
     .footer-contact:focus-visible{outline:3px solid var(--gold);outline-offset:5px;border-radius:8px}
 
-    /* Admin pages retain the shared scenic footer without the public Contact sign.
-       The information/navigation row sits on the real extension-board texture. */
+    /* Admin pages use a compact, content-sized wood footer instead of the public scene. */
     .footer-composition.footer-composition--admin:not(.footer-composition--home){
-      padding-block:clamp(10px,1.2vw,20px);
+      padding:clamp(10px,1.2vw,20px) 0;
       background-color:var(--surface-parchment);
       background-image:url('/parchment-texture.webp');
       background-position:center;
       background-repeat:repeat;
     }
-    .footer-composition--admin .footer-layout{isolation:isolate}
-    .footer-composition--admin .footer-layout::before{
-      content:"";position:absolute;z-index:-1;inset:-18px clamp(-32px,-2vw,-18px);
+    .footer-composition.footer-composition--admin:not(.footer-composition--home) footer{background:none}
+    .footer-composition.footer-composition--admin:not(.footer-composition--home) .footer-scene{display:block;position:relative;aspect-ratio:auto;background:none}
+    .footer-composition.footer-composition--admin:not(.footer-composition--home) .footer-layout{
+      position:relative;z-index:0;right:auto;bottom:auto;left:auto;
+      width:min(calc(100% - clamp(28px,5vw,72px)),1200px);margin:0 auto;
+      padding:clamp(20px,2.4vw,30px) clamp(60px,8vw,130px) clamp(18px,2vw,26px);
       background:#21130e url('/footer-board-extension.webp') center / cover no-repeat;
+      box-shadow:inset 0 1px rgba(246,220,169,.18),inset 0 -1px rgba(0,0,0,.42);
     }
+    .footer-composition.footer-composition--admin:not(.footer-composition--home) .footer-layout::before{content:none}
+    .footer-composition.footer-composition--admin:not(.footer-composition--home) .footer-home-bed{display:none}
   }
   @media (max-width:1099px){ nav.site .brand img{height:52px} nav.site ul{gap:14px} nav.site a.link{font-size:.8rem} }
   @media (prefers-reduced-motion: reduce){
@@ -412,6 +418,15 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
       background-position:center;
       background-repeat:repeat;
     }
+    .footer-composition--admin footer{background:transparent}
+    .footer-composition--admin .footer-scene{display:block;position:relative;z-index:auto;aspect-ratio:auto;background:none}
+    .footer-composition--admin .footer-layout{
+      position:relative;z-index:0;right:auto;bottom:auto;left:auto;
+      width:calc(100% - 24px);margin:0 auto;padding:18px 46px 16px;
+      background:#21130e url('/footer-board-extension.webp') center / cover no-repeat;
+      box-shadow:inset 0 1px rgba(246,220,169,.18),inset 0 -1px rgba(0,0,0,.42);
+    }
+    .footer-composition--admin .footer-home-bed{display:none}
     .footer-composition--home{
       position:relative;
       min-height:0;
@@ -468,7 +483,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 
 </style>
 </head>
-<body>
+<body class:list={{ 'admin-page': isAdmin }}>
 <header class={"site-chrome" + (isHome ? " site-chrome-home" : "")}>
   <nav class="site">
     <a class="brand" href="/" aria-label="Grayz'n Buffalo home">
