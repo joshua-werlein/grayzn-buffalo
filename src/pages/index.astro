@@ -109,9 +109,9 @@ const welcomeHolderAssets = [
   <div class="home-weekly__card">
     <p class="home-weekly__label"><span aria-hidden="true">★</span> ALL WEEK SPECIALS <span aria-hidden="true">★</span></p>
     {weeklySpecial.status === 'current' ? (
-      <><h2 id="home-weekly-title">Weekly Specials — {weeklyRange}</h2><div class="home-weekly__days">{weeklySpecial.special.days.map((day) => <article class:list={['home-weekly__day', { 'is-today': day.day_of_week === todayDay }]}>{day.day_of_week === todayDay && <span class="home-weekly__today">TODAY</span>}<h3>{days[day.day_of_week]}</h3>{day.allday_content && <p><strong>All Day:</strong> {day.allday_content}</p>}{day.lunch_content && <p><strong>Lunch:</strong> {day.lunch_content}</p>}{day.nightly_content && <p><strong>Nightly:</strong> {day.nightly_content}</p>}</article>)}</div></>
+      <><h2 id="home-weekly-title">Weekly Specials — {weeklyRange}</h2><div class="home-weekly__days">{[...weeklySpecial.special.days].sort((a, b) => Number(b.day_of_week === todayDay) - Number(a.day_of_week === todayDay)).map((day) => <article class:list={['home-weekly__day', { 'is-today': day.day_of_week === todayDay }]}>{day.day_of_week === todayDay && <span class="home-weekly__today">TODAY</span>}<h3>{days[day.day_of_week]}</h3>{day.lunch_content && <p><strong>Lunch:</strong> {day.lunch_content}</p>}{day.all_day_1_content && <p><strong>All Day Special 1:</strong> {day.all_day_1_content}</p>}{day.all_day_2_content && <p><strong>All Day Special 2:</strong> {day.all_day_2_content}</p>}{day.nightly_content && <p><strong>Dinner/Nightly:</strong> {day.nightly_content}</p>}</article>)}</div></>
     ) : <><h2 id="home-weekly-title">{weeklySpecial.status === 'expired' ? 'These specials have ended.' : 'Current specials coming soon.'}</h2><p class="home-weekly__fallback">Please check Facebook or call us for the current specials.</p></>}
-    <a class="home-weekly__cta" href="/specials">View All Specials <span aria-hidden="true">→</span></a>
+    <a class="home-weekly__cta" href="/specials">MORE DETAILS <span aria-hidden="true">→</span></a>
   </div>
 </section>
 

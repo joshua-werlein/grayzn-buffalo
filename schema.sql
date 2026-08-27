@@ -95,8 +95,10 @@ CREATE TABLE IF NOT EXISTS weekly_special_days (
   weekly_special_id INTEGER NOT NULL REFERENCES weekly_specials(id) ON DELETE CASCADE,
   day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
   lunch_content TEXT NOT NULL DEFAULT '',
-  nightly_content TEXT NOT NULL DEFAULT '',
   allday_content TEXT NOT NULL DEFAULT '',
+  all_day_1_content TEXT NOT NULL DEFAULT '',
+  all_day_2_content TEXT NOT NULL DEFAULT '',
+  nightly_content TEXT NOT NULL DEFAULT '',
   UNIQUE (weekly_special_id, day_of_week)
 );
  

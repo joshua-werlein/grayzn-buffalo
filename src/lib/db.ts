@@ -91,8 +91,9 @@ export type WeeklySpecial = {
 export type WeeklySpecialDay = {
   day_of_week: number;
   lunch_content: string;
+  all_day_1_content: string;
+  all_day_2_content: string;
   nightly_content: string;
-  allday_content: string;
 };
 
 export type ApplicableWeeklySpecial =
@@ -113,14 +114,15 @@ function toWeeklySpecial(row: any, days: WeeklySpecialDay[]): WeeklySpecial {
 
 async function weeklySpecialWithDays(env: any, row: any): Promise<WeeklySpecial> {
   const { results } = await env.DB.prepare(
-    `SELECT day_of_week, lunch_content, nightly_content, allday_content
+    `SELECT day_of_week, lunch_content, all_day_1_content, all_day_2_content, nightly_content
      FROM weekly_special_days WHERE weekly_special_id = ?1 ORDER BY day_of_week`,
   ).bind(row.id).all();
   const days = (results ?? []).map((day: any) => ({
     day_of_week: Number(day.day_of_week),
     lunch_content: String(day.lunch_content ?? ''),
+    all_day_1_content: String(day.all_day_1_content ?? ''),
+    all_day_2_content: String(day.all_day_2_content ?? ''),
     nightly_content: String(day.nightly_content ?? ''),
-    allday_content: String(day.allday_content ?? ''),
   }));
   return toWeeklySpecial(row, days);
 }
