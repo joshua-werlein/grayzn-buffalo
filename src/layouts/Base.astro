@@ -254,17 +254,14 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 
     /* Admin pages use a compact, content-sized wood footer instead of the public scene. */
     .footer-composition.footer-composition--admin:not(.footer-composition--home){
-      padding:clamp(10px,1.2vw,20px) 0;
-      background-color:var(--surface-parchment);
-      background-image:url('/parchment-texture.webp');
-      background-position:center;
-      background-repeat:repeat;
+      padding:0;
+      background:#21130e;
     }
     .footer-composition.footer-composition--admin:not(.footer-composition--home) footer{background:none}
     .footer-composition.footer-composition--admin:not(.footer-composition--home) .footer-scene{display:block;position:relative;aspect-ratio:auto;background:none}
     .footer-composition.footer-composition--admin:not(.footer-composition--home) .footer-layout{
       position:relative;z-index:0;right:auto;bottom:auto;left:auto;
-      width:min(calc(100% - clamp(28px,5vw,72px)),1200px);margin:0 auto;
+      width:100%;max-width:none;margin:0;
       padding:clamp(20px,2.4vw,30px) clamp(60px,8vw,130px) clamp(18px,2vw,26px);
       background:#21130e url('/footer-board-extension.webp') center / cover no-repeat;
       box-shadow:inset 0 1px rgba(246,220,169,.18),inset 0 -1px rgba(0,0,0,.42);
@@ -412,17 +409,14 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   @media (max-width:1099px){
     body:has(.footer-composition--home){padding-bottom:0}
     .footer-composition--admin{
-      padding-block:10px;
-      background-color:var(--surface-parchment);
-      background-image:url('/parchment-texture.webp');
-      background-position:center;
-      background-repeat:repeat;
+      padding:0;
+      background:#21130e;
     }
     .footer-composition--admin footer{background:transparent}
     .footer-composition--admin .footer-scene{display:block;position:relative;z-index:auto;aspect-ratio:auto;background:none}
     .footer-composition--admin .footer-layout{
       position:relative;z-index:0;right:auto;bottom:auto;left:auto;
-      width:calc(100% - 24px);margin:0 auto;padding:18px 46px 16px;
+      width:100%;max-width:none;margin:0;padding:18px 46px 16px;
       background:#21130e url('/footer-board-extension.webp') center / cover no-repeat;
       box-shadow:inset 0 1px rgba(246,220,169,.18),inset 0 -1px rgba(0,0,0,.42);
     }
