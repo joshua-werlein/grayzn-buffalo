@@ -47,7 +47,3 @@ export function formatWeeklyDateRange(start: string, end: string): string {
     ? `${displayDateFormatter.format(startDate)}–${endDate.getUTCDate()}`
     : `${displayDateFormatter.format(startDate)} – ${displayDateFormatter.format(endDate)}`;
 }
-
-export function hasPriceNotation(content: string): boolean {
-  return /(?:[$€£]\s*\d|\b\d{1,3}[.,]\d{2}\b|\b\d+\s*(?:dollars?|bucks?)\b)/i.test(content);
-}
