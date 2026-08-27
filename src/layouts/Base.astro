@@ -13,6 +13,7 @@ const { title = "Grayz'n Buffalo Bar & Grill — Mondovi, WI",
         description = "Grayz'n Buffalo Bar & Grill in Mondovi, WI. Burgers, Wraps, Pizzas & cold ones — open daily 10 AM to 2 AM." } = Astro.props;
 const path = Astro.url.pathname;
 const isHome = path === '/';
+const isAdmin = path.startsWith('/admin');
 const siteUrl = 'https://grayznbuffalo.com';
 const productionHosts = new Set(['grayznbuffalo.com', 'www.grayznbuffalo.com']);
 const noindex = path.startsWith('/admin') || !productionHosts.has(Astro.url.hostname);
@@ -249,6 +250,21 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .footer-composition--home .footer-contact{display:block;position:absolute;z-index:2;left:50%;bottom:clamp(130px,12vw,210px);width:clamp(280px,24vw,420px);transform:translateX(-50%);line-height:0;text-decoration:none;filter:drop-shadow(0 7px 7px rgba(30,18,10,.3))}
     .footer-contact img{display:block;width:100%;height:auto}
     .footer-contact:focus-visible{outline:3px solid var(--gold);outline-offset:5px;border-radius:8px}
+
+    /* Admin pages retain the shared scenic footer without the public Contact sign.
+       The information/navigation row sits on the real extension-board texture. */
+    .footer-composition.footer-composition--admin:not(.footer-composition--home){
+      padding-block:clamp(10px,1.2vw,20px);
+      background-color:var(--surface-parchment);
+      background-image:url('/parchment-texture.webp');
+      background-position:center;
+      background-repeat:repeat;
+    }
+    .footer-composition--admin .footer-layout{isolation:isolate}
+    .footer-composition--admin .footer-layout::before{
+      content:"";position:absolute;z-index:-1;inset:-18px clamp(-32px,-2vw,-18px);
+      background:#21130e url('/footer-board-extension.webp') center / cover no-repeat;
+    }
   }
   @media (max-width:1099px){ nav.site .brand img{height:52px} nav.site ul{gap:14px} nav.site a.link{font-size:.8rem} }
   @media (prefers-reduced-motion: reduce){
@@ -389,6 +405,13 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
      same full-width footer artwork as the interior pages. */
   @media (max-width:1099px){
     body:has(.footer-composition--home){padding-bottom:0}
+    .footer-composition--admin{
+      padding-block:10px;
+      background-color:var(--surface-parchment);
+      background-image:url('/parchment-texture.webp');
+      background-position:center;
+      background-repeat:repeat;
+    }
     .footer-composition--home{
       position:relative;
       min-height:0;
@@ -496,13 +519,15 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 
 <ImageLightbox />
 
-<div class:list={{ 'footer-composition': true, 'footer-composition--home': isHome }}>
+<div class:list={{ 'footer-composition': true, 'footer-composition--home': isHome, 'footer-composition--admin': isAdmin }}>
   {isHome && <slot name="home-footer" />}
 <footer>
   <div class="footer-scene">
-    <a class="footer-contact" href="/contact" aria-label="Contact Us">
-      <img src="/footer-contact.webp" alt="" width="1600" height="1100" loading="lazy" />
-    </a>
+    {!isAdmin && (
+      <a class="footer-contact" href="/contact" aria-label="Contact Us">
+        <img src="/footer-contact.webp" alt="" width="1600" height="1100" loading="lazy" />
+      </a>
+    )}
     <div class="footer-layout">
       <div class="footer-center">
         <div class="footer-mainline">
