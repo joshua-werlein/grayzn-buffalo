@@ -254,16 +254,15 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     /* Admin pages use a compact, content-sized wood footer instead of the public scene. */
     .footer-composition.footer-composition--admin:not(.footer-composition--home){
       min-height:0;margin:0;padding:0;
-      background:#21130e;
+      background:#21130e url('/footer-board-extension.webp') center bottom / cover no-repeat;
     }
-    .footer-composition.footer-composition--admin:not(.footer-composition--home) footer{min-height:0;margin:0;padding:0;background:#21130e}
+    .footer-composition.footer-composition--admin:not(.footer-composition--home) footer{min-height:0;margin:0;padding:0;background:transparent}
     .footer-composition.footer-composition--admin:not(.footer-composition--home) .footer-scene{display:block;position:relative;aspect-ratio:auto;background:none}
     .footer-composition.footer-composition--admin:not(.footer-composition--home) .footer-layout{
       position:relative;z-index:0;right:auto;bottom:auto;left:auto;
       width:100%;max-width:none;margin:0;
-      padding:clamp(20px,2.4vw,30px) clamp(60px,8vw,130px) clamp(18px,2vw,26px);
-      background:#21130e url('/footer-board-extension.webp') center / cover no-repeat;
-      box-shadow:inset 0 1px rgba(246,220,169,.18),inset 0 -1px rgba(0,0,0,.42);
+      padding:clamp(20px,2.4vw,30px) clamp(60px,8vw,130px) clamp(10px,1.2vw,16px);
+      background:transparent;
     }
     .footer-composition.footer-composition--admin:not(.footer-composition--home) .footer-layout::before{content:none}
     .footer-composition.footer-composition--admin:not(.footer-composition--home) .footer-home-bed{display:none}
@@ -409,15 +408,14 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     body:has(.footer-composition--home){padding-bottom:0}
     .footer-composition--admin{
       min-height:0;margin:0;padding:0;
-      background:#21130e;
+      background:#21130e url('/footer-board-extension.webp') center bottom / cover no-repeat;
     }
-    .footer-composition--admin footer{min-height:0;margin:0;padding:0;background:#21130e}
+    .footer-composition--admin footer{min-height:0;margin:0;padding:0;background:transparent}
     .footer-composition--admin .footer-scene{display:block;position:relative;z-index:auto;aspect-ratio:auto;background:none}
     .footer-composition--admin .footer-layout{
       position:relative;z-index:0;right:auto;bottom:auto;left:auto;
-      width:100%;max-width:none;margin:0;padding:18px 46px 16px;
-      background:#21130e url('/footer-board-extension.webp') center / cover no-repeat;
-      box-shadow:inset 0 1px rgba(246,220,169,.18),inset 0 -1px rgba(0,0,0,.42);
+      width:100%;max-width:none;margin:0;padding:18px 46px 8px;
+      background:transparent;
     }
     .footer-composition--admin .footer-home-bed{display:none}
     .footer-composition--home{
