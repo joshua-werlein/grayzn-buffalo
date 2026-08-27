@@ -227,7 +227,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     .footer-composition--home #visit#visit{position:relative;z-index:1;padding:0;background:transparent;border:0;box-shadow:none}
     .footer-composition--home #visit#visit .visit-content{position:relative;top:-10px;padding:clamp(42px,6vw,72px) clamp(18px,4vw,64px);background:transparent}
     .footer-composition--home #visit#visit .visit-block{border-bottom:0}
-    .footer-composition--home footer{position:absolute;z-index:1;right:0;bottom:0;left:0;min-height:0;margin:0;padding:0 20px clamp(54px,4vw,68px);background:transparent;border-top:0;box-shadow:none}
+    .footer-composition--home footer{position:absolute;z-index:1;right:0;bottom:0;left:0;min-height:0;margin:0;padding:0 20px clamp(22px,2vw,34px);background:transparent;border-top:0;box-shadow:none}
     .footer-layout{max-width:1440px;padding-inline:clamp(50px,7vw,130px)}
     .footer-center{display:flex;align-items:center}
     .footer-mainline{display:flex;align-items:center;justify-content:center;gap:12px;min-width:0}
@@ -243,7 +243,7 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     .footer-composition:not(.footer-composition--home){min-height:0;margin:0;padding:0;background:none}
     .footer-composition:not(.footer-composition--home) footer{position:relative;min-height:0;padding:0;background:none}
     .footer-composition:not(.footer-composition--home) .footer-scene{display:block;position:relative;aspect-ratio:2048 / 1400;background:url('/footer-landscape.webp') center top / 100% auto no-repeat}
-    .footer-composition:not(.footer-composition--home) .footer-layout{position:absolute;z-index:2;right:0;bottom:clamp(36px,4vw,64px);left:0;padding-inline:clamp(50px,7vw,130px)}
+    .footer-composition:not(.footer-composition--home) .footer-layout{position:absolute;z-index:2;right:0;bottom:clamp(12px,1.5vw,24px);left:0;padding-inline:clamp(50px,7vw,130px)}
     .footer-composition:not(.footer-composition--home) .footer-contact{display:block;position:absolute;z-index:1;left:50%;bottom:15%;width:clamp(280px,24vw,420px);transform:translateX(-50%);line-height:0;text-decoration:none;filter:drop-shadow(0 7px 7px rgba(30,18,10,.3))}
     .footer-composition--home .footer-scene{display:contents}
     .footer-composition--home .footer-contact{display:block;position:absolute;z-index:2;left:50%;bottom:clamp(130px,12vw,210px);width:clamp(280px,24vw,420px);transform:translateX(-50%);line-height:0;text-decoration:none;filter:drop-shadow(0 7px 7px rgba(30,18,10,.3))}
@@ -323,9 +323,9 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
       position:absolute;z-index:2;right:0;bottom:clamp(-30px,calc(14vw - 75px),0px);left:0;min-height:0;max-width:none;margin:0;padding:4px 46px 5px;
       overflow:visible;background:none;
     }
-    .footer-composition .footer-copy{font-size:clamp(.75rem,3vw,.8125rem);line-height:1.4}
-    .footer-composition .footer-legal{gap:5px clamp(14px,4vw,20px);margin:2px 0 0}
-    .footer-composition .footer-legal a{font-size:clamp(.75rem,2.5vw,.8125rem);line-height:1.4}
+    .footer-composition .footer-copy{font-size:clamp(.8125rem,2.8vw,.875rem);line-height:1.4}
+    .footer-composition .footer-legal{gap:5px clamp(16px,4vw,22px);margin:2px 0 0}
+    .footer-composition .footer-legal a{font-size:clamp(.8125rem,2.5vw,.875rem);line-height:1.4}
     .footer-composition .staff-door{top:50%;bottom:auto;left:0;margin:0;padding:8px;transform:translateY(-50%)}
     .footer-composition .footer-social{position:absolute;right:8px;bottom:auto;top:50%;transform:translateY(-50%)}
     .footer-contact{
@@ -343,6 +343,48 @@ const deliveryPausedMsg = 'Delivery is unavailable at this time';
     }
     .footer-social svg{width:24px;height:24px}
     .install-prompt{bottom:calc(78px + env(safe-area-inset-bottom))}
+  }
+
+  /* Narrow screens use a cropped extra landing board so the Home control clears
+     the coordinated footer row without creating another full information board. */
+  @media (max-width:499px){
+    .footer-composition .footer-layout{bottom:clamp(-44px,calc(8vw - 66px),-22px)}
+    .footer-composition .footer-home-bed{height:calc(204px + env(safe-area-inset-bottom))}
+  }
+
+  @media (min-width:500px) and (max-width:599px){
+    .footer-composition .footer-layout{bottom:-18px}
+    .footer-composition .footer-home-bed{height:calc(194px + env(safe-area-inset-bottom))}
+  }
+
+  @media (min-width:600px) and (max-width:839px){
+    .footer-composition .footer-layout{bottom:12px}
+    .footer-composition .footer-copy,.footer-composition .footer-legal a{font-size:.84375rem}
+    .footer-composition .footer-legal{column-gap:20px}
+  }
+
+  @media (min-width:840px) and (max-width:979px){
+    .footer-composition .footer-layout{bottom:20px}
+    .footer-composition .footer-copy,.footer-composition .footer-legal a{font-size:.84375rem}
+    .footer-composition .footer-legal{column-gap:20px}
+  }
+
+  @media (min-width:980px) and (max-width:1099px){
+    .footer-composition .footer-layout{bottom:24px}
+    .footer-composition .footer-copy,.footer-composition .footer-legal a{font-size:.84375rem}
+    .footer-composition .footer-legal{column-gap:20px}
+  }
+
+  @media (min-width:1000px) and (max-width:1099px) and (min-height:900px){
+    .footer-composition .footer-layout{bottom:42px}
+    .footer-composition .footer-copy,.footer-composition .footer-legal a{font-size:.875rem}
+    .footer-composition .footer-legal{column-gap:22px}
+  }
+
+  @media (min-width:1000px) and (max-width:1099px) and (max-height:700px){
+    .footer-composition .footer-layout{bottom:28px}
+    .footer-composition .footer-copy,.footer-composition .footer-legal a{font-size:.875rem}
+    .footer-composition .footer-legal{column-gap:22px}
   }
 
   /* On narrow screens, the homepage keeps Contact on parchment and uses the
