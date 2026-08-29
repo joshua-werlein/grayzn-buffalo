@@ -151,6 +151,20 @@ export async function getApplicableWeeklySpecial(env: any, calendarDate: string)
   return { status: 'missing' };
 }
 
+/** Returns every saved weekly-special record that overlaps the requested calendar range. */
+export async function getWeeklySpecialsForDateRange(env: any, startDate: string, endDate: string): Promise<WeeklySpecial[]> {
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT id, week_start_date, week_end_date, created_at, updated_at
+       FROM weekly_specials
+       WHERE week_start_date <= ?2 AND week_end_date >= ?1
+       ORDER BY week_start_date ASC`,
+    ).bind(startDate, endDate).all();
+    return Promise.all((results ?? []).map((row: any) => weeklySpecialWithDays(env, row)));
+  } catch {}
+  return [];
+}
+
 export async function getMenu(env: any): Promise<{ categories: Category[]; items: Item[] }> {
   try {
     const cats = await env.DB.prepare('SELECT * FROM categories ORDER BY sort').all();

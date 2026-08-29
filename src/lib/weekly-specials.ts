@@ -15,6 +15,18 @@ const displayDateFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'long',
   day: 'numeric',
 });
+const boardDateFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'UTC',
+  weekday: 'long',
+  month: 'short',
+  day: 'numeric',
+});
+const boardCompactDateFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'UTC',
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+});
 
 export function chicagoCalendarDate(value = new Date()): string {
   const parts = Object.fromEntries(
@@ -47,6 +59,30 @@ export function standardWeekEndDate(monday: string): string {
   const date = new Date(`${monday}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() + 6);
   return date.toISOString().slice(0, 10);
+}
+
+export function calendarDatesFrom(start: string, count: number): string[] {
+  const date = new Date(`${start}T12:00:00Z`);
+  if (!Number.isFinite(date.getTime()) || count < 1) return [];
+  return Array.from({ length: count }, () => {
+    const value = date.toISOString().slice(0, 10);
+    date.setUTCDate(date.getUTCDate() + 1);
+    return value;
+  });
+}
+
+export function calendarDayOfWeek(value: string): number {
+  return new Date(`${value}T12:00:00Z`).getUTCDay();
+}
+
+export function formatWeeklyBoardDate(value: string, compact = false): string {
+  const date = new Date(`${value}T12:00:00Z`);
+  if (!Number.isFinite(date.getTime())) return '';
+  const parts = Object.fromEntries((compact ? boardCompactDateFormatter : boardDateFormatter)
+    .formatToParts(date)
+    .filter((part) => part.type !== 'literal')
+    .map((part) => [part.type, part.value]));
+  return `${parts.weekday} · ${parts.month} ${parts.day}`;
 }
 
 export function formatWeeklyDateRange(start: string, end: string): string {

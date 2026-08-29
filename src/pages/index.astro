@@ -1,19 +1,21 @@
 ---
 import Base from '../layouts/Base.astro';
-import { getMenu, getApplicableWeeklySpecial, getWelcomePhotos, thumbKey, type Item, type WelcomePhoto } from '../lib/db';
-import { chicagoCalendarDate, chicagoWeekday, formatWeeklyDateRange } from '../lib/weekly-specials';
+import { getMenu, getWeeklySpecialsForDateRange, getWelcomePhotos, thumbKey, type Item, type WelcomePhoto } from '../lib/db';
+import { calendarDatesFrom, calendarDayOfWeek, chicagoCalendarDate, formatWeeklyBoardDate } from '../lib/weekly-specials';
 
 const env = (Astro.locals as any).runtime?.env ?? {};
 const { categories, items } = await getMenu(env);
 const today = chicagoCalendarDate();
-const weeklySpecial = await getApplicableWeeklySpecial(env, today);
-const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const todayDay = days.indexOf(chicagoWeekday());
-const weeklyRange = weeklySpecial.status === 'missing' ? '' : formatWeeklyDateRange(weeklySpecial.special.week_start_date, weeklySpecial.special.week_end_date);
-const weeklyHomeDays = weeklySpecial.status === 'current'
-  ? [...weeklySpecial.special.days].sort((a, b) => a.day_of_week - b.day_of_week).filter((day) => Boolean(day.lunch_content || day.all_day_1_content || day.all_day_2_content || (day.day_of_week >= 1 && day.day_of_week <= 5 && day.nightly_content)))
+const upcomingDates = calendarDatesFrom(today, 7);
+const weeklySpecials = upcomingDates.length
+  ? await getWeeklySpecialsForDateRange(env, upcomingDates[0], upcomingDates[upcomingDates.length - 1])
   : [];
-const todayHasWeeklySpecial = weeklyHomeDays.some((day) => day.day_of_week === todayDay);
+const hasWeeklyContent = (day: { day_of_week: number; lunch_content: string; all_day_1_content: string; all_day_2_content: string; nightly_content: string }) => Boolean(day.lunch_content || day.all_day_1_content || day.all_day_2_content || (day.day_of_week >= 1 && day.day_of_week <= 5 && day.nightly_content));
+const weeklyHomeDays = upcomingDates.flatMap((date) => {
+  const weekly = weeklySpecials.find((special) => special.week_start_date <= date && special.week_end_date >= date);
+  const day = weekly?.days.find((specialDay) => specialDay.day_of_week === calendarDayOfWeek(date));
+  return day && hasWeeklyContent(day) ? [{ date, day }] : [];
+});
 const welcomePhotos = await getWelcomePhotos(env);
 type WelcomeTile =
   | { source: 'client-upload'; photo: WelcomePhoto; menuItem: null }
@@ -112,14 +114,14 @@ const welcomeHolderAssets = [
 <section class="home-weekly" aria-labelledby="home-weekly-title">
   <div class="home-weekly__card">
     <p class="home-weekly__label"><span aria-hidden="true">★</span> ALL WEEK SPECIALS <span aria-hidden="true">★</span></p>
-    {weeklySpecial.status === 'current' ? (
-      <><h2 id="home-weekly-title">Weekly Specials — {weeklyRange}</h2>{!todayHasWeeklySpecial && <p class="home-weekly__today-notice">No special posted for today.</p>}<div class="home-weekly__days">{weeklyHomeDays.map((day) => {
+    {weeklyHomeDays.length > 0 ? (
+      <><h2 id="home-weekly-title">Upcoming Specials</h2><div class="home-weekly__days">{weeklyHomeDays.map(({ date, day }) => {
         const weekendSpecialLabel = day.day_of_week === 6 ? 'Saturday Special' : day.day_of_week === 0 ? 'Sunday Special' : 'Lunch';
         const allDaySpecials = [day.all_day_1_content, day.all_day_2_content].filter(Boolean);
         const isWeekend = day.day_of_week === 0 || day.day_of_week === 6;
-        return <article class:list={['home-weekly__day', { 'is-today': day.day_of_week === todayDay, 'is-weekend': isWeekend }]}>{day.day_of_week === todayDay && <span class="home-weekly__today">TODAY</span>}<h3>{days[day.day_of_week]}</h3><div class="home-weekly__fields">{day.lunch_content && <section class="home-weekly__service home-weekly__service--lunch"><p class="home-weekly__field-label">{weekendSpecialLabel}</p><p class="home-weekly__field-value">{day.lunch_content}</p></section>}{allDaySpecials.length > 0 && <section class="home-weekly__service home-weekly__service--all-day"><p class="home-weekly__field-label">All Day Specials</p><div class="home-weekly__all-day-values">{allDaySpecials.map((content, index) => <p class:list={['home-weekly__field-value', { 'has-divider': index > 0 }]}>{content}</p>)}</div></section>}{!isWeekend && day.nightly_content && <section class="home-weekly__service home-weekly__service--nightly"><p class="home-weekly__field-label">Nightly</p><p class="home-weekly__field-value">{day.nightly_content}</p></section>}</div></article>;
-      })}</div></>
-    ) : <><h2 id="home-weekly-title">{weeklySpecial.status === 'expired' ? 'These specials have ended.' : 'Current specials coming soon.'}</h2><p class="home-weekly__fallback">Please check Facebook or call us for the current specials.</p></>}
+        return <article class:list={['home-weekly__day', { 'is-today': date === today, 'is-weekend': isWeekend }]}>{date === today && <span class="home-weekly__today">TODAY</span>}<h3><span class="home-weekly__date-long">{formatWeeklyBoardDate(date)}</span><span class="home-weekly__date-compact">{formatWeeklyBoardDate(date, true)}</span></h3><div class="home-weekly__fields">{day.lunch_content && <section class="home-weekly__service home-weekly__service--lunch"><p class="home-weekly__field-label">{weekendSpecialLabel}</p><p class="home-weekly__field-value">{day.lunch_content}</p></section>}{allDaySpecials.length > 0 && <section class="home-weekly__service home-weekly__service--all-day"><p class="home-weekly__field-label">All Day Specials</p><div class="home-weekly__all-day-values">{allDaySpecials.map((content, index) => <p class:list={['home-weekly__field-value', { 'has-divider': index > 0 }]}>{content}</p>)}</div></section>}{!isWeekend && day.nightly_content && <section class="home-weekly__service home-weekly__service--nightly"><p class="home-weekly__field-label">Nightly</p><p class="home-weekly__field-value">{day.nightly_content}</p></section>}</div></article>;
+      })}</div>{weeklyHomeDays.length <= 3 && <p class="home-weekly__more-soon">More specials coming soon.</p>}</>
+    ) : <><h2 id="home-weekly-title">Upcoming Specials</h2><p class="home-weekly__fallback">No specials are posted right now. Check back soon.</p></>}
     <a class="home-weekly__cta" href="/specials">MORE DETAILS <span aria-hidden="true">→</span></a>
   </div>
 </section>
@@ -811,6 +813,7 @@ const welcomeHolderAssets = [
   .home-weekly__label{font:700 .9rem var(--label);letter-spacing:.15em;color:var(--cream-2);text-transform:uppercase}.home-weekly h2{margin-top:5px;font:400 clamp(1.25rem,3vw,1.9rem) var(--display);color:var(--cream)}
   .home-weekly__today-notice{margin:8px 0 0;color:var(--cream)}.home-weekly__days{display:grid;gap:10px;margin-top:8px;text-align:left}.home-weekly__day{position:relative;padding:clamp(14px,1.4vw,20px);border:1px solid rgba(235,216,177,.42);min-width:0;align-content:start}.home-weekly__day h3{margin:0 0 12px;font:700 .9rem var(--label);letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}.home-weekly__fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) minmax(0,1fr);min-width:0;gap:8px clamp(12px,1.6vw,24px);align-items:start}.home-weekly__day.is-weekend .home-weekly__fields{grid-template-columns:minmax(0,1fr) minmax(0,2fr)}.home-weekly__service{min-width:0;min-height:0;height:auto;margin:0;padding:0;align-self:start}.home-weekly__service--lunch{grid-column:1}.home-weekly__service--all-day{grid-column:2}.home-weekly__service--nightly{grid-column:3}.home-weekly__day p{margin:0;font-size:clamp(1rem,1.15vw,1.1rem);line-height:1.35;white-space:pre-line;color:var(--cream);min-width:0}.home-weekly__field-label,.home-weekly__field-value{display:block}.home-weekly__field-label{margin-bottom:6px!important;font-weight:700}.home-weekly__service--all-day .home-weekly__field-label{text-align:center}.home-weekly__all-day-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:clamp(10px,1.4vw,18px)}.home-weekly__field-value{overflow-wrap:anywhere}.home-weekly__all-day-values .home-weekly__field-value.has-divider{margin:0;padding:0 0 0 clamp(10px,1.4vw,18px);border-top:0;border-left:1px solid rgba(235,216,177,.5)}.home-weekly__day.is-today{border:2px solid var(--cream);background:rgba(178,138,79,.18)}.home-weekly__today{position:absolute;top:-10px;left:12px;padding:2px 6px;background:var(--brick);font:700 .65rem var(--label);letter-spacing:.1em}.home-weekly__fallback{margin-top:10px}.home-weekly__cta{display:inline-flex;gap:8px;margin-top:20px;color:var(--cream);font:700 .82rem var(--label);letter-spacing:.14em;text-transform:uppercase;text-decoration:none;border-bottom:2px solid var(--gold);padding-bottom:3px}.home-weekly__cta:hover,.home-weekly__cta:focus-visible{color:var(--gold)}
   @media (min-width:901px){.home-weekly__card{margin-top:-64px}}@media (max-width:900px){.home-weekly__fields{grid-template-columns:repeat(2,minmax(0,1fr))}.home-weekly__service--nightly{grid-column:2}.home-weekly__day.is-weekend .home-weekly__fields{grid-template-columns:minmax(0,1fr) minmax(0,2fr)}}@media (max-width:520px){.home-weekly{padding:0 12px 18px}.home-weekly__card{padding:18px}.home-weekly__day{padding:18px 11px 11px}.home-weekly__fields,.home-weekly__day.is-weekend .home-weekly__fields{grid-template-columns:1fr}.home-weekly__service--lunch,.home-weekly__service--all-day,.home-weekly__service--nightly{grid-column:1}.home-weekly__all-day-values{grid-template-columns:1fr}.home-weekly__all-day-values .home-weekly__field-value.has-divider{margin-top:14px;padding:14px 0 0;border-top:1px solid rgba(235,216,177,.5);border-left:0}}
+  .home-weekly__date-compact{display:none}.home-weekly__more-soon{margin:12px 0 0;color:var(--cream-2);font-size:.9rem;text-align:center}@media (max-width:520px){.home-weekly__date-long{display:none}.home-weekly__date-compact{display:inline}}
 </style>
 
 <style is:global>
