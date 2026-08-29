@@ -64,11 +64,13 @@ const savedWeeks: any[] = [];
 try { savedWeeks.push(...((await env.DB.prepare('SELECT id, week_start_date, week_end_date FROM weekly_specials ORDER BY week_start_date DESC').all()).results ?? [])); } catch {}
 const requestedId = Number(Astro.url.searchParams.get('week') ?? '');
 if (Astro.request.method !== 'POST' && Number.isInteger(requestedId) && requestedId > 0) { try { await loadWeek(requestedId); } catch (caught) { error = caught instanceof Error ? caught.message : 'Could not load that saved week.'; } }
+const selectedWeekIndex = savedWeeks.findIndex((week) => String(week.id) === editingId);
+const savedWeeksExpanded = selectedWeekIndex >= 4;
 ---
 <Base title="Admin · Weekly Specials — Grayz'n Buffalo">
   <section>
     <div class="section-head"><h2>Weekly Specials</h2><p class="back"><a href="/admin">← Back to admin</a></p>{notice && <p><strong>{notice}</strong></p>}{error && <p class="error"><strong>{error}</strong></p>}</div>
-    <div class="week-picker"><label for="saved-week">Saved week to edit</label><select id="saved-week"><option value="">Select a saved week…</option>{savedWeeks.map((week) => <option value={week.id} selected={String(week.id) === editingId}>{week.week_start_date} – {week.week_end_date}</option>)}</select><a class="btn btn-ghost" href="/admin/specials?new=1">Create new week</a></div>
+    <div class="week-picker"><label for="saved-week">Saved week to edit</label><select id="saved-week"><option value="">Select a saved week...</option>{savedWeeks.map((week, index) => <option value={week.id} data-older-week={index >= 4 ? 'true' : undefined} hidden={index >= 4 && !savedWeeksExpanded} selected={String(week.id) === editingId}>{week.week_start_date} – {week.week_end_date}</option>)}</select>{savedWeeks.length > 4 && <button id="saved-weeks-toggle" class="btn btn-ghost" type="button" aria-expanded={savedWeeksExpanded ? 'true' : 'false'}>{savedWeeksExpanded ? 'Show fewer weeks' : 'Show more weeks'}</button>}<a class="btn btn-ghost" href="/admin/specials?new=1">Create new week</a></div>
     <form method="post" class="weekly-form">
       <input type="hidden" name="weekly_id" value={editingId}/>
       <fieldset class="week-dates"><legend>{editingId ? 'Editing saved week' : 'New weekly specials'}</legend><div class="week-date-controls"><div class="week-date-group"><label for="week-start">Week starting</label><input id="week-start" name="week_start_date" type="date" value={weekStart} required/></div><div class="week-date-group week-date-group--end"><span class="week-end-label">Week ending</span><output id="week-end" class="week-end-value" aria-live="polite">{weekEnd || 'Choose a week'}</output><p class="week-end-helper">End date is filled automatically.</p></div></div><p>The standard week starts on Monday and runs seven days through Sunday. Specials will no longer be visible once the ending date passes.</p></fieldset>
@@ -83,11 +85,18 @@ if (Astro.request.method !== 'POST' && Number.isInteger(requestedId) && requeste
   const start = document.getElementById('week-start') as HTMLInputElement | null;
   const end = document.getElementById('week-end');
   const picker = document.getElementById('saved-week') as HTMLSelectElement | null;
+  const weeksToggle = document.getElementById('saved-weeks-toggle') as HTMLButtonElement | null;
   const monday = (value: string) => { const date = new Date(`${value}T12:00:00Z`); date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7)); return date.toISOString().slice(0, 10); };
   const standardEnd = (value: string) => { const date = new Date(`${value}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + 6); return date.toISOString().slice(0, 10); };
   const updateEnd = () => { if (!start?.value || !end) return; start.value = monday(start.value); end.textContent = standardEnd(start.value); };
   start?.addEventListener('change', updateEnd);
   picker?.addEventListener('change', () => { location.href = picker.value ? `/admin/specials?week=${encodeURIComponent(picker.value)}` : '/admin/specials?new=1'; });
+  weeksToggle?.addEventListener('click', () => {
+    const expanded = weeksToggle.getAttribute('aria-expanded') !== 'true';
+    document.querySelectorAll<HTMLOptionElement>('option[data-older-week]').forEach((option) => option.hidden = !expanded);
+    weeksToggle.setAttribute('aria-expanded', String(expanded));
+    weeksToggle.textContent = expanded ? 'Show fewer weeks' : 'Show more weeks';
+  });
   document.querySelectorAll<HTMLTextAreaElement>('textarea[maxlength]').forEach((input) => { const output = input.nextElementSibling as HTMLOutputElement; const update = () => output.textContent = `${input.value.length} / 150`; input.addEventListener('input', update); update(); });
   form?.addEventListener('submit', () => form.setAttribute('aria-busy', 'true'));
 </script>
