@@ -9,16 +9,19 @@ if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const DAY_NUMBERS = [1, 2, 3, 4, 5, 6, 0];
 const MAX_FIELD_LENGTH = 150;
+const CHARACTER_LIMIT_ERROR = 'Each field must be 150 characters or fewer.';
 const isWeekend = (index: number) => index >= 5;
 type DayValues = { lunch_content: string; all_day_1_content: string; all_day_2_content: string; nightly_content: string };
 const blankDays = () => DAYS.map((): DayValues => ({ lunch_content: '', all_day_1_content: '', all_day_2_content: '', nightly_content: '' }));
+const normalizeLineEndings = (value: string) => value.replace(/\r\n?/g, '\n');
+const formValue = (form: FormData, name: string) => normalizeLineEndings(String(form.get(name) ?? ''));
 
 let notice = '', error = '', weekStart = '', weekEnd = '', editingId = '', dayValues = blankDays();
 const valuesFrom = (form: FormData) => DAYS.map((_, index): DayValues => ({
-  lunch_content: String(form.get(`lunch_${index}`) ?? '').trim(),
-  all_day_1_content: String(form.get(`all_day_1_${index}`) ?? '').trim(),
-  all_day_2_content: String(form.get(`all_day_2_${index}`) ?? '').trim(),
-  nightly_content: isWeekend(index) ? '' : String(form.get(`nightly_${index}`) ?? '').trim(),
+  lunch_content: formValue(form, `lunch_${index}`).trim(),
+  all_day_1_content: formValue(form, `all_day_1_${index}`).trim(),
+  all_day_2_content: formValue(form, `all_day_2_${index}`).trim(),
+  nightly_content: isWeekend(index) ? '' : formValue(form, `nightly_${index}`).trim(),
 }));
 const loadWeek = async (id: number) => {
   const week: any = await env.DB.prepare('SELECT id, week_start_date FROM weekly_specials WHERE id = ?1').bind(id).first();
@@ -30,7 +33,7 @@ const loadWeek = async (id: number) => {
   const { results } = await env.DB.prepare('SELECT day_of_week, lunch_content, all_day_1_content, all_day_2_content, nightly_content FROM weekly_special_days WHERE weekly_special_id = ?1').bind(id).all();
   for (const row of results ?? []) {
     const index = DAY_NUMBERS.indexOf(Number((row as any).day_of_week));
-    if (index >= 0) dayValues[index] = { lunch_content: String((row as any).lunch_content ?? ''), all_day_1_content: String((row as any).all_day_1_content ?? ''), all_day_2_content: String((row as any).all_day_2_content ?? ''), nightly_content: isWeekend(index) ? '' : String((row as any).nightly_content ?? '') };
+    if (index >= 0) dayValues[index] = { lunch_content: normalizeLineEndings(String((row as any).lunch_content ?? '')), all_day_1_content: normalizeLineEndings(String((row as any).all_day_1_content ?? '')), all_day_2_content: normalizeLineEndings(String((row as any).all_day_2_content ?? '')), nightly_content: isWeekend(index) ? '' : normalizeLineEndings(String((row as any).nightly_content ?? '')) };
   }
 };
 
@@ -40,17 +43,17 @@ if (Astro.request.method === 'POST') {
   editingId = String(form.get('weekly_id') ?? '').trim();
   dayValues = valuesFrom(form);
   const rawContent = DAYS.flatMap((_, index) => [
-    String(form.get(`lunch_${index}`) ?? ''),
-    String(form.get(`all_day_1_${index}`) ?? ''),
-    String(form.get(`all_day_2_${index}`) ?? ''),
-    isWeekend(index) ? '' : String(form.get(`nightly_${index}`) ?? ''),
+    formValue(form, `lunch_${index}`),
+    formValue(form, `all_day_1_${index}`),
+    formValue(form, `all_day_2_${index}`),
+    isWeekend(index) ? '' : formValue(form, `nightly_${index}`),
   ]);
   try {
     if (!isIsoCalendarDate(weekStart)) throw new Error('Enter a valid week start date.');
     weekStart = mondayForIsoDate(weekStart);
     weekEnd = standardWeekEndDate(weekStart);
     const content = dayValues.flatMap((day) => [day.lunch_content, day.all_day_1_content, day.all_day_2_content, day.nightly_content]);
-    if (rawContent.some((value) => value.length > MAX_FIELD_LENGTH)) throw new Error('Each field must 150 characters or fewer.');
+    if (rawContent.some((value) => value.length > MAX_FIELD_LENGTH)) throw new Error(CHARACTER_LIMIT_ERROR);
     if (!content.some(Boolean)) throw new Error('Enter at least one weekly special before saving.');
     const id = editingId ? Number(editingId) : null;
     if (editingId && (!Number.isInteger(id) || id < 1)) throw new Error('Invalid saved week.');
@@ -76,7 +79,7 @@ const savedWeeksExpanded = selectedWeekIndex >= 4;
 ---
 <Base title="Admin · Weekly Specials — Grayz'n Buffalo">
   <section>
-    <div class="section-head"><h2>Weekly Specials</h2><p class="back"><a href="/admin">← Back to admin</a></p>{notice && <p><strong>{notice}</strong></p>}{error && <p class="error"><strong>{error}</strong></p>}</div>
+    <div class="section-head"><h2>Weekly Specials</h2><p class="back"><a href="/admin">← Back to admin</a></p>{notice && <p><strong>{notice}</strong></p>}{error && <p class="error" data-character-limit-error={error === CHARACTER_LIMIT_ERROR ? 'true' : undefined}><strong>{error}</strong></p>}</div>
     <div class="week-picker"><label for="saved-week">Saved week to edit</label><select id="saved-week"><option value="">Select a saved week...</option>{savedWeeks.map((week, index) => <option value={week.id} data-older-week={index >= 4 ? 'true' : undefined} hidden={index >= 4 && !savedWeeksExpanded} selected={String(week.id) === editingId}>{week.week_start_date} – {week.week_end_date}</option>)}</select>{savedWeeks.length > 4 && <button id="saved-weeks-toggle" class="btn btn-ghost week-picker__action" type="button" aria-expanded={savedWeeksExpanded ? 'true' : 'false'} aria-controls="saved-week">{savedWeeksExpanded ? 'View fewer weeks' : 'View more weeks'}</button>}<a class="btn btn-ghost week-picker__action" href="/admin/specials?new=1">Create new week</a></div>
     <form method="post" class="weekly-form">
       <input type="hidden" name="weekly_id" value={editingId}/>
@@ -104,7 +107,11 @@ const savedWeeksExpanded = selectedWeekIndex >= 4;
     weeksToggle.setAttribute('aria-expanded', String(expanded));
     weeksToggle.textContent = expanded ? 'View fewer weeks' : 'View more weeks';
   });
-  document.querySelectorAll<HTMLTextAreaElement>('textarea[maxlength]').forEach((input) => { const output = input.nextElementSibling as HTMLOutputElement; const update = () => output.textContent = `${input.value.length} / ${input.maxLength}`; input.addEventListener('input', update); update(); });
+  const textareas = Array.from(document.querySelectorAll<HTMLTextAreaElement>('textarea[maxlength]'));
+  const characterLimitError = document.querySelector<HTMLElement>('[data-character-limit-error]');
+  const updateCharacterLimitError = () => { if (characterLimitError) characterLimitError.hidden = !textareas.some((input) => input.value.length > input.maxLength); };
+  textareas.forEach((input) => { const output = input.nextElementSibling as HTMLOutputElement; const update = () => output.textContent = `${input.value.length} / ${input.maxLength}`; input.addEventListener('input', update); input.addEventListener('input', updateCharacterLimitError); update(); });
+  updateCharacterLimitError();
   form?.addEventListener('submit', () => form.setAttribute('aria-busy', 'true'));
 </script>
 <style>
