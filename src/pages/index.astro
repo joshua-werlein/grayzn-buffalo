@@ -118,7 +118,7 @@ const welcomeHolderAssets = [
           ['Lunch', day.lunch_content],
           ['All Day Special 1', day.all_day_1_content],
           ['All Day Special 2', day.all_day_2_content],
-          ['Dinner/Nightly', day.nightly_content],
+          ...(day.day_of_week >= 1 && day.day_of_week <= 5 ? [['Dinner/Nightly', day.nightly_content]] : []),
         ].filter(([, content]) => Boolean(content));
         return <article class:list={['home-weekly__day', { 'is-today': day.day_of_week === todayDay }]}>{day.day_of_week === todayDay && <span class="home-weekly__today">TODAY</span>}<h3>{days[day.day_of_week]}</h3><div class="home-weekly__fields" data-field-count={fields.length} style={`--field-count:${fields.length}`}>{fields.map(([label, content]) => <p><span class="home-weekly__field-label">{label}</span><span class="home-weekly__field-value">{content}</span></p>)}</div></article>;
       })}</div></>
