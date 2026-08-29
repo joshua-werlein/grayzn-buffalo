@@ -13,6 +13,7 @@ const week = weekly.status === 'current'
   : [];
 const showsNightly = (day: WeeklySpecialDay) => day.day_of_week >= 1 && day.day_of_week <= 5 && Boolean(day.nightly_content);
 const hasDayContent = (day: WeeklySpecialDay) => Boolean(day.lunch_content || day.all_day_1_content || day.all_day_2_content || showsNightly(day));
+const lunchLabel = (day: WeeklySpecialDay) => day.day_of_week === 6 ? 'Saturday Special' : day.day_of_week === 0 ? 'Sunday Special' : 'Lunch';
 const range = weekly.status === 'missing' ? '' : formatWeeklyDateRange(weekly.special.week_start_date, weekly.special.week_end_date);
 const recurring = [{ name: 'Lunch Specials', when: '11 AM – 1:30 PM' }, { name: 'Nightly Specials', when: '5 – 10 PM' }, { name: 'Friday Fish', when: 'Fridays · 5 – 10 PM' }, { name: 'Happy Hour', when: 'Mon–Fri · 5 – 6:30 PM' }, { name: 'Mexican Night', when: 'Tuesdays · 5 – 10 PM' }];
 ---
@@ -26,7 +27,7 @@ const recurring = [{ name: 'Lunch Specials', when: '11 AM – 1:30 PM' }, { name
       {week.map((special) => <li class:list={['day-card', { 'is-today': special.day_of_week === todayDay }]}>
         {special.day_of_week === todayDay && <span class="today-badge">Today</span>}<span class="day-name">{DAYS[special.day_of_week]}</span>
         {hasDayContent(special) ? <div class="day-services">
-          {special.lunch_content && <section class="day-service lunch-service"><p class="service-label">Lunch <span>11 AM–1:30 PM</span></p><p class="day-desc">{special.lunch_content}</p></section>}
+          {special.lunch_content && <section class="day-service lunch-service"><p class="service-label">{lunchLabel(special)}{special.day_of_week !== 0 && special.day_of_week !== 6 && <span>11 AM–1:30 PM</span>}</p><p class="day-desc">{special.lunch_content}</p></section>}
           {special.all_day_1_content && <section class="day-service"><p class="service-label">All Day Special 1</p><p class="day-desc">{special.all_day_1_content}</p></section>}
           {special.all_day_2_content && <section class="day-service"><p class="service-label">All Day Special 2</p><p class="day-desc">{special.all_day_2_content}</p></section>}
           {showsNightly(special) && <section class="day-service night-service"><p class="service-label">Nightly Special <span>5–10 PM</span></p><p class="day-desc night-lines">{special.nightly_content}</p></section>}

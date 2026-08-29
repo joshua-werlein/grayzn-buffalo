@@ -114,8 +114,9 @@ const welcomeHolderAssets = [
     <p class="home-weekly__label"><span aria-hidden="true">★</span> ALL WEEK SPECIALS <span aria-hidden="true">★</span></p>
     {weeklySpecial.status === 'current' ? (
       <><h2 id="home-weekly-title">Weekly Specials — {weeklyRange}</h2>{!todayHasWeeklySpecial && <p class="home-weekly__today-notice">No special posted for today.</p>}<div class="home-weekly__days">{weeklyHomeDays.map((day) => {
+        const weekendSpecialLabel = day.day_of_week === 6 ? 'Saturday Special' : day.day_of_week === 0 ? 'Sunday Special' : 'Lunch';
         const fields = [
-          ['Lunch', day.lunch_content],
+          [weekendSpecialLabel, day.lunch_content],
           ['All Day Special 1', day.all_day_1_content],
           ['All Day Special 2', day.all_day_2_content],
           ...(day.day_of_week >= 1 && day.day_of_week <= 5 ? [['Dinner/Nightly', day.nightly_content]] : []),
@@ -139,7 +140,7 @@ const welcomeHolderAssets = [
       </div>
       <p class="welcome-intro">Proudly rooted in Mondovi, Wisconsin — where the people are friendly,<br /> the stories are plentiful, and the buffalo spirit runs strong.<br /> We’re glad you’re here. Pull up a chair and make yourself at home.</p>
     </div>
-    <img class="welcome-divider" src="/images/welcome/center-divider.webp" alt="" aria-hidden="true" />
+    <img class="welcome-divider" src="/images/welcome/center-divider.webp" alt="" aria-hidden="true" width="700" height="233" />
     {welcomePhotoSlots.length > 0 && (
       <div class="photo-stack" role="region" aria-label="Welcome and menu photos" tabindex="0">
         {welcomePhotoSlots.map((slot, slotIndex) => (
@@ -186,14 +187,14 @@ const welcomeHolderAssets = [
       <p class="welcome-script">
         <span class="sr-only">Good Food. Cold Drinks. Great People.</span>
         <span class="welcome-script__visual" aria-hidden="true">
-          <img class="welcome-script__flourish" src="/images/welcome/side-flourish.webp" alt="" />
+          <img class="welcome-script__flourish" src="/images/welcome/side-flourish.webp" alt="" width="320" height="107" />
           <span class="welcome-script__full">Good Food. Cold Drinks. Great People.</span>
           <span class="welcome-script__compact">
             <span>Good Food.</span>
             <span>Cold Drinks.</span>
             <span>Great People.</span>
           </span>
-          <img class="welcome-script__flourish welcome-script__flourish--right" src="/images/welcome/side-flourish.webp" alt="" />
+          <img class="welcome-script__flourish welcome-script__flourish--right" src="/images/welcome/side-flourish.webp" alt="" width="320" height="107" />
         </span>
       </p>
     </div>
@@ -812,8 +813,8 @@ const welcomeHolderAssets = [
   .home-weekly{position:relative;padding:0 clamp(14px,2vw,32px) clamp(12px,1.75vw,24px);background:var(--cream)}
   .home-weekly__card{position:relative;z-index:3;width:100%;max-width:none;margin:0;padding:clamp(18px,2.4vw,30px);border:3px solid var(--gold);background-color:var(--denim);background-image:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 5px);box-shadow:4px 5px 0 rgba(43,27,20,.25);color:var(--cream);text-align:center}
   .home-weekly__label{font:700 .9rem var(--label);letter-spacing:.15em;color:var(--cream-2);text-transform:uppercase}.home-weekly h2{margin-top:5px;font:400 clamp(1.25rem,3vw,1.9rem) var(--display);color:var(--cream)}
-  .home-weekly__today-notice{margin:8px 0 0;color:var(--cream)}.home-weekly__days{display:grid;gap:10px;margin-top:8px;text-align:left}.home-weekly__day{position:relative;display:grid;grid-template-columns:clamp(80px,7vw,105px) minmax(0,1fr);column-gap:clamp(10px,1.2vw,18px);align-items:start;padding:clamp(14px,1.4vw,20px);border:1px solid rgba(235,216,177,.42);min-width:0}.home-weekly__day h3{font:700 .9rem var(--label);letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}.home-weekly__fields{display:grid;grid-template-columns:repeat(var(--field-count),minmax(0,1fr));min-width:0;gap:8px clamp(12px,1.6vw,24px)}.home-weekly__day p{margin:0;font-size:clamp(1rem,1.15vw,1.1rem);line-height:1.35;white-space:pre-line;color:var(--cream)}.home-weekly__field-label,.home-weekly__field-value{display:block}.home-weekly__field-label{font-weight:700}.home-weekly__day.is-today{border:2px solid var(--cream);background:rgba(178,138,79,.18)}.home-weekly__today{position:absolute;top:-10px;left:12px;padding:2px 6px;background:var(--brick);font:700 .65rem var(--label);letter-spacing:.1em}.home-weekly__fallback{margin-top:10px}.home-weekly__cta{display:inline-flex;gap:8px;margin-top:20px;color:var(--cream);font:700 .82rem var(--label);letter-spacing:.14em;text-transform:uppercase;text-decoration:none;border-bottom:2px solid var(--gold);padding-bottom:3px}.home-weekly__cta:hover,.home-weekly__cta:focus-visible{color:var(--gold)}
-  @media (min-width:901px){.home-weekly__card{margin-top:-64px}}@media (max-width:900px){.home-weekly__day{grid-template-columns:clamp(76px,14vw,96px) minmax(0,1fr)}.home-weekly__fields[data-field-count="3"],.home-weekly__fields[data-field-count="4"]{grid-template-columns:repeat(2,minmax(0,1fr))}}@media (max-width:520px){.home-weekly{padding:0 12px 18px}.home-weekly__card{padding:18px}.home-weekly__day{grid-template-columns:1fr;padding:18px 11px 11px}.home-weekly__fields{grid-template-columns:1fr}}
+  .home-weekly__today-notice{margin:8px 0 0;color:var(--cream)}.home-weekly__days{display:grid;gap:10px;margin-top:8px;text-align:left}.home-weekly__day{position:relative;padding:clamp(14px,1.4vw,20px);border:1px solid rgba(235,216,177,.42);min-width:0}.home-weekly__day h3{margin:0 0 12px;font:700 .9rem var(--label);letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}.home-weekly__fields{display:grid;grid-template-columns:repeat(var(--field-count),minmax(0,1fr));min-width:0;gap:8px clamp(12px,1.6vw,24px)}.home-weekly__day p{margin:0;font-size:clamp(1rem,1.15vw,1.1rem);line-height:1.35;white-space:pre-line;color:var(--cream);min-width:0}.home-weekly__field-label,.home-weekly__field-value{display:block}.home-weekly__field-label{font-weight:700}.home-weekly__field-value{overflow-wrap:anywhere}.home-weekly__day.is-today{border:2px solid var(--cream);background:rgba(178,138,79,.18)}.home-weekly__today{position:absolute;top:-10px;left:12px;padding:2px 6px;background:var(--brick);font:700 .65rem var(--label);letter-spacing:.1em}.home-weekly__fallback{margin-top:10px}.home-weekly__cta{display:inline-flex;gap:8px;margin-top:20px;color:var(--cream);font:700 .82rem var(--label);letter-spacing:.14em;text-transform:uppercase;text-decoration:none;border-bottom:2px solid var(--gold);padding-bottom:3px}.home-weekly__cta:hover,.home-weekly__cta:focus-visible{color:var(--gold)}
+  @media (min-width:901px){.home-weekly__card{margin-top:-64px}}@media (max-width:900px){.home-weekly__fields[data-field-count="3"],.home-weekly__fields[data-field-count="4"]{grid-template-columns:repeat(2,minmax(0,1fr))}}@media (max-width:520px){.home-weekly{padding:0 12px 18px}.home-weekly__card{padding:18px}.home-weekly__day{padding:18px 11px 11px}.home-weekly__fields{grid-template-columns:1fr}}
 </style>
 
 <style is:global>
