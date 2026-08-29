@@ -119,7 +119,7 @@ try {
       <div class="field wide check">
         <label for="add-late">
           <input id="add-late" type="checkbox" name="late_night" value="1" />
-          Available late night <span class="hint">(after the grill closes — pizza, pizza fries, appetizers)</span>
+          Add to Late Night menu <span class="hint">(Item stays on the Daily menu and also appears on the Late Night menu.)</span>
         </label>
       </div>
       <div class="field wide add-photo-field">
@@ -214,7 +214,7 @@ try {
                   <div class="field wide check">
                     <label for={`l-${i.id}`}>
                       <input id={`l-${i.id}`} type="checkbox" name="late_night" value="1" checked={i.late_night === 1} />
-                      Available late night
+                      Add to Late Night menu <span class="hint">(Item stays on the Daily menu and also appears on the Late Night menu.)</span>
                     </label>
                   </div>
                   <button class="btn btn-primary" type="submit">Save changes</button>
