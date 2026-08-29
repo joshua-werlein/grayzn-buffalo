@@ -8,6 +8,7 @@ if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const DAY_NUMBERS = [1, 2, 3, 4, 5, 6, 0];
+const MAX_FIELD_LENGTH = 150;
 const isWeekend = (index: number) => index >= 5;
 type DayValues = { lunch_content: string; all_day_1_content: string; all_day_2_content: string; nightly_content: string };
 const blankDays = () => DAYS.map((): DayValues => ({ lunch_content: '', all_day_1_content: '', all_day_2_content: '', nightly_content: '' }));
@@ -38,13 +39,19 @@ if (Astro.request.method === 'POST') {
   weekStart = String(form.get('week_start_date') ?? '').trim();
   editingId = String(form.get('weekly_id') ?? '').trim();
   dayValues = valuesFrom(form);
+  const rawContent = DAYS.flatMap((_, index) => [
+    String(form.get(`lunch_${index}`) ?? ''),
+    String(form.get(`all_day_1_${index}`) ?? ''),
+    String(form.get(`all_day_2_${index}`) ?? ''),
+    isWeekend(index) ? '' : String(form.get(`nightly_${index}`) ?? ''),
+  ]);
   try {
     if (!isIsoCalendarDate(weekStart)) throw new Error('Enter a valid week start date.');
     weekStart = mondayForIsoDate(weekStart);
     weekEnd = standardWeekEndDate(weekStart);
     const content = dayValues.flatMap((day) => [day.lunch_content, day.all_day_1_content, day.all_day_2_content, day.nightly_content]);
+    if (rawContent.some((value) => value.length > MAX_FIELD_LENGTH)) throw new Error('Each field must 150 characters or fewer.');
     if (!content.some(Boolean)) throw new Error('Enter at least one weekly special before saving.');
-    if (content.some((value) => value.length > 150)) throw new Error('Each field must be 150 characters or fewer.');
     const id = editingId ? Number(editingId) : null;
     if (editingId && (!Number.isInteger(id) || id < 1)) throw new Error('Invalid saved week.');
     if (id && !await env.DB.prepare('SELECT id FROM weekly_specials WHERE id = ?1').bind(id).first()) throw new Error('That saved week no longer exists.');
@@ -97,7 +104,7 @@ const savedWeeksExpanded = selectedWeekIndex >= 4;
     weeksToggle.setAttribute('aria-expanded', String(expanded));
     weeksToggle.textContent = expanded ? 'View fewer weeks' : 'View more weeks';
   });
-  document.querySelectorAll<HTMLTextAreaElement>('textarea[maxlength]').forEach((input) => { const output = input.nextElementSibling as HTMLOutputElement; const update = () => output.textContent = `${input.value.length} / 150`; input.addEventListener('input', update); update(); });
+  document.querySelectorAll<HTMLTextAreaElement>('textarea[maxlength]').forEach((input) => { const output = input.nextElementSibling as HTMLOutputElement; const update = () => output.textContent = `${input.value.length} / ${input.maxLength}`; input.addEventListener('input', update); update(); });
   form?.addEventListener('submit', () => form.setAttribute('aria-busy', 'true'));
 </script>
 <style>
