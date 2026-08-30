@@ -196,7 +196,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   }
   .staff-door img{width:40px;height:auto;display:block}
   .staff-door:hover,
-  .staff-door:focus-visible{opacity:1}
+  .staff-door:focus-visible{opacity:1;background:rgba(239,223,194,.16)}
   .staff-door:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
   /* Offset the tap padding so the visible buffalo aligns with Facebook's edge. */
   .staff-door{left:-10px}
@@ -360,9 +360,9 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .footer-composition:not(.footer-composition--admin) .staff-door img{width:44px}
     .footer-composition:not(.footer-composition--admin) .footer-social{position:absolute;right:8px;bottom:4px;top:auto;transform:none}
     .footer-composition:not(.footer-composition--admin) .footer-contact{
-      /* Anchor to the scenic foreground, not the page or board extension. */
-      display:block;position:absolute;z-index:1;left:calc(50% + clamp(14px,4vw,32px));bottom:calc(-1 * clamp(8px,3vw,18px));
-      width:clamp(190px,58vw,260px);max-width:calc(100% - 28px);transform:translateX(-50%);
+      /* Keep the complete contact artwork within the scenic foreground. */
+      display:block;position:absolute;z-index:1;left:calc(50% + clamp(14px,4vw,32px));bottom:clamp(2px,1vw,10px);
+      width:clamp(130px,39vw,260px);max-width:calc(100% - 28px);transform:translateX(-50%);
       line-height:0;text-decoration:none;filter:drop-shadow(0 5px 5px rgba(30,18,10,.28));
     }
     .footer-contact img{display:block;width:100%;height:auto}
@@ -387,18 +387,21 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   }
 
   @media (min-width:600px) and (max-width:839px){
+    .footer-composition:not(.footer-composition--admin) .footer-home-bed{height:calc(278px + env(safe-area-inset-bottom))}
     .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(188px + env(safe-area-inset-bottom))}
     .footer-composition:not(.footer-composition--admin) .footer-copy,.footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:.95rem}
     .footer-composition:not(.footer-composition--admin) .footer-legal{column-gap:22px}
   }
 
   @media (min-width:840px) and (max-width:979px){
+    .footer-composition:not(.footer-composition--admin) .footer-home-bed{height:calc(278px + env(safe-area-inset-bottom))}
     .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(188px + env(safe-area-inset-bottom))}
     .footer-composition:not(.footer-composition--admin) .footer-copy,.footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:.98rem}
     .footer-composition:not(.footer-composition--admin) .footer-legal{column-gap:24px}
   }
 
   @media (min-width:980px) and (max-width:1099px){
+    .footer-composition:not(.footer-composition--admin) .footer-home-bed{height:calc(278px + env(safe-area-inset-bottom))}
     .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(188px + env(safe-area-inset-bottom))}
     .footer-composition:not(.footer-composition--admin) .footer-copy,.footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:1rem}
     .footer-composition:not(.footer-composition--admin) .footer-legal{column-gap:26px}
