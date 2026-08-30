@@ -82,16 +82,10 @@ const welcomeHolderAssets = [
     <div class="logo-stage" aria-hidden="true">
       <img class="logo-layer logo-wordmark" src="/logo-wordmark.webp" alt="" width="900" height="605" decoding="async" />
       <div class="buffalo-video-anchor logo-layer">
-        <video
-          class="buffalo-video"
-          autoplay
-          muted
-          playsinline
-          preload="auto"
-          aria-hidden="true"
-        >
-          <source src="/Kling-buffalo-hero-slow-alpha.webm" type="video/webm" />
-        </video>
+        <picture>
+          <source srcset="/buffalo-poster.webp" media="(prefers-reduced-motion: reduce)" />
+          <img class="buffalo-video" src="/buffalo-hero.webp" alt="" width="560" height="316" decoding="async" />
+        </picture>
       </div>
     </div>
   </div>
@@ -307,18 +301,12 @@ const welcomeHolderAssets = [
   @keyframes hero-tag-fade{to{opacity:1}}
   .buffalo-video-anchor {
     --layer-y: var(--buffalo-y);
-    --buffalo-start-y: clamp(112px, 11vw, 144px);
     --buffalo-end-y: clamp(28px, 4vw, 56px);
     z-index: 1;
     display: flex;
     align-items: flex-end;
     justify-content: center;
-    transform: translateY(var(--buffalo-start-y));
-    will-change: transform;
-  }
-
-  .buffalo-video-anchor.is-playing {
-    animation: buffalo-vertical-track var(--buffalo-motion-duration, 7.2s) linear var(--buffalo-motion-delay, 0s) both;
+    transform: translateY(var(--buffalo-end-y));
   }
 
   .buffalo-video {
@@ -327,10 +315,6 @@ const welcomeHolderAssets = [
     height: auto;
     object-fit: contain;
     transform-origin:center bottom;
-  }
-  @keyframes buffalo-vertical-track {
-    from { transform: translateY(var(--buffalo-start-y)); }
-    to { transform: translateY(var(--buffalo-end-y)); }
   }
   @keyframes logo-layer-fade{to{opacity:1}}
   @keyframes logo-bar-fade{to{opacity:1}}
@@ -398,10 +382,6 @@ const welcomeHolderAssets = [
   }
   @media (prefers-reduced-motion: reduce){
     .hero-tag-enter{animation:none;opacity:1;transform:none}
-      .buffalo-anchor{animation:none;transform:none}
-      .buffalo-video-anchor {
-      display: none;
-    }
     .logo-buffalo{animation:none;opacity:1;transform:scale(var(--buffalo-scale))}
     .logo-wordmark{animation:none;opacity:1}
     .logo-bar-grill{animation:none;opacity:1}
@@ -905,28 +885,6 @@ const welcomeHolderAssets = [
 </style>
 
 <script>
-  const heroBuffaloVideo = document.querySelector<HTMLVideoElement>('.buffalo-video');
-  const heroBuffaloAnchor = document.querySelector<HTMLElement>('.buffalo-video-anchor');
-
-  if (heroBuffaloVideo && heroBuffaloAnchor) {
-    let buffaloTrackStarted = false;
-
-    const startBuffaloTrack = () => {
-      if (buffaloTrackStarted) return;
-      buffaloTrackStarted = true;
-
-      const duration = Number.isFinite(heroBuffaloVideo.duration) && heroBuffaloVideo.duration > 0
-        ? heroBuffaloVideo.duration
-        : 7.2;
-      heroBuffaloAnchor.style.setProperty('--buffalo-motion-duration', `${duration}s`);
-      heroBuffaloAnchor.style.setProperty('--buffalo-motion-delay', `-${Math.min(heroBuffaloVideo.currentTime, duration)}s`);
-      heroBuffaloAnchor.classList.add('is-playing');
-    };
-
-    heroBuffaloVideo.addEventListener('playing', startBuffaloTrack, { once: true });
-    if (!heroBuffaloVideo.paused && !heroBuffaloVideo.ended) startBuffaloTrack();
-  }
-
   document.addEventListener('error', (event) => {
     const image = event.target;
     if (!(image instanceof HTMLImageElement) || !image.matches('.photo img')) return;
