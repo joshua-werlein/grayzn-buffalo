@@ -837,7 +837,15 @@ const welcomeHolderAssets = [
   #social .fb-billboard:has(.fb-grid[data-count="1"]){max-width:520px}
   #social .fb-billboard:has(.fb-grid[data-count="2"]){max-width:820px}
   #social .fb-billboard:has(.fb-grid[data-count="3"]){max-width:1120px}
-  @media (min-width:1601px){#social .fb-billboard,#social .fb-billboard:has(.fb-grid[data-count="1"]),#social .fb-billboard:has(.fb-grid[data-count="2"]),#social .fb-billboard:has(.fb-grid[data-count="3"]){width:100%;max-width:none}}
+  @media (min-width:1601px){
+    #social{background-size:max(1600px,100vw) auto}
+    #social .fb-billboard,#social .fb-billboard:has(.fb-grid[data-count="1"]),#social .fb-billboard:has(.fb-grid[data-count="2"]),#social .fb-billboard:has(.fb-grid[data-count="3"]){width:calc(100% + 128px);max-width:none;margin-inline:-64px}
+    /* Render the source canvases just wide enough to place their transparent rails
+       outside the full-bleed billboard, while preserving each visible board's ratio. */
+    #social .fb-billboard__top{aspect-ratio:1557 / 221;background-size:102.761721% auto;background-position:74.418605% top}
+    #social .fb-billboard__middle-slice{position:relative;width:108.621860%;max-width:none;margin-left:-4.684318%}
+    #social .fb-billboard__bottom{aspect-ratio:1547 / 261;background-size:103.490627% auto;background-position:54.716981% top}
+  }
   #social .fb-grid{position:relative;z-index:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(26px,3vw,44px) clamp(18px,2.4vw,32px);width:100%;min-height:0;align-items:start}
   #social .fb-grid[data-count="1"]{grid-template-columns:1fr}
   #social .fb-grid[data-count="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -961,6 +969,7 @@ const welcomeHolderAssets = [
       .trim() ?? '';
   const trimFacebookLightboxText = (message?: string | null) => message?.trim() ?? '';
   const facebookDesktopQuery = window.matchMedia('(min-width: 1101px)');
+  const facebookWideQuery = window.matchMedia('(min-width: 1601px)');
   let billboardSliceSignature = '';
   const facebookWallSeams = [0, 115, 230, 344, 458, 572, 685, 790];
 
@@ -1008,11 +1017,13 @@ const welcomeHolderAssets = [
     const height = billboardMiddle.clientHeight;
     if (!width || !height) return;
 
-    const sliceHeight = (width * 3) / 16;
+    const sliceHeight = facebookWideQuery.matches
+      ? (width * 300) / 1473
+      : (width * 3) / 16;
     const sliceCount = facebookDesktopQuery.matches
       ? 3
       : Math.max(1, Math.ceil(height / sliceHeight));
-    const signature = `${Math.round(width)}:${Math.round(height)}:${sliceCount}`;
+    const signature = `${Math.round(width)}:${Math.round(height)}:${Math.round(sliceHeight)}:${sliceCount}`;
     if (signature === billboardSliceSignature) return;
 
     const slices = document.createDocumentFragment();
@@ -1039,6 +1050,10 @@ const welcomeHolderAssets = [
   facebookDesktopQuery.addEventListener('change', () => {
     syncFacebookPostLinks();
     requestAnimationFrame(alignFacebookSectionToWallSeam);
+  });
+  facebookWideQuery.addEventListener('change', () => {
+    billboardSliceSignature = '';
+    syncBillboardMiddleSlices();
   });
   window.addEventListener('resize', alignFacebookSectionToWallSeam);
   // #social now renders (with fallback content) from first paint instead of waiting
