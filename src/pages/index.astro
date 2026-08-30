@@ -837,6 +837,7 @@ const welcomeHolderAssets = [
   #social .fb-billboard:has(.fb-grid[data-count="1"]){max-width:520px}
   #social .fb-billboard:has(.fb-grid[data-count="2"]){max-width:820px}
   #social .fb-billboard:has(.fb-grid[data-count="3"]){max-width:1120px}
+  @media (min-width:1601px){#social .fb-billboard,#social .fb-billboard:has(.fb-grid[data-count="1"]),#social .fb-billboard:has(.fb-grid[data-count="2"]),#social .fb-billboard:has(.fb-grid[data-count="3"]){width:100%;max-width:none}}
   #social .fb-grid{position:relative;z-index:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(26px,3vw,44px) clamp(18px,2.4vw,32px);width:100%;min-height:0;align-items:start}
   #social .fb-grid[data-count="1"]{grid-template-columns:1fr}
   #social .fb-grid[data-count="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}
