@@ -457,13 +457,25 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .footer-composition--home #visit#visit .visit-content{display:flex;flex-direction:column}
   }
 
-  /* Contact renders its own scenic continuation in main content. Keep the
-     shared footer artwork and legal links as the compact wood ending only on
-     that route; all other pages retain the full footer scene. */
-  .footer-composition--contact:not(.footer-composition--home) .footer-scene {
-    aspect-ratio: auto;
-    min-height: 170px;
-    background-position: center bottom;
+  /* Contact reuses the homepage scenic composition without changing other
+     interior pages. Its section supplies normal-flow content; the shared
+     footer remains the existing wood/legal ending. */
+  @media (min-width:1100px){
+    .footer-composition--contact{
+      position:relative;
+      min-height:68.359375vw;
+      background-color:#21130e;
+      background-image:url('/footer-landscape.webp');
+      background-position:center top;
+      background-size:100% auto;
+      background-repeat:no-repeat;
+    }
+    .footer-composition--contact .footer-scene{display:contents}
+    .footer-composition--contact footer{position:absolute;z-index:1;right:0;bottom:0;left:0;min-height:0;margin:0;padding:0 20px clamp(22px,2vw,34px);background:transparent;border-top:0;box-shadow:none}
+    .footer-composition--contact .footer-contact{display:none}
+  }
+  @media (max-width:1099px){
+    .footer-composition--contact .footer-scene{aspect-ratio:auto;min-height:170px;background-position:center bottom}
   }
 
   /* The mobile/tablet footer reserves the maker-credit corner for Facebook. */
@@ -535,6 +547,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 
 <div class:list={{ 'footer-composition': true, 'footer-composition--home': isHome, 'footer-composition--admin': isAdmin, 'footer-composition--contact': path === '/contact' }}>
   {isHome && <slot name="home-footer" />}
+  {path === '/contact' && <slot name="contact-footer" />}
 <footer>
   <div class="footer-scene">
     {!isAdmin && (
