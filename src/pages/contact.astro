@@ -38,32 +38,141 @@ const sitekey = env.TURNSTILE_SITEKEY;
 </Base>
 
 <style>
-  .contact-page{padding-top:clamp(28px,4vw,48px)}
-  .contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;max-width:1000px;margin:0 auto}
-  .card{background:#fff;border-radius:14px;padding:28px;box-shadow:0 8px 22px rgba(36,22,16,.12)}
-  .card.info h3{font-family:var(--display);margin-bottom:10px}
-  .card.info p{margin:8px 0;color:var(--ink-2)}
-  .card.info a{color:var(--crimson)}
-  form label{display:block;margin-bottom:16px;font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.85rem}
-  form input, form textarea{display:block;width:100%;margin-top:6px;padding:12px;border:2px solid rgba(36,22,16,.2);
-    border-radius:8px;font-family:var(--body);font-size:1rem;background:var(--cream)}
-  form input:focus, form textarea:focus{outline:none;border-color:var(--crimson)}
-  #formStatus{margin-top:12px;font-weight:600}
-  .cf-turnstile{margin-bottom:16px}
-  @media (max-width:820px){ .contact-grid{grid-template-columns:1fr} }
+  .contact-page {
+    position: relative;
+    isolation: isolate;
+    padding: clamp(34px, 6vw, 72px) clamp(18px, 5vw, 64px) clamp(42px, 7vw, 88px);
+    border-top: 4px double var(--ink);
+    background-color: var(--page-parchment);
+    background-image: linear-gradient(rgba(246, 232, 204, .55), rgba(246, 232, 204, .55)), url('/parchment-texture.webp');
+    background-size: auto, 512px 512px;
+    color: var(--text);
+  }
 
-  .contact-page{padding-top:clamp(32px,5vw,54px)}.contact-page .section-head{margin-bottom:28px}.contact-grid{max-width:var(--content-standard);gap:16px;align-items:start}
-  .card{border:1px solid var(--rule);border-top:5px solid var(--brick);border-radius:var(--panel-radius);padding:clamp(20px,3vw,30px);background:var(--surface-parchment);box-shadow:var(--panel-shadow)}.card.info{border-top-color:var(--ochre);background:var(--surface-wood);color:var(--cream);box-shadow:var(--panel-shadow-dark)}
-  .card.info h3{color:var(--cream)}.card.info p{color:var(--cream-2);padding-bottom:8px;border-bottom:1px solid var(--rule-light)}.card.info a{color:var(--cream);text-decoration-color:var(--ochre)}
-  form label{color:var(--text);margin-bottom:14px}form input,form textarea{min-height:48px;margin-top:5px;padding:11px 12px;border:1px solid var(--rule);border-radius:var(--control-radius);background:var(--page-parchment);color:var(--text)}form textarea{min-height:136px;resize:vertical}form input:focus,form textarea:focus{border-color:var(--brick);box-shadow:0 0 0 3px rgba(146,44,41,.18)}
-  .card.info iframe{border:2px solid var(--ochre)!important;border-radius:var(--panel-radius)!important;margin-top:6px!important}.cf-turnstile{min-height:65px}
+  .contact-page::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 28px;
+    border-top: 1px solid rgba(94, 53, 28, .35);
+    background: linear-gradient(180deg, rgba(94, 53, 28, .12), transparent);
+    pointer-events: none;
+  }
 
-  .contact-page{position:relative;background-color:var(--page-parchment);background-image:linear-gradient(90deg,rgba(94,53,28,.1) 0 1px,transparent 1px 34px),linear-gradient(0deg,rgba(94,53,28,.07) 0 1px,transparent 1px 34px),linear-gradient(110deg,#f4e7ce,#dbc397);border-top:5px double var(--ink);overflow:hidden}
-  .contact-page::after{content:'';position:absolute;right:-60px;bottom:-80px;width:360px;height:310px;background:url('/logo-buffalo.webp') center / contain no-repeat;opacity:.06;filter:sepia(1);pointer-events:none}.contact-page > *{position:relative;z-index:1}
-  .contact-page .section-head .kicker{color:var(--denim)}.contact-page .section-head .vintage-rule{width:15rem;background:linear-gradient(90deg,transparent,var(--brick),transparent)}
-  .contact-grid{gap:clamp(18px,3vw,34px)}.card{border:2px solid var(--ink);border-top:6px double var(--brick);border-radius:0;box-shadow:4px 5px 0 rgba(43,27,20,.22),0 12px 24px rgba(43,27,20,.12);background-color:#f4e7ce;background-image:linear-gradient(90deg,rgba(84,48,24,.05),transparent 18%,transparent 82%,rgba(84,48,24,.05))}.card.info{border-top-color:var(--denim);background-color:#e7d2a8;background-image:linear-gradient(90deg,rgba(43,27,20,.08) 0 1px,transparent 1px 26px);color:var(--ink)}
-  .card.info h3,.card.info p,.card.info a{color:var(--ink)}.card.info p{border-bottom-color:var(--rule)}.card.info a{text-decoration-color:var(--brick)}
-  form label{padding-bottom:7px;border-bottom:1px dotted rgba(43,27,20,.38)}form input,form textarea{border-radius:0;border-color:rgba(43,27,20,.55);background:rgba(255,248,226,.58);box-shadow:inset 0 1px 2px rgba(43,27,20,.08)}.card.info iframe{border:5px solid #f7ecd6!important;border-radius:0!important;box-shadow:2px 2px 0 rgba(43,27,20,.22)}
+  /* The shared footer includes this sign on interior pages; Contact has its own heading. */
+  :global(body:has(.contact-page) .footer-contact) { display: none !important; }
+
+  .contact-page .section-head {
+    width: min(100%, 760px);
+    margin: 0 auto clamp(24px, 4vw, 38px);
+  }
+
+  .contact-page .section-head .kicker { color: var(--denim); }
+  .contact-page .section-head .vintage-rule {
+    width: min(15rem, 70%);
+    background: linear-gradient(90deg, transparent, var(--brick), transparent);
+  }
+
+  .contact-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: clamp(18px, 3vw, 34px);
+    width: min(100%, 1100px);
+    margin: 0 auto;
+    align-items: start;
+  }
+
+  .card {
+    min-width: 0;
+    padding: clamp(20px, 3vw, 30px);
+    border: 1px solid var(--rule);
+    border-top: 5px double var(--brick);
+    border-radius: var(--panel-radius);
+    background: rgba(255, 248, 226, .64);
+    box-shadow: var(--panel-shadow);
+  }
+
+  .card.info {
+    border-top-color: var(--denim);
+    background: rgba(231, 210, 168, .72);
+    color: var(--ink);
+    box-shadow: var(--panel-shadow-dark);
+  }
+
+  .card.info h3 {
+    margin-bottom: 10px;
+    color: var(--ink);
+  }
+
+  .card.info p {
+    margin: 8px 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink);
+  }
+
+  .card.info a {
+    color: var(--ink);
+    text-decoration-color: var(--brick);
+    text-underline-offset: 3px;
+  }
+
+  form label {
+    display: block;
+    margin-bottom: 14px;
+    padding-bottom: 7px;
+    border-bottom: 1px dotted rgba(43, 27, 20, .38);
+    color: var(--text);
+    font-family: var(--label);
+    font-size: .85rem;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  form input,
+  form textarea {
+    display: block;
+    width: 100%;
+    min-height: 48px;
+    margin-top: 5px;
+    padding: 11px 12px;
+    border: 1px solid rgba(43, 27, 20, .55);
+    border-radius: var(--control-radius);
+    background: rgba(255, 248, 226, .72);
+    box-shadow: inset 0 1px 2px rgba(43, 27, 20, .08);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 1rem;
+  }
+
+  form textarea { min-height: 136px; resize: vertical; }
+  form input:focus,
+  form textarea:focus { outline: none; border-color: var(--brick); box-shadow: 0 0 0 3px rgba(146, 44, 41, .18); }
+  .cf-turnstile { min-height: 65px; margin-bottom: 16px; }
+  #formStatus { margin-top: 12px; font-weight: 600; }
+
+  .card.info iframe {
+    display: block;
+    width: 100%;
+    height: clamp(220px, 24vw, 280px) !important;
+    margin-top: 14px !important;
+    border: 2px solid var(--ochre) !important;
+    border-radius: var(--control-radius) !important;
+    box-shadow: 2px 2px 0 rgba(43, 27, 20, .18);
+  }
+
+  @media (max-width: 820px) {
+    .contact-grid { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 520px) {
+    .contact-page { padding-inline: 14px; }
+    .card { padding: 20px 16px; }
+  }
 </style>
 
 <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
