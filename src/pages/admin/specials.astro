@@ -11,18 +11,96 @@ const DAY_NUMBERS = [1, 2, 3, 4, 5, 6, 0];
 const MAX_FIELD_LENGTH = 150;
 const CHARACTER_LIMIT_ERROR = 'Each field must be 150 characters or fewer.';
 const isWeekend = (index: number) => index >= 5;
+const DAILY_SANDWICH_PRESETS = {
+  'chicken-salad': 'Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25',
+  'grilled-ham-cheese': 'Grilled Ham & Cheese with cup of Chili or Coleslaw $7.25',
+} as const;
 type DayValues = { lunch_content: string; all_day_1_content: string; all_day_2_content: string; nightly_content: string };
 const blankDays = () => DAYS.map((): DayValues => ({ lunch_content: '', all_day_1_content: '', all_day_2_content: '', nightly_content: '' }));
+const copyDays = (days: DayValues[]) => days.map((day) => ({ ...day }));
 const normalizeLineEndings = (value: string) => value.replace(/\r\n?/g, '\n');
 const formValue = (form: FormData, name: string) => normalizeLineEndings(String(form.get(name) ?? ''));
+const nullable = (value: string) => value === '' ? null : value;
 
-let notice = '', error = '', weekStart = '', weekEnd = '', editingId = '', dayValues = blankDays();
 const valuesFrom = (form: FormData) => DAYS.map((_, index): DayValues => ({
   lunch_content: formValue(form, `lunch_${index}`).trim(),
   all_day_1_content: formValue(form, `all_day_1_${index}`).trim(),
   all_day_2_content: formValue(form, `all_day_2_${index}`).trim(),
   nightly_content: isWeekend(index) ? '' : formValue(form, `nightly_${index}`).trim(),
 }));
+
+const recurringValuesFrom = (form: FormData) => {
+  const dailySandwich = formValue(form, 'recurring_daily_sandwich').trim();
+  return DAYS.map((_, index): DayValues => ({
+    lunch_content: isWeekend(index) ? formValue(form, `recurring_lunch_${index}`).trim() : '',
+    all_day_1_content: isWeekend(index) ? formValue(form, `recurring_all_day_1_${index}`).trim() : '',
+    all_day_2_content: dailySandwich,
+    nightly_content: isWeekend(index) ? '' : formValue(form, `recurring_nightly_${index}`).trim(),
+  }));
+};
+
+const recurringRawValues = (form: FormData) => [
+  formValue(form, 'recurring_daily_sandwich'),
+  ...DAYS.slice(0, 5).map((_, index) => formValue(form, `recurring_nightly_${index}`)),
+  ...DAYS.slice(5).flatMap((_, index) => {
+    const dayIndex = index + 5;
+    return [formValue(form, `recurring_lunch_${dayIndex}`), formValue(form, `recurring_all_day_1_${dayIndex}`)];
+  }),
+];
+
+const loadRecurringDefaults = async (): Promise<DayValues[]> => {
+  const defaults = blankDays();
+  const { results } = await env.DB.prepare(
+    'SELECT day_of_week, lunch_content, all_day_1_content, all_day_2_content, nightly_content FROM weekly_special_recurring_default_days',
+  ).all();
+  if (!results || results.length !== DAYS.length) throw new Error('Recurring defaults are unavailable.');
+  for (const row of results) {
+    const index = DAY_NUMBERS.indexOf(Number((row as any).day_of_week));
+    if (index >= 0) {
+      defaults[index] = {
+        lunch_content: normalizeLineEndings(String((row as any).lunch_content ?? '')),
+        all_day_1_content: normalizeLineEndings(String((row as any).all_day_1_content ?? '')),
+        all_day_2_content: normalizeLineEndings(String((row as any).all_day_2_content ?? '')),
+        nightly_content: isWeekend(index) ? '' : normalizeLineEndings(String((row as any).nightly_content ?? '')),
+      };
+    }
+  }
+  return defaults;
+};
+
+const saveRecurringDefaults = async (defaults: DayValues[]) => {
+  const writes = defaults.map((day, index) => env.DB.prepare(
+    `INSERT INTO weekly_special_recurring_default_days (
+       day_of_week, lunch_content, all_day_1_content, all_day_2_content, nightly_content
+     ) VALUES (?1, ?2, ?3, ?4, ?5)
+     ON CONFLICT(day_of_week) DO UPDATE SET
+       lunch_content = excluded.lunch_content,
+       all_day_1_content = excluded.all_day_1_content,
+       all_day_2_content = excluded.all_day_2_content,
+       nightly_content = excluded.nightly_content`,
+  ).bind(
+    DAY_NUMBERS[index],
+    nullable(day.lunch_content),
+    nullable(day.all_day_1_content),
+    nullable(day.all_day_2_content),
+    nullable(day.nightly_content),
+  ));
+  await env.DB.batch(writes);
+};
+
+let notice = '', error = '', weekStart = '', weekEnd = '', editingId = '', dayValues = blankDays();
+let recurringDefaults = blankDays();
+let recurringDefaultsAvailable = true;
+let recurringDefaultsError = '';
+let recurringDefaultsOpen = false;
+try {
+  recurringDefaults = await loadRecurringDefaults();
+} catch {
+  recurringDefaultsAvailable = false;
+  recurringDefaultsError = 'Recurring defaults could not be loaded. Reload before creating a new week.';
+  recurringDefaultsOpen = true;
+}
+
 const loadWeek = async (id: number) => {
   const week: any = await env.DB.prepare('SELECT id, week_start_date FROM weekly_specials WHERE id = ?1').bind(id).first();
   if (!week) throw new Error('That saved week no longer exists.');
@@ -37,65 +115,154 @@ const loadWeek = async (id: number) => {
   }
 };
 
-if (Astro.request.method === 'POST') {
-  const form = await Astro.request.formData();
+const keepWeeklyDraft = (form: FormData) => {
   weekStart = String(form.get('week_start_date') ?? '').trim();
   editingId = String(form.get('weekly_id') ?? '').trim();
   dayValues = valuesFrom(form);
-  const rawContent = DAYS.flatMap((_, index) => [
-    formValue(form, `lunch_${index}`),
-    formValue(form, `all_day_1_${index}`),
-    formValue(form, `all_day_2_${index}`),
-    isWeekend(index) ? '' : formValue(form, `nightly_${index}`),
-  ]);
-  try {
-    if (!isIsoCalendarDate(weekStart)) throw new Error('Enter a valid week start date.');
+  if (isIsoCalendarDate(weekStart)) {
     weekStart = mondayForIsoDate(weekStart);
     weekEnd = standardWeekEndDate(weekStart);
-    const content = dayValues.flatMap((day) => [day.lunch_content, day.all_day_1_content, day.all_day_2_content, day.nightly_content]);
-    if (rawContent.some((value) => value.length > MAX_FIELD_LENGTH)) throw new Error(CHARACTER_LIMIT_ERROR);
-    if (!content.some(Boolean)) throw new Error('Enter at least one weekly special before saving.');
-    const id = editingId ? Number(editingId) : null;
-    if (editingId && (!Number.isInteger(id) || id < 1)) throw new Error('Invalid saved week.');
-    if (id && !await env.DB.prepare('SELECT id FROM weekly_specials WHERE id = ?1').bind(id).first()) throw new Error('That saved week no longer exists.');
-    const overlap = await env.DB.prepare(`SELECT id FROM weekly_specials WHERE week_start_date <= ?2 AND week_end_date >= ?1${id ? ' AND id <> ?3' : ''} LIMIT 1`).bind(...(id ? [weekStart, weekEnd, id] : [weekStart, weekEnd])).first();
-    if (overlap) throw new Error('Those dates overlap another weekly entry. Choose a non-overlapping date range.');
-    const insert = (weeklyId: number | string, day: DayValues, dayNumber: number) => env.DB.prepare('INSERT INTO weekly_special_days (weekly_special_id, day_of_week, lunch_content, all_day_1_content, all_day_2_content, nightly_content) VALUES (?1, ?2, ?3, ?4, ?5, ?6)').bind(weeklyId, dayNumber, day.lunch_content, day.all_day_1_content, day.all_day_2_content, day.nightly_content);
-    const writes = id
-      ? [env.DB.prepare('UPDATE weekly_specials SET week_start_date = ?1, week_end_date = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?3').bind(weekStart, weekEnd, id), env.DB.prepare('DELETE FROM weekly_special_days WHERE weekly_special_id = ?1').bind(id), ...dayValues.map((day, index) => insert(id, day, DAY_NUMBERS[index]))]
-      : [env.DB.prepare('INSERT INTO weekly_specials (week_start_date, week_end_date) VALUES (?1, ?2)').bind(weekStart, weekEnd), ...dayValues.map((day, index) => env.DB.prepare('INSERT INTO weekly_special_days (weekly_special_id, day_of_week, lunch_content, all_day_1_content, all_day_2_content, nightly_content) SELECT id, ?3, ?4, ?5, ?6, ?7 FROM weekly_specials WHERE week_start_date = ?1 AND week_end_date = ?2').bind(weekStart, weekEnd, DAY_NUMBERS[index], day.lunch_content, day.all_day_1_content, day.all_day_2_content, day.nightly_content))];
-    await env.DB.batch(writes);
-    if (!id) { const created: any = await env.DB.prepare('SELECT id FROM weekly_specials WHERE week_start_date = ?1 AND week_end_date = ?2').bind(weekStart, weekEnd).first(); editingId = String(created?.id ?? ''); }
-    notice = id ? 'Saved week updated.' : 'New future week created.';
-  } catch (caught) { error = caught instanceof Error ? caught.message : 'Could not save weekly specials.'; }
+  } else {
+    weekEnd = '';
+  }
+};
+
+const restoreWeeklyDraft = (form: FormData) => {
+  try {
+    const parsed = JSON.parse(String(form.get('weekly_draft') ?? ''));
+    if (!parsed || typeof parsed !== 'object' || !parsed.fields || typeof parsed.fields !== 'object') return;
+    const fields = parsed.fields as Record<string, unknown>;
+    const draftValue = (name: string, maxLength = MAX_FIELD_LENGTH) => {
+      const value = fields[name];
+      if (typeof value !== 'string') return '';
+      const normalized = normalizeLineEndings(value);
+      return normalized.length <= maxLength ? normalized : '';
+    };
+    editingId = draftValue('weekly_id', 32);
+    weekStart = draftValue('week_start_date', 32);
+    dayValues = DAYS.map((_, index): DayValues => ({
+      lunch_content: draftValue(`lunch_${index}`),
+      all_day_1_content: draftValue(`all_day_1_${index}`),
+      all_day_2_content: draftValue(`all_day_2_${index}`),
+      nightly_content: isWeekend(index) ? '' : draftValue(`nightly_${index}`),
+    }));
+    weekEnd = isIsoCalendarDate(weekStart) ? standardWeekEndDate(mondayForIsoDate(weekStart)) : '';
+  } catch {}
+};
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? 'save-weekly-specials');
+
+  if (action === 'save-recurring-defaults') {
+    restoreWeeklyDraft(form);
+    recurringDefaults = recurringValuesFrom(form);
+    recurringDefaultsOpen = true;
+    try {
+      if (recurringRawValues(form).some((value) => value.length > MAX_FIELD_LENGTH)) throw new Error(CHARACTER_LIMIT_ERROR);
+      await saveRecurringDefaults(recurringDefaults);
+      recurringDefaultsAvailable = true;
+      recurringDefaultsError = '';
+      notice = 'Recurring defaults saved.';
+    } catch (caught) {
+      error = caught instanceof Error ? caught.message : 'Could not save recurring defaults.';
+    }
+  } else if (action === 'save-weekly-specials') {
+    keepWeeklyDraft(form);
+    const rawContent = DAYS.flatMap((_, index) => [
+      formValue(form, `lunch_${index}`),
+      formValue(form, `all_day_1_${index}`),
+      formValue(form, `all_day_2_${index}`),
+      isWeekend(index) ? '' : formValue(form, `nightly_${index}`),
+    ]);
+    try {
+      if (!editingId && !recurringDefaultsAvailable) throw new Error(recurringDefaultsError);
+      if (!isIsoCalendarDate(weekStart)) throw new Error('Enter a valid week start date.');
+      weekStart = mondayForIsoDate(weekStart);
+      weekEnd = standardWeekEndDate(weekStart);
+      const content = dayValues.flatMap((day) => [day.lunch_content, day.all_day_1_content, day.all_day_2_content, day.nightly_content]);
+      if (rawContent.some((value) => value.length > MAX_FIELD_LENGTH)) throw new Error(CHARACTER_LIMIT_ERROR);
+      if (!content.some(Boolean)) throw new Error('Enter at least one weekly special before saving.');
+      const id = editingId ? Number(editingId) : null;
+      if (editingId && (!Number.isInteger(id) || id < 1)) throw new Error('Invalid saved week.');
+      if (id && !await env.DB.prepare('SELECT id FROM weekly_specials WHERE id = ?1').bind(id).first()) throw new Error('That saved week no longer exists.');
+      const overlap = await env.DB.prepare(`SELECT id FROM weekly_specials WHERE week_start_date <= ?2 AND week_end_date >= ?1${id ? ' AND id <> ?3' : ''} LIMIT 1`).bind(...(id ? [weekStart, weekEnd, id] : [weekStart, weekEnd])).first();
+      if (overlap) throw new Error('Those dates overlap another weekly entry. Choose a non-overlapping date range.');
+      const insert = (weeklyId: number | string, day: DayValues, dayNumber: number) => env.DB.prepare('INSERT INTO weekly_special_days (weekly_special_id, day_of_week, lunch_content, all_day_1_content, all_day_2_content, nightly_content) VALUES (?1, ?2, ?3, ?4, ?5, ?6)').bind(weeklyId, dayNumber, day.lunch_content, day.all_day_1_content, day.all_day_2_content, day.nightly_content);
+      const writes = id
+        ? [env.DB.prepare('UPDATE weekly_specials SET week_start_date = ?1, week_end_date = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?3').bind(weekStart, weekEnd, id), env.DB.prepare('DELETE FROM weekly_special_days WHERE weekly_special_id = ?1').bind(id), ...dayValues.map((day, index) => insert(id, day, DAY_NUMBERS[index]))]
+        : [env.DB.prepare('INSERT INTO weekly_specials (week_start_date, week_end_date) VALUES (?1, ?2)').bind(weekStart, weekEnd), ...dayValues.map((day, index) => env.DB.prepare('INSERT INTO weekly_special_days (weekly_special_id, day_of_week, lunch_content, all_day_1_content, all_day_2_content, nightly_content) SELECT id, ?3, ?4, ?5, ?6, ?7 FROM weekly_specials WHERE week_start_date = ?1 AND week_end_date = ?2').bind(weekStart, weekEnd, DAY_NUMBERS[index], day.lunch_content, day.all_day_1_content, day.all_day_2_content, day.nightly_content))];
+      await env.DB.batch(writes);
+      if (!id) { const created: any = await env.DB.prepare('SELECT id FROM weekly_specials WHERE week_start_date = ?1 AND week_end_date = ?2').bind(weekStart, weekEnd).first(); editingId = String(created?.id ?? ''); }
+      notice = id ? 'Saved week updated.' : 'New future week created.';
+    } catch (caught) { error = caught instanceof Error ? caught.message : 'Could not save weekly specials.'; }
+  } else {
+    error = 'Invalid form action.';
+  }
 }
 
 const savedWeeks: any[] = [];
 try { savedWeeks.push(...((await env.DB.prepare('SELECT id, week_start_date, week_end_date FROM weekly_specials ORDER BY week_start_date DESC').all()).results ?? [])); } catch {}
-const requestedId = Number(Astro.url.searchParams.get('week') ?? '');
-if (Astro.request.method !== 'POST' && Number.isInteger(requestedId) && requestedId > 0) { try { await loadWeek(requestedId); } catch (caught) { error = caught instanceof Error ? caught.message : 'Could not load that saved week.'; } }
+const requestedWeek = Astro.url.searchParams.get('week');
+const requestedId = Number(requestedWeek ?? '');
+if (Astro.request.method !== 'POST' && Number.isInteger(requestedId) && requestedId > 0) {
+  try { await loadWeek(requestedId); } catch (caught) { error = caught instanceof Error ? caught.message : 'Could not load that saved week.'; }
+} else if (Astro.request.method !== 'POST' && !Astro.url.searchParams.has('week')) {
+  if (recurringDefaultsAvailable) dayValues = copyDays(recurringDefaults);
+  else error = recurringDefaultsError;
+}
 const selectedWeekIndex = savedWeeks.findIndex((week) => String(week.id) === editingId);
 const savedWeeksExpanded = selectedWeekIndex >= 4;
+const dailySandwichContent = recurringDefaults[0].all_day_2_content;
+const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chicken-salad']
+  ? 'chicken-salad'
+  : dailySandwichContent === DAILY_SANDWICH_PRESETS['grilled-ham-cheese']
+    ? 'grilled-ham-cheese'
+    : 'custom';
 ---
 <Base title="Admin · Weekly Specials — Grayz'n Buffalo">
   <section>
     <div class="section-head"><h2>Weekly Specials</h2><p class="back"><a href="/admin">← Back to admin</a></p>{notice && <p><strong>{notice}</strong></p>}{error && <p class="error" data-character-limit-error={error === CHARACTER_LIMIT_ERROR ? 'true' : undefined}><strong>{error}</strong></p>}</div>
     <div class="week-picker"><label for="saved-week">Saved week to edit</label><select id="saved-week"><option value="">Select a saved week...</option>{savedWeeks.map((week, index) => <option value={week.id} data-older-week={index >= 4 ? 'true' : undefined} hidden={index >= 4 && !savedWeeksExpanded} selected={String(week.id) === editingId}>{week.week_start_date} – {week.week_end_date}</option>)}</select>{savedWeeks.length > 4 && <button id="saved-weeks-toggle" class="btn btn-ghost week-picker__action" type="button" aria-expanded={savedWeeksExpanded ? 'true' : 'false'} aria-controls="saved-week">{savedWeeksExpanded ? 'View fewer weeks' : 'View more weeks'}</button>}<a class="btn btn-ghost week-picker__action" href="/admin/specials?new=1">Create new week</a></div>
-    <form method="post" class="weekly-form">
+    <form method="post" class="recurring-defaults-form" id="recurring-defaults-form">
+      <input id="weekly-draft" type="hidden" name="weekly_draft" value="" />
+      <details class="recurring-defaults" open={recurringDefaultsOpen}>
+        <summary>Recurring Defaults</summary>
+        <div class="recurring-defaults__content">
+          <p class="recurring-defaults__intro">These values prefill new weeks only. Changes do not affect saved weeks.</p>
+          {recurringDefaultsError && <p class="error recurring-defaults__error"><strong>{recurringDefaultsError}</strong></p>}
+          <fieldset class="recurring-defaults__shared">
+            <legend>Daily Sandwich Special</legend>
+            <div class="recurring-defaults__preset"><label for="recurring-daily-sandwich-preset">Preset</label><select id="recurring-daily-sandwich-preset"><option value="chicken-salad" data-special-text={DAILY_SANDWICH_PRESETS['chicken-salad']} selected={dailySandwichPreset === 'chicken-salad'}>Chicken Salad Sandwich</option><option value="grilled-ham-cheese" data-special-text={DAILY_SANDWICH_PRESETS['grilled-ham-cheese']} selected={dailySandwichPreset === 'grilled-ham-cheese'}>Grilled Ham &amp; Cheese</option><option value="custom" selected={dailySandwichPreset === 'custom'}>Custom</option></select></div>
+            <label for="recurring-daily-sandwich">Second all-day special <span>Monday–Sunday</span></label><textarea id="recurring-daily-sandwich" name="recurring_daily_sandwich" rows="2" maxlength="150">{dailySandwichContent}</textarea><output class="count">0 / 150</output>
+          </fieldset>
+          <div class="recurring-defaults__grid">
+            {DAYS.slice(0, 5).map((day, index) => <fieldset class="recurring-day-fields"><legend>{day}</legend><div class="service-group"><label for={`recurring-nightly-${index}`}>Nightly Specials <span>5–10 PM</span></label><textarea id={`recurring-nightly-${index}`} name={`recurring_nightly_${index}`} rows="2" maxlength="150">{recurringDefaults[index].nightly_content}</textarea><output class="count">0 / 150</output></div></fieldset>)}
+            {DAYS.slice(5).map((day, weekendIndex) => { const index = weekendIndex + 5; const specialLabel = index === 5 ? 'Saturday Special' : 'Sunday Special'; return <fieldset class="recurring-day-fields"><legend>{day}</legend><div class="service-group"><label for={`recurring-lunch-${index}`}>{specialLabel}</label><textarea id={`recurring-lunch-${index}`} name={`recurring_lunch_${index}`} rows="2" maxlength="150">{recurringDefaults[index].lunch_content}</textarea><output class="count">0 / 150</output></div><div class="service-group"><label for={`recurring-all-day-1-${index}`}>First all-day special</label><textarea id={`recurring-all-day-1-${index}`} name={`recurring_all_day_1_${index}`} rows="2" maxlength="150">{recurringDefaults[index].all_day_1_content}</textarea><output class="count">0 / 150</output></div></fieldset>; })}
+          </div>
+          <button class="btn btn-primary recurring-defaults__save" type="submit" name="action" value="save-recurring-defaults" formnovalidate>Save Recurring Defaults</button>
+        </div>
+      </details>
+    </form>
+    <form method="post" class="weekly-form" id="weekly-form">
       <input type="hidden" name="weekly_id" value={editingId}/>
       <fieldset class="week-dates"><legend>{editingId ? 'Editing saved week' : 'New weekly specials'}</legend><div class="week-date-controls"><div class="week-date-group"><label for="week-start">Week starting</label><input id="week-start" name="week_start_date" type="date" value={weekStart} required/></div><div class="week-date-group week-date-group--end"><span class="week-end-label">Week ending</span><output id="week-end" class="week-end-value" aria-live="polite">{weekEnd || 'Choose a week'}</output><p class="week-end-helper">End date is filled automatically.</p></div></div><p>The standard week starts on Monday and runs seven days through Sunday. Specials will no longer be visible once the ending date passes.</p></fieldset>
       <p class="instructions">Each field allows 150 characters. Blank fields are not shown publicly.</p>
       <div class="day-grid">{DAYS.map((day, index) => <fieldset class="day-fields"><legend>{day}</legend><div class="service-group"><label for={`lunch-${index}`}>{index === 5 ? 'Saturday Special' : index === 6 ? 'Sunday Special' : <>Lunch <span>11 AM–1:30 PM</span></>}</label><textarea id={`lunch-${index}`} name={`lunch_${index}`} rows="2" maxlength="150">{dayValues[index].lunch_content}</textarea><output class="count">0 / 150</output></div><fieldset class="all-day-group"><legend>All Day Specials</legend><label for={`all-day-1-${index}`}>First all-day special</label><textarea id={`all-day-1-${index}`} name={`all_day_1_${index}`} rows="2" maxlength="150">{dayValues[index].all_day_1_content}</textarea><output class="count">0 / 150</output><label for={`all-day-2-${index}`}>Second all-day special</label><textarea id={`all-day-2-${index}`} name={`all_day_2_${index}`} rows="2" maxlength="150">{dayValues[index].all_day_2_content}</textarea><output class="count">0 / 150</output></fieldset>{!isWeekend(index) && <div class="service-group"><label for={`nightly-${index}`}>Nightly Specials <span>5–10 PM</span></label><textarea id={`nightly-${index}`} name={`nightly_${index}`} rows="2" maxlength="150">{dayValues[index].nightly_content}</textarea><output class="count">0 / 150</output></div>}</fieldset>)}</div>
-      <button class="btn btn-primary" type="submit">Save All Weekly Specials</button>
+      <button class="btn btn-primary" type="submit" name="action" value="save-weekly-specials">Save All Weekly Specials</button>
     </form>
   </section>
 </Base>
 <script>
-  const form = document.querySelector<HTMLFormElement>('.weekly-form');
+  const weeklyForm = document.getElementById('weekly-form') as HTMLFormElement | null;
+  const recurringDefaultsForm = document.getElementById('recurring-defaults-form') as HTMLFormElement | null;
+  const weeklyDraft = document.getElementById('weekly-draft') as HTMLInputElement | null;
   const start = document.getElementById('week-start') as HTMLInputElement | null;
   const end = document.getElementById('week-end');
   const picker = document.getElementById('saved-week') as HTMLSelectElement | null;
   const weeksToggle = document.getElementById('saved-weeks-toggle') as HTMLButtonElement | null;
+  const dailySandwichPreset = document.getElementById('recurring-daily-sandwich-preset') as HTMLSelectElement | null;
+  const dailySandwich = document.getElementById('recurring-daily-sandwich') as HTMLTextAreaElement | null;
   const monday = (value: string) => { const date = new Date(`${value}T12:00:00Z`); date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7)); return date.toISOString().slice(0, 10); };
   const standardEnd = (value: string) => { const date = new Date(`${value}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + 6); return date.toISOString().slice(0, 10); };
   const updateEnd = () => { if (!start?.value || !end) return; start.value = monday(start.value); end.textContent = standardEnd(start.value); };
@@ -110,10 +277,36 @@ const savedWeeksExpanded = selectedWeekIndex >= 4;
   const textareas = Array.from(document.querySelectorAll<HTMLTextAreaElement>('textarea[maxlength]'));
   const characterLimitError = document.querySelector<HTMLElement>('[data-character-limit-error]');
   const updateCharacterLimitError = () => { if (characterLimitError) characterLimitError.hidden = !textareas.some((input) => input.value.length > input.maxLength); };
-  textareas.forEach((input) => { const output = input.nextElementSibling as HTMLOutputElement; const update = () => output.textContent = `${input.value.length} / ${input.maxLength}`; input.addEventListener('input', update); input.addEventListener('input', updateCharacterLimitError); update(); });
+  textareas.forEach((input) => {
+    const output = input.nextElementSibling as HTMLOutputElement | null;
+    if (!output) return;
+    const update = () => output.textContent = `${input.value.length} / ${input.maxLength}`;
+    input.addEventListener('input', update);
+    input.addEventListener('input', updateCharacterLimitError);
+    update();
+  });
+  dailySandwichPreset?.addEventListener('change', () => {
+    const specialText = dailySandwichPreset.selectedOptions[0]?.dataset.specialText;
+    if (dailySandwich && specialText !== undefined) {
+      dailySandwich.value = specialText;
+      dailySandwich.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  });
+  dailySandwich?.addEventListener('input', () => {
+    if (!dailySandwichPreset) return;
+    const matchesPreset = Array.from(dailySandwichPreset.options).some((option) => option.dataset.specialText === dailySandwich.value);
+    if (!matchesPreset) dailySandwichPreset.value = 'custom';
+  });
   updateCharacterLimitError();
-  form?.addEventListener('submit', () => form.setAttribute('aria-busy', 'true'));
+  weeklyForm?.addEventListener('submit', () => weeklyForm.setAttribute('aria-busy', 'true'));
+  recurringDefaultsForm?.addEventListener('submit', () => {
+    if (weeklyForm && weeklyDraft) {
+      const fields = Object.fromEntries(Array.from(new FormData(weeklyForm).entries()).filter(([, value]) => typeof value === 'string'));
+      weeklyDraft.value = JSON.stringify({ fields });
+    }
+    recurringDefaultsForm.setAttribute('aria-busy', 'true');
+  });
 </script>
 <style>
-  .week-picker,.weekly-form{width:100%;max-width:1440px;margin:0 auto;background:#fff;border-radius:12px;padding:20px;box-shadow:0 6px 16px rgba(36,22,16,.1)}.week-picker{display:flex;align-items:end;gap:12px;margin-bottom:18px;flex-wrap:wrap}.week-picker label{width:100%}.week-picker select{width:320px;min-width:0;white-space:nowrap}.week-picker .btn{margin:0;white-space:nowrap}.week-picker__action{box-sizing:border-box;width:210px;height:48px;min-height:48px;padding:12px 24px;border-width:2px;border-radius:var(--control-radius);font-size:1rem;font-weight:700;line-height:20px}.week-dates{border:0}.week-date-controls{display:flex;align-items:center;gap:20px;flex-wrap:wrap}.week-date-group{display:grid;grid-template-columns:auto 230px;align-items:center;gap:8px}.week-date-group--end{grid-template-columns:auto 160px auto}.week-dates>p{margin:10px 0 0;color:var(--ink-2)}.week-dates input{width:230px;box-sizing:border-box;height:44px}.week-end-label{font-family:var(--label);font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.week-end-value{display:block;box-sizing:border-box;width:160px;height:44px;min-height:44px;padding:10px;overflow:hidden;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit;line-height:20px;white-space:nowrap}.week-end-helper{margin:0!important;color:var(--ink-2);font-size:.9rem;font-style:italic;font-weight:700;white-space:nowrap}legend,label{font-family:var(--label);font-weight:700;letter-spacing:.08em;text-transform:uppercase}.week-dates legend{margin-bottom:8px}label{font-size:.78rem}.day-fields label span{text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-2)}input,select,textarea{padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit}textarea{width:100%;resize:vertical}.instructions{margin:18px 0;color:var(--ink-2)}.day-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.day-fields{min-width:0;border:1px solid rgba(36,22,16,.16);border-radius:10px;padding:16px;display:grid;gap:14px}.service-group,.all-day-group{display:grid;gap:6px;min-width:0}.all-day-group{margin:0;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px}.all-day-group legend{padding:0 5px;font-size:.78rem}.count{justify-self:end;font-size:.75rem;color:var(--ink-2)}button{margin-top:20px}.error{color:var(--crimson)}.back{text-align:center;margin-top:10px}@media(min-width:1280px){.day-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(max-width:900px){.day-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:680px){.weekly-form{padding:16px}.week-date-controls,.week-date-group,.week-date-group--end,.day-grid{grid-template-columns:1fr}.week-date-controls{display:grid}.week-date-group{gap:6px}.week-dates input,.week-end-value{width:100%}.week-end-helper{grid-column:1;white-space:normal}.week-picker select{width:100%}}
+  .week-picker,.weekly-form,.recurring-defaults-form{width:100%;max-width:1440px;margin:0 auto;background:#fff;border-radius:12px;padding:20px;box-shadow:0 6px 16px rgba(36,22,16,.1)}.week-picker{display:flex;align-items:end;gap:12px;margin-bottom:18px;flex-wrap:wrap}.week-picker label{width:100%}.week-picker select{width:320px;min-width:0;white-space:nowrap}.week-picker .btn{margin:0;white-space:nowrap}.week-picker__action{box-sizing:border-box;width:210px;height:48px;min-height:48px;padding:12px 24px;border-width:2px;border-radius:var(--control-radius);font-size:1rem;font-weight:700;line-height:20px}.recurring-defaults-form{margin:0 auto 18px}.recurring-defaults{margin:0;border:1px solid rgba(36,22,16,.2);border-radius:10px;background:var(--cream)}.recurring-defaults summary{cursor:pointer;padding:14px 16px;font-family:var(--label);font-size:.9rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.recurring-defaults[open] summary{border-bottom:1px solid rgba(36,22,16,.16)}.recurring-defaults__content{padding:16px}.recurring-defaults__intro{margin:0 0 16px;color:var(--ink-2);font-weight:700}.recurring-defaults__error{margin:0 0 16px}.recurring-defaults__shared{margin:0;padding:14px;border:1px solid rgba(36,22,16,.16);border-radius:8px;display:grid;gap:6px}.recurring-defaults__shared legend{padding:0 5px;font-size:.78rem}.recurring-defaults__preset{display:grid;grid-template-columns:auto minmax(220px,420px);align-items:center;gap:8px;margin-bottom:6px}.recurring-defaults__preset select{width:100%}.recurring-defaults__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}.recurring-day-fields{min-width:0;margin:0;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px;display:grid;gap:12px}.recurring-day-fields legend{padding:0 5px;font-size:.78rem}.recurring-defaults__save{margin-top:16px}.week-dates{border:0}.week-date-controls{display:flex;align-items:center;gap:20px;flex-wrap:wrap}.week-date-group{display:grid;grid-template-columns:auto 230px;align-items:center;gap:8px}.week-date-group--end{grid-template-columns:auto 160px auto}.week-dates>p{margin:10px 0 0;color:var(--ink-2)}.week-dates input{width:230px;box-sizing:border-box;height:44px}.week-end-label{font-family:var(--label);font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.week-end-value{display:block;box-sizing:border-box;width:160px;height:44px;min-height:44px;padding:10px;overflow:hidden;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit;line-height:20px;white-space:nowrap}.week-end-helper{margin:0!important;color:var(--ink-2);font-size:.9rem;font-style:italic;font-weight:700;white-space:nowrap}legend,label{font-family:var(--label);font-weight:700;letter-spacing:.08em;text-transform:uppercase}.week-dates legend{margin-bottom:8px}label{font-size:.78rem}.day-fields label span,.recurring-defaults label span{text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-2)}input,select,textarea{padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit}textarea{width:100%;resize:vertical}.instructions{margin:18px 0;color:var(--ink-2)}.day-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.day-fields{min-width:0;border:1px solid rgba(36,22,16,.16);border-radius:10px;padding:16px;display:grid;gap:14px}.service-group,.all-day-group{display:grid;gap:6px;min-width:0}.all-day-group{margin:0;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px}.all-day-group legend{padding:0 5px;font-size:.78rem}.count{justify-self:end;font-size:.75rem;color:var(--ink-2)}button{margin-top:20px}.error{color:var(--crimson)}.back{text-align:center;margin-top:10px}@media(min-width:1280px){.day-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(max-width:900px){.day-grid,.recurring-defaults__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:680px){.weekly-form,.recurring-defaults-form{padding:16px}.week-date-controls,.week-date-group,.week-date-group--end,.day-grid,.recurring-defaults__grid{grid-template-columns:1fr}.week-date-controls{display:grid}.week-date-group{gap:6px}.week-dates input,.week-end-value{width:100%}.week-end-helper{grid-column:1;white-space:normal}.week-picker select{width:100%}.recurring-defaults__content{padding:14px}.recurring-defaults__preset{grid-template-columns:1fr}.recurring-defaults__preset select{min-width:0}}
 </style>
