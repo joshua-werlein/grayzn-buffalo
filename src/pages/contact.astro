@@ -219,17 +219,6 @@ const sitekey = env.TURNSTILE_SITEKEY;
       gap: clamp(16px, 2.5vw, 24px);
     }
 
-    /* Let the one existing scene continue beneath the contact parchment so
-       its hills arrive just after the cards instead of leaving a second sky
-       section below them. Content itself remains in ordinary document flow. */
-    :global(.footer-composition--contact footer) { position: relative; z-index: 0; }
-    :global(.footer-composition--contact .footer-scene) {
-      z-index: 0;
-      margin-top: -35.5vw;
-      -webkit-mask-image: none;
-      mask-image: none;
-    }
-    :global(.footer-composition--contact .footer-home-bed) { display: none; }
   }
 
   @media (max-width: 520px) {

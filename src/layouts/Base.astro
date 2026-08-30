@@ -166,7 +166,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   nav.site a.link{font-family:var(--label);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--cream);text-decoration:none;font-size:.95rem;padding:5px 2px;transition:color .2s}
   nav.site a.link:hover,nav.site a.link:focus-visible{color:var(--gold);text-decoration:underline;text-decoration-color:var(--crimson);text-decoration-thickness:2px;text-underline-offset:5px;outline:none}
   nav.site a.link.active{color:var(--gold);text-decoration:underline;text-decoration-color:var(--crimson);text-decoration-thickness:2px;text-underline-offset:5px}
-  footer{min-height:clamp(280px,55vw,1100px);background-color:#21130e;background-image:url('/footer-landscape.webp');background-position:center top;background-size:100% auto;background-repeat:no-repeat;color:var(--cream-2);text-align:center;padding:clamp(180px,49vw,940px) 20px 24px;font-size:.88rem;flex-shrink:0;border-top:0}
+  footer{min-height:0;background-color:transparent;background-image:none;color:var(--cream-2);text-align:center;padding:0;font-size:.88rem;flex-shrink:0;border-top:0}
   footer a{color:var(--gold);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1.5px;}
   footer a:hover,
   footer a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
@@ -225,11 +225,12 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     nav.site a.link{color:var(--ink);font-weight:700;font-size:1.3rem}
     nav.site a.link:hover,nav.site a.link:focus-visible{color:var(--ink);text-decoration-color:var(--crimson);outline:2px solid var(--crimson);outline-offset:5px}
     nav.site a.link.active{color:var(--ink);text-decoration-color:var(--crimson)}
-    .footer-composition--home{position:relative;min-height:68.359375vw;background-color:#21130e;background-image:url('/footer-landscape.webp');background-position:center top;background-size:100% auto;background-repeat:no-repeat}
+    /* Scenic wrapper — parchment sky; grows with page content */
+    .footer-composition--home{position:relative;background-color:var(--surface-parchment);background-image:url('/parchment-texture.webp');background-repeat:repeat;background-size:512px 512px}
     .footer-composition--home #visit#visit{position:relative;z-index:1;padding:0;background:transparent;border:0;box-shadow:none}
     .footer-composition--home #visit#visit .visit-content{position:relative;top:-10px;padding:clamp(42px,6vw,72px) clamp(18px,4vw,64px);background:transparent}
     .footer-composition--home #visit#visit .visit-block{border-bottom:0}
-    .footer-composition--home footer{position:absolute;z-index:1;right:0;bottom:0;left:0;min-height:0;margin:0;padding:0 20px clamp(22px,2vw,34px);background:transparent;border-top:0;box-shadow:none}
+    .footer-composition--home footer{position:relative;min-height:0;margin:0;padding:0;background:transparent;border-top:0;box-shadow:none}
     .footer-layout{max-width:1440px;padding-inline:clamp(50px,7vw,130px)}
     .footer-center{display:flex;align-items:center}
     .footer-mainline{display:flex;align-items:center;justify-content:center;gap:12px;min-width:0}
@@ -241,14 +242,17 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .staff-door{left:clamp(8px,2vw,34px);bottom:-15px;padding:12px;opacity:.26}
     .staff-door img{width:60px}
     .footer-credit{right:clamp(8px,2vw,34px);bottom:0;font-size:.96rem;opacity:.72}
-    /* Interior pages without the scenic slot start their scene directly after page content. */
+    /* Interior pages — scenic scene starts after content */
     .footer-composition:not(.footer-composition--home){min-height:0;margin:0;padding:0;background:none}
     .footer-composition:not(.footer-composition--home) footer{position:relative;min-height:0;padding:0;background:none}
-    .footer-composition:not(.footer-composition--home) .footer-scene{display:block;position:relative;aspect-ratio:2048 / 1400;background:url('/footer-landscape.webp') center top / 100% auto no-repeat}
-    .footer-composition:not(.footer-composition--home) .footer-layout{position:absolute;z-index:2;right:0;bottom:clamp(12px,1.5vw,24px);left:0;padding-inline:clamp(50px,7vw,130px)}
-    .footer-composition:not(.footer-composition--home) .footer-contact{display:block;position:absolute;z-index:1;left:50%;bottom:15%;width:clamp(280px,24vw,420px);transform:translateX(-50%);line-height:0;text-decoration:none;filter:drop-shadow(0 7px 7px rgba(30,18,10,.3))}
-    .footer-composition--home .footer-scene{display:contents}
-    .footer-composition--home .footer-contact{display:block;position:absolute;z-index:2;left:50%;bottom:clamp(130px,12vw,210px);width:clamp(280px,24vw,420px);transform:translateX(-50%);line-height:0;text-decoration:none;filter:drop-shadow(0 7px 7px rgba(30,18,10,.3))}
+    /* Landscape layer — all public (non-admin) routes */
+    .footer-composition:not(.footer-composition--admin) .footer-scene{display:block;position:relative;aspect-ratio:2048 / 545;background:url('/footer-landscape-cutout.webp') center top / 100% auto no-repeat;overflow:visible}
+    /* Board layer — visible on desktop for all non-admin routes */
+    .footer-composition:not(.footer-composition--admin) .footer-home-bed{display:block;position:relative;aspect-ratio:2032 / 240;background-color:#21130e;background-image:url('/footer-board-extension.webp');background-position:center top;background-size:100% auto;background-repeat:no-repeat;overflow:hidden}
+    /* Footer info sits at the bottom of footer (over the board) */
+    .footer-composition:not(.footer-composition--admin) .footer-layout{position:absolute;z-index:2;right:0;bottom:clamp(12px,1.5vw,24px);left:0;padding-inline:clamp(50px,7vw,130px)}
+    /* Contact sign inside the landscape scene */
+    .footer-composition:not(.footer-composition--admin) .footer-contact{display:block;position:absolute;z-index:1;left:50%;bottom:20%;width:clamp(280px,24vw,420px);transform:translateX(-50%);line-height:0;text-decoration:none;filter:drop-shadow(0 7px 7px rgba(30,18,10,.3))}
     .footer-contact img{display:block;width:100%;height:auto}
     .footer-contact:focus-visible{outline:3px solid var(--gold);outline-offset:5px;border-radius:8px}
 
@@ -329,13 +333,18 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 
     /* The fixed controls remain above a real, in-flow wood board. */
     body{padding-bottom:0}
-    .footer-composition footer{
-      min-height:0;padding:0;background-color:#21130e;background-image:none;
+    .footer-composition:not(.footer-composition--admin) footer{
+      position:relative;min-height:0;padding:0;
+      background-color:var(--surface-parchment);
+      background-image:url('/parchment-texture.webp');
+      background-size:512px 512px;
+      background-repeat:repeat;
     }
-    .footer-composition:not(.footer-composition--home) footer{background-image:none}
-    .footer-composition .footer-scene{
-      display:block;position:relative;z-index:2;aspect-ratio:2048 / 1400;
-      background:url('/footer-landscape.webp') center top / 100% auto no-repeat;
+    .footer-composition--admin footer{position:relative;min-height:0;padding:0;background:transparent}
+    .footer-composition:not(.footer-composition--admin) .footer-scene{
+      display:block;position:relative;z-index:2;aspect-ratio:2048 / 545;
+      background:url('/footer-landscape-cutout.webp') center top / 100% auto no-repeat;
+      overflow:visible;
     }
     .footer-composition .footer-layout{
       position:absolute;z-index:2;right:0;bottom:0;left:0;min-height:0;max-width:none;margin:0;padding:4px 46px 5px;
@@ -424,19 +433,6 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
       min-height:0;
       padding-bottom:0;
       background:transparent;
-    }
-    .footer-composition--home footer{
-      background-color:var(--surface-parchment);
-      background-image:url('/parchment-texture.webp');
-      background-position:center;
-      background-size:cover;
-      background-repeat:repeat;
-      isolation:isolate;
-    }
-    .footer-composition--home footer::before{content:none}
-    .footer-composition--home .footer-scene{
-      -webkit-mask-image:linear-gradient(to bottom,transparent 0,rgba(0,0,0,.55) 72px,#000 120px);
-      mask-image:linear-gradient(to bottom,transparent 0,rgba(0,0,0,.55) 72px,#000 120px);
     }
     .footer-composition--home #visit#visit{position:relative;z-index:1;padding:0;background:transparent;border:0;box-shadow:none}
     .footer-composition--home #visit#visit .visit-content{
@@ -535,28 +531,28 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
         <img src="/footer-contact.webp" alt="" width="1600" height="1067" loading="lazy" />
       </a>
     )}
-    <div class="footer-layout">
-      <div class="footer-center">
-        <div class="footer-mainline">
-          <p class="footer-copy">© {new Date().getFullYear()} Grayz'n Buffalo Bar &amp; Grill · <a class="nowrap" href="https://www.google.com/maps/search/?api=1&query=102+S+Eau+Claire+St,+Mondovi,+WI+54755" target="_blank" rel="noopener">102 S Eau Claire St, Mondovi, WI</a> · <a class="nowrap" href="tel:+17159264431">(715) 926-4431</a></p>
-          <a href="https://www.facebook.com/grayznbuffalo/" aria-label="Grayz'n Buffalo on Facebook" class="footer-social">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5 3.66 9.15 8.44 9.94v-7.03H7.9v-2.9h2.54V9.85c0-2.51 1.49-3.9 3.77-3.9 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.9h-2.34V22c4.78-.79 8.44-4.94 8.44-9.94Z"/>
-            </svg>
-          </a>
-        </div>
-        <nav class="footer-legal" aria-label="Legal">
-          <a href="/privacy">Privacy</a>
-          <a href="/accessibility">Accessibility</a>
-        </nav>
-      </div>
-      <a class="staff-door" href="/admin" rel="nofollow" aria-label="Staff login">
-        <img src="/buffalo-mark.svg" alt="" width="40" height="23" loading="lazy" />
-      </a>
-      <p class="footer-credit">Built by <a href="https://joshuawerlein.com">Joshua Werlein</a></p>
-    </div>
   </div>
   <div class="footer-home-bed" aria-hidden="true"></div>
+  <div class="footer-layout">
+    <div class="footer-center">
+      <div class="footer-mainline">
+        <p class="footer-copy">© {new Date().getFullYear()} Grayz'n Buffalo Bar &amp; Grill · <a class="nowrap" href="https://www.google.com/maps/search/?api=1&query=102+S+Eau+Claire+St,+Mondovi,+WI+54755" target="_blank" rel="noopener">102 S Eau Claire St, Mondovi, WI</a> · <a class="nowrap" href="tel:+17159264431">(715) 926-4431</a></p>
+        <a href="https://www.facebook.com/grayznbuffalo/" aria-label="Grayz'n Buffalo on Facebook" class="footer-social">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5 3.66 9.15 8.44 9.94v-7.03H7.9v-2.9h2.54V9.85c0-2.51 1.49-3.9 3.77-3.9 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.9h-2.34V22c4.78-.79 8.44-4.94 8.44-9.94Z"/>
+          </svg>
+        </a>
+      </div>
+      <nav class="footer-legal" aria-label="Legal">
+        <a href="/privacy">Privacy</a>
+        <a href="/accessibility">Accessibility</a>
+      </nav>
+    </div>
+    <a class="staff-door" href="/admin" rel="nofollow" aria-label="Staff login">
+      <img src="/buffalo-mark.svg" alt="" width="40" height="23" loading="lazy" />
+    </a>
+    <p class="footer-credit">Built by <a href="https://joshuawerlein.com">Joshua Werlein</a></p>
+  </div>
 </footer>
 </div>
 
