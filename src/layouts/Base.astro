@@ -196,7 +196,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   }
   .staff-door img{width:40px;height:auto;display:block}
   .staff-door:hover,
-  .staff-door:focus-visible{opacity:1;background:rgba(239,223,194,.16)}
+  .staff-door:focus-visible{opacity:1}
   .staff-door:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
   /* Offset the tap padding so the visible buffalo aligns with Facebook's edge. */
   .staff-door{left:-10px}
@@ -243,6 +243,8 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .footer-composition:not(.footer-composition--admin) .footer-legal{gap:10px 38px;margin:24px 0 0}
     .footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:clamp(.98rem,1.15vw,1.08rem)}
     .footer-composition:not(.footer-composition--admin) .staff-door{left:clamp(8px,2vw,34px);bottom:-15px;padding:12px;opacity:.26}
+    .footer-composition:not(.footer-composition--admin) .staff-door:hover,
+    .footer-composition:not(.footer-composition--admin) .staff-door:focus-visible{opacity:1}
     .footer-composition:not(.footer-composition--admin) .staff-door img{width:68px}
     .footer-composition:not(.footer-composition--admin) .footer-credit{right:clamp(8px,2vw,34px);bottom:0;font-size:.96rem;opacity:.72}
     /* Interior pages — scenic scene starts after content */
