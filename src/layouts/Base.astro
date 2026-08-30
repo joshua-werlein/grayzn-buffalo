@@ -457,6 +457,15 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .footer-composition--home #visit#visit .visit-content{display:flex;flex-direction:column}
   }
 
+  /* Contact renders its own scenic continuation in main content. Keep the
+     shared footer artwork and legal links as the compact wood ending only on
+     that route; all other pages retain the full footer scene. */
+  .footer-composition--contact:not(.footer-composition--home) .footer-scene {
+    aspect-ratio: auto;
+    min-height: 170px;
+    background-position: center bottom;
+  }
+
   /* The mobile/tablet footer reserves the maker-credit corner for Facebook. */
   @media (max-width:1099px){
     .footer-credit{display:none}
@@ -524,7 +533,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 
 <ImageLightbox />
 
-<div class:list={{ 'footer-composition': true, 'footer-composition--home': isHome, 'footer-composition--admin': isAdmin }}>
+<div class:list={{ 'footer-composition': true, 'footer-composition--home': isHome, 'footer-composition--admin': isAdmin, 'footer-composition--contact': path === '/contact' }}>
   {isHome && <slot name="home-footer" />}
 <footer>
   <div class="footer-scene">
