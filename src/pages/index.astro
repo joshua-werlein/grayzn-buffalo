@@ -113,9 +113,9 @@ const welcomeHolderAssets = [
 
 <section class="home-weekly" aria-labelledby="home-weekly-title">
   <div class="home-weekly__card">
-    <p class="home-weekly__label"><span aria-hidden="true">★</span> THIS WEEKS SPECIALS <span aria-hidden="true">★</span></p>
+    <p class="home-weekly__label"><span aria-hidden="true">★</span> THIS WEEK AT GRAYZ'N <span aria-hidden="true">★</span></p>
     {weeklyHomeDays.length > 0 ? (
-      <><h2 id="home-weekly-title">Upcoming Specials</h2><div class="home-weekly__days">{weeklyHomeDays.map(({ date, day }) => {
+      <><h2 id="home-weekly-title">Specials</h2><div class="home-weekly__days">{weeklyHomeDays.map(({ date, day }) => {
         const weekendSpecialLabel = day.day_of_week === 6 ? 'Saturday Special' : day.day_of_week === 0 ? 'Sunday Special' : 'Lunch';
         const allDaySpecials = [day.all_day_1_content, day.all_day_2_content].filter(Boolean);
         const isWeekend = day.day_of_week === 0 || day.day_of_week === 6;
