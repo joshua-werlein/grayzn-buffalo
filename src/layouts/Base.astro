@@ -226,8 +226,8 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     nav.site a.link{color:var(--ink);font-weight:700;font-size:1.3rem}
     nav.site a.link:hover,nav.site a.link:focus-visible{color:var(--ink);text-decoration-color:var(--crimson);outline:2px solid var(--crimson);outline-offset:5px}
     nav.site a.link.active{color:var(--ink);text-decoration-color:var(--crimson)}
-    /* Only the public interior pages with a desktop navigation need this rule. */
-    .site-chrome--interior-divider nav.site::after{content:"";position:absolute;right:clamp(36px,7vw,96px);bottom:6px;left:clamp(36px,7vw,96px);border-bottom:4px double var(--ink);pointer-events:none}
+    /* This route-scoped border is the actual edge of the interior parchment. */
+    .site-chrome--interior-divider nav.site{border-bottom:4px double var(--ink)}
     /* Scenic wrapper — parchment sky; grows with page content */
     .footer-composition:not(.footer-composition--admin){position:relative;background-color:var(--surface-parchment);background-image:url('/parchment-texture.webp');background-repeat:repeat;background-size:512px 512px}
     .footer-composition--home #visit#visit{position:relative;z-index:1;padding:0;background:transparent;border:0;box-shadow:none}
@@ -253,7 +253,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     /* Board layer — visible on desktop for all non-admin routes */
     .footer-composition:not(.footer-composition--admin) .footer-home-bed{display:block;position:relative;aspect-ratio:2032 / 240;background-color:#21130e;background-image:url('/footer-board-extension.webp');background-position:center top;background-size:100% auto;background-repeat:no-repeat;overflow:hidden}
     /* Footer info sits at the bottom of footer (over the board) */
-    .footer-composition:not(.footer-composition--admin) .footer-layout{position:absolute;z-index:2;right:0;bottom:clamp(38px,3.2vw,46px);left:0;padding-inline:clamp(50px,7vw,130px)}
+    .footer-composition:not(.footer-composition--admin) .footer-layout{position:absolute;z-index:2;right:0;bottom:clamp(54px,4.8vw,70px);left:0;padding-inline:clamp(50px,7vw,130px)}
     /* Contact sign inside the landscape scene */
     .footer-composition:not(.footer-composition--admin) .footer-contact{display:block;position:absolute;z-index:1;left:calc(50% + clamp(24px,3vw,54px));bottom:7%;width:clamp(280px,24vw,420px);transform:translateX(-50%);line-height:0;text-decoration:none;filter:drop-shadow(0 7px 7px rgba(30,18,10,.3))}
     .footer-contact img{display:block;width:100%;height:auto}
@@ -350,7 +350,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
       overflow:visible;
     }
     .footer-composition:not(.footer-composition--admin) .footer-layout{
-      position:absolute;z-index:2;right:0;bottom:calc(146px + env(safe-area-inset-bottom));left:0;min-height:0;max-width:none;margin:0;padding:6px 58px 7px;
+      position:absolute;z-index:2;right:0;bottom:calc(170px + env(safe-area-inset-bottom));left:0;min-height:0;max-width:none;margin:0;padding:6px 58px 7px;
       overflow:visible;background:none;
     }
     .footer-composition:not(.footer-composition--admin) .footer-copy{font-size:clamp(.875rem,3vw,.95rem);line-height:1.4}
@@ -387,31 +387,31 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   }
 
   @media (min-width:600px) and (max-width:839px){
-    .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(146px + env(safe-area-inset-bottom))}
+    .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(170px + env(safe-area-inset-bottom))}
     .footer-composition:not(.footer-composition--admin) .footer-copy,.footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:.95rem}
     .footer-composition:not(.footer-composition--admin) .footer-legal{column-gap:22px}
   }
 
   @media (min-width:840px) and (max-width:979px){
-    .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(146px + env(safe-area-inset-bottom))}
+    .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(170px + env(safe-area-inset-bottom))}
     .footer-composition:not(.footer-composition--admin) .footer-copy,.footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:.98rem}
     .footer-composition:not(.footer-composition--admin) .footer-legal{column-gap:24px}
   }
 
   @media (min-width:980px) and (max-width:1099px){
-    .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(146px + env(safe-area-inset-bottom))}
+    .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(170px + env(safe-area-inset-bottom))}
     .footer-composition:not(.footer-composition--admin) .footer-copy,.footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:1rem}
     .footer-composition:not(.footer-composition--admin) .footer-legal{column-gap:26px}
   }
 
   @media (min-width:1000px) and (max-width:1099px) and (min-height:900px){
-    .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(146px + env(safe-area-inset-bottom))}
+    .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(170px + env(safe-area-inset-bottom))}
     .footer-composition:not(.footer-composition--admin) .footer-copy,.footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:1rem}
     .footer-composition:not(.footer-composition--admin) .footer-legal{column-gap:26px}
   }
 
   @media (min-width:1000px) and (max-width:1099px) and (max-height:700px){
-    .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(146px + env(safe-area-inset-bottom))}
+    .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(170px + env(safe-area-inset-bottom))}
     .footer-composition:not(.footer-composition--admin) .footer-copy,.footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:1rem}
     .footer-composition:not(.footer-composition--admin) .footer-legal{column-gap:26px}
   }
