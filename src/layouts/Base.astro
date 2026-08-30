@@ -475,7 +475,11 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .footer-composition--contact .footer-contact{display:none}
   }
   @media (max-width:1099px){
-    .footer-composition--contact .footer-scene{aspect-ratio:auto;min-height:170px;background-position:center bottom}
+    .footer-composition--contact{position:relative;min-height:0;padding:0;background:transparent}
+    .footer-composition--contact footer{min-height:0;background:transparent}
+    .footer-composition--contact .footer-scene{display:block;aspect-ratio:2048 / 1400;background:url('/footer-landscape.webp') center top / 100% auto no-repeat}
+    .footer-composition--contact .footer-contact{display:none}
+    .footer-composition--contact .footer-home-bed{display:none}
   }
 
   /* The mobile/tablet footer reserves the maker-credit corner for Facebook. */

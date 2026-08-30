@@ -36,7 +36,6 @@ const sitekey = env.TURNSTILE_SITEKEY;
     </div>
   </div>
 </section>
-<div class="contact-landscape" aria-hidden="true"></div>
 </Fragment>
 </Base>
 
@@ -63,17 +62,6 @@ const sitekey = env.TURNSTILE_SITEKEY;
     border-top: 1px solid rgba(94, 53, 28, .35);
     background: linear-gradient(180deg, rgba(94, 53, 28, .12), transparent);
     pointer-events: none;
-  }
-
-  .contact-landscape {
-    display: none;
-    min-height: clamp(300px, 42vw, 560px);
-    border-top: 2px solid rgba(43, 27, 20, .38);
-    background-color: #21130e;
-    background-image: url('/footer-landscape.webp');
-    background-position: center bottom;
-    background-size: cover;
-    background-repeat: no-repeat;
   }
 
   /* The shared footer includes this sign on interior pages; Contact has its own heading. */
@@ -181,7 +169,6 @@ const sitekey = env.TURNSTILE_SITEKEY;
 
   @media (max-width: 820px) {
     .contact-grid { grid-template-columns: 1fr; }
-    .contact-landscape { display: block; min-height: clamp(300px, 68vw, 500px); }
   }
 
   @media (min-width: 1100px) {
@@ -202,7 +189,6 @@ const sitekey = env.TURNSTILE_SITEKEY;
   @media (max-width: 520px) {
     .contact-page { padding-inline: 14px; }
     .card { padding: 20px 16px; }
-    .contact-landscape { display: block; min-height: 300px; }
   }
 </style>
 
