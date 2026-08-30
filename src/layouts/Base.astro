@@ -13,6 +13,8 @@ const { title = "Grayz'n Buffalo Bar & Grill — Mondovi, WI",
         description = "Grayz'n Buffalo Bar & Grill in Mondovi, WI. Burgers, Wraps, Pizzas & cold ones — open daily 10 AM to 2 AM." } = Astro.props;
 const path = Astro.url.pathname;
 const isHome = path === '/';
+const isContact = path === '/contact';
+const isScenicFooter = isHome || isContact;
 const isAdmin = path.startsWith('/admin');
 const siteUrl = 'https://grayznbuffalo.com';
 const productionHosts = new Set(['grayznbuffalo.com', 'www.grayznbuffalo.com']);
@@ -239,7 +241,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .staff-door{left:clamp(8px,2vw,34px);bottom:-15px;padding:12px;opacity:.26}
     .staff-door img{width:60px}
     .footer-credit{right:clamp(8px,2vw,34px);bottom:0;font-size:.96rem;opacity:.72}
-    /* Interior pages have no home-footer slot: start their scene directly after page content. */
+    /* Interior pages without the scenic slot start their scene directly after page content. */
     .footer-composition:not(.footer-composition--home){min-height:0;margin:0;padding:0;background:none}
     .footer-composition:not(.footer-composition--home) footer{position:relative;min-height:0;padding:0;background:none}
     .footer-composition:not(.footer-composition--home) .footer-scene{display:block;position:relative;aspect-ratio:2048 / 1400;background:url('/footer-landscape.webp') center top / 100% auto no-repeat}
@@ -457,31 +459,6 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .footer-composition--home #visit#visit .visit-content{display:flex;flex-direction:column}
   }
 
-  /* Contact reuses the homepage scenic composition without changing other
-     interior pages. Its section supplies normal-flow content; the shared
-     footer remains the existing wood/legal ending. */
-  @media (min-width:1100px){
-    .footer-composition--contact{
-      position:relative;
-      min-height:68.359375vw;
-      background-color:#21130e;
-      background-image:url('/footer-landscape.webp');
-      background-position:center top;
-      background-size:100% auto;
-      background-repeat:no-repeat;
-    }
-    .footer-composition--contact .footer-scene{display:contents}
-    .footer-composition--contact footer{position:absolute;z-index:1;right:0;bottom:0;left:0;min-height:0;margin:0;padding:0 20px clamp(22px,2vw,34px);background:transparent;border-top:0;box-shadow:none}
-    .footer-composition--contact .footer-contact{display:none}
-  }
-  @media (max-width:1099px){
-    .footer-composition--contact{position:relative;min-height:0;padding:0;background:transparent}
-    .footer-composition--contact footer{min-height:0;background:transparent}
-    .footer-composition--contact .footer-scene{display:block;aspect-ratio:2048 / 1400;background:url('/footer-landscape.webp') center top / 100% auto no-repeat}
-    .footer-composition--contact .footer-contact{display:none}
-    .footer-composition--contact .footer-home-bed{display:none}
-  }
-
   /* The mobile/tablet footer reserves the maker-credit corner for Facebook. */
   @media (max-width:1099px){
     .footer-credit{display:none}
@@ -549,9 +526,8 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 
 <ImageLightbox />
 
-<div class:list={{ 'footer-composition': true, 'footer-composition--home': isHome, 'footer-composition--admin': isAdmin, 'footer-composition--contact': path === '/contact' }}>
-  {isHome && <slot name="home-footer" />}
-  {path === '/contact' && <slot name="contact-footer" />}
+<div class:list={{ 'footer-composition': true, 'footer-composition--home': isScenicFooter, 'footer-composition--admin': isAdmin, 'footer-composition--contact': isContact }}>
+  {isScenicFooter && <slot name="home-footer" />}
 <footer>
   <div class="footer-scene">
     {!isAdmin && (

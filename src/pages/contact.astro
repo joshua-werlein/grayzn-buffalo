@@ -7,8 +7,8 @@ const sitekey = env.TURNSTILE_SITEKEY;
   title="Contact — Grayz'n Buffalo Bar & Grill"
   description="Contact Grayz'n Buffalo Bar & Grill in Mondovi, WI for questions, events, menu information, or general inquiries."
 >
-<Fragment slot="contact-footer">
-<section class="contact-page section-parchment">
+<Fragment slot="home-footer">
+<section class="contact-page">
   <div class="section-head interior-heading">
     <span class="kicker">To get in touch</span>
     <h1>Contact Us</h1>
@@ -42,26 +42,11 @@ const sitekey = env.TURNSTILE_SITEKEY;
 <style>
   .contact-page {
     position: relative;
-    isolation: isolate;
+    z-index: 1;
     padding: clamp(34px, 6vw, 72px) clamp(18px, 5vw, 64px) clamp(42px, 7vw, 88px);
-    border-top: 4px double var(--ink);
-    background-color: var(--page-parchment);
-    background-image: linear-gradient(rgba(246, 232, 204, .55), rgba(246, 232, 204, .55)), url('/parchment-texture.webp');
-    background-size: auto, 512px 512px;
+    border-top: 0;
+    background: transparent;
     color: var(--text);
-  }
-
-  .contact-page::after {
-    content: '';
-    position: absolute;
-    z-index: -1;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    height: 28px;
-    border-top: 1px solid rgba(94, 53, 28, .35);
-    background: linear-gradient(180deg, rgba(94, 53, 28, .12), transparent);
-    pointer-events: none;
   }
 
   /* The shared footer includes this sign on interior pages; Contact has its own heading. */
@@ -175,8 +160,6 @@ const sitekey = env.TURNSTILE_SITEKEY;
     .contact-page {
       padding-top: clamp(26px, 3.5vw, 46px);
       padding-bottom: clamp(28px, 3.5vw, 46px);
-      background-color: rgba(246, 232, 204, .84);
-      background-image: linear-gradient(rgba(246, 232, 204, .5), rgba(246, 232, 204, .5)), url('/parchment-texture.webp');
     }
 
     .contact-page .section-head { margin-bottom: clamp(18px, 2vw, 26px); }
