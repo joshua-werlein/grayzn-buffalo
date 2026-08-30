@@ -154,14 +154,13 @@ const sitekey = env.TURNSTILE_SITEKEY;
 
   @media (min-width: 1100px) {
     .contact-page {
-      /* Restores the former Contact-only desktop separator without giving the
-         shared scenic composition an opaque page band. */
-      padding-top: 0;
+      /* The route-scoped header rule stays directly beneath navigation while
+         this normal-flow inset gives the Contact block breathing room. */
+      padding-top: clamp(20px, 2.6vw, 40px);
       padding-bottom: clamp(20px, 2vw, 30px);
-      border-top: 4px double var(--ink);
     }
 
-    .contact-page .section-head { margin-bottom: 8px; }
+    .contact-page .section-head { margin-bottom: clamp(18px, 2vw, 28px); }
     .contact-page .section-head :is(h1, h2) {
       margin: 4px 0 2px;
       font-size: clamp(1.8rem, 3vw, 2.4rem);
@@ -206,7 +205,7 @@ const sitekey = env.TURNSTILE_SITEKEY;
     /* Tablet and phone are a deliberate one-column reading order. The small
        ending inset is the only exposed parchment after the final card. */
     .contact-page {
-      padding-top: clamp(42px, 7vw, 76px);
+      padding-top: clamp(52px, 8vw, 84px);
       padding-bottom: clamp(12px, 1.75vw, 18px);
       background-color: var(--page-parchment);
       background-image: url('/parchment-texture.webp');

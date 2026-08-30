@@ -16,6 +16,7 @@ const isHome = path === '/';
 const isContact = path === '/contact';
 const isScenicFooter = isHome || isContact;
 const isAdmin = path.startsWith('/admin');
+const hasInteriorNavDivider = isContact || path === '/menu' || path === '/specials';
 const siteUrl = 'https://grayznbuffalo.com';
 const productionHosts = new Set(['grayznbuffalo.com', 'www.grayznbuffalo.com']);
 const noindex = path.startsWith('/admin') || !productionHosts.has(Astro.url.hostname);
@@ -225,8 +226,10 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     nav.site a.link{color:var(--ink);font-weight:700;font-size:1.3rem}
     nav.site a.link:hover,nav.site a.link:focus-visible{color:var(--ink);text-decoration-color:var(--crimson);outline:2px solid var(--crimson);outline-offset:5px}
     nav.site a.link.active{color:var(--ink);text-decoration-color:var(--crimson)}
+    /* Only the public interior pages with a desktop navigation need this rule. */
+    .site-chrome--interior-divider nav.site::after{content:"";position:absolute;right:clamp(36px,7vw,96px);bottom:6px;left:clamp(36px,7vw,96px);border-bottom:4px double var(--ink);pointer-events:none}
     /* Scenic wrapper — parchment sky; grows with page content */
-    .footer-composition--home{position:relative;background-color:var(--surface-parchment);background-image:url('/parchment-texture.webp');background-repeat:repeat;background-size:512px 512px}
+    .footer-composition:not(.footer-composition--admin){position:relative;background-color:var(--surface-parchment);background-image:url('/parchment-texture.webp');background-repeat:repeat;background-size:512px 512px}
     .footer-composition--home #visit#visit{position:relative;z-index:1;padding:0;background:transparent;border:0;box-shadow:none}
     .footer-composition--home #visit#visit .visit-content{position:relative;top:-10px;padding:clamp(42px,6vw,72px) clamp(18px,4vw,64px);background:transparent}
     .footer-composition--home #visit#visit .visit-block{border-bottom:0}
@@ -234,25 +237,25 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .footer-layout{max-width:1440px;padding-inline:clamp(50px,7vw,130px)}
     .footer-center{display:flex;align-items:center}
     .footer-mainline{display:flex;align-items:center;justify-content:center;gap:12px;min-width:0}
-    .footer-copy{font-size:clamp(1.05rem,1.3vw,1.16rem);line-height:1.4}
-    .footer-social{flex:0 0 auto;line-height:1}
-    .footer-social svg{width:31px;height:31px}
-    .footer-legal{gap:9px 34px;margin:14px 0 0}
-    .footer-legal a{font-size:.96rem}
-    .staff-door{left:clamp(8px,2vw,34px);bottom:-15px;padding:12px;opacity:.26}
-    .staff-door img{width:60px}
-    .footer-credit{right:clamp(8px,2vw,34px);bottom:0;font-size:.96rem;opacity:.72}
+    .footer-composition:not(.footer-composition--admin) .footer-copy{font-size:clamp(1.1rem,1.4vw,1.3rem);line-height:1.35}
+    .footer-composition:not(.footer-composition--admin) .footer-social{flex:0 0 auto;line-height:1}
+    .footer-composition:not(.footer-composition--admin) .footer-social svg{width:36px;height:36px}
+    .footer-composition:not(.footer-composition--admin) .footer-legal{gap:10px 38px;margin:24px 0 0}
+    .footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:clamp(.98rem,1.15vw,1.08rem)}
+    .footer-composition:not(.footer-composition--admin) .staff-door{left:clamp(8px,2vw,34px);bottom:-15px;padding:12px;opacity:.26}
+    .footer-composition:not(.footer-composition--admin) .staff-door img{width:68px}
+    .footer-composition:not(.footer-composition--admin) .footer-credit{right:clamp(8px,2vw,34px);bottom:0;font-size:.96rem;opacity:.72}
     /* Interior pages — scenic scene starts after content */
-    .footer-composition:not(.footer-composition--home){min-height:0;margin:0;padding:0;background:none}
+    .footer-composition:not(.footer-composition--home){min-height:0;margin:0;padding:0}
     .footer-composition:not(.footer-composition--home) footer{position:relative;min-height:0;padding:0;background:none}
     /* Landscape layer — all public (non-admin) routes */
     .footer-composition:not(.footer-composition--admin) .footer-scene{display:block;position:relative;aspect-ratio:2048 / 545;background:url('/footer-landscape-cutout.webp') center top / 100% auto no-repeat;overflow:visible}
     /* Board layer — visible on desktop for all non-admin routes */
     .footer-composition:not(.footer-composition--admin) .footer-home-bed{display:block;position:relative;aspect-ratio:2032 / 240;background-color:#21130e;background-image:url('/footer-board-extension.webp');background-position:center top;background-size:100% auto;background-repeat:no-repeat;overflow:hidden}
     /* Footer info sits at the bottom of footer (over the board) */
-    .footer-composition:not(.footer-composition--admin) .footer-layout{position:absolute;z-index:2;right:0;bottom:clamp(12px,1.5vw,24px);left:0;padding-inline:clamp(50px,7vw,130px)}
+    .footer-composition:not(.footer-composition--admin) .footer-layout{position:absolute;z-index:2;right:0;bottom:clamp(38px,3.2vw,46px);left:0;padding-inline:clamp(50px,7vw,130px)}
     /* Contact sign inside the landscape scene */
-    .footer-composition:not(.footer-composition--admin) .footer-contact{display:block;position:absolute;z-index:1;left:50%;bottom:20%;width:clamp(280px,24vw,420px);transform:translateX(-50%);line-height:0;text-decoration:none;filter:drop-shadow(0 7px 7px rgba(30,18,10,.3))}
+    .footer-composition:not(.footer-composition--admin) .footer-contact{display:block;position:absolute;z-index:1;left:calc(50% + clamp(24px,3vw,54px));bottom:7%;width:clamp(280px,24vw,420px);transform:translateX(-50%);line-height:0;text-decoration:none;filter:drop-shadow(0 7px 7px rgba(30,18,10,.3))}
     .footer-contact img{display:block;width:100%;height:auto}
     .footer-contact:focus-visible{outline:3px solid var(--gold);outline-offset:5px;border-radius:8px}
 
@@ -346,70 +349,71 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
       background:url('/footer-landscape-cutout.webp') center top / 100% auto no-repeat;
       overflow:visible;
     }
-    .footer-composition .footer-layout{
-      position:absolute;z-index:2;right:0;bottom:0;left:0;min-height:0;max-width:none;margin:0;padding:4px 46px 5px;
+    .footer-composition:not(.footer-composition--admin) .footer-layout{
+      position:absolute;z-index:2;right:0;bottom:calc(146px + env(safe-area-inset-bottom));left:0;min-height:0;max-width:none;margin:0;padding:6px 58px 7px;
       overflow:visible;background:none;
     }
-    .footer-composition .footer-copy{font-size:clamp(.8125rem,2.8vw,.875rem);line-height:1.4}
-    .footer-composition .footer-legal{gap:5px clamp(16px,4vw,22px);margin:2px 0 0}
-    .footer-composition .footer-legal a{font-size:clamp(.8125rem,2.5vw,.875rem);line-height:1.4}
-    .footer-composition .staff-door{top:50%;bottom:auto;left:0;margin:0;padding:13px 8px;transform:translateY(-50%)}
-    .footer-composition .footer-social{position:absolute;right:8px;bottom:auto;top:50%;transform:translateY(-50%)}
-    .footer-contact{
+    .footer-composition:not(.footer-composition--admin) .footer-copy{font-size:clamp(.875rem,3vw,.95rem);line-height:1.4}
+    .footer-composition:not(.footer-composition--admin) .footer-legal{gap:6px clamp(18px,4vw,24px);margin:7px 0 0}
+    .footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:clamp(.875rem,2.7vw,.94rem);line-height:1.4}
+    .footer-composition:not(.footer-composition--admin) .staff-door{top:50%;bottom:auto;left:0;margin:0;padding:13px 8px;transform:translateY(-50%)}
+    .footer-composition:not(.footer-composition--admin) .staff-door img{width:44px}
+    .footer-composition:not(.footer-composition--admin) .footer-social{position:absolute;right:8px;bottom:auto;top:50%;transform:translateY(-50%)}
+    .footer-composition:not(.footer-composition--admin) .footer-contact{
       /* Anchor to the scenic foreground, not the page or board extension. */
-      display:block;position:absolute;z-index:1;left:50%;bottom:15%;
+      display:block;position:absolute;z-index:1;left:calc(50% + clamp(14px,4vw,32px));bottom:calc(-1 * clamp(8px,3vw,18px));
       width:clamp(190px,58vw,260px);max-width:calc(100% - 28px);transform:translateX(-50%);
       line-height:0;text-decoration:none;filter:drop-shadow(0 5px 5px rgba(30,18,10,.28));
     }
     .footer-contact img{display:block;width:100%;height:auto}
     .footer-contact:hover{filter:drop-shadow(0 7px 7px rgba(30,18,10,.38)) brightness(1.035)}
     .footer-contact:focus-visible{outline:3px solid var(--gold);outline-offset:5px;border-radius:8px}
-    .footer-composition .footer-home-bed{
-      display:block;position:relative;z-index:1;height:calc(134px + env(safe-area-inset-bottom));overflow:hidden;
+    .footer-composition:not(.footer-composition--admin) .footer-home-bed{
+      display:block;position:relative;z-index:1;height:calc(260px + env(safe-area-inset-bottom));overflow:hidden;
       background-color:#21130e;background-image:url('/footer-board-extension.webp');background-position:center top;background-size:cover;background-repeat:no-repeat;
     }
-    .footer-social svg{width:24px;height:24px}
+    .footer-composition:not(.footer-composition--admin) .footer-social svg{width:26px;height:26px}
     .install-prompt{bottom:calc(78px + env(safe-area-inset-bottom))}
   }
 
-  /* Narrow screens use a cropped extra landing board so the Home control clears
-     the coordinated footer row without creating another full information board. */
+  /* Narrow screens extend the single in-flow board so the coordinated footer
+     row clears the fixed Home control without creating another board. */
   @media (max-width:499px){
-    .footer-composition .footer-home-bed{height:calc(204px + env(safe-area-inset-bottom))}
+    .footer-composition:not(.footer-composition--admin) .footer-home-bed{height:calc(306px + env(safe-area-inset-bottom))}
   }
 
   @media (min-width:500px) and (max-width:599px){
-    .footer-composition .footer-home-bed{height:calc(194px + env(safe-area-inset-bottom))}
+    .footer-composition:not(.footer-composition--admin) .footer-home-bed{height:calc(294px + env(safe-area-inset-bottom))}
   }
 
   @media (min-width:600px) and (max-width:839px){
-    .footer-composition .footer-layout{bottom:12px}
-    .footer-composition .footer-copy,.footer-composition .footer-legal a{font-size:.84375rem}
-    .footer-composition .footer-legal{column-gap:20px}
+    .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(146px + env(safe-area-inset-bottom))}
+    .footer-composition:not(.footer-composition--admin) .footer-copy,.footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:.95rem}
+    .footer-composition:not(.footer-composition--admin) .footer-legal{column-gap:22px}
   }
 
   @media (min-width:840px) and (max-width:979px){
-    .footer-composition .footer-layout{bottom:20px}
-    .footer-composition .footer-copy,.footer-composition .footer-legal a{font-size:.84375rem}
-    .footer-composition .footer-legal{column-gap:20px}
+    .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(146px + env(safe-area-inset-bottom))}
+    .footer-composition:not(.footer-composition--admin) .footer-copy,.footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:.98rem}
+    .footer-composition:not(.footer-composition--admin) .footer-legal{column-gap:24px}
   }
 
   @media (min-width:980px) and (max-width:1099px){
-    .footer-composition .footer-layout{bottom:24px}
-    .footer-composition .footer-copy,.footer-composition .footer-legal a{font-size:.84375rem}
-    .footer-composition .footer-legal{column-gap:20px}
+    .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(146px + env(safe-area-inset-bottom))}
+    .footer-composition:not(.footer-composition--admin) .footer-copy,.footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:1rem}
+    .footer-composition:not(.footer-composition--admin) .footer-legal{column-gap:26px}
   }
 
   @media (min-width:1000px) and (max-width:1099px) and (min-height:900px){
-    .footer-composition .footer-layout{bottom:42px}
-    .footer-composition .footer-copy,.footer-composition .footer-legal a{font-size:.875rem}
-    .footer-composition .footer-legal{column-gap:22px}
+    .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(146px + env(safe-area-inset-bottom))}
+    .footer-composition:not(.footer-composition--admin) .footer-copy,.footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:1rem}
+    .footer-composition:not(.footer-composition--admin) .footer-legal{column-gap:26px}
   }
 
   @media (min-width:1000px) and (max-width:1099px) and (max-height:700px){
-    .footer-composition .footer-layout{bottom:28px}
-    .footer-composition .footer-copy,.footer-composition .footer-legal a{font-size:.875rem}
-    .footer-composition .footer-legal{column-gap:22px}
+    .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(146px + env(safe-area-inset-bottom))}
+    .footer-composition:not(.footer-composition--admin) .footer-copy,.footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:1rem}
+    .footer-composition:not(.footer-composition--admin) .footer-legal{column-gap:26px}
   }
 
   /* On narrow screens, the homepage keeps Contact on parchment and uses the
@@ -460,7 +464,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .footer-credit{display:none}
   }
   @media (max-width:500px){
-    .footer-composition .footer-social{position:absolute;right:8px;bottom:auto;top:50%;transform:translateY(-50%)}
+    .footer-composition:not(.footer-composition--admin) .footer-social{position:absolute;right:8px;bottom:auto;top:50%;transform:translateY(-50%)}
   }
 
   /* ---- reduced motion: top bar stays put ---- */
@@ -472,7 +476,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 </style>
 </head>
 <body>
-<header class={"site-chrome" + (isHome ? " site-chrome-home" : "")}>
+<header class={"site-chrome" + (isHome ? " site-chrome-home" : "") + (hasInteriorNavDivider ? " site-chrome--interior-divider" : "")}>
   <nav class="site">
     <a class="brand" href="/" aria-label="Grayz'n Buffalo home">
       <img src="/buffalo-mark.svg" alt="Grayz'n Buffalo Bar & Grill logo" width="100" height="70" />
