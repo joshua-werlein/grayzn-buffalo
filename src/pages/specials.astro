@@ -20,7 +20,7 @@ const recurring = [{ name: 'Lunch Specials', when: '11 AM – 1:30 PM' }, { name
 ---
 <Base title="Specials — Grayz'n Buffalo Bar & Grill, Mondovi WI" description="This week's and upcoming specials at Grayz'n Buffalo Bar & Grill in Mondovi, WI.">
 <section class="specials-page section-tavern">
-  <div class="section-head interior-heading"><span class="kicker">Fresh from the kitchen</span><h1>Weekly Specials</h1><span class="vintage-rule" aria-hidden="true"></span></div>
+  <div class="section-head interior-heading"><h1>Weekly Specials</h1><span class="kicker">Fresh from the kitchen</span><span class="vintage-rule" aria-hidden="true"></span></div>
   {weeklySpecials.length > 0 ? weeklySpecials.map((special, weekIndex) => {
     const range = formatWeeklyDateRange(special.week_start_date, special.week_end_date);
     const label = weekLabel(weekIndex);
