@@ -173,7 +173,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   footer a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
   .footer-layout{position:relative;max-width:1100px;margin:0 auto}
   .footer-scene,.footer-contact,.footer-home-bed{display:none}
-  .footer-buffalo{display:block;position:absolute;z-index:0;left:0;bottom:0;width:min(680px,37.5%);height:auto;pointer-events:none;animation:buffalo-traverse 28s linear infinite}
+  .footer-buffalo{display:block;position:absolute;z-index:2;left:0;bottom:0;width:min(190px,37.5%);height:auto;pointer-events:none;animation:buffalo-traverse 40s linear infinite}
   @keyframes buffalo-traverse{from{transform:translateX(100vw)}to{transform:translateX(-100%)}}
   .footer-center{display:flex;flex-direction:column;align-items:center;min-width:0}
   .footer-mainline{display:contents}
@@ -354,7 +354,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
       background:url('/footer-landscape-cutout.webp') center top / 100% auto no-repeat;
       overflow:visible;
     }
-    .footer-composition:not(.footer-composition--admin) .footer-buffalo{width:min(680px,33.5%)}
+    .footer-composition:not(.footer-composition--admin) .footer-buffalo{width:min(190px,33.5%)}
     .footer-composition:not(.footer-composition--admin) .footer-layout{
       position:absolute;z-index:2;right:0;bottom:calc(188px + env(safe-area-inset-bottom));left:0;min-height:0;max-width:none;margin:0;padding:6px 58px 7px;
       overflow:visible;background:none;
@@ -383,7 +383,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   }
 
   @media (max-width:640px){
-    .footer-composition:not(.footer-composition--admin) .footer-buffalo{width:min(680px,30%)}
+    .footer-composition:not(.footer-composition--admin) .footer-buffalo{width:min(190px,30%)}
   }
 
   /* Narrow screens extend the single in-flow board so the coordinated footer
@@ -540,7 +540,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 <footer>
   <div class="footer-scene">
     {!isAdmin && (
-      <img class="footer-buffalo" src="/buffalo-graze-walk.webp" alt="" width="680" height="116" loading="lazy" decoding="async" />
+      <img class="footer-buffalo" src="/buffalo-walk-cycle.webp" alt="" width="190" height="116" loading="lazy" decoding="async" />
     )}
     {!isAdmin && (
       <a class="footer-contact" href="/contact" aria-label="Contact Us">
