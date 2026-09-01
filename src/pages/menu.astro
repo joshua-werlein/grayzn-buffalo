@@ -36,6 +36,22 @@ const lateNightColumns = splitColumns(lateNight);
 >
 <section class="menu-top section-parchment">
   <div class="menu-sheet">
+  <svg class="corner-flourish corner-flourish--top-left" viewBox="0 0 72 72" aria-hidden="true">
+    <path d="M6 61c17-1 22-11 20-23-2-11 3-22 15-28 10-5 21-1 23 8 2 7-3 13-9 13-5 0-8-4-7-8 1-4 5-6 9-3" />
+    <path d="M11 53c8-3 11-10 10-18M31 14c4 5 9 7 15 7" />
+  </svg>
+  <svg class="corner-flourish corner-flourish--top-right" viewBox="0 0 72 72" aria-hidden="true">
+    <path d="M6 61c17-1 22-11 20-23-2-11 3-22 15-28 10-5 21-1 23 8 2 7-3 13-9 13-5 0-8-4-7-8 1-4 5-6 9-3" />
+    <path d="M11 53c8-3 11-10 10-18M31 14c4 5 9 7 15 7" />
+  </svg>
+  <svg class="corner-flourish corner-flourish--bottom-left" viewBox="0 0 72 72" aria-hidden="true">
+    <path d="M6 61c17-1 22-11 20-23-2-11 3-22 15-28 10-5 21-1 23 8 2 7-3 13-9 13-5 0-8-4-7-8 1-4 5-6 9-3" />
+    <path d="M11 53c8-3 11-10 10-18M31 14c4 5 9 7 15 7" />
+  </svg>
+  <svg class="corner-flourish corner-flourish--bottom-right" viewBox="0 0 72 72" aria-hidden="true">
+    <path d="M6 61c17-1 22-11 20-23-2-11 3-22 15-28 10-5 21-1 23 8 2 7-3 13-9 13-5 0-8-4-7-8 1-4 5-6 9-3" />
+    <path d="M11 53c8-3 11-10 10-18M31 14c4 5 9 7 15 7" />
+  </svg>
   <div class="section-head interior-heading">
     <span class="kicker">From the kitchen</span>
     <h1>The Menu</h1>
@@ -154,14 +170,17 @@ const lateNightColumns = splitColumns(lateNight);
  
 <style>
   .menu-top{
-    padding:clamp(28px,5vw,68px) clamp(14px,4vw,56px) clamp(48px,7vw,88px);
-    background-color:#dec590;
-    background-image:linear-gradient(rgba(91,50,24,.08),rgba(91,50,24,.08)),url('/parchment-texture.webp');
-    background-position:center;
+    --footer-blend-height:clamp(180px,18vw,220px);
+    padding:clamp(28px,5vw,68px) clamp(14px,4vw,56px) calc(var(--footer-blend-height) + clamp(24px,4vw,48px));
+    background-color:var(--surface-parchment);
+    background-image:linear-gradient(to bottom,rgba(91,50,24,.08) 0,rgba(91,50,24,.08) calc(100% - var(--footer-blend-height)),rgba(91,50,24,0) 100%),url('/parchment-texture.webp');
+    background-position:center top;
     background-size:auto,512px 512px;
   }
 
   .menu-sheet{
+    position:relative;
+    isolation:isolate;
     width:min(100%,1180px);
     margin:0 auto;
     padding:clamp(30px,5vw,68px) clamp(20px,5.5vw,72px) clamp(38px,6vw,76px);
@@ -172,6 +191,25 @@ const lateNightColumns = splitColumns(lateNight);
     border:7px double #291912;
     box-shadow:0 12px 30px rgba(53,29,14,.24);
   }
+  .menu-sheet > :not(.corner-flourish){position:relative;z-index:1}
+  .corner-flourish{
+    position:absolute;
+    z-index:0;
+    width:clamp(48px,5vw,70px);
+    height:auto;
+    color:var(--brick);
+    fill:none;
+    stroke:currentColor;
+    stroke-width:2.2;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+    opacity:.68;
+    pointer-events:none;
+  }
+  .corner-flourish--top-left{top:11px;left:11px}
+  .corner-flourish--top-right{top:11px;right:11px;transform:scaleX(-1)}
+  .corner-flourish--bottom-left{bottom:11px;left:11px;transform:scaleY(-1)}
+  .corner-flourish--bottom-right{right:11px;bottom:11px;transform:scale(-1)}
 
   .interior-heading{margin-bottom:clamp(22px,3vw,34px)}
   .interior-heading .kicker{display:block;color:var(--brick);font-size:.82rem}
@@ -285,21 +323,29 @@ const lateNightColumns = splitColumns(lateNight);
   }
   .cat-section{margin:0 0 clamp(24px,4vw,40px);padding:0;scroll-margin-top:120px}
   .cat-section h3{
-    display:flex;
-    align-items:center;
-    gap:12px;
+    position:relative;
+    display:block;
     margin:24px 0 6px;
-    padding:0 0 9px;
-    border-bottom:2px solid #291912;
-    color:#291912;
+    padding:0 0 13px;
+    color:var(--denim);
+    background:linear-gradient(to right,var(--denim) 0 calc(50% - 10px),transparent calc(50% - 10px) calc(50% + 10px),var(--denim) calc(50% + 10px) 100%) left bottom / 100% 1px no-repeat;
     font-family:var(--display);
-    font-size:clamp(1.7rem,3.4vw,2.7rem);
+    font-size:clamp(1.35rem,2.2vw,1.8rem);
     font-weight:400;
     line-height:1.08;
     letter-spacing:.01em;
     text-transform:uppercase;
   }
-  .cat-section h3::before{content:'★';flex:0 0 auto;color:var(--brick);font-size:.48em}
+  .cat-section h3::before{
+    content:'';
+    position:absolute;
+    left:50%;
+    bottom:-3px;
+    width:7px;
+    height:7px;
+    background:var(--brick);
+    transform:translateX(-50%) rotate(45deg);
+  }
 
   .menu-list{list-style:none;margin:0;padding:0}
   .item{
@@ -324,8 +370,13 @@ const lateNightColumns = splitColumns(lateNight);
   .empty{max-width:720px;margin:26px auto;text-align:center;color:#583e30}
 
   @media (max-width:760px){
-    .menu-top{padding:18px 10px 46px}
+    .menu-top{--footer-blend-height:clamp(170px,48vw,210px);padding:18px 10px calc(var(--footer-blend-height) + 26px)}
     .menu-sheet{padding:28px 16px 44px;border-width:5px;box-shadow:0 8px 20px rgba(53,29,14,.2)}
+    .corner-flourish{width:40px;stroke-width:2.4;opacity:.58}
+    .corner-flourish--top-left{top:8px;left:8px}
+    .corner-flourish--top-right{top:8px;right:8px}
+    .corner-flourish--bottom-left{bottom:8px;left:8px}
+    .corner-flourish--bottom-right{right:8px;bottom:8px}
     .interior-heading h1{font-size:clamp(2.75rem,17vw,4.8rem)}
     .tabs::before,.tabs::after{padding-inline:7px;font-size:.82rem}
     .tabs .tab{padding-inline:15px;font-size:.88rem}
@@ -335,7 +386,7 @@ const lateNightColumns = splitColumns(lateNight);
     .menu-columns{grid-template-columns:1fr}
     .menu-column + .menu-column::before{content:none}
     .cat-section{margin-bottom:24px}
-    .cat-section h3{font-size:clamp(1.55rem,8vw,2.15rem)}
+    .cat-section h3{font-size:clamp(1.35rem,6vw,1.8rem)}
     .item-photo-trigger{flex-basis:60px;width:60px;height:48px}
     .item-photo{width:60px;height:48px}
   }
