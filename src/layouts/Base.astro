@@ -173,8 +173,8 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   footer a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
   .footer-layout{position:relative;max-width:1100px;margin:0 auto}
   .footer-scene,.footer-contact,.footer-home-bed{display:none}
-  .footer-buffalo{display:block;position:absolute;z-index:2;left:0;bottom:0;width:min(190px,37.5%);height:auto;pointer-events:none;animation:buffalo-traverse 40s linear infinite}
-  @keyframes buffalo-traverse{0%,40%{transform:translateX(100vw)}100%{transform:translateX(-100%)}}
+  .footer-buffalo{display:block;position:absolute;z-index:2;left:0;bottom:0;width:min(190px,37.5%);height:auto;pointer-events:none;animation:buffalo-traverse 73s linear infinite}
+  @keyframes buffalo-traverse{0%,20%{transform:translateX(100vw)}100%{transform:translateX(-100%)}}
   .footer-center{display:flex;flex-direction:column;align-items:center;min-width:0}
   .footer-mainline{display:contents}
   .footer-copy{order:1;margin:0}
@@ -383,26 +383,25 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   }
 
   @media (max-width:640px){
-    .footer-composition:not(.footer-composition--admin) .footer-buffalo{width:min(190px,30%);display:none}
-  }
-  @media (min-width:641px) and (max-width:1099px){
-    .footer-composition:not(.footer-composition--admin) .footer-buffalo{animation-duration:18s}
+    .footer-composition:not(.footer-composition--admin) .footer-buffalo{width:min(190px,30%)}
   }
   @media (min-width:1100px) and (max-width:1439px){
-    .footer-buffalo{animation-duration:27s}
+    .footer-composition:not(.footer-composition--admin) .footer-buffalo{animation-duration:47s}
   }
   @media (min-width:1440px) and (max-width:1919px){
-    .footer-buffalo{animation-duration:35s}
+    .footer-composition:not(.footer-composition--admin) .footer-buffalo{animation-duration:60s}
   }
 
   /* Narrow screens extend the single in-flow board so the coordinated footer
      row clears the fixed Home control without creating another board. */
   @media (max-width:499px){
     .footer-composition:not(.footer-composition--admin) .footer-home-bed{height:calc(306px + env(safe-area-inset-bottom))}
+    .footer-composition:not(.footer-composition--admin) .footer-buffalo{animation-duration:18s}
   }
 
   @media (min-width:500px) and (max-width:599px){
     .footer-composition:not(.footer-composition--admin) .footer-home-bed{height:calc(294px + env(safe-area-inset-bottom))}
+    .footer-composition:not(.footer-composition--admin) .footer-buffalo{animation-duration:23s}
   }
 
   @media (min-width:600px) and (max-width:839px){
@@ -410,6 +409,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(188px + env(safe-area-inset-bottom))}
     .footer-composition:not(.footer-composition--admin) .footer-copy,.footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:.95rem}
     .footer-composition:not(.footer-composition--admin) .footer-legal{column-gap:22px}
+    .footer-composition:not(.footer-composition--admin) .footer-buffalo{animation-duration:29s}
   }
 
   @media (min-width:840px) and (max-width:979px){
@@ -424,6 +424,9 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .footer-composition:not(.footer-composition--admin) .footer-layout{bottom:calc(188px + env(safe-area-inset-bottom))}
     .footer-composition:not(.footer-composition--admin) .footer-copy,.footer-composition:not(.footer-composition--admin) .footer-legal a{font-size:1rem}
     .footer-composition:not(.footer-composition--admin) .footer-legal{column-gap:26px}
+  }
+  @media (min-width:840px) and (max-width:1099px){
+    .footer-composition:not(.footer-composition--admin) .footer-buffalo{animation-duration:37s}
   }
 
   @media (min-width:1000px) and (max-width:1099px) and (min-height:900px){
