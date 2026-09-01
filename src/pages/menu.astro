@@ -170,8 +170,8 @@ const lateNightColumns = splitColumns(lateNight);
  
 <style>
   .menu-top{
-    --footer-blend-height:clamp(180px,18vw,220px);
-    padding:clamp(28px,5vw,68px) clamp(14px,4vw,56px) calc(var(--footer-blend-height) + clamp(24px,4vw,48px));
+    --footer-blend-height:clamp(40px,3vw,56px);
+    padding:clamp(28px,5vw,68px) clamp(14px,4vw,56px) calc(var(--footer-blend-height) + clamp(12px,1.5vw,20px));
     background-color:var(--surface-parchment);
     background-image:linear-gradient(to bottom,rgba(91,50,24,.08) 0,rgba(91,50,24,.08) calc(100% - var(--footer-blend-height)),rgba(91,50,24,0) 100%),url('/parchment-texture.webp');
     background-position:center top,left bottom;
@@ -371,7 +371,7 @@ const lateNightColumns = splitColumns(lateNight);
   .empty{max-width:720px;margin:26px auto;text-align:center;color:#583e30}
 
   @media (max-width:760px){
-    .menu-top{--footer-blend-height:clamp(170px,48vw,210px);padding:18px 10px calc(var(--footer-blend-height) + 26px)}
+    .menu-top{--footer-blend-height:clamp(32px,10vw,44px);padding:18px 10px calc(var(--footer-blend-height) + 14px)}
     .menu-sheet{padding:28px 16px 44px;border-width:5px;box-shadow:0 8px 20px rgba(53,29,14,.2)}
     .corner-flourish{width:40px;stroke-width:2.4;opacity:.58}
     .corner-flourish--top-left{top:8px;left:8px}
