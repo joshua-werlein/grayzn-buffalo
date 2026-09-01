@@ -376,7 +376,8 @@ const welcomeHolderAssets = [
     .hero-actions{padding:0 20px 24px}
   }
   @media (max-width:480px){
-    .hero{--hero-scene-height:max(clamp(460px,55svh,480px),min(109vw,522px));min-height:0}
+    .hero{--hero-scene-height:clamp(405px,calc(75vw + 140px),clamp(460px,55svh,500px));min-height:0}
+    .buffalo-video-anchor{--buffalo-end-y:clamp(28px,calc(84px - 11.667vw),48px)}
     .logo-bar-stage{width:min(65vw,280px);height:auto}
     .hero-actions{margin-top:0;padding-top:24px}
   }
