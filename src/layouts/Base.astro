@@ -173,6 +173,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   footer a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
   .footer-layout{position:relative;max-width:1100px;margin:0 auto}
   .footer-scene,.footer-contact,.footer-home-bed{display:none}
+  .footer-buffalo{display:block;position:absolute;z-index:0;left:3%;bottom:0;width:min(680px,37.5%);height:auto;pointer-events:none}
   .footer-center{display:flex;flex-direction:column;align-items:center;min-width:0}
   .footer-mainline{display:contents}
   .footer-copy{order:1;margin:0}
@@ -280,6 +281,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   @media (max-width:1099px){ nav.site .brand img{height:52px} nav.site ul{gap:14px} nav.site a.link{font-size:.8rem} }
   @media (prefers-reduced-motion: reduce){
     .reveal{transition:none;opacity:1;transform:none}
+    .footer-buffalo{display:none}
     html{scroll-behavior:auto}
   }
 
@@ -351,6 +353,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
       background:url('/footer-landscape-cutout.webp') center top / 100% auto no-repeat;
       overflow:visible;
     }
+    .footer-composition:not(.footer-composition--admin) .footer-buffalo{width:min(680px,33.5%)}
     .footer-composition:not(.footer-composition--admin) .footer-layout{
       position:absolute;z-index:2;right:0;bottom:calc(188px + env(safe-area-inset-bottom));left:0;min-height:0;max-width:none;margin:0;padding:6px 58px 7px;
       overflow:visible;background:none;
@@ -376,6 +379,10 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     }
     .footer-composition:not(.footer-composition--admin) .footer-social svg{width:26px;height:26px}
     .install-prompt{bottom:calc(78px + env(safe-area-inset-bottom))}
+  }
+
+  @media (max-width:640px){
+    .footer-composition:not(.footer-composition--admin) .footer-buffalo{width:min(680px,30%)}
   }
 
   /* Narrow screens extend the single in-flow board so the coordinated footer
@@ -531,6 +538,9 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   {isScenicFooter && <slot name="home-footer" />}
 <footer>
   <div class="footer-scene">
+    {!isAdmin && (
+      <img class="footer-buffalo" src="/buffalo-graze-walk.webp" alt="" width="680" height="116" loading="lazy" decoding="async" />
+    )}
     {!isAdmin && (
       <a class="footer-contact" href="/contact" aria-label="Contact Us">
         <img src="/footer-contact.webp" alt="" width="1600" height="1067" loading="lazy" />
