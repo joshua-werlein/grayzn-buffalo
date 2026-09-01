@@ -174,7 +174,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   .footer-layout{position:relative;max-width:1100px;margin:0 auto}
   .footer-scene,.footer-contact,.footer-home-bed{display:none}
   .footer-buffalo{display:block;position:absolute;z-index:2;left:0;bottom:0;width:min(190px,37.5%);height:auto;pointer-events:none;animation:buffalo-traverse 40s linear infinite}
-  @keyframes buffalo-traverse{from{transform:translateX(100vw)}to{transform:translateX(-100%)}}
+  @keyframes buffalo-traverse{0%,40%{transform:translateX(100vw)}100%{transform:translateX(-100%)}}
   .footer-center{display:flex;flex-direction:column;align-items:center;min-width:0}
   .footer-mainline{display:contents}
   .footer-copy{order:1;margin:0}
@@ -383,7 +383,16 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   }
 
   @media (max-width:640px){
-    .footer-composition:not(.footer-composition--admin) .footer-buffalo{width:min(190px,30%)}
+    .footer-composition:not(.footer-composition--admin) .footer-buffalo{width:min(190px,30%);display:none}
+  }
+  @media (min-width:641px) and (max-width:1099px){
+    .footer-composition:not(.footer-composition--admin) .footer-buffalo{animation-duration:18s}
+  }
+  @media (min-width:1100px) and (max-width:1439px){
+    .footer-buffalo{animation-duration:27s}
+  }
+  @media (min-width:1440px) and (max-width:1919px){
+    .footer-buffalo{animation-duration:35s}
   }
 
   /* Narrow screens extend the single in-flow board so the coordinated footer
