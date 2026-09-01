@@ -173,7 +173,8 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   footer a:focus-visible{color:var(--cream);text-decoration-thickness:2px;}
   .footer-layout{position:relative;max-width:1100px;margin:0 auto}
   .footer-scene,.footer-contact,.footer-home-bed{display:none}
-  .footer-buffalo{display:block;position:absolute;z-index:0;left:3%;bottom:0;width:min(680px,37.5%);height:auto;pointer-events:none}
+  .footer-buffalo{display:block;position:absolute;z-index:0;left:0;bottom:0;width:min(680px,37.5%);height:auto;pointer-events:none;animation:buffalo-traverse 28s linear infinite}
+  @keyframes buffalo-traverse{from{transform:translateX(100vw)}to{transform:translateX(-100%)}}
   .footer-center{display:flex;flex-direction:column;align-items:center;min-width:0}
   .footer-mainline{display:contents}
   .footer-copy{order:1;margin:0}
