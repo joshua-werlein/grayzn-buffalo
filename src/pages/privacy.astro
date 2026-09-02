@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 
-const updated = 'August 04, 2026';
+const updated = 'September 2, 2026';
 ---
 
 <Base
@@ -22,9 +22,8 @@ const updated = 'August 04, 2026';
 
         <h2>Information You Provide</h2>
         <p>
-            If you use our contact form, we may collect the information you submit,
-            such as your name, email address, phone number if provided, and the
-            contents of your message.
+            If you use our contact form, we collect the name, email address, and
+            message you submit.
         </p>
 
         <h2>How We Use Information</h2>
@@ -36,8 +35,8 @@ const updated = 'August 04, 2026';
         </ul>
 
         <p>
-            We do not sell personal information or use contact-form information
-            for targeted advertising.
+            We do not sell or rent customer information or use it for targeted
+            advertising.
         </p>
 
         <h2>Service Providers</h2>
@@ -48,9 +47,12 @@ const updated = 'August 04, 2026';
         </p>
 
         <p>
-            We may retrieve and display publicly available posts and images from
-            Grayz’n Buffalo’s Facebook page. We store limited technical metadata
-            needed to keep that displayed content current.
+            We retrieve recent public Facebook post text, dates, links, and
+            associated images server-side to display them on this website. That
+            content is cached in Cloudflare KV and R2 to keep the feed current.
+            The feed does not load a Facebook embed or Facebook script in your
+            browser. Facebook’s privacy policy applies if you follow a Facebook
+            link.
         </p>
 
         <ul>
@@ -60,8 +62,9 @@ const updated = 'August 04, 2026';
             abuse, and automated submissions.
             </li>
             <li>
-            <strong>Resend:</strong> Contact-form submissions may be transmitted
-            through Resend so that we can receive and respond to messages.
+            <strong>Resend:</strong> Contact-form submissions are sent through
+            Resend to the business mailbox so that we can receive and respond to
+            messages. They are not stored in our D1 database.
             </li>
             <li>
             <strong>Google Maps:</strong> Our website includes an embedded map.
@@ -78,9 +81,24 @@ const updated = 'August 04, 2026';
         </p>
 
         <p>
-          We use Cloudflare Web Analytics to understand general, aggregate website
-          traffic. It is privacy-focused: it does not use cookies and does not collect
-          personal information or any data that could identify individual visitors.
+          We use Cloudflare Web Analytics to measure visits, page views,
+          performance, and related technical information. It is privacy-focused
+          and is not used for targeted advertising.
+        </p>
+
+        <p>
+            We register a network-only service worker for the current site. We use
+            local storage only to remember dismissal of the install prompt, and
+            your browser may use normal browser caching for public website files.
+            The site does not provide offline functionality through this service
+            worker.
+        </p>
+
+        <p>
+            An administrator who signs in may receive a <code>gb_session</code>
+            authentication cookie. This cookie is HttpOnly, Secure, SameSite=Lax,
+            and expires after 24 hours. It is used only for administrator
+            authentication, not public visitor tracking.
         </p>
 
         <p>
