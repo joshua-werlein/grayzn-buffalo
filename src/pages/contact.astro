@@ -25,7 +25,7 @@ const sitekey = env.TURNSTILE_SITEKEY;
       <p id="formStatus" role="status"></p>
     </form>
     <div class="card info">
-      <h3>Grayz'n Buffalo Bar &amp; Grill</h3>
+      <h2>Grayz'n Buffalo Bar &amp; Grill</h2>
       <p><a href="https://www.google.com/maps/search/?api=1&query=102+S+Eau+Claire+St,+Mondovi,+WI+54755" target="_blank" rel="noopener">102 S Eau Claire St, Mondovi, WI</a></p>
       <p><a href="tel:+17159264431">(715) 926-4431</a></p>
       <p>Open daily · 10 AM – 2 AM</p>
@@ -89,9 +89,10 @@ const sitekey = env.TURNSTILE_SITEKEY;
     box-shadow: var(--panel-shadow-dark);
   }
 
-  .card.info h3 {
+  .card.info h2 {
     margin-bottom: 10px;
     color: var(--ink);
+    font-size: 1.17em;
   }
 
   .card.info p {
@@ -193,7 +194,7 @@ const sitekey = env.TURNSTILE_SITEKEY;
     form input,
     form textarea { min-height: 44px; margin-top: 4px; padding: 8px 10px; }
     form textarea { min-height: 88px; }
-    .card.info h3 { margin-bottom: 8px; }
+    .card.info h2 { margin-bottom: 8px; }
     .card.info p { margin: 5px 0; padding-bottom: 5px; }
     .card.info iframe {
       height: clamp(170px, 13vw, 190px) !important;

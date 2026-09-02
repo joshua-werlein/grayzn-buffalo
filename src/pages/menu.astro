@@ -107,7 +107,7 @@ const lateNightColumns = splitColumns(lateNight);
         <div class="menu-column">
           {column.map((g) => (
             <section class="cat-section" id={`sec-${slug(g.cat.name)}`}>
-              <h3>{g.cat.name}</h3>
+              <h2>{g.cat.name}</h2>
               <ul class="menu-list">
                 {g.items.map((it) => (
                   <li class="item" id={`menu-item-${it.id}`}>
@@ -141,7 +141,7 @@ const lateNightColumns = splitColumns(lateNight);
           <div class="menu-column">
             {column.map((g) => (
               <section class="cat-section">
-                <h3>{g.cat.name}</h3>
+                <h2>{g.cat.name}</h2>
                 <ul class="menu-list">
                   {g.items.map((it) => (
                     <li class="item">
@@ -323,7 +323,7 @@ const lateNightColumns = splitColumns(lateNight);
     background:rgba(41,25,18,.24);
   }
   .cat-section{margin:0 0 clamp(24px,4vw,40px);padding:0;scroll-margin-top:120px}
-  .cat-section h3{
+  .cat-section h2{
     position:relative;
     display:block;
     margin:24px 0 6px;
@@ -337,7 +337,7 @@ const lateNightColumns = splitColumns(lateNight);
     letter-spacing:.01em;
     text-transform:uppercase;
   }
-  .cat-section h3::before{
+  .cat-section h2::before{
     content:'';
     position:absolute;
     left:50%;
@@ -387,7 +387,7 @@ const lateNightColumns = splitColumns(lateNight);
     .menu-columns{grid-template-columns:1fr}
     .menu-column + .menu-column::before{content:none}
     .cat-section{margin-bottom:24px}
-    .cat-section h3{font-size:clamp(1.35rem,6vw,1.8rem)}
+    .cat-section h2{font-size:clamp(1.35rem,6vw,1.8rem)}
     .item-photo-trigger{flex-basis:60px;width:60px;height:48px}
     .item-photo{width:60px;height:48px}
   }
