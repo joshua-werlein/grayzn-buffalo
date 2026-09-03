@@ -6,3 +6,5 @@ dist/
 .env
 *.log
 .DS_Store
+grayzn-db-backup-*.sql
+items-only.sql
