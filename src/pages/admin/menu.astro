@@ -37,12 +37,12 @@ if (Astro.request.method === 'POST') {
         f.get('late_night') ? 1 : 0
       ).run();
 
-      const id = Number(result.meta?.last_row_id);
-      if (wantsJson) {
-        return new Response(JSON.stringify({ ok: true, id, message: 'Item added.' }), {
+      const addResponse = wantsJson
+        ? new Response(JSON.stringify({ ok: true, id: Number(result.meta?.last_row_id), message: 'Item added.' }), {
           headers: { 'content-type': 'application/json' },
-        });
-      }
+        })
+        : null;
+      if (addResponse) return addResponse;
       notice = 'Item added.';
 
     } else if (action === 'edit') {

@@ -805,7 +805,7 @@ const welcomeHolderAssets = [
   .home-weekly__card.reveal.in .home-weekly__day:nth-child(6){transition-delay:.80s}
   .home-weekly__card.reveal.in .home-weekly__day:nth-child(7){transition-delay:.89s}
   @media (max-width:520px){.home-weekly__day{transform:translateX(-14px) rotate(-0.8deg)}.home-weekly__day:nth-child(even){transform:translateX(14px) rotate(0.8deg)}}
-  @media (prefers-reduced-motion:reduce){.home-weekly__day{transition:none;opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.home-weekly__day:nth-child(n){animation:none;transition:none;opacity:1;transform:none}}
 </style>
 
 <style is:global>
