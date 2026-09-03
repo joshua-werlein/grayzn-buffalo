@@ -68,9 +68,10 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 <link rel="manifest" href="/site.webmanifest" />
 {isHome && (
   <>
-    <link rel="preload" as="image" href="/grayznBackground.webp" fetchpriority="high" />
-    <link rel="preload" as="image" href="/logo-wordmark.webp" />
-    <link rel="preload" as="image" href="/logo-bar-grill.webp" />
+    <link rel="preload" as="image" href="/grayznBackground-1600.webp" media="(max-width: 600px)" fetchpriority="high" />
+    <link rel="preload" as="image" href="/grayznBackground.webp" media="(min-width: 601px)" fetchpriority="high" />
+    <link rel="preload" as="image" href="/logo-wordmark-600.webp" media="(max-width: 600px)" />
+    <link rel="preload" as="image" href="/logo-wordmark.webp" media="(min-width: 601px)" />
   </>
 )}
 {noindex && <meta name="robots" content="noindex, nofollow" />}

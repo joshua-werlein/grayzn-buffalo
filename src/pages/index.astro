@@ -69,10 +69,10 @@ const welcomePhotoSlots = Array.from({ length: welcomeSlotCount }, (_, slotIndex
   cappedWelcomeTiles.filter((_, tileIndex) => tileIndex % welcomeSlotCount === slotIndex),
 );
 const welcomeHolderAssets = [
-  '/images/welcome/photo1.webp',
-  '/images/welcome/photo2.webp',
-  '/images/welcome/photo3.webp',
-  '/images/welcome/photo4.webp',
+  { src: '/images/welcome/photo1.webp', small: '/images/welcome/photo1-400.webp', width: 800, height: 1000 },
+  { src: '/images/welcome/photo2.webp', small: '/images/welcome/photo2-400.webp', width: 800, height: 1000 },
+  { src: '/images/welcome/photo3.webp', small: '/images/welcome/photo3-400.webp', width: 820, height: 1000 },
+  { src: '/images/welcome/photo4.webp', small: '/images/welcome/photo4-400.webp', width: 800, height: 1000 },
 ];
 ---
 <Base>
@@ -80,7 +80,10 @@ const welcomeHolderAssets = [
   <h1 class="sr-only">Grayz'n Buffalo Bar &amp; Grill — Mondovi, Wisconsin</h1>
   <div class="hero-copy">
     <div class="logo-stage" aria-hidden="true">
-      <img class="logo-layer logo-wordmark" src="/logo-wordmark.webp" alt="" width="900" height="605" decoding="async" />
+      <picture>
+        <source srcset="/logo-wordmark-600.webp" media="(max-width: 600px)" />
+        <img class="logo-layer logo-wordmark" src="/logo-wordmark.webp" alt="" width="900" height="605" decoding="async" />
+      </picture>
       <div class="buffalo-video-anchor logo-layer">
         <picture>
           <source srcset="/buffalo-poster.webp" media="(prefers-reduced-motion: reduce)" />
@@ -94,7 +97,10 @@ const welcomeHolderAssets = [
   <div class="hero-after__layout">
     <div class="hero-after__brand">
       <div class="logo-bar-stage" aria-hidden="true">
-        <img class="logo-bar-grill" src="/logo-bar-grill.webp" alt="" width="900" height="605" decoding="async" />
+        <picture>
+          <source srcset="/logo-bar-grill-450.webp" media="(max-width: 600px)" />
+          <img class="logo-bar-grill" src="/logo-bar-grill.webp" alt="" width="900" height="605" decoding="async" fetchpriority="low" />
+        </picture>
       </div>
       <div class="hero-actions">
         <p class="hero-tag hero-tag-enter"><span>Open daily 10 AM to 2 AM.</span></p>
@@ -132,7 +138,7 @@ const welcomeHolderAssets = [
       </div>
       <p class="welcome-intro">Proudly rooted in Mondovi, Wisconsin — where the people are friendly,<br /> the stories are plentiful, and the buffalo spirit runs strong.<br /> We’re glad you’re here. Pull up a chair and make yourself at home.</p>
     </div>
-    <img class="welcome-divider" src="/images/welcome/center-divider.webp" alt="" aria-hidden="true" width="700" height="233" />
+    <img class="welcome-divider" src="/images/welcome/center-divider.webp" alt="" aria-hidden="true" width="700" height="233" loading="lazy" decoding="async" />
     {welcomePhotoSlots.length > 0 && (
       <div class="photo-stack" role="region" aria-label="Welcome and menu photos" tabindex="0">
         {welcomePhotoSlots.map((slot, slotIndex) => (
@@ -164,13 +170,33 @@ const welcomeHolderAssets = [
             inert={photoIndex === 0 ? undefined : true}
             tabindex={photoIndex === 0 ? undefined : -1}
           >
-            <img src={`/img/${thumbKey(photoKey)}`} data-full-src={`/img/${photoKey}`} alt={photo.alt} loading="lazy" />
+            <img
+              src={photoIndex === 0 ? `/img/${thumbKey(photoKey)}` : undefined}
+              data-src={`/img/${thumbKey(photoKey)}`}
+              data-full-src={`/img/${photoKey}`}
+              alt={photo.alt}
+              loading="lazy"
+            />
             {photo.caption && <span>{photo.caption}</span>}
           </button>
         );
       })}
             </div>
-            <img class="photo-holder" src={welcomeHolderAssets[slotIndex % welcomeHolderAssets.length]} alt="" aria-hidden="true" />
+            {(() => {
+              const holder = welcomeHolderAssets[slotIndex % welcomeHolderAssets.length];
+              return <img
+                class="photo-holder"
+                src={holder.src}
+                srcset={`${holder.small} 400w, ${holder.src} ${holder.width}w`}
+                sizes="(max-width: 600px) 46vw, (max-width: 900px) 40vw, 240px"
+                alt=""
+                aria-hidden="true"
+                width={holder.width}
+                height={holder.height}
+                loading="lazy"
+                decoding="async"
+              />;
+            })()}
           </div>
         ))}
       </div>
@@ -179,14 +205,14 @@ const welcomeHolderAssets = [
       <p class="welcome-script">
         <span class="sr-only">Good Food. Cold Drinks. Great People.</span>
         <span class="welcome-script__visual" aria-hidden="true">
-          <img class="welcome-script__flourish" src="/images/welcome/side-flourish.webp" alt="" width="320" height="107" />
+          <img class="welcome-script__flourish" src="/images/welcome/side-flourish.webp" alt="" width="320" height="107" loading="lazy" decoding="async" />
           <span class="welcome-script__full">Good Food. Cold Drinks. Great People.</span>
           <span class="welcome-script__compact">
             <span>Good Food.</span>
             <span>Cold Drinks.</span>
             <span>Great People.</span>
           </span>
-          <img class="welcome-script__flourish welcome-script__flourish--right" src="/images/welcome/side-flourish.webp" alt="" width="320" height="107" />
+          <img class="welcome-script__flourish welcome-script__flourish--right" src="/images/welcome/side-flourish.webp" alt="" width="320" height="107" loading="lazy" decoding="async" />
         </span>
       </p>
     </div>
@@ -271,7 +297,9 @@ const welcomeHolderAssets = [
 <style>
   .hero{--hero-scene-height:min(84dvh,720px);position:relative;z-index:2;isolation:isolate;overflow:hidden;min-height:0;padding-top:var(--hero-scene-height);display:block;text-align:center;background:var(--page-parchment)}
   .hero::before{content:"";position:absolute;z-index:0;inset:0;background:url('/grayznBackground.webp') center bottom / cover no-repeat;mask-image:linear-gradient(to bottom,#000 0%,#000 70%,rgba(0,0,0,.55) 85%,transparent 97%);-webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 70%,rgba(0,0,0,.55) 85%,transparent 97%);pointer-events:none}
+  @media (max-width:600px){.hero::before{background-image:url('/grayznBackground-1600.webp')}}
   .hero::after{content:none}
+  .hero picture{display:contents}
   .hero-copy{position:absolute;inset:0;z-index:3;pointer-events:none}
   .logo-stage{--wordmark-y:-105px;--buffalo-y:0px;
     display:block;position:absolute;top:clamp(180px,45vw,210px);left:0;right:0;
@@ -933,6 +961,10 @@ const welcomeHolderAssets = [
 
     photos.forEach((photo, photoIndex) => {
       const active = photoIndex === nextIndex;
+      const image = photo.querySelector<HTMLImageElement>('img');
+      if (active && image && !image.getAttribute('src') && image.dataset.src) {
+        image.src = image.dataset.src;
+      }
       photo.classList.toggle('is-active', active);
       photo.toggleAttribute('inert', !active);
       photo.toggleAttribute('aria-hidden', !active);
