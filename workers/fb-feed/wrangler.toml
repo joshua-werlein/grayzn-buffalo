@@ -17,3 +17,9 @@ id = "319aa824b570400c82d3fe85edaa36d6"
 [[r2_buckets]]
 binding = "PHOTOS"
 bucket_name = "grayzn-photos"
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
