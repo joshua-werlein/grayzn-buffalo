@@ -438,19 +438,27 @@ See the live site's Privacy page for the current user-facing disclosure.
 
 ## Screenshots
 
-```text
-docs/screenshots/
-```
+The screenshots below show representative public views from the current staging deployment. Administrative screenshots are intentionally omitted because those routes require authentication and no credentials or private operational data are included in repository documentation.
 
-Recommended views:
+### Homepage
 
-- Homepage — desktop
-- Homepage — mobile
-- Menu
-- Weekly specials
-- Admin specials
-- Admin menu or Welcome Photos
+#### Desktop — 1440 × 900
 
+![Grayz'n Buffalo homepage on desktop](docs/screenshots/home-desktop.webp)
+
+#### Mobile — 390 × 844
+
+![Grayz'n Buffalo homepage on mobile](docs/screenshots/home-mobile.webp)
+
+### Menu
+
+![Grayz'n Buffalo restaurant menu](docs/screenshots/menu.webp)
+
+### Weekly Specials
+
+![Grayz'n Buffalo weekly specials](docs/screenshots/specials.webp)
+
+> Screenshots were captured from the staging deployment at `grazynbuffalo.com` prior to final production cutover. No credentials, customer submissions, API tokens, or other private operational information are shown.
 
 ---
 
