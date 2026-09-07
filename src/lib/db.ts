@@ -1,3 +1,4 @@
+import menuBaseline from '../data/menu-baseline.json';
 // D1 helpers with graceful fallback so dev/build works before provisioning.
 export type Special = {
   day_of_week: number;
@@ -13,7 +14,7 @@ export type Special = {
 };
 export type PhotoOrientation = 'portrait' | 'square' | 'landscape';
 export type Item = { id: number; category_id: number; name: string; description: string; sort: number; active: number; photo_key: string | null; late_night: number; photo_orientation?: PhotoOrientation };
-export type Category = { id: number; name: string; sort: number };
+export type Category = { id: number; name: string; sort: number; subtitle?: string; note?: string };
 export type WelcomePhoto = { slot: number; photo_key: string | null; alt: string; caption: string; orientation: PhotoOrientation };
 export const thumbKey = (key: string) => key.replace(/\.webp$/, '@600.webp');
  
@@ -40,35 +41,10 @@ const toSpecial = (row: any): Special => ({
   allday_tag: row.allday_tag ?? null,
 });
 
-// Fallback only fires when D1 is unreachable (astro dev / build with no
-// bindings). Mirrors the real model: nine categories, Late Night as a flag.
-const FALLBACK_CATEGORIES: Category[] = [
-  { id: 1, name: 'Appetizers', sort: 0 },
-  { id: 2, name: 'Baskets', sort: 1 },
-  { id: 3, name: 'Sandwiches', sort: 2 },
-  { id: 4, name: 'Burgers', sort: 3 },
-  { id: 5, name: 'Wraps', sort: 4 },
-  { id: 6, name: 'Pizzas', sort: 5 },
-  { id: 7, name: 'Salads', sort: 6 },
-  { id: 8, name: 'Loaded Tot Baskets', sort: 7 },
-  { id: 9, name: 'On The Lighter Side', sort: 8 },
-];
- 
-const FALLBACK_ITEMS: Item[] = [
-  { id: 1, category_id: 1, name: 'French Fries', description: '', sort: 0, active: 1, photo_key: null, late_night: 1 },
-  { id: 2, category_id: 1, name: 'Cheese Curds', description: 'White, yellow or jalapeno.', sort: 1, active: 1, photo_key: null, late_night: 1 },
-  { id: 3, category_id: 1, name: 'Big Pretzel', description: '', sort: 2, active: 1, photo_key: null, late_night: 1 },
-  { id: 4, category_id: 2, name: 'Chicken Strip Basket', description: 'Served with French fries & toast.', sort: 0, active: 1, photo_key: null, late_night: 0 },
-  { id: 5, category_id: 3, name: "Grayz'n Chicken", description: 'Ham, cheddar and Swiss cheese, BBQ sauce.', sort: 0, active: 1, photo_key: null, late_night: 0 },
-  { id: 6, category_id: 4, name: "Grayz'n Burger", description: 'Ham, cheddar and Swiss cheese, BBQ sauce.', sort: 0, active: 1, photo_key: null, late_night: 0 },
-  { id: 7, category_id: 5, name: 'Chicken Bacon Ranch', description: 'Bacon, lettuce, cheddar cheese, ranch dressing.', sort: 0, active: 1, photo_key: null, late_night: 0 },
-  { id: 8, category_id: 6, name: 'Cheese', description: '', sort: 0, active: 1, photo_key: null, late_night: 1 },
-  { id: 9, category_id: 6, name: 'Pizza Fries', description: '', sort: 1, active: 1, photo_key: null, late_night: 1 },
-  { id: 10, category_id: 7, name: 'Side Salad', description: 'Tomato, onion, cucumber, green pepper, cheddar cheese, hard-boiled egg.', sort: 0, active: 1, photo_key: null, late_night: 0 },
-  { id: 11, category_id: 8, name: 'Philly Tots', description: 'Tots, philly meat, onion, mushrooms, green peppers, nacho cheese.', sort: 0, active: 1, photo_key: null, late_night: 0 },
-  { id: 12, category_id: 9, name: 'Chicken Quesadilla', description: '', sort: 0, active: 1, photo_key: null, late_night: 0 },
-];
- 
+// Emergency fallback uses the verified production recovery snapshot.
+const FALLBACK_CATEGORIES: Category[] = menuBaseline.categories;
+const FALLBACK_ITEMS: Item[] = menuBaseline.items.map(item => ({ ...item, description: item.description ?? '', photo_orientation: item.photo_orientation as PhotoOrientation }));
+
 export async function getSpecials(env: any): Promise<Special[]> {
   try {
     const { results } = await env.DB.prepare(
@@ -171,7 +147,7 @@ export async function getMenu(env: any): Promise<{ categories: Category[]; items
     const items = await env.DB.prepare('SELECT * FROM items WHERE active = 1 ORDER BY category_id, sort').all();
     if (cats.results?.length) return { categories: cats.results as Category[], items: (items.results ?? []) as Item[] };
   } catch {}
-  return { categories: FALLBACK_CATEGORIES, items: FALLBACK_ITEMS };
+  return { categories: FALLBACK_CATEGORIES, items: FALLBACK_ITEMS.filter(item => item.active === 1) };
 }
 
 const FALLBACK_WELCOME_PHOTOS: WelcomePhoto[] = [1, 2, 3, 4].map((slot) => ({

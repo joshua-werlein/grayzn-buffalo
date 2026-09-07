@@ -27,7 +27,13 @@ if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
   const action = f.get('action');
   try {
-    if (action === 'add') {
+    if (action === 'section-details') {
+      const id = Number(f.get('category_id'));
+      if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid section.');
+      await env.DB.prepare('UPDATE categories SET subtitle = ?2, note = ?3 WHERE id = ?1')
+        .bind(id, String(f.get('subtitle') ?? '').trim(), String(f.get('note') ?? '').trim()).run();
+      return Astro.redirect('/admin/menu');
+    } else if (action === 'add') {
       const result = await env.DB.prepare(
         'INSERT INTO items (category_id, name, description, late_night, sort) VALUES (?1, ?2, ?3, ?4, COALESCE((SELECT MAX(sort)+1 FROM items WHERE category_id=?1), 0))'
       ).bind(
@@ -152,6 +158,22 @@ try {
     {categories.map((c:any) => (
       <div class="cat" id={`cat-${slug(c.name)}`} data-category-id={c.id}>
         <h3>{c.name}</h3>
+        <details>
+          <summary>Section details</summary>
+          <form method="post" class="section-details-form">
+            <input type="hidden" name="action" value="section-details" />
+            <input type="hidden" name="category_id" value={c.id} />
+            <div class="field">
+              <label for={`subtitle-${c.id}`}>Subtitle / serving hours</label>
+              <input id={`subtitle-${c.id}`} name="subtitle" value={c.subtitle ?? ''} />
+            </div>
+            <div class="field">
+              <label for={`note-${c.id}`}>Section note (no prices)</label>
+              <textarea id={`note-${c.id}`} name="note" rows="3">{c.note ?? ''}</textarea>
+            </div>
+            <button type="submit">Save section details</button>
+          </form>
+        </details>
         <ul>
           {items.filter((i:any) => i.category_id === c.id).map((i:any) => (
             <li id={`item-${i.id}`} class={i.active ? '' : 'inactive'}>
@@ -368,7 +390,7 @@ try {
   // Existing items update in place. Adding is deliberately different: its
   // redirect is what reveals the newly created item in its section.
   document.querySelectorAll<HTMLFormElement>('form[method="post"]').forEach((form) => {
-    if (form === addForm || !form.querySelector('input[name="action"]')) return;
+    if (form === addForm || form.classList.contains('section-details-form') || !form.querySelector('input[name="action"]')) return;
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();

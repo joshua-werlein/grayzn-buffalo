@@ -1,8 +1,10 @@
 -- Grayz'n Buffalo menu system. One system, admin-managed categories.
 CREATE TABLE IF NOT EXISTS categories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,           -- 'Daily', 'Late Night'
-  sort INTEGER NOT NULL DEFAULT 0
+  name TEXT NOT NULL,           -- Real menu section name
+  sort INTEGER NOT NULL DEFAULT 0,
+  subtitle TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,7 +45,9 @@ CREATE TABLE IF NOT EXISTS specials (
 CREATE TABLE IF NOT EXISTS categories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,           -- 'Appetizers', 'Burgers', 'Pizzas', ...
-  sort INTEGER NOT NULL DEFAULT 0
+  sort INTEGER NOT NULL DEFAULT 0,
+  subtitle TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -150,38 +154,8 @@ INSERT INTO settings (key, value) VALUES
  ('delivery_display', 'available')
 ON CONFLICT(key) DO NOTHING;
  
--- ── Category seed (nine real printed sections) ──────────────────────────
-INSERT INTO categories (name, sort) VALUES
- ('Appetizers', 0),
- ('Baskets', 1),
- ('Sandwiches', 2),
- ('Burgers', 3),
- ('Wraps', 4),
- ('Pizzas', 5),
- ('Salads', 6),
- ('Loaded Tot Baskets', 7),
- ('On The Lighter Side', 8);
- 
--- ── Item seed (a handful per category; ~5 per category left for staff to
---    add through /admin as a test — see migrations/seed_menu.sql for the
---    full list and the intentional gaps). late_night = 1 on Appetizers +
---    Pizzas (pizza, pizza fries, appetizers = the after-grill menu). ──────
-INSERT INTO items (category_id, name, description, late_night, sort) VALUES
- (1, 'French Fries', '', 1, 0),
- (1, 'Cheese Curds', 'White, yellow or jalapeno.', 1, 1),
- (1, 'Big Pretzel', '', 1, 2),
- (1, 'Mozzarella Sticks', '', 1, 3),
- (2, 'Chicken Strip Basket', 'Served with French fries & toast.', 0, 0),
- (3, 'Grayz''n Chicken', 'Ham, cheddar and Swiss cheese, BBQ sauce.', 0, 0),
- (4, 'Grayz''n Burger', 'Ham, cheddar and Swiss cheese, BBQ sauce.', 0, 0),
- (4, 'Bacon Cheeseburger', '', 0, 1),
- (5, 'Chicken Bacon Ranch', 'Bacon, lettuce, cheddar cheese, ranch dressing.', 0, 0),
- (6, 'Cheese', '', 1, 0),
- (6, 'Pizza Fries', '', 1, 1),
- (7, 'Side Salad', 'Tomato, onion, cucumber, green pepper, cheddar cheese, hard-boiled egg.', 0, 0),
- (8, 'Philly Tots', 'Tots, philly meat, onion, mushrooms, green peppers, nacho cheese.', 0, 0),
- (9, 'Chicken Quesadilla', '', 0, 0);
- 
+-- Menu content is restored separately from recovery/menu-canonical.sql into empty menu tables.
+
 INSERT INTO specials (day_of_week, name, description, tag) VALUES
  (0, 'Broasted Chicken Dinner', 'Golden broasted chicken with all the fixings.', NULL),
  (1, 'Burger & Basket Night', 'Grayz''n Burger with a basket of waffle fries.', NULL),

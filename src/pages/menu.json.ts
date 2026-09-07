@@ -6,6 +6,8 @@ export const GET: APIRoute = async ({ locals }) => {
   const { categories, items } = await getMenu(env);
   const sections = categories.map((category) => ({
     name: category.name,
+    subtitle: category.subtitle || undefined,
+    note: category.note || undefined,
     items: items
       .filter((item) => item.category_id === category.id)
       .map((item) => ({

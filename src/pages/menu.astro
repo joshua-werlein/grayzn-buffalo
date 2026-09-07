@@ -8,7 +8,7 @@ const { categories, items } = await getMenu(env);
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
  
 // Group active items by category, preserving category order; drop empty sections.
-type Group = { cat: { id: number; name: string }; items: typeof items };
+type Group = { cat: (typeof categories)[number]; items: typeof items };
 const daily: Group[] = categories
   .map((c) => ({ cat: c, items: items.filter((it) => it.category_id === c.id) }))
   .filter((g) => g.items.length > 0);
@@ -110,6 +110,8 @@ const lateNightColumns = [lateNight.filter((group) => !lateNightRight.includes(g
           {column.map((g) => (
             <section class="cat-section" id={`sec-${slug(g.cat.name)}`}>
               <h2>{g.cat.name}</h2>
+              {g.cat.subtitle && <p class="category-subtitle">{g.cat.subtitle}</p>}
+              {g.cat.note && <p class="category-note">{g.cat.note}</p>}
               <ul class="menu-list">
                 {g.items.map((it) => (
                   <li class="item" id={`menu-item-${it.id}`}>
@@ -144,6 +146,8 @@ const lateNightColumns = [lateNight.filter((group) => !lateNightRight.includes(g
             {column.map((g) => (
               <section class="cat-section">
                 <h2>{g.cat.name}</h2>
+                {g.cat.subtitle && <p class="category-subtitle">{g.cat.subtitle}</p>}
+                {g.cat.note && <p class="category-note">{g.cat.note}</p>}
                 <ul class="menu-list">
                   {g.items.map((it) => (
                     <li class="item">
@@ -171,6 +175,8 @@ const lateNightColumns = [lateNight.filter((group) => !lateNightRight.includes(g
 </Base>
  
 <style>
+  .category-subtitle{margin:8px 0;font-family:var(--label);font-size:1.1rem;font-weight:700;color:var(--brick)}
+  .category-note{margin:8px 0 14px;line-height:1.45;color:#583e30}
   .menu-top{
     --footer-blend-height:clamp(40px,3vw,56px);
     padding:clamp(28px,5vw,68px) clamp(14px,4vw,56px) calc(var(--footer-blend-height) + clamp(12px,1.5vw,20px));

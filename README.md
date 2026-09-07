@@ -359,6 +359,12 @@ Secret values are configured in Cloudflare and are not stored in source control.
 
 The production database is Cloudflare D1.
 
+The current menu recovery baseline and emergency fallback share
+`src/data/menu-baseline.json`. See [menu recovery instructions](recovery/README.md)
+for the guarded empty-database restore. The old `migrations/seed_menu.sql` is retired;
+`schema.sql` no longer inserts a partial starter menu. Production staff edits remain
+authoritative and should be exported before refreshing the recovery snapshot.
+
 Schema evolution is maintained through the SQL migrations in:
 
 ```text
