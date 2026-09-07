@@ -28,7 +28,9 @@ const splitColumns = (groups: Group[]) => {
     : [left, right];
 };
 const dailyColumns = splitColumns(daily);
-const lateNightColumns = splitColumns(lateNight);
+// Keep the two shorter sections together in the Late Night right column.
+const lateNightRight = lateNight.filter((group) => ['Burgers', 'Pizzas'].includes(group.cat.name));
+const lateNightColumns = [lateNight.filter((group) => !lateNightRight.includes(group)), lateNightRight];
 ---
 <Base
   title="Menu — Grayz'n Buffalo Bar & Grill"
