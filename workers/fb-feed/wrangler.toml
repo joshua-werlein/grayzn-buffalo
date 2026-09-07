@@ -2,6 +2,7 @@ name = "grayzn-fb-feed"
 main = "worker.js"
 compatibility_date = "2026-01-01"
 account_id = "a79e3b4a2bb8dad70c75bceac4b1d3f9"
+workers_dev = false
 routes = [
   { pattern = "grayznbuffalo.com/api/facebook-feed", zone_name = "grayznbuffalo.com" }
 ]
