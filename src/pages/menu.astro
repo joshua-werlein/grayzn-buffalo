@@ -22,9 +22,9 @@ const splitColumns = (groups: Group[]) => {
   const right = groups.filter((_, index) => index % 2 === 1);
   const lighterSide = left.find((group) => group.cat.name === 'On The Lighter Side');
 
-  // Keep this short final category with Loaded Tot Baskets instead of leaving it alone.
+  // Keep Lighter Side on the right, preserving the navigation's category order.
   return lighterSide
-    ? [left.filter((group) => group !== lighterSide), [...right, lighterSide]]
+    ? [left.filter((group) => group !== lighterSide), groups.filter((group) => right.includes(group) || group === lighterSide)]
     : [left, right];
 };
 const dailyColumns = splitColumns(daily);
