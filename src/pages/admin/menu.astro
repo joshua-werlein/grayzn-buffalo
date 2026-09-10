@@ -162,7 +162,7 @@ try {
       <div class="filter-feedback"><p id="filter-count" role="status" aria-live="polite"></p><button type="button" id="clear-filters">Clear filters</button></div>
     </div>
 
-    <nav class="jump-card" aria-label="Jump to menu section">
+    <nav class="jump-card" aria-label="Jump to menu section" hidden>
       <p>Jump to section</p>
       <div class="jump-links">
         {categories.map((c:any) => (
@@ -658,7 +658,6 @@ try {
   });
   document.querySelectorAll<HTMLDetailsElement>('.editor').forEach(editor => editor.addEventListener('toggle', applyFilters));
   document.querySelector<HTMLElement>('#menu-filters')!.hidden = false;
-  document.querySelector<HTMLElement>('.jump-card')!.hidden = true;
   if (createdItem && /^\d+$/.test(createdItem)) {
     const editor = document.getElementById(`item-${createdItem}`)?.querySelector<HTMLDetailsElement>('.editor');
     if (editor) editor.open = true;

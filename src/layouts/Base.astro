@@ -503,16 +503,26 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   .admin-shell .admin-primary ul{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .admin-primary a{display:flex;align-items:center;min-height:44px;padding:8px 14px;border-radius:6px;color:var(--cream);font:700 1rem var(--label);text-decoration:none}
   .admin-primary a[aria-current="page"],.admin-action-bar a[aria-current="page"]{background:var(--crimson);color:var(--cream);box-shadow:inset 0 -3px var(--gold)}
-  .admin-utility{display:flex;justify-content:flex-end;padding:6px max(12px,calc((100vw - 1440px)/2));background:var(--cream)}
-  .admin-utility a{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:8px 12px;color:var(--ink-2);font:600 .95rem var(--label);text-underline-offset:3px}
-  .admin-primary a:focus-visible,.admin-utility a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
-  .admin-shell .announce,.admin-shell .footer-composition--admin{display:none}
+  .admin-primary a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+  .admin-shell .footer-composition--admin{display:none}
   .admin-action-bar a>span:first-child{font-size:22px;line-height:1}
+  .admin-shell main{padding-block-start:0}
+  .admin-shell main>section{padding-block-start:16px}
+  @media(min-width:1100px){
+    .admin-shell .site-chrome nav.site.admin-primary{background:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.35)}
+    .admin-shell .admin-primary ul{display:flex;width:auto;margin:0;gap:8px}
+    .admin-shell .admin-primary a{color:var(--cream)}
+    .admin-settings-circle{display:none}
+  }
   @media(max-width:1099px){
     .admin-shell nav.site.admin-primary{display:none}
     .admin-shell{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
     .admin-shell .admin-action-bar a{min-height:60px;font-size:.8rem}
     .admin-shell input,.admin-shell textarea,.admin-shell select{scroll-margin-block:150px}
+    .admin-shell main>section{padding-block-start:12px}
+    .admin-settings-circle{display:flex;align-items:center;justify-content:center;position:fixed;right:calc(100vw/6 - 32px);bottom:calc(70px + env(safe-area-inset-bottom));z-index:61;width:64px;height:64px;border:2px solid rgba(238,224,196,.78);border-radius:50%;background:var(--ink);box-shadow:0 5px 13px rgba(20,10,6,.42),inset 0 1px rgba(255,255,255,.16);text-decoration:none;color:var(--cream);font-size:1.5rem;line-height:1}
+    .admin-settings-circle:active{transform:translateY(1px)}
+    .admin-settings-circle:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
   }
   @media(prefers-reduced-motion:reduce){.admin-shell .admin-primary{transition:none}}
 </style>}
@@ -526,6 +536,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
         <li><a href="/admin/specials" aria-current={path === '/admin/specials' ? 'page' : undefined}>Specials</a></li>
         <li><a href="/admin/menu" aria-current={path === '/admin/menu' ? 'page' : undefined}>Menu</a></li>
         <li><a href="/admin/welcome-photos" aria-current={path === '/admin/welcome-photos' ? 'page' : undefined}>Photos</a></li>
+        <li><a href="/admin" aria-current={path === '/admin' || path === '/admin/' ? 'page' : undefined}>Settings</a></li>
         <li><a href="/" aria-label="Exit Admin and view public site">View public site ↗</a></li>
       </ul>
     </nav>
@@ -583,9 +594,8 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 <a class="action-bar-home" href="/" aria-label="Go to the Grayz'n Buffalo home page" aria-current={isHome ? 'page' : undefined}>
   <img src="/buffalo-mark.svg" alt="" width="44" height="26" />
 </a>
-
 {isAdmin && path !== '/admin' && path !== '/admin/' && (
-  <div class="admin-utility"><a href="/admin"><span aria-hidden="true">⚙</span> Admin Settings</a></div>
+  <a class="admin-settings-circle" href="/admin" aria-label="Admin Settings"><span aria-hidden="true">⚙</span></a>
 )}
 <main><slot /></main>
 
