@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">Power</title>
+  <g fill="none" stroke="#EEE0C4" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M64 16v46"/>
+    <path d="M42 29a43 43 0 1 0 44 0"/>
+  </g>
+</svg>

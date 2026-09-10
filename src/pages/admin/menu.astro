@@ -17,10 +17,20 @@ async function dropPhoto(key: string | null | undefined) {
   ]);
 }
 
+// Compact status codes used in ?sm= query param (PRG pattern for section actions).
+const SM_MESSAGES: Record<string, { ok: boolean; text: string }> = {
+  s1: { ok: true,  text: 'Section added.' },
+  s2: { ok: true,  text: 'Section updated.' },
+  s3: { ok: true,  text: 'Section order saved.' },
+  s4: { ok: true,  text: 'Section deleted.' },
+  e1: { ok: false, text: 'Section name is required.' },
+  e2: { ok: false, text: 'Section name must be 60 characters or fewer.' },
+  e3: { ok: false, text: 'Invalid section.' },
+  e4: { ok: false, text: 'Remove all items from this section before deleting it.' },
+  e5: { ok: false, text: 'Something went wrong. Check the database connection — see README.' },
+};
 let notice = '';
 let problem = '';
-let sectionNotice = '';
-let sectionProblem = '';
 const wantsJson = Astro.request.headers.get('accept')?.includes('application/json');
 
 // Photo upload/remove goes to /api/menu-photo so the page can update in place.
@@ -84,7 +94,7 @@ if (Astro.request.method === 'POST') {
       await env.DB.prepare(
         'INSERT INTO categories (name, subtitle, note, sort) VALUES (?1, ?2, ?3, COALESCE((SELECT MAX(sort)+1 FROM categories), 0))'
       ).bind(name, String(f.get('subtitle') ?? '').trim(), String(f.get('note') ?? '').trim()).run();
-      sectionNotice = `Section "${name}" added.`;
+      return Astro.redirect('/admin/menu?sm=s1', 303);
 
     } else if (action === 'edit-section') {
       const id = Number(f.get('category_id'));
@@ -95,7 +105,7 @@ if (Astro.request.method === 'POST') {
       await env.DB.prepare(
         'UPDATE categories SET name = ?2, subtitle = ?3, note = ?4 WHERE id = ?1'
       ).bind(id, name, String(f.get('subtitle') ?? '').trim(), String(f.get('note') ?? '').trim()).run();
-      sectionNotice = 'Section updated.';
+      return Astro.redirect('/admin/menu?sm=s2', 303);
 
     } else if (action === 'reorder-sections') {
       const updates = Array.from(f.entries())
@@ -112,7 +122,7 @@ if (Astro.request.method === 'POST') {
           updates.map(({ id, sort }) => env.DB.prepare('UPDATE categories SET sort = ?2 WHERE id = ?1').bind(id, sort))
         );
       }
-      sectionNotice = 'Section order saved.';
+      return Astro.redirect('/admin/menu?sm=s3', 303);
 
     } else if (action === 'delete-section') {
       const id = Number(f.get('category_id'));
@@ -122,7 +132,7 @@ if (Astro.request.method === 'POST') {
       ).bind(id).first();
       if (Number(itemCount?.n ?? 1) > 0) throw new Error('Remove all items from this section before deleting it.');
       await env.DB.prepare('DELETE FROM categories WHERE id = ?1').bind(id).run();
-      sectionNotice = 'Section deleted.';
+      return Astro.redirect('/admin/menu?sm=s4', 303);
     }
     if (wantsJson) {
       return new Response(JSON.stringify({ ok: true, action, id: Number(f.get('id')), message: notice }), {
@@ -130,20 +140,30 @@ if (Astro.request.method === 'POST') {
       });
     }
   } catch (e: any) {
-    const msg = e?.message ?? 'Something went wrong. Check the database connection — see README.';
+    const msg: string = e?.message ?? '';
     if (isSectionAction) {
-      sectionProblem = msg;
-    } else {
-      problem = msg;
+      let code = 'e5';
+      if (msg === 'Section name is required.') code = 'e1';
+      else if (msg === 'Section name must be 60 characters or fewer.') code = 'e2';
+      else if (msg === 'Invalid section.') code = 'e3';
+      else if (msg === 'Remove all items from this section before deleting it.') code = 'e4';
+      return Astro.redirect(`/admin/menu?sm=${code}`, 303);
     }
+    problem = msg || 'Something went wrong. Check the database connection — see README.';
     if (wantsJson) {
-      return new Response(JSON.stringify({ ok: false, error: msg }), {
+      return new Response(JSON.stringify({ ok: false, error: problem }), {
         status: 500,
         headers: { 'content-type': 'application/json' },
       });
     }
   }
 }
+
+// Decode one-time section feedback carried through the PRG redirect.
+const smCode = Astro.url.searchParams.get('sm');
+const smResult = smCode ? (SM_MESSAGES[smCode] ?? null) : null;
+const sectionNotice = smResult?.ok ? smResult.text : '';
+const sectionProblem = smResult && !smResult.ok ? smResult.text : '';
 
 let categories: any[] = [], items: any[] = [];
 try {
@@ -457,6 +477,19 @@ try {
   const createdItem = new URL(location.href).searchParams.get('created');
   if (createdItem) {
     history.replaceState(null, '', `${location.pathname}${location.hash}`);
+  }
+
+  // PRG cleanup: remove ?sm=... from the URL and auto-hide the section flash.
+  const smParam = new URL(location.href).searchParams.get('sm');
+  if (smParam) {
+    history.replaceState(null, '', location.pathname + (location.hash || ''));
+    setTimeout(() => {
+      document.querySelectorAll<HTMLElement>('.sm-flash').forEach(el => {
+        el.style.transition = 'opacity .4s';
+        el.style.opacity = '0';
+        setTimeout(() => { el.hidden = true; }, 400);
+      });
+    }, 4000);
   }
 
   document.querySelectorAll<HTMLInputElement>('input[data-add-photo]').forEach((input) => {
