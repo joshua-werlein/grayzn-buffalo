@@ -89,6 +89,9 @@ const saveRecurringDefaults = async (defaults: DayValues[]) => {
 };
 
 let notice = '', error = '', weekStart = '', weekEnd = '', editingId = '', dayValues = blankDays();
+// Presentation state only; weekly persistence remains a single complete-week save.
+let weeklyDirty = false;
+let activeDay = 0;
 let recurringDefaults = blankDays();
 let recurringDefaultsAvailable = true;
 let recurringDefaultsError = '';
@@ -116,6 +119,7 @@ const loadWeek = async (id: number) => {
 };
 
 const keepWeeklyDraft = (form: FormData) => {
+  weeklyDirty = true;
   weekStart = String(form.get('week_start_date') ?? '').trim();
   editingId = String(form.get('weekly_id') ?? '').trim();
   dayValues = valuesFrom(form);
@@ -132,6 +136,8 @@ const restoreWeeklyDraft = (form: FormData) => {
     const parsed = JSON.parse(String(form.get('weekly_draft') ?? ''));
     if (!parsed || typeof parsed !== 'object' || !parsed.fields || typeof parsed.fields !== 'object') return;
     const fields = parsed.fields as Record<string, unknown>;
+    weeklyDirty = parsed.dirty === true;
+    activeDay = Number.isInteger(parsed.activeDay) && parsed.activeDay >= 0 && parsed.activeDay < 7 ? parsed.activeDay : 0;
     const draftValue = (name: string, maxLength = MAX_FIELD_LENGTH) => {
       const value = fields[name];
       if (typeof value !== 'string') return '';
@@ -194,6 +200,7 @@ if (Astro.request.method === 'POST') {
         : [env.DB.prepare('INSERT INTO weekly_specials (week_start_date, week_end_date) VALUES (?1, ?2)').bind(weekStart, weekEnd), ...dayValues.map((day, index) => env.DB.prepare('INSERT INTO weekly_special_days (weekly_special_id, day_of_week, lunch_content, all_day_1_content, all_day_2_content, nightly_content) SELECT id, ?3, ?4, ?5, ?6, ?7 FROM weekly_specials WHERE week_start_date = ?1 AND week_end_date = ?2').bind(weekStart, weekEnd, DAY_NUMBERS[index], day.lunch_content, day.all_day_1_content, day.all_day_2_content, day.nightly_content))];
       await env.DB.batch(writes);
       if (!id) { const created: any = await env.DB.prepare('SELECT id FROM weekly_specials WHERE week_start_date = ?1 AND week_end_date = ?2').bind(weekStart, weekEnd).first(); editingId = String(created?.id ?? ''); }
+      weeklyDirty = false;
       notice = id ? 'Saved week updated.' : 'New future week created.';
     } catch (caught) { error = caught instanceof Error ? caught.message : 'Could not save weekly specials.'; }
   } else {
@@ -221,7 +228,7 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
     : 'custom';
 ---
 <Base title="Admin · Weekly Specials — Grayz'n Buffalo">
-  <section>
+  <section class="specials-admin">
     <div class="section-head"><h2>Weekly Specials</h2><p class="back"><a href="/admin">← Back to admin</a></p>{notice && <p><strong>{notice}</strong></p>}{error && <p class="error" data-character-limit-error={error === CHARACTER_LIMIT_ERROR ? 'true' : undefined}><strong>{error}</strong></p>}</div>
     <div class="week-picker"><label for="saved-week">Saved week to edit</label><select id="saved-week"><option value="">Select a saved week...</option>{savedWeeks.map((week, index) => <option value={week.id} data-older-week={index >= 4 ? 'true' : undefined} hidden={index >= 4 && !savedWeeksExpanded} selected={String(week.id) === editingId}>{week.week_start_date} – {week.week_end_date}</option>)}</select>{savedWeeks.length > 4 && <button id="saved-weeks-toggle" class="btn btn-ghost week-picker__action" type="button" aria-expanded={savedWeeksExpanded ? 'true' : 'false'} aria-controls="saved-week">{savedWeeksExpanded ? 'View fewer weeks' : 'View more weeks'}</button>}<a class="btn btn-ghost week-picker__action" href="/admin/specials?new=1">Create new week</a></div>
     <form method="post" class="recurring-defaults-form" id="recurring-defaults-form">
@@ -244,12 +251,23 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
         </div>
       </details>
     </form>
-    <form method="post" class="weekly-form" id="weekly-form">
+    <form method="post" class="weekly-form" id="weekly-form" data-dirty={String(weeklyDirty)} data-active-day={activeDay}>
       <input type="hidden" name="weekly_id" value={editingId}/>
       <fieldset class="week-dates"><legend>{editingId ? 'Editing saved week' : 'New weekly specials'}</legend><div class="week-date-controls"><div class="week-date-group"><label for="week-start">Week starting</label><input id="week-start" name="week_start_date" type="date" value={weekStart} required/></div><div class="week-date-group week-date-group--end"><span class="week-end-label">Week ending</span><output id="week-end" class="week-end-value" aria-live="polite">{weekEnd || 'Choose a week'}</output><p class="week-end-helper">End date is filled automatically.</p></div></div><p>The standard week starts on Monday and runs seven days through Sunday. Specials will no longer be visible once the ending date passes.</p></fieldset>
       <p class="instructions">Each field allows 150 characters. Blank fields are not shown publicly.</p>
-      <div class="day-grid">{DAYS.map((day, index) => <fieldset class="day-fields"><legend>{day}</legend><div class="service-group"><label for={`lunch-${index}`}>{index === 5 ? 'Saturday Special' : index === 6 ? 'Sunday Special' : <>Lunch <span>11 AM–1:30 PM</span></>}</label><textarea id={`lunch-${index}`} name={`lunch_${index}`} rows="2" maxlength="150">{dayValues[index].lunch_content}</textarea><output class="count">0 / 150</output></div><fieldset class="all-day-group"><legend>All Day Specials</legend><label for={`all-day-1-${index}`}>First all-day special</label><textarea id={`all-day-1-${index}`} name={`all_day_1_${index}`} rows="2" maxlength="150">{dayValues[index].all_day_1_content}</textarea><output class="count">0 / 150</output><label for={`all-day-2-${index}`}>Second all-day special</label><textarea id={`all-day-2-${index}`} name={`all_day_2_${index}`} rows="2" maxlength="150">{dayValues[index].all_day_2_content}</textarea><output class="count">0 / 150</output></fieldset>{!isWeekend(index) && <div class="service-group"><label for={`nightly-${index}`}>Nightly Specials <span>5–10 PM</span></label><textarea id={`nightly-${index}`} name={`nightly_${index}`} rows="2" maxlength="150">{dayValues[index].nightly_content}</textarea><output class="count">0 / 150</output></div>}</fieldset>)}</div>
-      <button class="btn btn-primary" type="submit" name="action" value="save-weekly-specials">Save All Weekly Specials</button>
+      <div class="day-navigation" hidden>
+        <div class="day-selector" role="group" aria-label="Choose a day to edit">
+          {DAYS.map((day, index) => <button type="button" data-day-select={index} aria-label={`Edit ${day}`} aria-controls={`weekly-day-${index}`} aria-pressed={index === activeDay ? 'true' : 'false'}>{day.slice(0, 3)}</button>)}
+        </div>
+        <p id="day-progress" class="day-progress" role="status" aria-live="polite">{DAYS[activeDay]} · {activeDay + 1} of 7</p>
+        <p class="swipe-hint">Swipe the card heading or use the day buttons. Save once for the whole week.</p>
+      </div>
+      <div class="week-actions">
+        <div class="day-stepper" hidden><button type="button" id="previous-day">← Previous</button><button type="button" id="next-day">Next →</button></div>
+        <div class="week-save-row"><p id="weekly-save-status" role="status" aria-live="polite">{weeklyDirty ? 'Unsaved changes' : 'All seven days save together'}</p><button class="btn btn-primary" type="submit" name="action" value="save-weekly-specials">Save Week</button></div>
+      </div>
+      <div class="day-grid">{DAYS.map((day, index) => <fieldset class="day-fields" id={`weekly-day-${index}`} data-day-name={day} tabindex="-1"><legend>{day}</legend><div class="service-group"><label for={`lunch-${index}`}>{index === 5 ? 'Saturday Special' : index === 6 ? 'Sunday Special' : <>Lunch <span>11 AM–1:30 PM</span></>}</label><textarea id={`lunch-${index}`} name={`lunch_${index}`} rows="2" maxlength="150">{dayValues[index].lunch_content}</textarea><output class="count">0 / 150</output></div><fieldset class="all-day-group"><legend>All Day Specials</legend><label for={`all-day-1-${index}`}>First all-day special</label><textarea id={`all-day-1-${index}`} name={`all_day_1_${index}`} rows="2" maxlength="150">{dayValues[index].all_day_1_content}</textarea><output class="count">0 / 150</output><label for={`all-day-2-${index}`}>Second all-day special</label><textarea id={`all-day-2-${index}`} name={`all_day_2_${index}`} rows="2" maxlength="150">{dayValues[index].all_day_2_content}</textarea><output class="count">0 / 150</output></fieldset>{!isWeekend(index) && <div class="service-group"><label for={`nightly-${index}`}>Nightly Specials <span>5–10 PM</span></label><textarea id={`nightly-${index}`} name={`nightly_${index}`} rows="2" maxlength="150">{dayValues[index].nightly_content}</textarea><output class="count">0 / 150</output></div>}</fieldset>)}</div>
+
     </form>
   </section>
 </Base>
@@ -267,7 +285,12 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
   const standardEnd = (value: string) => { const date = new Date(`${value}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + 6); return date.toISOString().slice(0, 10); };
   const updateEnd = () => { if (!start?.value || !end) return; start.value = monday(start.value); end.textContent = standardEnd(start.value); };
   start?.addEventListener('change', updateEnd);
-  picker?.addEventListener('change', () => { location.href = picker.value ? `/admin/specials?week=${encodeURIComponent(picker.value)}` : '/admin/specials?new=1'; });
+  const initialPickerValue = picker?.value ?? '';
+  picker?.addEventListener('change', () => {
+    if (!confirmLeave()) { picker.value = initialPickerValue; return; }
+    leaving = true;
+    location.href = picker.value ? `/admin/specials?week=${encodeURIComponent(picker.value)}` : '/admin/specials?new=1';
+  });
   weeksToggle?.addEventListener('click', () => {
     const expanded = weeksToggle.getAttribute('aria-expanded') !== 'true';
     document.querySelectorAll<HTMLOptionElement>('option[data-older-week]').forEach((option) => option.hidden = !expanded);
@@ -298,15 +321,154 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
     if (!matchesPreset) dailySandwichPreset.value = 'custom';
   });
   updateCharacterLimitError();
-  weeklyForm?.addEventListener('submit', () => weeklyForm.setAttribute('aria-busy', 'true'));
+  // Hidden cards remain enabled successful controls in the one weekly form.
+  const cards = Array.from(document.querySelectorAll<HTMLFieldSetElement>('.day-fields'));
+  const dayButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-day-select]'));
+  const navigation = document.querySelector<HTMLElement>('.day-navigation');
+  const stepper = document.querySelector<HTMLElement>('.day-stepper');
+  const previous = document.getElementById('previous-day') as HTMLButtonElement | null;
+  const next = document.getElementById('next-day') as HTMLButtonElement | null;
+  const progress = document.getElementById('day-progress');
+  const saveStatus = document.getElementById('weekly-save-status');
+  const phone = window.matchMedia('(max-width: 680px)');
+  let currentDay = Number(weeklyForm?.dataset.activeDay ?? 0);
+  let dirty = weeklyForm?.dataset.dirty === 'true';
+  let leaving = false;
+  const snapshot = () => JSON.stringify(Array.from(new FormData(weeklyForm!).entries()));
+  const initialValues = weeklyForm ? snapshot() : '';
+  const restoredDirty = dirty;
+  const updateDirty = () => {
+    dirty = restoredDirty || (!!weeklyForm && snapshot() !== initialValues);
+    if (saveStatus) saveStatus.textContent = dirty ? 'Unsaved changes' : 'All seven days save together';
+    weeklyForm?.classList.toggle('is-dirty', dirty);
+  };
+  const confirmLeave = () => !dirty || window.confirm('This week contains unsaved changes. Leave without saving the week?');
+  weeklyForm?.addEventListener('input', updateDirty);
+  weeklyForm?.addEventListener('change', updateDirty);
+  window.addEventListener('beforeunload', (event) => {
+    if (!dirty || leaving) return;
+    event.preventDefault();
+    event.returnValue = ''; // Legacy browser support alongside preventDefault().
+  });
+  document.addEventListener('click', (event) => {
+    const link = (event.target as Element).closest<HTMLAnchorElement>('a[href]');
+    if (!link || link.hasAttribute('download') || !['http:', 'https:'].includes(link.protocol) || link.target === '_blank' || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.defaultPrevented) return;
+    const target = new URL(link.href, location.href);
+    if (target.pathname === location.pathname && target.search === location.search && target.hash) return;
+    if (!confirmLeave()) { event.preventDefault(); return; }
+    leaving = true;
+  });
+  window.addEventListener('pageshow', () => {
+    leaving = false;
+    weeklyForm?.removeAttribute('aria-busy');
+    recurringDefaultsForm?.removeAttribute('aria-busy');
+    updateDirty();
+  });
+
+  const showDay = (index: number, moveFocus = false) => {
+    currentDay = Math.max(0, Math.min(cards.length - 1, index));
+    const focusedCard = cards.find((card) => card.contains(document.activeElement));
+    cards.forEach((card, day) => { card.hidden = phone.matches && day !== currentDay; });
+    dayButtons.forEach((button, day) => button.setAttribute('aria-pressed', String(day === currentDay)));
+    if (navigation) navigation.hidden = !phone.matches;
+    if (stepper) stepper.hidden = !phone.matches;
+    if (previous) previous.disabled = currentDay === 0;
+    if (next) next.disabled = currentDay === cards.length - 1;
+    if (progress) progress.textContent = `${cards[currentDay]?.dataset.dayName} · ${currentDay + 1} of 7`;
+    if (phone.matches && (moveFocus || focusedCard?.hidden)) {
+      cards[currentDay]?.focus({ preventScroll: true });
+      cards[currentDay]?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }
+  };
+  dayButtons.forEach((button, index) => button.addEventListener('click', () => showDay(index)));
+  previous?.addEventListener('click', () => showDay(currentDay - 1, true));
+  next?.addEventListener('click', () => showDay(currentDay + 1, true));
+  phone.addEventListener('change', () => showDay(currentDay));
+  // Reveal an invalid field before the browser tries to focus it.
+  weeklyForm?.addEventListener('invalid', (event) => {
+    const index = cards.findIndex((card) => card.contains(event.target as Node));
+    if (index >= 0) showDay(index);
+  }, true);
+  let touchStart: { x: number; y: number } | null = null;
+  const grid = document.querySelector<HTMLElement>('.day-grid');
+  grid?.addEventListener('touchstart', (event) => {
+    touchStart = null;
+    if (!phone.matches || event.touches.length !== 1 ||
+      (event.target as Element).closest('textarea,input,select,button,a,label')) return;
+    touchStart = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+  }, { passive: true });
+  grid?.addEventListener('touchmove', (event) => {
+    if (touchStart && (event.touches.length !== 1 || Math.abs(event.touches[0].clientY - touchStart.y) > 28)) touchStart = null;
+  }, { passive: true });
+  grid?.addEventListener('touchend', (event) => {
+    const origin = touchStart;
+    touchStart = null;
+    if (!origin || !event.changedTouches.length) return;
+    const dx = event.changedTouches[0].clientX - origin.x;
+    const dy = event.changedTouches[0].clientY - origin.y;
+    if (Math.abs(dx) >= 64 && Math.abs(dx) > Math.abs(dy) * 2) showDay(currentDay + (dx < 0 ? 1 : -1), true);
+  }, { passive: true });
+  grid?.addEventListener('touchcancel', () => { touchStart = null; }, { passive: true });
+  showDay(currentDay);
+  updateDirty();
+  weeklyForm?.addEventListener('submit', () => {
+    leaving = true;
+    weeklyForm.setAttribute('aria-busy', 'true');
+  });
   recurringDefaultsForm?.addEventListener('submit', () => {
     if (weeklyForm && weeklyDraft) {
       const fields = Object.fromEntries(Array.from(new FormData(weeklyForm).entries()).filter(([, value]) => typeof value === 'string'));
-      weeklyDraft.value = JSON.stringify({ fields });
+      weeklyDraft.value = JSON.stringify({ fields, dirty, activeDay: currentDay });
     }
+    leaving = true;
     recurringDefaultsForm.setAttribute('aria-busy', 'true');
   });
 </script>
 <style>
   .week-picker,.weekly-form,.recurring-defaults-form{width:100%;max-width:1440px;margin:0 auto;background:#fff;border-radius:12px;padding:20px;box-shadow:0 6px 16px rgba(36,22,16,.1)}.week-picker{display:flex;align-items:end;gap:12px;margin-bottom:18px;flex-wrap:wrap}.week-picker label{width:100%}.week-picker select{width:320px;min-width:0;white-space:nowrap}.week-picker .btn{margin:0;white-space:nowrap}.week-picker__action{box-sizing:border-box;width:210px;height:48px;min-height:48px;padding:12px 24px;border-width:2px;border-radius:var(--control-radius);font-size:1rem;font-weight:700;line-height:20px}.recurring-defaults-form{margin:0 auto 18px}.recurring-defaults{margin:0;border:1px solid rgba(36,22,16,.2);border-radius:10px;background:var(--cream)}.recurring-defaults summary{cursor:pointer;padding:14px 16px;font-family:var(--label);font-size:.9rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.recurring-defaults[open] summary{border-bottom:1px solid rgba(36,22,16,.16)}.recurring-defaults__content{padding:16px}.recurring-defaults__intro{margin:0 0 16px;color:var(--ink-2);font-weight:700}.recurring-defaults__error{margin:0 0 16px}.recurring-defaults__shared{margin:0;padding:14px;border:1px solid rgba(36,22,16,.16);border-radius:8px;display:grid;gap:6px}.recurring-defaults__shared legend{padding:0 5px;font-size:.78rem}.recurring-defaults__preset{display:grid;grid-template-columns:auto minmax(220px,420px);align-items:center;gap:8px;margin-bottom:6px}.recurring-defaults__preset select{width:100%}.recurring-defaults__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}.recurring-day-fields{min-width:0;margin:0;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px;display:grid;gap:12px}.recurring-day-fields legend{padding:0 5px;font-size:.78rem}.recurring-defaults__save{margin-top:16px}.week-dates{border:0}.week-date-controls{display:flex;align-items:center;gap:20px;flex-wrap:wrap}.week-date-group{display:grid;grid-template-columns:auto 230px;align-items:center;gap:8px}.week-date-group--end{grid-template-columns:auto 160px auto}.week-dates>p{margin:10px 0 0;color:var(--ink-2)}.week-dates input{width:230px;box-sizing:border-box;height:44px}.week-end-label{font-family:var(--label);font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.week-end-value{display:block;box-sizing:border-box;width:160px;height:44px;min-height:44px;padding:10px;overflow:hidden;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit;line-height:20px;white-space:nowrap}.week-end-helper{margin:0!important;color:var(--ink-2);font-size:.9rem;font-style:italic;font-weight:700;white-space:nowrap}legend,label{font-family:var(--label);font-weight:700;letter-spacing:.08em;text-transform:uppercase}.week-dates legend{margin-bottom:8px}label{font-size:.78rem}.day-fields label span,.recurring-defaults label span{text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-2)}input,select,textarea{padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit}textarea{width:100%;resize:vertical}.instructions{margin:18px 0;color:var(--ink-2)}.day-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.day-fields{min-width:0;border:1px solid rgba(36,22,16,.16);border-radius:10px;padding:16px;display:grid;gap:14px}.service-group,.all-day-group{display:grid;gap:6px;min-width:0}.all-day-group{margin:0;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px}.all-day-group legend{padding:0 5px;font-size:.78rem}.count{justify-self:end;font-size:.75rem;color:var(--ink-2)}button{margin-top:20px}.error{color:var(--crimson)}.back{text-align:center;margin-top:10px}@media(min-width:1280px){.day-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(max-width:900px){.day-grid,.recurring-defaults__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:680px){.weekly-form,.recurring-defaults-form{padding:16px}.week-date-controls,.week-date-group,.week-date-group--end,.day-grid,.recurring-defaults__grid{grid-template-columns:1fr}.week-date-controls{display:grid}.week-date-group{gap:6px}.week-dates input,.week-end-value{width:100%}.week-end-helper{grid-column:1;white-space:normal}.week-picker select{width:100%}.recurring-defaults__content{padding:14px}.recurring-defaults__preset{grid-template-columns:1fr}.recurring-defaults__preset select{min-width:0}}
+
+  /* Phone workflow is scoped to this admin page; no shared/public chrome changes. */
+  .day-fields[hidden],.day-navigation[hidden],.day-stepper[hidden]{display:none}
+  .week-dates{min-width:0}
+  .week-actions{margin-top:20px;border-top:2px solid var(--cream-2);padding-top:16px}
+  .week-save-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .week-save-row button{margin:0}
+  #weekly-save-status{font-weight:600;color:var(--ink-2)}
+  .is-dirty #weekly-save-status{color:var(--crimson)}
+  .day-selector{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+  .day-selector button,.day-stepper button{min-height:46px;margin:0;border:2px solid var(--ink-2);border-radius:6px;background:var(--cream);color:var(--ink);font:700 1rem var(--label);cursor:pointer}
+  .day-selector button[aria-pressed="true"]{background:var(--ink);color:var(--cream);border-color:var(--ink);box-shadow:inset 0 -4px var(--gold)}
+  .day-selector button:focus-visible,.day-stepper button:focus-visible,.day-fields:focus-visible{outline:3px solid var(--crimson);outline-offset:3px}
+  .day-stepper{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+  .day-stepper button:disabled{opacity:.45;cursor:default}
+  .day-progress{margin-top:14px;font:700 1.2rem var(--label);color:var(--ink)}
+  .swipe-hint{margin:4px 0 18px;font-size:.9rem;color:var(--ink-2)}
+  @media(max-width:680px){
+    .specials-admin{padding:28px 12px 160px}
+    .specials-admin .section-head{margin-bottom:20px}
+    .weekly-form,.week-picker{padding:12px;border-radius:8px}
+    .week-picker{gap:10px}
+    .week-picker__action{width:100%;height:auto;white-space:normal!important}
+    .recurring-defaults-form{padding:0;box-shadow:none;background:transparent}
+    .recurring-defaults summary{min-height:48px;padding:12px}
+    .recurring-defaults__content{padding:10px}
+    .recurring-defaults__shared,.recurring-day-fields{padding:10px;min-width:0}
+    .recurring-defaults__save{width:100%;letter-spacing:.04em;padding-inline:10px}
+    .week-date-controls{gap:12px}
+    .week-date-group{min-width:0}
+    input,select,textarea{min-width:0;max-width:100%;font-size:16px}
+    .week-dates input{height:48px;min-width:0;-webkit-appearance:none}
+    .week-dates>p{font-size:.9rem}
+    .instructions{font-size:.9rem;margin:16px 0}
+    .day-fields{margin:0;padding:12px;gap:12px;border:2px solid var(--gold);scroll-margin-top:150px}
+    .day-fields>legend{padding:0 6px;font-size:1.2rem;letter-spacing:.04em}
+    .all-day-group{padding:10px}
+    .day-fields textarea{min-height:88px;line-height:1.45}
+    .day-fields label{font-size:.85rem;letter-spacing:.04em}
+    .week-actions{position:sticky;top:8px;z-index:20;background:#fff;margin:0 0 16px;padding:10px 0;border-top:0;border-bottom:2px solid var(--cream-2);box-shadow:0 5px 10px rgba(36,22,16,.08)}
+    .week-save-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
+    #weekly-save-status{font-size:.85rem;text-align:center}
+    .week-save-row .btn{width:auto;padding-inline:16px;letter-spacing:.04em}
+  }
+  @media(prefers-reduced-motion:reduce){.specials-admin{scroll-behavior:auto}}
 </style>

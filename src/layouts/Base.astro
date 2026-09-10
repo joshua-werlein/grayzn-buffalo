@@ -496,9 +496,40 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   }
 
 </style>
+{isAdmin && <style is:inline>
+  .admin-shell .site-chrome{position:static;background:var(--ink);border:0}
+  .admin-shell nav.site.admin-primary{position:static;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 24px;min-height:0;transform:none}
+  .admin-primary .admin-brand{color:var(--cream);font:700 1rem var(--label);letter-spacing:.08em;text-transform:uppercase}
+  .admin-shell .admin-primary ul{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .admin-primary a{display:flex;align-items:center;min-height:44px;padding:8px 14px;border-radius:6px;color:var(--cream);font:700 1rem var(--label);text-decoration:none}
+  .admin-primary a[aria-current="page"],.admin-action-bar a[aria-current="page"]{background:var(--crimson);color:var(--cream);box-shadow:inset 0 -3px var(--gold)}
+  .admin-utility{display:flex;justify-content:flex-end;padding:6px max(12px,calc((100vw - 1440px)/2));background:var(--cream)}
+  .admin-utility a{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:8px 12px;color:var(--ink-2);font:600 .95rem var(--label);text-underline-offset:3px}
+  .admin-primary a:focus-visible,.admin-utility a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+  .admin-shell .announce,.admin-shell .footer-composition--admin{display:none}
+  .admin-action-bar a>span:first-child{font-size:22px;line-height:1}
+  @media(max-width:1099px){
+    .admin-shell nav.site.admin-primary{display:none}
+    .admin-shell{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
+    .admin-shell .admin-action-bar a{min-height:60px;font-size:.8rem}
+    .admin-shell input,.admin-shell textarea,.admin-shell select{scroll-margin-block:150px}
+  }
+  @media(prefers-reduced-motion:reduce){.admin-shell .admin-primary{transition:none}}
+</style>}
 </head>
-<body>
+<body class={isAdmin ? 'admin-shell' : undefined}>
 <header class={"site-chrome" + (isHome ? " site-chrome-home" : "") + (hasInteriorNavDivider ? " site-chrome--interior-divider" : "")}>
+  {isAdmin ? (
+    <nav class="site admin-primary" aria-label="Admin navigation">
+      <span class="admin-brand">Staff workspace</span>
+      <ul>
+        <li><a href="/admin/specials" aria-current={path === '/admin/specials' ? 'page' : undefined}>Specials</a></li>
+        <li><a href="/admin/menu" aria-current={path === '/admin/menu' ? 'page' : undefined}>Menu</a></li>
+        <li><a href="/admin/welcome-photos" aria-current={path === '/admin/welcome-photos' ? 'page' : undefined}>Photos</a></li>
+        <li><a href="/" aria-label="Exit Admin and view public site">View public site ↗</a></li>
+      </ul>
+    </nav>
+  ) : (
   <nav class="site">
     <a class="brand" href="/" aria-label="Grayz'n Buffalo home">
       <img src="/buffalo-mark.svg" alt="Grayz'n Buffalo Bar & Grill logo" width="100" height="70" />
@@ -513,7 +544,8 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
       <li data-nav="contact"><a class={"link" + (path === '/contact' ? " active" : "")} href="/contact">Contact</a></li>
     </ul>
   </nav>
-  <div class="announce" role="region" aria-label="Announcement">
+
+  )}  <div class="announce" role="region" aria-label="Announcement">
     <ul class="announce-list">
       {deliveryDisplay !== 'hidden' && (
         <li class="delivery-notice">
@@ -526,6 +558,13 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     </ul>
   </div>
 </header>
+{isAdmin ? (
+  <nav class="action-bar admin-action-bar" aria-label="Admin quick actions">
+    <a href="/admin/specials" aria-current={path === '/admin/specials' ? 'page' : undefined}><span aria-hidden="true">▦</span><span>Specials</span></a>
+    <a href="/admin/menu" aria-current={path === '/admin/menu' ? 'page' : undefined}><span aria-hidden="true">☷</span><span>Menu</span></a>
+    <a href="/admin/welcome-photos" aria-current={path === '/admin/welcome-photos' ? 'page' : undefined}><span aria-hidden="true">▣</span><span>Photos</span></a>
+  </nav>
+) : (
 <nav class="action-bar" aria-label="Quick actions">
   <a href="/menu" aria-current={path === '/menu' ? 'page' : undefined}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm2 4v2h12V7H6zm0 4v2h12v-2H6zm0 4v2h8v-2H6z"/></svg>
@@ -540,10 +579,14 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     <span>Specials</span>
   </a>
 </nav>
+)}
 <a class="action-bar-home" href="/" aria-label="Go to the Grayz'n Buffalo home page" aria-current={isHome ? 'page' : undefined}>
   <img src="/buffalo-mark.svg" alt="" width="44" height="26" />
 </a>
 
+{isAdmin && path !== '/admin' && path !== '/admin/' && (
+  <div class="admin-utility"><a href="/admin"><span aria-hidden="true">⚙</span> Admin Settings</a></div>
+)}
 <main><slot /></main>
 
 <ImageLightbox />

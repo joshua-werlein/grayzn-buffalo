@@ -26,7 +26,7 @@ if (Astro.request.method === 'POST') {
     if (!human) {
       error = 'Verification failed. Reload the page and try again.';
     } else if (await login(String(form.get('password') ?? ''), Astro.cookies, env)) {
-      authed = true;
+      return Astro.redirect('/admin/specials', 303);
     } else {
       error = 'Wrong password.';
     }
@@ -64,20 +64,15 @@ const announcements = authed
   : ['', '', ''];
 const deliveryDisplay = authed ? await getSetting(env, 'delivery_display', 'available') : 'available';
 ---
-<Base title="Admin — Grayz'n Buffalo">
-<section style="min-height:60vh">
+<Base title={authed ? "Admin Settings — Grayz'n Buffalo" : "Staff Sign In — Grayz'n Buffalo"}>
+<section class="settings-page">
   <div class="section-head">
-    <h2>Admin</h2>
+    <h2>{authed ? 'Admin Settings' : 'Staff Sign In'}</h2>
     {notice && <p><strong>{notice}</strong></p>}
   </div>
   {authed ? (
     <div class="panel admin-dashboard">
-      <p>Signed in. Manage the site:</p>
-      <ul class="admin-links">
-        <li><a class="btn btn-primary" href="/admin/menu">Menu items</a></li>
-        <li><a class="btn btn-primary" href="/admin/specials">Daily specials</a></li>
-        <li><a class="btn btn-primary" href="/admin/welcome-photos">Welcome Photos</a></li>
-      </ul>
+      <p class="settings-intro">Manage announcements and delivery. Use the staff navigation for specials, menu items, and photos.</p>
 
       <form method="post" class="announce-form">
         <input type="hidden" name="action" value="save-announcements" />
@@ -103,14 +98,15 @@ const deliveryDisplay = authed ? await getSetting(env, 'delivery_display', 'avai
         <p class="hint">Choose whether to show availability, an unavailable message, or no delivery announcement at all.</p>
         <label for="delivery-display">Delivery display</label>
         <select id="delivery-display" name="delivery_display">
-          <option value="available" selected={deliveryDisplay === 'available'}>Available — show delivery hours</option>
-          <option value="unavailable" selected={deliveryDisplay === 'unavailable'}>Unavailable — show the unavailable message</option>
-          <option value="hidden" selected={deliveryDisplay === 'hidden'}>Hidden — show no delivery announcement</option>
+          <option value="available" selected={deliveryDisplay === 'available'}>Available — show hours</option>
+          <option value="unavailable" selected={deliveryDisplay === 'unavailable'}>Unavailable — show notice</option>
+          <option value="hidden" selected={deliveryDisplay === 'hidden'}>Hidden — no announcement</option>
         </select>
         <button class="btn btn-primary" type="submit">Save delivery status</button>
       </form>
 
-      <form method="post" style="margin-top:26px">
+      <form method="post" class="signout-form">
+        <p>Finished managing the site?</p>
         <input type="hidden" name="action" value="logout" />
         <button class="btn btn-ghost" type="submit">Sign out</button>
       </form>
@@ -121,7 +117,7 @@ const deliveryDisplay = authed ? await getSetting(env, 'delivery_display', 'avai
       <label for="password">Password</label>
       <input id="password" type="password" name="password" required autocomplete="current-password" />
       {turnstileOn
-        ? <div class="cf-turnstile" data-sitekey={sitekey}></div>
+        ? <div class="cf-turnstile" data-sitekey={sitekey} data-size="compact"></div>
         : <p class="warn">Bot protection is off — Turnstile isn't configured.</p>}
       {error && <p class="err">{error}</p>}
       <button class="btn btn-primary" type="submit">Sign in</button>
@@ -148,4 +144,22 @@ const deliveryDisplay = authed ? await getSetting(env, 'delivery_display', 'avai
   .cf-turnstile{margin:0 0 16px;display:flex;justify-content:center;min-height:65px}
   .err{color:var(--crimson);font-weight:600;margin-bottom:12px}
   .warn{background:var(--amber);color:var(--ink);font-weight:700;padding:8px 12px;border-radius:8px;margin-bottom:14px;font-size:.9rem}
+
+  .settings-page{padding-block:28px}
+  .admin-dashboard{max-width:760px;text-align:left}
+  .settings-intro{color:var(--ink-2);font-size:1rem}
+  .panel input,.panel select{min-width:0;min-height:48px;max-width:100%}
+  .signout-form{margin-top:30px;padding-top:22px;border-top:2px solid var(--cream-2);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .signout-form p{color:var(--ink-2)}
+  .signout-form button{border-color:var(--crimson);color:var(--crimson)}
+  .cf-turnstile{min-height:140px}
+  @media(max-width:680px){
+    .settings-page{padding:24px 12px 32px}
+    .panel{padding:16px;border-radius:10px}
+    .section-head{margin-bottom:20px}
+    .panel .btn{width:100%;padding-inline:12px;letter-spacing:.04em}
+    .panel input,.panel select{font-size:16px}
+    .signout-form{display:block}
+    .signout-form p{margin-bottom:10px}
+  }
 </style>

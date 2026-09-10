@@ -97,15 +97,17 @@ try {
 } catch {}
 ---
 <Base title="Admin · Menu — Grayz'n Buffalo">
-<section>
+<section class="menu-admin">
   <div class="section-head">
     <h2>Menu Items</h2>
-    <p class="back back-top"><a href="/admin">← Back to admin</a></p>
+    <p>Find an item, update its details, or add a photo.</p>
     {notice && <p class="flash ok">{notice}</p>}
     {problem && <p class="flash bad">{problem}</p>}
   </div>
 
   <div class="admin-wrap">
+    <details class="add-disclosure" id="add-item-panel">
+      <summary>Add Item <span aria-hidden="true">＋</span></summary>
     <form method="post" class="card add-form" id="add-item-form">
       <h3>Add an item</h3>
       <div class="field">
@@ -120,7 +122,7 @@ try {
       </div>
       <div class="field wide">
         <label for="add-desc">Description <span class="hint">optional</span></label>
-        <input id="add-desc" name="description" />
+        <textarea id="add-desc" name="description" rows="3"></textarea>
       </div>
       <div class="field wide check">
         <label for="add-late">
@@ -140,11 +142,25 @@ try {
             <input type="file" accept="image/*" data-add-photo />
           </label>
         </div>
-        <p class="add-photo-status" id="add-photo-status">No photo selected.</p>
+        <img id="add-photo-preview" class="add-photo-preview" alt="Selected photo preview" hidden />
+        <p class="add-photo-status" id="add-photo-status" role="status">No photo selected.</p>
+        <button id="clear-add-photo" type="button" hidden>Clear selected photo</button>
       </div>
       <input type="hidden" name="action" value="add" />
       <button class="btn btn-primary" type="submit">Add item</button>
+      <p id="add-recovery" class="wide" hidden><a href="/admin/menu">Open the created item to retry its photo</a></p>
     </form>
+    </details>
+
+    <div class="menu-filters" id="menu-filters" hidden>
+      <div class="field filter-search"><label for="item-search">Find an item</label><input id="item-search" type="search" placeholder="Search name or description" /></div>
+      <div class="filter-options">
+        <div class="field"><label for="filter-section">Section</label><select id="filter-section"><option value="">All sections</option>{categories.map((c:any)=><option value={c.id}>{c.name}</option>)}</select></div>
+        <div class="field"><label for="filter-visibility">Status</label><select id="filter-visibility"><option value="all">All items</option><option value="visible">Visible</option><option value="hidden">Hidden</option></select></div>
+        <label class="filter-late"><input type="checkbox" id="filter-late" /> Late Night only</label>
+      </div>
+      <div class="filter-feedback"><p id="filter-count" role="status" aria-live="polite"></p><button type="button" id="clear-filters">Clear filters</button></div>
+    </div>
 
     <nav class="jump-card" aria-label="Jump to menu section">
       <p>Jump to section</p>
@@ -176,7 +192,7 @@ try {
         </details>
         <ul>
           {items.filter((i:any) => i.category_id === c.id).map((i:any) => (
-            <li id={`item-${i.id}`} class={i.active ? '' : 'inactive'}>
+            <li id={`item-${i.id}`} class:list={['menu-item', { inactive: !i.active }]} data-item-name={i.name} data-description={i.description ?? ''} data-section={i.category_id} data-active={i.active} data-late={i.late_night}>
               <div class="row">
                 <div class="thumb">
                   <img
@@ -192,6 +208,9 @@ try {
                 </div>
                 <div class="who">
                   <strong>{i.name}</strong>
+                  <span class="item-section">{c.name}</span>
+                  <span class="hidden-badge" hidden={!!i.active}>Hidden</span>
+                  <span class="photo-state" data-photo-state={i.id}>{i.photo_key ? 'Photo added' : 'No photo'}</span>
                   {i.late_night === 1 && <span class="late-badge">Late night</span>}
                   {i.description
                     ? <span class="desc">{i.description}</span>
@@ -203,16 +222,12 @@ try {
                     <input type="hidden" name="id" value={i.id} />
                     <button type="submit">{i.active ? 'Hide' : 'Show'}</button>
                   </form>
-                  <form method="post">
-                    <input type="hidden" name="action" value="delete" />
-                    <input type="hidden" name="id" value={i.id} />
-                    <button class="danger" type="submit">Delete</button>
-                  </form>
+
                 </div>
               </div>
 
               <details class="editor">
-                <summary>Edit</summary>
+                <summary aria-label={`Edit ${i.name}`}>Edit item &amp; photo</summary>
 
                 <form method="post" class="edit-form">
                   <input type="hidden" name="action" value="edit" />
@@ -231,7 +246,7 @@ try {
                   </div>
                   <div class="field wide">
                     <label for={`d-${i.id}`}>Description <span class="hint">optional</span></label>
-                    <input id={`d-${i.id}`} name="description" value={i.description ?? ''} />
+                    <textarea id={`d-${i.id}`} name="description" rows="3">{i.description ?? ''}</textarea>
                   </div>
                   <div class="field wide check">
                     <label for={`l-${i.id}`}>
@@ -243,7 +258,7 @@ try {
                 </form>
 
                 <div class="photo-card">
-                  <p class="photo-title">Photo</p>
+                  <p class="photo-title">Photo</p><p class="photo-help">Choosing a photo saves it immediately. Choose again to replace it.</p>
 
                   <div class="preview">
                     <img
@@ -286,6 +301,14 @@ try {
                     <p class="hint">Photo uploads need JavaScript turned on.</p>
                   </noscript>
                 </div>
+                <div class="delete-zone">
+                  <p>Remove this item permanently</p>
+                  <form method="post">
+                    <input type="hidden" name="action" value="delete" />
+                    <input type="hidden" name="id" value={i.id} />
+                    <button class="danger" type="submit">Delete</button>
+                  </form>
+                </div>
               </details>
             </li>
           ))}
@@ -307,6 +330,21 @@ try {
   const addForm = document.querySelector<HTMLFormElement>('#add-item-form');
   const addPhotoStatus = document.querySelector<HTMLElement>('#add-photo-status');
   let pendingAddPhoto: File | null = null;
+  let previewUrl: string | null = null;
+  const addPreview = document.getElementById('add-photo-preview') as HTMLImageElement | null;
+  const clearPhoto = document.getElementById('clear-add-photo') as HTMLButtonElement | null;
+  const clearPreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+    if (addPreview) { addPreview.hidden = true; addPreview.removeAttribute('src'); }
+  };
+  clearPhoto?.addEventListener('click', () => {
+    clearPreview(); pendingAddPhoto = null;
+    document.querySelectorAll<HTMLInputElement>('[data-add-photo]').forEach(input => input.value = '');
+    if (addPhotoStatus) addPhotoStatus.textContent = 'No photo selected.';
+    clearPhoto.hidden = true;
+  });
+  addPreview?.addEventListener('error', () => { clearPreview(); if (addPhotoStatus) addPhotoStatus.textContent = 'Preview unavailable. The selected photo will be checked when you add the item.'; });
   let toastTimer: number | undefined;
 
   function toast(message: string, kind: 'ok' | 'bad' | 'busy' = 'ok') {
@@ -334,6 +372,11 @@ try {
       const file = input.files?.[0] ?? null;
       if (!file) return;
       pendingAddPhoto = file;
+      clearPreview();
+      if (file.type.startsWith('image/') && file.size <= 12 * 1024 * 1024 && addPreview) {
+        previewUrl = URL.createObjectURL(file); addPreview.src = previewUrl; addPreview.hidden = false;
+      }
+      if (clearPhoto) clearPhoto.hidden = false;
       document.querySelectorAll<HTMLInputElement>('input[data-add-photo]').forEach((other) => {
         if (other !== input) other.value = '';
       });
@@ -361,6 +404,7 @@ try {
     const submit = addForm.querySelector<HTMLButtonElement>('button[type="submit"]');
     if (submit) submit.disabled = true;
 
+    let createdId: number | null = null;
     try {
       toast('Adding item…', 'busy');
       const res = await fetch('/admin/menu', {
@@ -371,6 +415,7 @@ try {
       const data = await res.json();
       if (!res.ok || !data.ok || !data.id) throw new Error(data.error ?? 'Could not add the item.');
 
+      createdId = Number(data.id);
       if (pendingAddPhoto) {
         toast('Resizing and uploading photo…', 'busy');
         await uploadPhoto(String(data.id), pendingAddPhoto);
@@ -383,7 +428,13 @@ try {
       location.assign(`/admin/menu?created=${data.id}#item-${data.id}`);
     } catch (err) {
       toast(err instanceof PhotoError ? err.message : (err as Error).message, 'bad');
-      if (submit) submit.disabled = false;
+      if (createdId) {
+        const recovery = document.getElementById('add-recovery');
+        const link = recovery?.querySelector('a');
+        if (link) link.href = `/admin/menu?created=${createdId}#item-${createdId}`;
+        if (recovery) recovery.hidden = false;
+        if (addPhotoStatus) addPhotoStatus.textContent = 'The item was created, but its photo was not saved. Open the item below to retry; do not add it again.';
+      } else if (submit) submit.disabled = false;
     }
   });
 
@@ -417,15 +468,25 @@ try {
         } else if (action === 'toggle') {
           const isNowActive = submit?.textContent?.trim() === 'Show';
           item?.classList.toggle('inactive', !isNowActive);
+          if (item) item.dataset.active = isNowActive ? '1' : '0';
+          const hiddenBadge = item?.querySelector<HTMLElement>('.hidden-badge');
+          if (hiddenBadge) hiddenBadge.hidden = isNowActive;
           if (submit) submit.textContent = isNowActive ? 'Hide' : 'Show';
         } else if (action === 'edit') {
           const name = form.querySelector<HTMLInputElement>('input[name="name"]')?.value.trim() ?? '';
-          const description = form.querySelector<HTMLInputElement>('input[name="description"]')?.value.trim() ?? '';
+          const description = form.querySelector<HTMLTextAreaElement>('textarea[name="description"]')?.value.trim() ?? '';
           const lateNight = form.querySelector<HTMLInputElement>('input[name="late_night"]')?.checked ?? false;
           const categoryId = form.querySelector<HTMLSelectElement>('select[name="category_id"]')?.value;
           const strong = item?.querySelector<HTMLElement>('.who strong');
           const desc = item?.querySelector<HTMLElement>('.desc');
           if (strong) strong.textContent = name;
+          if (item) {
+            item.dataset.itemName = name; item.dataset.description = description;
+            item.dataset.section = categoryId ?? ''; item.dataset.late = lateNight ? '1' : '0';
+            const categoryLabel = item.querySelector<HTMLElement>('.item-section');
+            if (categoryLabel) categoryLabel.textContent = form.querySelector<HTMLSelectElement>('select[name="category_id"]')?.selectedOptions[0]?.textContent ?? '';
+            item.querySelector('summary')?.setAttribute('aria-label', `Edit ${name}`);
+          }
           if (desc) {
             desc.textContent = description || 'No description yet';
             desc.classList.toggle('muted', !description);
@@ -444,6 +505,7 @@ try {
             : null;
           if (item && destination && item.parentElement !== destination) destination.append(item);
         }
+        applyFilters();
         toast(data.message ?? 'Item updated.', 'ok');
       } catch (err) {
         toast((err as Error).message, 'bad');
@@ -461,6 +523,8 @@ try {
     const remove = document.querySelector<HTMLElement>(`[data-remove="${id}"]`);
     const rotateTools = document.querySelector<HTMLElement>(`[data-rotate-tools="${id}"]`);
 
+    const photoState = document.querySelector<HTMLElement>(`[data-photo-state="${id}"]`);
+    if (photoState) photoState.textContent = thumbUrl ? 'Photo added' : 'No photo';
     if (thumbUrl) {
       const bust = `${thumbUrl}${thumbUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
       if (thumb) { thumb.src = bust; thumb.hidden = false; }
@@ -562,6 +626,44 @@ try {
       }
     });
   });
+
+  const search = document.getElementById('item-search') as HTMLInputElement;
+  const sectionFilter = document.getElementById('filter-section') as HTMLSelectElement;
+  const visibilityFilter = document.getElementById('filter-visibility') as HTMLSelectElement;
+  const lateFilter = document.getElementById('filter-late') as HTMLInputElement;
+  const filterCount = document.getElementById('filter-count');
+  function applyFilters() {
+    const query = search.value.trim().toLocaleLowerCase();
+    let matches = 0;
+    document.querySelectorAll<HTMLElement>('.menu-item').forEach(item => {
+      const match = (!query || `${item.dataset.itemName} ${item.dataset.description}`.toLocaleLowerCase().includes(query)) &&
+        (!sectionFilter.value || item.dataset.section === sectionFilter.value) &&
+        (visibilityFilter.value === 'all' || (item.dataset.active === '1') === (visibilityFilter.value === 'visible')) &&
+        (!lateFilter.checked || item.dataset.late === '1');
+      if (match) matches++;
+      // Keep an open editor accessible when a save moves the item outside a filter.
+      item.hidden = !match && !item.querySelector<HTMLDetailsElement>('.editor')?.open;
+    });
+    document.querySelectorAll<HTMLElement>('.cat').forEach(category => {
+      const hasVisible = [...category.querySelectorAll<HTMLElement>('.menu-item')].some(item => !item.hidden);
+      const noFilters = !query && !sectionFilter.value && visibilityFilter.value === 'all' && !lateFilter.checked;
+      category.hidden = !hasVisible && !noFilters && category.dataset.categoryId !== sectionFilter.value && !category.querySelector('details[open]');
+    });
+    if (filterCount) filterCount.textContent = `${matches} matching item${matches === 1 ? '' : 's'}. Open editors stay visible.`;
+  }
+  [search, sectionFilter, visibilityFilter, lateFilter].forEach(control => control.addEventListener('input', applyFilters));
+  document.getElementById('clear-filters')?.addEventListener('click', () => {
+    search.value = ''; sectionFilter.value = ''; visibilityFilter.value = 'all'; lateFilter.checked = false;
+    applyFilters(); search.focus();
+  });
+  document.querySelectorAll<HTMLDetailsElement>('.editor').forEach(editor => editor.addEventListener('toggle', applyFilters));
+  document.querySelector<HTMLElement>('#menu-filters')!.hidden = false;
+  document.querySelector<HTMLElement>('.jump-card')!.hidden = true;
+  if (createdItem && /^\d+$/.test(createdItem)) {
+    const editor = document.getElementById(`item-${createdItem}`)?.querySelector<HTMLDetailsElement>('.editor');
+    if (editor) editor.open = true;
+  }
+  applyFilters();
 </script>
 
 <style>
@@ -704,4 +806,62 @@ try {
     .pick,.photo-tools{width:100%}
     .pick-btn,.rotate-photo{flex:1 1 100%}
   }
+
+  .menu-admin{padding-block:28px}
+  .admin-wrap{max-width:1120px}
+  .add-disclosure{margin-bottom:16px;border:2px solid var(--crimson);border-radius:10px;background:#fff}
+  .add-disclosure>summary{display:flex;justify-content:space-between;align-items:center;min-height:52px;padding:12px 18px;background:var(--crimson);color:#fff;cursor:pointer;font:700 1.05rem var(--label);letter-spacing:.06em;list-style:none}
+  .add-disclosure>summary::-webkit-details-marker{display:none}
+  .add-disclosure .add-form{margin:0;box-shadow:none}
+  .add-photo-preview{width:100%;max-width:360px;max-height:240px;object-fit:contain;border-radius:8px}
+  .menu-filters{padding:16px;background:var(--ink);color:var(--cream);border-radius:10px}
+  .menu-filters .field label{color:var(--cream)}
+  .filter-options{display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;margin-top:12px}
+  .filter-late{display:flex;align-items:center;gap:8px;min-height:48px;cursor:pointer}
+  .filter-late input{width:22px;height:22px;accent-color:var(--gold)}
+  .filter-feedback{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px;font-size:.9rem}
+  .filter-feedback button{color:var(--cream);border-color:var(--cream)}
+  .field{min-width:0}
+  .field input,.field select,.field textarea{font:400 16px var(--body);min-width:0;max-width:100%;min-height:48px}
+  .field textarea{width:100%;resize:vertical;min-height:100px;padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);line-height:1.45}
+  .field.check label{flex-wrap:wrap;min-height:48px}
+  .field.check .hint{flex-basis:100%;opacity:1}
+  .field.check input{min-height:20px}
+  .cat li.menu-item{padding:16px;margin:12px 0;background:#fff;border:1px solid var(--cream-2);border-radius:10px;scroll-margin-block:150px}
+  .cat li.inactive{opacity:1;border-left:4px solid var(--crimson)}
+  .who strong,.desc,.item-section{overflow-wrap:anywhere}
+  .who strong{font-size:1.1rem}
+  .item-section{display:block;font-size:.85rem;color:var(--ink-2)}
+  .hidden-badge,.photo-state{display:inline-block;font-size:.8rem;margin:4px 6px 4px 0;color:var(--ink-2)}
+  .hidden-badge{background:var(--cream);padding:2px 7px;border-radius:4px;color:var(--crimson);font-weight:700}
+  .desc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .editor>summary{min-height:48px;padding:12px;border:2px solid var(--ink);border-radius:6px;font-size:.95rem;color:var(--ink)}
+  .editor .edit-form,.editor .photo-card{box-shadow:none;border:1px solid var(--cream-2)}
+  .photo-help{font-size:.9rem;color:var(--ink-2)}
+  .preview{max-width:560px}
+  .preview img{object-fit:contain}
+  .pick-btn{min-height:52px;font-size:.9rem;letter-spacing:.04em}
+  .row-actions button,.rotate-photo,.remove-photo,.delete-zone button,.section-details-form button,#clear-add-photo,#clear-filters{min-height:46px;padding:10px 14px;border:2px solid var(--ink);border-radius:6px;background:transparent;font:700 .95rem var(--label);cursor:pointer}
+  .delete-zone{margin-top:24px;padding:16px 0 0;border-top:1px dashed var(--crimson);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;color:var(--ink-2);font-size:.9rem}
+  .delete-zone button,.remove-photo{color:var(--crimson);border-color:var(--crimson)}
+  .cat>details>summary{min-height:44px;padding:10px 0;cursor:pointer}
+  .section-details-form{display:grid;gap:12px;margin:8px 0 16px;padding:16px;background:#fff;border-radius:8px}
+  .section-details-form button{justify-self:start}
+  .menu-item[hidden],.cat[hidden],.jump-card[hidden],.menu-filters[hidden],.photo-tools[hidden],.hidden-badge[hidden],.add-photo-preview[hidden],#clear-add-photo[hidden]{display:none}
+  @media(max-width:680px){
+    .menu-admin{padding:24px 12px 32px}
+    .section-head{margin-bottom:20px}
+    .filter-options{grid-template-columns:1fr}
+    .filter-options .filter-late{margin-top:0}
+    .menu-filters,.cat li.menu-item{padding:12px}
+    .add-form,.edit-form{grid-template-columns:1fr;padding:12px}
+    .row{flex-wrap:wrap;gap:10px}
+    .row-actions{width:100%}
+    .photo-card{padding:12px;align-items:stretch}
+    .pick,.photo-tools{display:grid;grid-template-columns:1fr;width:100%}
+    .pick-btn{width:100%;padding-inline:10px}
+    .delete-zone{display:block}.delete-zone button{margin-top:10px;width:100%}
+    .edit-form button,.add-form>button{width:100%}
+  }
+  @media(max-width:1099px){.toast{bottom:calc(150px + env(safe-area-inset-bottom))}}
 </style>

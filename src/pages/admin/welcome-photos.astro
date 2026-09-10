@@ -9,17 +9,17 @@ const photos = await getWelcomePhotos(env);
 ---
 
 <Base title="Admin · Welcome Photos — Grayz'n Buffalo">
-  <section>
+  <section class="welcome-admin">
     <div class="section-head">
       <h2>Welcome Photos</h2>
       <p>Four homepage photos. Replace any slot whenever you have a better shot.</p>
-      <p class="back"><a href="/admin">← Back to admin</a></p>
     </div>
 
     <div class="welcome-photo-admin">
       {photos.map((photo) => (
         <article class="slot-card" data-slot-card={photo.slot}>
           <h3>Photo {photo.slot}</h3>
+
           <div class="preview">
             <img
               data-preview={photo.slot}
@@ -32,26 +32,38 @@ const photos = await getWelcomePhotos(env);
             <p data-empty={photo.slot} hidden={!!photo.photo_key}>No photo yet.</p>
           </div>
 
-          <label for={`alt-${photo.slot}`}>Image description <span>optional</span></label>
-          <input id={`alt-${photo.slot}`} data-alt={photo.slot} value={photo.alt} maxlength="240" placeholder="Describe the photo for visitors" />
-          <label for={`caption-${photo.slot}`}>Caption <span>optional</span></label>
-          <input id={`caption-${photo.slot}`} data-caption={photo.slot} value={photo.caption} maxlength="120" placeholder="Short label on the photo" />
-
-          <div class="pick">
-            <label class="pick-btn">Take a photo<input type="file" accept="image/*" capture="environment" data-upload={photo.slot} /></label>
-            <label class="pick-btn">Choose from gallery<input type="file" accept="image/*" data-upload={photo.slot} /></label>
+          <div class="photo-pick">
+            <label class="pick-btn">
+              <span>Take a photo</span>
+              <input type="file" accept="image/*" capture="environment" data-upload={photo.slot} />
+            </label>
+            <label class="pick-btn">
+              <span>Choose from gallery</span>
+              <input type="file" accept="image/*" data-upload={photo.slot} />
+            </label>
           </div>
-          <div class="tools">
-            <button type="button" data-save={photo.slot}>Save details</button>
-            <button type="button" data-rotate={photo.slot} data-degrees="-90" hidden={!photo.photo_key}>Rotate left</button>
-            <button type="button" data-rotate={photo.slot} data-degrees="90" hidden={!photo.photo_key}>Rotate right</button>
-            <button type="button" class="danger" data-remove={photo.slot} hidden={!photo.photo_key}>Remove photo</button>
+
+          <div class="metadata">
+            <label for={`alt-${photo.slot}`}>Image description <span class="hint">optional</span></label>
+            <input id={`alt-${photo.slot}`} data-alt={photo.slot} value={photo.alt} maxlength="240" placeholder="Describe the photo for visitors" />
+            <label for={`caption-${photo.slot}`}>Caption <span class="hint">optional</span></label>
+            <input id={`caption-${photo.slot}`} data-caption={photo.slot} value={photo.caption} maxlength="120" placeholder="Short label on the photo" />
+            <button class="save-details-btn btn btn-primary" type="button" data-save={photo.slot}>Save details</button>
+          </div>
+
+          <div class="photo-tools">
+            <button class="tool-btn" type="button" data-rotate={photo.slot} data-degrees="-90" hidden={!photo.photo_key}>Rotate left</button>
+            <button class="tool-btn" type="button" data-rotate={photo.slot} data-degrees="90" hidden={!photo.photo_key}>Rotate right</button>
+          </div>
+
+          <div class="remove-zone">
+            <button class="tool-btn danger" type="button" data-remove={photo.slot} hidden={!photo.photo_key}>Remove photo</button>
           </div>
         </article>
       ))}
     </div>
-    <p class="back"><a href="/admin">← Back to admin</a></p>
   </section>
+
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 </Base>
 
@@ -201,27 +213,198 @@ const photos = await getWelcomePhotos(env);
 </script>
 
 <style>
-  .welcome-photo-admin{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;max-width:900px;margin:0 auto}
-  .slot-card{background:#fff;border-radius:12px;padding:18px;box-shadow:0 6px 16px rgba(36,22,16,.1);display:flex;flex-direction:column;gap:10px}
-  .slot-card h3{font-family:var(--display);font-size:1.2rem}
-  .slot-card label{font-family:var(--label);font-weight:600;letter-spacing:.1em;text-transform:uppercase;font-size:.78rem;color:var(--ink-2)}
-  .slot-card label span{font-weight:500;text-transform:none;letter-spacing:0;opacity:.75}
-  .slot-card input:not([type="file"]){padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit}
-  .slot-card input:focus-visible{outline:2px solid var(--crimson);outline-offset:1px}
-  .preview{aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:rgba(36,22,16,.08);display:grid;place-items:center}
-  .preview img{width:100%;height:100%;object-fit:cover;display:block}
-  .preview p{color:var(--ink-2);opacity:.65;font-style:italic}
-  .preview img[hidden]{display:none}
-  .pick,.tools{display:flex;gap:8px;flex-wrap:wrap}
-  .pick-btn,.tools button{position:relative;display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:9px 13px;border:2px solid var(--ink);border-radius:7px;background:transparent;color:var(--ink);cursor:pointer;font-family:var(--label);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:.75rem}
-  .pick-btn:hover,.tools button:hover{background:rgba(36,22,16,.06)}
-  .pick-btn:focus-within,.tools button:focus-visible{outline:2px solid var(--crimson);outline-offset:2px}
-  .pick-btn input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
-  .pick-btn:has(input:disabled),.tools button:disabled{opacity:.5;pointer-events:none}
-  .tools .danger{border-color:var(--crimson);color:var(--crimson)}
-  .back{text-align:center;margin-top:22px}.back a{color:var(--crimson);font-weight:600}
-  .toast{position:fixed;left:50%;transform:translate(-50%,20px);bottom:calc(24px + env(safe-area-inset-bottom));z-index:200;max-width:min(92vw,420px);padding:14px 22px;border-radius:10px;text-align:center;font-family:var(--label);font-weight:700;letter-spacing:.04em;box-shadow:0 10px 30px rgba(0,0,0,.35);opacity:0;transition:opacity .22s ease,transform .22s ease;pointer-events:none}
-  .toast.show{opacity:1;transform:translate(-50%,0)}.toast.ok{background:var(--gold);color:var(--ink)}.toast.bad{background:#8d1626;color:var(--cream)}.toast.busy{background:var(--ink);color:var(--cream)}
-  @media (max-width:820px){.toast{bottom:calc(74px + env(safe-area-inset-bottom))}}
-  @media (max-width:620px){.welcome-photo-admin{grid-template-columns:1fr}.pick,.tools{display:grid;grid-template-columns:1fr 1fr}.pick-btn,.tools button{width:100%}.tools .danger{grid-column:1/-1}}
+  .welcome-admin { padding-block: 28px }
+
+  .welcome-photo-admin {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .slot-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: 0 6px 16px rgba(36,22,16,.1);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .slot-card h3 {
+    font-family: var(--display);
+    font-size: 1.2rem;
+    margin: 0;
+  }
+
+  /* ---- Preview ---- */
+  .preview {
+    aspect-ratio: 4/3;
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(36,22,16,.08);
+    display: grid;
+    place-items: center;
+  }
+  .preview img { width: 100%; height: 100%; object-fit: cover; display: block }
+  .preview img[hidden] { display: none }
+  .preview p { color: var(--ink-2); opacity: .65; font-style: italic; margin: 0 }
+
+  /* ---- Photo pick controls ---- */
+  .photo-pick {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .pick-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 52px;
+    padding: 12px 10px;
+    border: 2px solid var(--ink);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+    font-family: var(--label);
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    font-size: .82rem;
+    text-align: center;
+    transition: background .18s;
+  }
+  .pick-btn:hover { background: rgba(36,22,16,.06) }
+  .pick-btn:focus-within { outline: 2px solid var(--crimson); outline-offset: 2px }
+  .pick-btn input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer }
+  .pick-btn:has(input:disabled) { opacity: .5; pointer-events: none }
+
+  /* ---- Metadata section ---- */
+  .metadata {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .metadata label {
+    font-family: var(--label);
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    font-size: .78rem;
+    color: var(--ink-2);
+  }
+  .metadata label + label { margin-top: 6px }
+  .hint { font-weight: 500; text-transform: none; letter-spacing: 0; opacity: .75 }
+
+  .metadata input {
+    padding: 12px;
+    border: 2px solid rgba(36,22,16,.2);
+    border-radius: 8px;
+    background: var(--cream);
+    font: inherit;
+    font-size: 1rem;
+    min-height: 48px;
+    width: 100%;
+  }
+  .metadata input:focus-visible { outline: 2px solid var(--crimson); outline-offset: 1px }
+
+  .save-details-btn {
+    margin-top: 4px;
+    width: 100%;
+    letter-spacing: .06em;
+  }
+
+  /* ---- Secondary photo tools (rotate) ---- */
+  .photo-tools {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .tool-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 46px;
+    padding: 10px 14px;
+    border: 2px solid var(--ink);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+    font-family: var(--label);
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    font-size: .8rem;
+    flex: 1 1 auto;
+  }
+  .tool-btn:hover { background: rgba(36,22,16,.06) }
+  .tool-btn:focus-visible { outline: 2px solid var(--crimson); outline-offset: 2px }
+  .tool-btn:disabled { opacity: .5; pointer-events: none }
+  .tool-btn.danger { color: var(--crimson); border-color: var(--crimson) }
+  .tool-btn.danger:hover { background: rgba(141,22,38,.06) }
+  .photo-tools:empty { display: none }
+
+  /* ---- Remove zone ---- */
+  .remove-zone {
+    border-top: 1px dashed rgba(141,22,38,.35);
+    padding-top: 12px;
+  }
+  .remove-zone:has(button[hidden]) { display: none }
+  .remove-zone button[hidden] { display: none }
+
+  /* ---- Toast ---- */
+  .toast {
+    position: fixed;
+    left: 50%;
+    transform: translate(-50%, 20px);
+    bottom: calc(24px + env(safe-area-inset-bottom));
+    z-index: 200;
+    max-width: min(92vw, 420px);
+    padding: 14px 22px;
+    border-radius: 10px;
+    text-align: center;
+    font-family: var(--label);
+    font-weight: 700;
+    letter-spacing: .04em;
+    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    opacity: 0;
+    transition: opacity .22s ease, transform .22s ease;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0) }
+  .toast.ok { background: var(--gold); color: var(--ink) }
+  .toast.bad { background: #8d1626; color: var(--cream) }
+  .toast.busy { background: var(--ink); color: var(--cream) }
+
+  @media (prefers-reduced-motion: reduce) { .toast { transition: none } }
+
+  /* Clear admin bottom nav bar */
+  @media (max-width: 1099px) {
+    .toast { bottom: calc(150px + env(safe-area-inset-bottom)) }
+  }
+
+  /* ---- Tablet: side-by-side cards ---- */
+  @media (max-width: 780px) {
+    .welcome-photo-admin { grid-template-columns: 1fr }
+    .welcome-admin { padding: 24px 12px 32px }
+    .section-head { margin-bottom: 20px }
+  }
+
+  /* ---- Phone: single column, stacked pick buttons ---- */
+  @media (max-width: 480px) {
+    .photo-pick { grid-template-columns: 1fr }
+    .pick-btn { min-height: 56px; font-size: .88rem }
+    .metadata input { font-size: 16px }
+    .photo-tools { display: grid; grid-template-columns: 1fr 1fr }
+    .remove-zone .tool-btn { width: 100% }
+    .slot-card { padding: 14px }
+  }
 </style>
