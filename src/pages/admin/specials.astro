@@ -317,7 +317,7 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
         <p class="swipe-hint">Swipe the card heading or use the day buttons.</p>
       </div>
       <div class="week-actions">
-        <div class="week-save-row"><div class="week-save-feedback"><p>All seven days save together</p><p id="weekly-save-status" role="status" aria-live="polite" aria-atomic="true">{editingId && !weeklyDirty ? 'No unsaved changes.' : 'Ready to save all seven days.'}</p></div><button class="btn btn-primary" type="submit" name="action" value="save-weekly-specials" aria-describedby="weekly-save-status weekly-save-error">Save Week</button></div>
+        <div class="week-save-row"><div class="week-save-feedback"><p>All seven days save together</p><p id="weekly-save-status" role="status" aria-live="polite" aria-atomic="true">{!weeklyDirty ? 'No unsaved changes.' : 'Ready to save all seven days.'}</p></div><button class="btn btn-primary" type="submit" name="action" value="save-weekly-specials" aria-describedby="weekly-save-status weekly-save-error">Save Week</button></div>
         <p id="weekly-save-error" class="error" role="alert" aria-atomic="true" tabindex="-1" hidden={!weeklySaveError}>{weeklySaveError}</p>
         <div class="day-stepper" hidden><button type="button" id="previous-day">← Previous</button><button type="button" id="next-day">Next →</button></div>
       </div>
@@ -397,11 +397,12 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
     return JSON.stringify([value('week_start_date'), cards.map((_, index) =>
       [value(`lunch_${index}`), value(`all_day_1_${index}`), value(`all_day_2_${index}`), index < 5 ? value(`nightly_${index}`) : ''])]);
   };
+  // Initial recurring prefills are the clean baseline, not user edits.
   const initialValues = weeklyForm ? snapshot() : '';
   const restoredDirty = dirty;
   const baseline = weeklyForm?.dataset.savedSnapshot || initialValues;
   const updateSaveState = () => {
-    const unchanged = isExistingWeek && !dirty;
+    const unchanged = !dirty;
     const needsSunday = phone.matches && currentDay !== cards.length - 1;
     if (saveBtn) saveBtn.disabled = unchanged || needsSunday;
     const message = unchanged ? 'No unsaved changes.' : needsSunday
@@ -411,8 +412,7 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
   const updateDirty = () => {
     dirty = isExistingWeek
       ? (!!weeklyForm && snapshot() !== baseline) || (!weeklyForm?.dataset.savedSnapshot && restoredDirty)
-      : restoredDirty || (!!weeklyForm && snapshot() !== initialValues) || !!start?.value || cards.some((card) =>
-        Array.from(card.querySelectorAll('textarea')).some((input) => input.value.trim()));
+      : restoredDirty || (!!weeklyForm && snapshot() !== initialValues);
     weeklyForm?.classList.toggle('is-dirty', dirty);
     updateSaveState();
   };
@@ -501,7 +501,7 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
   updateDirty();
   weeklyForm?.addEventListener('submit', (event) => {
     updateDirty();
-    if ((isExistingWeek && !dirty) || (phone.matches && currentDay !== cards.length - 1)) {
+    if (!dirty || (phone.matches && currentDay !== cards.length - 1)) {
       event.preventDefault();
       return;
     }
