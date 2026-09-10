@@ -324,19 +324,20 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
       text-transform:uppercase;font-size:.7rem;line-height:1;
     }
     .action-bar a svg{width:21px;height:21px;fill:currentColor;display:block}
-    .action-bar a.primary{background:var(--btn-crimson)}
+    .action-bar a.call{background:var(--denim)}
     .action-bar a:active{background:var(--btn-crimson-hover);}
-    .action-bar a.primary:active{background:#7F2623}
+    .action-bar a.call:active{background:#102c3a}
     .action-bar a:focus-visible{outline:2px solid var(--gold);outline-offset:-3px}
-    .action-bar a[aria-current="page"]{color:var(--gold)}
+    .action-bar a[aria-current="page"]{color:var(--gold);background:var(--crimson)}
 
     .action-bar-home{
       display:flex;align-items:center;justify-content:center;
       position:fixed;left:50%;bottom:calc(70px + env(safe-area-inset-bottom));z-index:61;
       width:64px;height:64px;border:2px solid rgba(238,224,196,.78);border-radius:50%;
-      background:var(--brick);box-shadow:0 5px 13px rgba(20,10,6,.42),inset 0 1px rgba(255,255,255,.16);
+      background:var(--ink);box-shadow:0 5px 13px rgba(20,10,6,.42),inset 0 1px rgba(255,255,255,.16);
       transform:translateX(-50%);text-decoration:none;
     }
+    .action-bar-home[aria-current="page"]{background:var(--brick)}
     .action-bar-home img{display:block;width:44px;height:auto}
     .action-bar-home:hover{background:var(--brick-hover)}
     .action-bar-home:active{background:var(--btn-crimson-hover);transform:translateX(-50%) translateY(1px)}
@@ -526,6 +527,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .admin-shell .admin-action-bar a{min-height:60px;font-size:.8rem}
     .admin-shell input,.admin-shell textarea,.admin-shell select{scroll-margin-block:150px}
     .admin-shell main>section{padding-block-start:12px}
+    .admin-shell .action-bar-home{background:var(--denim)}
     .admin-settings-circle{display:flex;align-items:center;justify-content:center;position:fixed;right:calc(100vw/6 - 32px);bottom:calc(70px + env(safe-area-inset-bottom));z-index:61;width:64px;height:64px;border:2px solid rgba(238,224,196,.78);border-radius:50%;background:var(--ink);box-shadow:0 5px 13px rgba(20,10,6,.42),inset 0 1px rgba(255,255,255,.16);text-decoration:none;color:var(--cream);font-size:1.5rem;line-height:1}
     .admin-settings-circle:active{transform:translateY(1px)}
     .admin-settings-circle:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
@@ -600,7 +602,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm2 4v2h12V7H6zm0 4v2h12v-2H6zm0 4v2h8v-2H6z"/></svg>
     <span>Menu</span>
   </a>
-  <a href="tel:+17159264431" class="primary">
+  <a href="tel:+17159264431" class="call">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg>
     <span>Call</span>
   </a>
