@@ -17,6 +17,7 @@ const isContact = path === '/contact';
 const isScenicFooter = isHome || isContact;
 const isAdmin = path.startsWith('/admin');
 const isAdminLogin = isAdmin && (path === '/admin' || path === '/admin/') && !Astro.url.searchParams.has('settings');
+const isAdminSettings = isAdmin && Astro.url.searchParams.has('settings');
 const hasInteriorNavDivider = isContact || path === '/menu' || path === '/specials';
 const siteUrl = 'https://grayznbuffalo.com';
 const productionHosts = new Set(['grayznbuffalo.com', 'www.grayznbuffalo.com']);
@@ -528,6 +529,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .admin-settings-circle{display:flex;align-items:center;justify-content:center;position:fixed;right:calc(100vw/6 - 32px);bottom:calc(70px + env(safe-area-inset-bottom));z-index:61;width:64px;height:64px;border:2px solid rgba(238,224,196,.78);border-radius:50%;background:var(--ink);box-shadow:0 5px 13px rgba(20,10,6,.42),inset 0 1px rgba(255,255,255,.16);text-decoration:none;color:var(--cream);font-size:1.5rem;line-height:1}
     .admin-settings-circle:active{transform:translateY(1px)}
     .admin-settings-circle:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
+    .admin-settings-circle--active{background:var(--crimson)}
     .admin-signout-circle{position:fixed;left:calc(100vw/6 - 32px);bottom:calc(70px + env(safe-area-inset-bottom));z-index:61;width:64px;height:64px}
     .admin-signout-circle form{width:100%;height:100%}
     .admin-signout-circle button{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border:2px solid rgba(238,224,196,.78);border-radius:50%;background:var(--ink);box-shadow:0 5px 13px rgba(20,10,6,.42),inset 0 1px rgba(255,255,255,.16);color:var(--cream);font-size:1.5rem;line-height:1;cursor:pointer;padding:0;margin:0}
@@ -611,8 +613,8 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 <a class="action-bar-home" href="/" aria-label="Go to the Grayz'n Buffalo home page" aria-current={isHome ? 'page' : undefined}>
   <img src="/buffalo-mark.svg" alt="" width="44" height="26" />
 </a>
-{isAdmin && path !== '/admin' && path !== '/admin/' && (
-  <a class="admin-settings-circle" href="/admin?settings=1" aria-label="Admin Settings"><img src="/admin-settings-gear.svg" alt="" width="30" height="30" /></a>
+{isAdmin && !isAdminLogin && (
+  <a class={"admin-settings-circle" + (isAdminSettings ? " admin-settings-circle--active" : "")} href="/admin?settings=1" aria-label="Admin Settings" aria-current={isAdminSettings ? 'page' : undefined}><img src="/admin-settings-gear.svg" alt="" width="30" height="30" /></a>
 )}
 {isAdmin && !isAdminLogin && (
   <div class="admin-signout-circle">
