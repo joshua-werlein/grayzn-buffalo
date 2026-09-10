@@ -739,6 +739,85 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     ticking = true;
     requestAnimationFrame(() => { updateHeader(); ticking = false; });
   }, { passive: true });
+
+  // ── Hidden staff shortcut — installed standalone PWA only, public pages only ──
+  if (isStandalone) {
+    const homeBtn = document.querySelector<HTMLAnchorElement>('.action-bar-home');
+    if (homeBtn) {
+      const STAFF_DEST    = '/admin/specials';
+      const isAdminPage   = () => location.pathname.startsWith('/admin');
+      const isHomePage    = () => location.pathname === '/';
+      const TAP_WINDOW    = 2500;   // ms window to complete five taps
+      const TAPS_NEEDED   = 5;
+      const LONG_PRESS_MS = 1500;   // ms hold before long-press fires
+      const MOVE_CANCEL   = 10;     // px movement that cancels the long press
+
+      // Five-tap state
+      let tapCount = 0;
+      let tapTimer: number | undefined;
+
+      // Long-press state
+      let longPressTimer: number | undefined;
+      let pressOrigin: { x: number; y: number } | null = null;
+      let longPressFired = false;
+
+      const cancelLongPress = () => {
+        window.clearTimeout(longPressTimer);
+        pressOrigin = null;
+        // longPressFired is intentionally NOT reset here — the click handler reads it
+      };
+
+      homeBtn.addEventListener('pointerdown', (event) => {
+        if (isAdminPage()) return;
+        if (event.pointerType !== 'touch' && event.button !== 0) return;
+        longPressFired = false;
+        pressOrigin = { x: event.clientX, y: event.clientY };
+        longPressTimer = window.setTimeout(() => {
+          pressOrigin = null;
+          longPressFired = true;
+          location.assign(STAFF_DEST);
+        }, LONG_PRESS_MS);
+      });
+
+      homeBtn.addEventListener('pointermove', (event) => {
+        if (!pressOrigin) return;
+        if (Math.hypot(event.clientX - pressOrigin.x, event.clientY - pressOrigin.y) > MOVE_CANCEL) {
+          cancelLongPress();
+        }
+      });
+
+      homeBtn.addEventListener('pointerup',     cancelLongPress);
+      homeBtn.addEventListener('pointercancel', cancelLongPress);
+
+      // Prevent the browser link-preview / context sheet from appearing during a hold
+      homeBtn.addEventListener('contextmenu', (event) => {
+        if (!isAdminPage()) event.preventDefault();
+      });
+
+      homeBtn.addEventListener('click', (event) => {
+        if (isAdminPage()) return;
+        // Keyboard activation (Enter / Space) produces event.detail === 0 — navigate normally
+        if (event.detail === 0) return;
+
+        // Long press already navigated — swallow the residual synthetic click
+        if (longPressFired) { longPressFired = false; event.preventDefault(); return; }
+
+        // Five-tap: accumulate only while on the home page.
+        // On other public pages a single tap still navigates home immediately.
+        if (isHomePage()) {
+          event.preventDefault();
+          window.clearTimeout(tapTimer);
+          tapCount++;
+          if (tapCount >= TAPS_NEEDED) {
+            tapCount = 0;
+            location.assign(STAFF_DEST);
+            return;
+          }
+          tapTimer = window.setTimeout(() => { tapCount = 0; }, TAP_WINDOW);
+        }
+      });
+    }
+  }
 </script>
 </body>
 </html>
