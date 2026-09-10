@@ -19,6 +19,8 @@ async function dropPhoto(key: string | null | undefined) {
 
 let notice = '';
 let problem = '';
+let sectionNotice = '';
+let sectionProblem = '';
 const wantsJson = Astro.request.headers.get('accept')?.includes('application/json');
 
 // Photo upload/remove goes to /api/menu-photo so the page can update in place.
@@ -26,6 +28,7 @@ const wantsJson = Astro.request.headers.get('accept')?.includes('application/jso
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
   const action = f.get('action');
+  const isSectionAction = ['add-section', 'edit-section', 'reorder-sections', 'delete-section'].includes(String(action));
   try {
     if (action === 'section-details') {
       const id = Number(f.get('category_id'));
@@ -79,9 +82,9 @@ if (Astro.request.method === 'POST') {
       if (!name) throw new Error('Section name is required.');
       if (name.length > 60) throw new Error('Section name must be 60 characters or fewer.');
       await env.DB.prepare(
-        'INSERT INTO categories (name, sort) VALUES (?1, COALESCE((SELECT MAX(sort)+1 FROM categories), 0))'
-      ).bind(name).run();
-      notice = `Section "${name}" added.`;
+        'INSERT INTO categories (name, subtitle, note, sort) VALUES (?1, ?2, ?3, COALESCE((SELECT MAX(sort)+1 FROM categories), 0))'
+      ).bind(name, String(f.get('subtitle') ?? '').trim(), String(f.get('note') ?? '').trim()).run();
+      sectionNotice = `Section "${name}" added.`;
 
     } else if (action === 'edit-section') {
       const id = Number(f.get('category_id'));
@@ -92,7 +95,7 @@ if (Astro.request.method === 'POST') {
       await env.DB.prepare(
         'UPDATE categories SET name = ?2, subtitle = ?3, note = ?4 WHERE id = ?1'
       ).bind(id, name, String(f.get('subtitle') ?? '').trim(), String(f.get('note') ?? '').trim()).run();
-      notice = 'Section updated.';
+      sectionNotice = 'Section updated.';
 
     } else if (action === 'reorder-sections') {
       const updates = Array.from(f.entries())
@@ -109,7 +112,7 @@ if (Astro.request.method === 'POST') {
           updates.map(({ id, sort }) => env.DB.prepare('UPDATE categories SET sort = ?2 WHERE id = ?1').bind(id, sort))
         );
       }
-      notice = 'Section order saved.';
+      sectionNotice = 'Section order saved.';
 
     } else if (action === 'delete-section') {
       const id = Number(f.get('category_id'));
@@ -119,7 +122,7 @@ if (Astro.request.method === 'POST') {
       ).bind(id).first();
       if (Number(itemCount?.n ?? 1) > 0) throw new Error('Remove all items from this section before deleting it.');
       await env.DB.prepare('DELETE FROM categories WHERE id = ?1').bind(id).run();
-      notice = 'Section deleted.';
+      sectionNotice = 'Section deleted.';
     }
     if (wantsJson) {
       return new Response(JSON.stringify({ ok: true, action, id: Number(f.get('id')), message: notice }), {
@@ -127,9 +130,14 @@ if (Astro.request.method === 'POST') {
       });
     }
   } catch (e: any) {
-    problem = e?.message ?? 'Something went wrong. Check the database connection — see README.';
+    const msg = e?.message ?? 'Something went wrong. Check the database connection — see README.';
+    if (isSectionAction) {
+      sectionProblem = msg;
+    } else {
+      problem = msg;
+    }
     if (wantsJson) {
-      return new Response(JSON.stringify({ ok: false, error: problem }), {
+      return new Response(JSON.stringify({ ok: false, error: msg }), {
         status: 500,
         headers: { 'content-type': 'application/json' },
       });
@@ -197,6 +205,60 @@ try {
       <button class="btn btn-primary" type="submit">Add item</button>
       <p id="add-recovery" class="wide" hidden><a href="/admin/menu">Open the created item to retry its photo</a></p>
     </form>
+    </details>
+
+    <details class="section-manager" id="section-manager" open={!!(sectionNotice || sectionProblem)}>
+      <summary>Manage Sections</summary>
+      <div class="section-manager__body">
+
+        {sectionNotice && <p class="flash ok sm-flash">{sectionNotice}</p>}
+        {sectionProblem && <p class="flash bad sm-flash">{sectionProblem}</p>}
+
+        <form method="post" id="sm-order-form" class="sm-order-form">
+          <input type="hidden" name="action" value="reorder-sections" />
+          <p class="sm-hint">Edit order numbers and save, or use the Edit button to rename, add details, or delete a section.</p>
+          <table class="sm-table">
+            <thead><tr><th>Order</th><th>Name</th><th></th></tr></thead>
+            <tbody>
+              {categories.map((c: any) => (
+                <tr>
+                  <td><input class="sm-sort-input" type="number" name={`sort_${c.id}`} value={c.sort} min="0" max="999" aria-label={`Sort order for ${c.name}`} /></td>
+                  <td class="sm-name-cell">{c.name}{c.subtitle && <span class="sm-sub">{c.subtitle}</span>}</td>
+                  <td><button type="button" class="sm-edit-btn" data-id={String(c.id)} data-name={c.name} data-subtitle={c.subtitle ?? ''} data-note={c.note ?? ''}>Edit</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button type="submit" class="btn btn-ghost sm-save-order">Save order</button>
+        </form>
+
+        <div class="sm-edit-panel" id="sm-edit-panel" hidden>
+          <h3 class="sm-panel-heading">Edit section</h3>
+          <form method="post" id="sm-edit-form">
+            <input type="hidden" name="category_id" id="sm-edit-id" />
+            <div class="field"><label for="sm-name">Section name</label><input id="sm-name" name="name" required maxlength="60" /></div>
+            <div class="field"><label for="sm-subtitle">Subtitle / Serving Hours <span class="hint">optional</span></label><input id="sm-subtitle" name="subtitle" maxlength="120" /></div>
+            <div class="field"><label for="sm-note">Section note <span class="hint">optional</span></label><textarea id="sm-note" name="note" rows="2" maxlength="240"></textarea></div>
+            <div class="sm-edit-actions">
+              <button type="submit" name="action" value="edit-section" class="btn btn-primary">Save section</button>
+              <button type="button" id="sm-cancel" class="btn btn-ghost">Cancel</button>
+              <button type="submit" name="action" value="delete-section" class="sm-delete" formnovalidate>Delete section</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="sm-add-block">
+          <h3 class="sm-panel-heading">Add a new section</h3>
+          <form method="post" class="sm-add-form">
+            <input type="hidden" name="action" value="add-section" />
+            <div class="field"><label for="sm-new-name">Section name</label><input id="sm-new-name" name="name" required maxlength="60" placeholder="e.g. Wraps" /></div>
+            <div class="field"><label for="sm-new-subtitle">Subtitle / Serving Hours <span class="hint">optional</span></label><input id="sm-new-subtitle" name="subtitle" maxlength="120" /></div>
+            <div class="field"><label for="sm-new-note">Section note <span class="hint">optional</span></label><textarea id="sm-new-note" name="note" rows="2" maxlength="240"></textarea></div>
+            <button type="submit" class="btn btn-primary">Add section</button>
+          </form>
+        </div>
+
+      </div>
     </details>
 
     <div class="menu-filters" id="menu-filters" hidden>
@@ -347,55 +409,6 @@ try {
       </div>
     ))}
 
-    <details class="section-manager" id="section-manager">
-      <summary>Manage Sections</summary>
-      <div class="section-manager__body">
-
-        <form method="post" id="sm-order-form" class="sm-order-form">
-          <input type="hidden" name="action" value="reorder-sections" />
-          <p class="sm-hint">Edit order numbers and save, or use the Edit button to rename, add details, or delete a section.</p>
-          <table class="sm-table">
-            <thead><tr><th>Order</th><th>Name</th><th></th></tr></thead>
-            <tbody>
-              {categories.map((c: any) => (
-                <tr>
-                  <td><input class="sm-sort-input" type="number" name={`sort_${c.id}`} value={c.sort} min="0" max="999" aria-label={`Sort order for ${c.name}`} /></td>
-                  <td class="sm-name-cell">{c.name}{c.subtitle && <span class="sm-sub">{c.subtitle}</span>}</td>
-                  <td><button type="button" class="sm-edit-btn" data-id={String(c.id)} data-name={c.name} data-subtitle={c.subtitle ?? ''} data-note={c.note ?? ''}>Edit</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <button type="submit" class="btn btn-ghost sm-save-order">Save order</button>
-        </form>
-
-        <div class="sm-edit-panel" id="sm-edit-panel" hidden>
-          <h3 class="sm-panel-heading">Edit section</h3>
-          <form method="post" id="sm-edit-form">
-            <input type="hidden" name="action" value="edit-section" />
-            <input type="hidden" name="category_id" id="sm-edit-id" />
-            <div class="field"><label for="sm-name">Section name</label><input id="sm-name" name="name" required maxlength="60" /></div>
-            <div class="field"><label for="sm-subtitle">Subtitle / Serving Hours <span class="hint">optional</span></label><input id="sm-subtitle" name="subtitle" maxlength="120" /></div>
-            <div class="field"><label for="sm-note">Section note <span class="hint">optional</span></label><textarea id="sm-note" name="note" rows="2" maxlength="240"></textarea></div>
-            <div class="sm-edit-actions">
-              <button type="submit" class="btn btn-primary">Save section</button>
-              <button type="button" id="sm-cancel" class="btn btn-ghost">Cancel</button>
-              <button type="submit" name="action" value="delete-section" class="sm-delete" formnovalidate>Delete section</button>
-            </div>
-          </form>
-        </div>
-
-        <div class="sm-add-block">
-          <h3 class="sm-panel-heading">Add a new section</h3>
-          <form method="post" class="sm-add-form">
-            <input type="hidden" name="action" value="add-section" />
-            <div class="field"><label for="sm-new-name">Section name</label><input id="sm-new-name" name="name" required maxlength="60" placeholder="e.g. Wraps" /></div>
-            <button type="submit" class="btn btn-primary">Add section</button>
-          </form>
-        </div>
-
-      </div>
-    </details>
   </div>
 </section>
 
@@ -984,6 +997,7 @@ try {
   .sm-delete{min-height:44px;padding:10px 14px;border:1px solid var(--crimson);border-radius:6px;background:transparent;color:var(--crimson);font:700 .88rem var(--label);letter-spacing:.06em;text-transform:uppercase;cursor:pointer;margin:0;margin-left:auto}
   .sm-delete:hover{background:rgba(141,22,38,.06)}
   .sm-add-block{border-top:1px solid var(--cream-2);padding-top:20px}
+  .sm-flash{display:block;margin:0}
   @media(max-width:680px){
     .section-manager__body{padding:14px 12px;gap:20px}
     .sm-table th:first-child,.sm-table td:first-child{width:60px}
