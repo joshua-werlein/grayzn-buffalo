@@ -46,9 +46,9 @@ if (Astro.request.method === 'POST') {
         setSetting(env, 'announcement_2', String(form.get('announcement_2') ?? '').trim()),
         setSetting(env, 'announcement_3', String(form.get('announcement_3') ?? '').trim()),
       ]);
-      notice = 'Announcements saved.';
+      return Astro.redirect('/admin?settings=1&saved=ann', 303);
     } catch {
-      notice = 'Database not connected yet — see README.';
+      return Astro.redirect('/admin?settings=1&saved=ann-err', 303);
     }
 
   } else if (action === 'save-delivery-status' && authed) {
@@ -56,12 +56,25 @@ if (Astro.request.method === 'POST') {
       const deliveryDisplay = String(form.get('delivery_display') ?? 'available');
       if (!['available', 'unavailable', 'hidden'].includes(deliveryDisplay)) throw new Error('Invalid delivery setting.');
       await setSetting(env, 'delivery_display', deliveryDisplay);
-      notice = deliveryDisplay === 'hidden' ? 'Delivery announcement hidden.' : `Delivery marked ${deliveryDisplay}.`;
+      const code = deliveryDisplay === 'hidden' ? 'del-h' : deliveryDisplay === 'unavailable' ? 'del-u' : 'del-a';
+      return Astro.redirect(`/admin?settings=1&saved=${code}`, 303);
     } catch {
-      notice = 'Database not connected yet — see README.';
+      return Astro.redirect('/admin?settings=1&saved=del-err', 303);
     }
   }
 }
+
+// One-time feedback carried through the PRG redirect.
+const SETTINGS_MESSAGES: Record<string, string> = {
+  'ann':     'Announcements saved.',
+  'ann-err': 'Database not connected — see README.',
+  'del-a':   'Delivery marked available.',
+  'del-u':   'Delivery marked unavailable.',
+  'del-h':   'Delivery announcement hidden.',
+  'del-err': 'Database not connected — see README.',
+};
+const savedCode = Astro.url.searchParams.get('saved');
+if (savedCode) notice = SETTINGS_MESSAGES[savedCode] ?? '';
 
 const announcements = authed
   ? await Promise.all(['announcement_1', 'announcement_2', 'announcement_3'].map((key) => getSetting(env, key, '')))
@@ -72,7 +85,7 @@ const deliveryDisplay = authed ? await getSetting(env, 'delivery_display', 'avai
 <section class="settings-page">
   <div class="section-head">
     <h2>{authed ? 'Admin Settings' : 'Staff Sign In'}</h2>
-    {notice && <p><strong>{notice}</strong></p>}
+    {notice && <p class="settings-notice"><strong>{notice}</strong></p>}
   </div>
   {authed ? (
     <div class="panel admin-dashboard">
@@ -125,6 +138,20 @@ const deliveryDisplay = authed ? await getSetting(env, 'delivery_display', 'avai
 </section>
 </Base>
 
+<script>
+  // Strip ?saved= from the URL after a PRG redirect and auto-hide the flash.
+  const settingsUrl = new URL(location.href);
+  if (settingsUrl.searchParams.has('saved')) {
+    settingsUrl.searchParams.delete('saved');
+    history.replaceState(null, '', settingsUrl.toString());
+    const flash = document.querySelector<HTMLElement>('.settings-notice');
+    if (flash) window.setTimeout(() => {
+      flash.style.transition = 'opacity .4s';
+      flash.style.opacity = '0';
+      window.setTimeout(() => { flash.hidden = true; }, 400);
+    }, 4000);
+  }
+</script>
 {!authed && turnstileOn && (
   <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 )}

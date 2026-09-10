@@ -159,6 +159,7 @@ const restoreWeeklyDraft = (form: FormData) => {
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('action') ?? 'save-weekly-specials');
+  const wantsJson = Astro.request.headers.get('accept')?.includes('application/json');
 
   if (action === 'save-recurring-defaults') {
     restoreWeeklyDraft(form);
@@ -169,9 +170,12 @@ if (Astro.request.method === 'POST') {
       await saveRecurringDefaults(recurringDefaults);
       recurringDefaultsAvailable = true;
       recurringDefaultsError = '';
+      if (wantsJson) return new Response(JSON.stringify({ ok: true, message: 'Recurring defaults saved.' }), { headers: { 'content-type': 'application/json' } });
       notice = 'Recurring defaults saved.';
     } catch (caught) {
-      error = caught instanceof Error ? caught.message : 'Could not save recurring defaults.';
+      const rdMsg = caught instanceof Error ? caught.message : 'Could not save recurring defaults.';
+      if (wantsJson) return new Response(JSON.stringify({ ok: false, error: rdMsg }), { status: 400, headers: { 'content-type': 'application/json' } });
+      error = rdMsg;
     }
   } else if (action === 'save-weekly-specials') {
     keepWeeklyDraft(form);
@@ -201,11 +205,19 @@ if (Astro.request.method === 'POST') {
       await env.DB.batch(writes);
       if (!id) { const created: any = await env.DB.prepare('SELECT id FROM weekly_specials WHERE week_start_date = ?1 AND week_end_date = ?2').bind(weekStart, weekEnd).first(); editingId = String(created?.id ?? ''); }
       weeklyDirty = false;
-      notice = id ? 'Saved week updated.' : 'New future week created.';
+      const wkSavedParam = id ? 'week-updated' : 'week-created';
+      return Astro.redirect(editingId ? `/admin/specials?week=${editingId}&saved=${wkSavedParam}` : `/admin/specials?saved=${wkSavedParam}`, 303);
     } catch (caught) { error = caught instanceof Error ? caught.message : 'Could not save weekly specials.'; }
   } else {
     error = 'Invalid form action.';
   }
+}
+
+// One-time success feedback carried through a PRG redirect (save-weekly-specials).
+if (Astro.request.method !== 'POST') {
+  const wkSavedParam = Astro.url.searchParams.get('saved');
+  if (wkSavedParam === 'week-updated') notice = 'Saved week updated.';
+  else if (wkSavedParam === 'week-created') notice = 'New future week created.';
 }
 
 const savedWeeks: any[] = [];
@@ -229,7 +241,7 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
 ---
 <Base title="Admin · Weekly Specials — Grayz'n Buffalo">
   <section class="specials-admin">
-    <div class="section-head"><h2>Weekly Specials</h2>{notice && <p><strong>{notice}</strong></p>}{error && <p class="error" data-character-limit-error={error === CHARACTER_LIMIT_ERROR ? 'true' : undefined}><strong>{error}</strong></p>}</div>
+    <div class="section-head"><h2>Weekly Specials</h2>{notice && <p class="specials-notice"><strong>{notice}</strong></p>}{error && <p class="error" data-character-limit-error={error === CHARACTER_LIMIT_ERROR ? 'true' : undefined}><strong>{error}</strong></p>}</div>
     <div class="week-picker"><label for="saved-week">Saved week to edit</label><select id="saved-week"><option value="">Select a saved week...</option>{savedWeeks.map((week, index) => <option value={week.id} data-older-week={index >= 4 ? 'true' : undefined} hidden={index >= 4 && !savedWeeksExpanded} selected={String(week.id) === editingId}>{week.week_start_date} – {week.week_end_date}</option>)}</select>{savedWeeks.length > 4 && <button id="saved-weeks-toggle" class="btn btn-ghost week-picker__action" type="button" aria-expanded={savedWeeksExpanded ? 'true' : 'false'} aria-controls="saved-week">{savedWeeksExpanded ? 'View fewer weeks' : 'View more weeks'}</button>}<a class="btn btn-ghost week-picker__action" href="/admin/specials?new=1">Create new week</a></div>
     <form method="post" class="recurring-defaults-form" id="recurring-defaults-form">
       <input id="weekly-draft" type="hidden" name="weekly_draft" value="" />
@@ -247,6 +259,7 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
             {DAYS.slice(0, 5).map((day, index) => <fieldset class="recurring-day-fields"><legend>{day}</legend><div class="service-group"><label for={`recurring-nightly-${index}`}>Nightly Specials <span>5–10 PM</span></label><textarea id={`recurring-nightly-${index}`} name={`recurring_nightly_${index}`} rows="2" maxlength="150">{recurringDefaults[index].nightly_content}</textarea><output class="count">0 / 150</output></div></fieldset>)}
             {DAYS.slice(5).map((day, weekendIndex) => { const index = weekendIndex + 5; const specialLabel = index === 5 ? 'Saturday Special' : 'Sunday Special'; return <fieldset class="recurring-day-fields"><legend>{day}</legend><div class="service-group"><label for={`recurring-lunch-${index}`}>{specialLabel}</label><textarea id={`recurring-lunch-${index}`} name={`recurring_lunch_${index}`} rows="2" maxlength="150">{recurringDefaults[index].lunch_content}</textarea><output class="count">0 / 150</output></div><div class="service-group"><label for={`recurring-all-day-1-${index}`}>First all-day special</label><textarea id={`recurring-all-day-1-${index}`} name={`recurring_all_day_1_${index}`} rows="2" maxlength="150">{recurringDefaults[index].all_day_1_content}</textarea><output class="count">0 / 150</output></div></fieldset>; })}
           </div>
+          <p class="rd-flash" id="rd-flash" hidden></p>
           <button class="btn btn-primary recurring-defaults__save" type="submit" name="action" value="save-recurring-defaults" formnovalidate>Save Recurring Defaults</button>
         </div>
       </details>
@@ -416,14 +429,69 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
     leaving = true;
     weeklyForm.setAttribute('aria-busy', 'true');
   });
-  recurringDefaultsForm?.addEventListener('submit', () => {
+  // Recurring defaults — AJAX so the unsaved weekly draft is never lost.
+  let rdFlashTimer: number | undefined;
+  function showRdFlash(message: string, kind: 'ok' | 'bad') {
+    const el = document.getElementById('rd-flash') as HTMLElement | null;
+    if (!el) return;
+    window.clearTimeout(rdFlashTimer);
+    el.textContent = message;
+    el.dataset.kind = kind;
+    el.style.transition = '';
+    el.style.opacity = '1';
+    el.hidden = false;
+    rdFlashTimer = window.setTimeout(() => {
+      el.style.transition = 'opacity .4s';
+      el.style.opacity = '0';
+      window.setTimeout(() => { el.hidden = true; }, 400);
+    }, 4000);
+  }
+
+  recurringDefaultsForm?.addEventListener('submit', async (event) => {
+    // Serialize the weekly draft first — the hidden field is needed for the
+    // noscript POST fallback path (event.preventDefault only runs with JS).
     if (weeklyForm && weeklyDraft) {
       const fields = Object.fromEntries(Array.from(new FormData(weeklyForm).entries()).filter(([, value]) => typeof value === 'string'));
       weeklyDraft.value = JSON.stringify({ fields, dirty, activeDay: currentDay });
     }
-    leaving = true;
+    event.preventDefault();
+    const saveBtn = recurringDefaultsForm.querySelector<HTMLButtonElement>('button[value="save-recurring-defaults"]');
+    if (saveBtn) saveBtn.disabled = true;
     recurringDefaultsForm.setAttribute('aria-busy', 'true');
+    try {
+      const body = new FormData(recurringDefaultsForm);
+      body.set('action', 'save-recurring-defaults');
+      const res = await fetch('/admin/specials', {
+        method: 'POST',
+        headers: { accept: 'application/json' },
+        body,
+      });
+      const data = await res.json() as { ok: boolean; message?: string; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? 'Could not save recurring defaults.');
+      showRdFlash(data.message ?? 'Recurring defaults saved.', 'ok');
+    } catch (err) {
+      showRdFlash((err as Error).message, 'bad');
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
+      recurringDefaultsForm.removeAttribute('aria-busy');
+    }
   });
+
+  // Strip ?saved= from the URL after a save-weekly-specials PRG redirect and
+  // auto-hide the page-level success notice.
+  const specialsNotice = document.querySelector<HTMLElement>('.specials-notice');
+  if (specialsNotice) {
+    const specialsUrl = new URL(location.href);
+    if (specialsUrl.searchParams.has('saved')) {
+      specialsUrl.searchParams.delete('saved');
+      history.replaceState(null, '', specialsUrl.toString());
+    }
+    window.setTimeout(() => {
+      specialsNotice.style.transition = 'opacity .4s';
+      specialsNotice.style.opacity = '0';
+      window.setTimeout(() => { specialsNotice.hidden = true; }, 400);
+    }, 4000);
+  }
 </script>
 <style>
   .week-picker,.weekly-form,.recurring-defaults-form{width:100%;max-width:1440px;margin:0 auto;background:#fff;border-radius:12px;padding:20px;box-shadow:0 6px 16px rgba(36,22,16,.1)}.week-picker{display:flex;align-items:end;gap:12px;margin-bottom:18px;flex-wrap:wrap}.week-picker label{width:100%}.week-picker select{width:320px;min-width:0;white-space:nowrap}.week-picker .btn{margin:0;white-space:nowrap}.week-picker__action{box-sizing:border-box;width:210px;height:48px;min-height:48px;padding:12px 24px;border-width:2px;border-radius:var(--control-radius);font-size:1rem;font-weight:700;line-height:20px}.recurring-defaults-form{margin:0 auto 18px}.recurring-defaults{margin:0;border:1px solid rgba(36,22,16,.2);border-radius:10px;background:var(--cream)}.recurring-defaults summary{cursor:pointer;padding:14px 16px;font-family:var(--label);font-size:.9rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.recurring-defaults[open] summary{border-bottom:1px solid rgba(36,22,16,.16)}.recurring-defaults__content{padding:16px}.recurring-defaults__intro{margin:0 0 16px;color:var(--ink-2);font-weight:700}.recurring-defaults__error{margin:0 0 16px}.recurring-defaults__shared{margin:0;padding:14px;border:1px solid rgba(36,22,16,.16);border-radius:8px;display:grid;gap:6px}.recurring-defaults__shared legend{padding:0 5px;font-size:.78rem}.recurring-defaults__preset{display:grid;grid-template-columns:auto minmax(220px,420px);align-items:center;gap:8px;margin-bottom:6px}.recurring-defaults__preset select{width:100%}.recurring-defaults__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}.recurring-day-fields{min-width:0;margin:0;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px;display:grid;gap:12px}.recurring-day-fields legend{padding:0 5px;font-size:.78rem}.recurring-defaults__save{margin-top:16px}.week-dates{border:0}.week-date-controls{display:flex;align-items:center;gap:20px;flex-wrap:wrap}.week-date-group{display:grid;grid-template-columns:auto 230px;align-items:center;gap:8px}.week-date-group--end{grid-template-columns:auto 160px auto}.week-dates>p{margin:10px 0 0;color:var(--ink-2)}.week-dates input{width:230px;box-sizing:border-box;height:44px}.week-end-label{font-family:var(--label);font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.week-end-value{display:block;box-sizing:border-box;width:160px;height:44px;min-height:44px;padding:10px;overflow:hidden;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit;line-height:20px;white-space:nowrap}.week-end-helper{margin:0!important;color:var(--ink-2);font-size:.9rem;font-style:italic;font-weight:700;white-space:nowrap}legend,label{font-family:var(--label);font-weight:700;letter-spacing:.08em;text-transform:uppercase}.week-dates legend{margin-bottom:8px}label{font-size:.78rem}.day-fields label span,.recurring-defaults label span{text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-2)}input,select,textarea{padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit}textarea{width:100%;resize:vertical}.instructions{margin:18px 0;color:var(--ink-2)}.day-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.day-fields{min-width:0;border:1px solid rgba(36,22,16,.16);border-radius:10px;padding:16px;display:grid;gap:14px}.service-group,.all-day-group{display:grid;gap:6px;min-width:0}.all-day-group{margin:0;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px}.all-day-group legend{padding:0 5px;font-size:.78rem}.count{justify-self:end;font-size:.75rem;color:var(--ink-2)}button{margin-top:20px}.error{color:var(--crimson)}@media(min-width:1280px){.day-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(max-width:900px){.day-grid,.recurring-defaults__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:680px){.weekly-form,.recurring-defaults-form{padding:16px}.week-date-controls,.week-date-group,.week-date-group--end,.day-grid,.recurring-defaults__grid{grid-template-columns:1fr}.week-date-controls{display:grid}.week-date-group{gap:6px}.week-dates input,.week-end-value{width:100%}.week-end-helper{grid-column:1;white-space:normal}.week-picker select{width:100%}.recurring-defaults__content{padding:14px}.recurring-defaults__preset{grid-template-columns:1fr}.recurring-defaults__preset select{min-width:0}}
@@ -472,4 +540,7 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
     .week-save-row .btn{width:auto;padding-inline:16px;letter-spacing:.04em}
   }
   @media(prefers-reduced-motion:reduce){.specials-admin{scroll-behavior:auto}}
+  .rd-flash{font-weight:700;margin-top:10px}
+  .rd-flash[data-kind="ok"]{color:var(--ink)}
+  .rd-flash[data-kind="bad"]{color:var(--crimson)}
 </style>
