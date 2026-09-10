@@ -73,6 +73,53 @@ if (Astro.request.method === 'POST') {
     } else if (action === 'toggle') {
       await env.DB.prepare('UPDATE items SET active = 1 - active WHERE id = ?1').bind(Number(f.get('id'))).run();
       notice = 'Item updated.';
+
+    } else if (action === 'add-section') {
+      const name = String(f.get('name') ?? '').trim();
+      if (!name) throw new Error('Section name is required.');
+      if (name.length > 60) throw new Error('Section name must be 60 characters or fewer.');
+      await env.DB.prepare(
+        'INSERT INTO categories (name, sort) VALUES (?1, COALESCE((SELECT MAX(sort)+1 FROM categories), 0))'
+      ).bind(name).run();
+      notice = `Section "${name}" added.`;
+
+    } else if (action === 'edit-section') {
+      const id = Number(f.get('category_id'));
+      if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid section.');
+      const name = String(f.get('name') ?? '').trim();
+      if (!name) throw new Error('Section name is required.');
+      if (name.length > 60) throw new Error('Section name must be 60 characters or fewer.');
+      await env.DB.prepare(
+        'UPDATE categories SET name = ?2, subtitle = ?3, note = ?4 WHERE id = ?1'
+      ).bind(id, name, String(f.get('subtitle') ?? '').trim(), String(f.get('note') ?? '').trim()).run();
+      notice = 'Section updated.';
+
+    } else if (action === 'reorder-sections') {
+      const updates = Array.from(f.entries())
+        .filter(([key]) => key.startsWith('sort_'))
+        .map(([key, val]) => {
+          const id = Number(key.slice(5));
+          const sort = Number(val);
+          if (!Number.isInteger(id) || id <= 0 || !Number.isFinite(sort) || sort < 0) return null;
+          return { id, sort: Math.round(sort) };
+        })
+        .filter(Boolean) as { id: number; sort: number }[];
+      if (updates.length) {
+        await env.DB.batch(
+          updates.map(({ id, sort }) => env.DB.prepare('UPDATE categories SET sort = ?2 WHERE id = ?1').bind(id, sort))
+        );
+      }
+      notice = 'Section order saved.';
+
+    } else if (action === 'delete-section') {
+      const id = Number(f.get('category_id'));
+      if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid section.');
+      const itemCount: any = await env.DB.prepare(
+        'SELECT COUNT(*) as n FROM items WHERE category_id = ?1'
+      ).bind(id).first();
+      if (Number(itemCount?.n ?? 1) > 0) throw new Error('Remove all items from this section before deleting it.');
+      await env.DB.prepare('DELETE FROM categories WHERE id = ?1').bind(id).run();
+      notice = 'Section deleted.';
     }
     if (wantsJson) {
       return new Response(JSON.stringify({ ok: true, action, id: Number(f.get('id')), message: notice }), {
@@ -174,22 +221,6 @@ try {
     {categories.map((c:any) => (
       <div class="cat" id={`cat-${slug(c.name)}`} data-category-id={c.id}>
         <h3>{c.name}</h3>
-        <details>
-          <summary>Section details</summary>
-          <form method="post" class="section-details-form">
-            <input type="hidden" name="action" value="section-details" />
-            <input type="hidden" name="category_id" value={c.id} />
-            <div class="field">
-              <label for={`subtitle-${c.id}`}>Subtitle / serving hours</label>
-              <input id={`subtitle-${c.id}`} name="subtitle" value={c.subtitle ?? ''} />
-            </div>
-            <div class="field">
-              <label for={`note-${c.id}`}>Section note (no prices)</label>
-              <textarea id={`note-${c.id}`} name="note" rows="3">{c.note ?? ''}</textarea>
-            </div>
-            <button type="submit">Save section details</button>
-          </form>
-        </details>
         <ul>
           {items.filter((i:any) => i.category_id === c.id).map((i:any) => (
             <li id={`item-${i.id}`} class:list={['menu-item', { inactive: !i.active }]} data-item-name={i.name} data-description={i.description ?? ''} data-section={i.category_id} data-active={i.active} data-late={i.late_night}>
@@ -316,7 +347,55 @@ try {
       </div>
     ))}
 
-    <p class="back"><a href="/admin">← Back to admin</a></p>
+    <details class="section-manager" id="section-manager">
+      <summary>Manage Sections</summary>
+      <div class="section-manager__body">
+
+        <form method="post" id="sm-order-form" class="sm-order-form">
+          <input type="hidden" name="action" value="reorder-sections" />
+          <p class="sm-hint">Edit order numbers and save, or use the Edit button to rename, add details, or delete a section.</p>
+          <table class="sm-table">
+            <thead><tr><th>Order</th><th>Name</th><th></th></tr></thead>
+            <tbody>
+              {categories.map((c: any) => (
+                <tr>
+                  <td><input class="sm-sort-input" type="number" name={`sort_${c.id}`} value={c.sort} min="0" max="999" aria-label={`Sort order for ${c.name}`} /></td>
+                  <td class="sm-name-cell">{c.name}{c.subtitle && <span class="sm-sub">{c.subtitle}</span>}</td>
+                  <td><button type="button" class="sm-edit-btn" data-id={String(c.id)} data-name={c.name} data-subtitle={c.subtitle ?? ''} data-note={c.note ?? ''}>Edit</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button type="submit" class="btn btn-ghost sm-save-order">Save order</button>
+        </form>
+
+        <div class="sm-edit-panel" id="sm-edit-panel" hidden>
+          <h3 class="sm-panel-heading">Edit section</h3>
+          <form method="post" id="sm-edit-form">
+            <input type="hidden" name="action" value="edit-section" />
+            <input type="hidden" name="category_id" id="sm-edit-id" />
+            <div class="field"><label for="sm-name">Section name</label><input id="sm-name" name="name" required maxlength="60" /></div>
+            <div class="field"><label for="sm-subtitle">Subtitle / Serving Hours <span class="hint">optional</span></label><input id="sm-subtitle" name="subtitle" maxlength="120" /></div>
+            <div class="field"><label for="sm-note">Section note <span class="hint">optional</span></label><textarea id="sm-note" name="note" rows="2" maxlength="240"></textarea></div>
+            <div class="sm-edit-actions">
+              <button type="submit" class="btn btn-primary">Save section</button>
+              <button type="button" id="sm-cancel" class="btn btn-ghost">Cancel</button>
+              <button type="submit" name="action" value="delete-section" class="sm-delete" formnovalidate>Delete section</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="sm-add-block">
+          <h3 class="sm-panel-heading">Add a new section</h3>
+          <form method="post" class="sm-add-form">
+            <input type="hidden" name="action" value="add-section" />
+            <div class="field"><label for="sm-new-name">Section name</label><input id="sm-new-name" name="name" required maxlength="60" placeholder="e.g. Wraps" /></div>
+            <button type="submit" class="btn btn-primary">Add section</button>
+          </form>
+        </div>
+
+      </div>
+    </details>
   </div>
 </section>
 
@@ -441,7 +520,7 @@ try {
   // Existing items update in place. Adding is deliberately different: its
   // redirect is what reveals the newly created item in its section.
   document.querySelectorAll<HTMLFormElement>('form[method="post"]').forEach((form) => {
-    if (form === addForm || form.classList.contains('section-details-form') || !form.querySelector('input[name="action"]')) return;
+    if (form === addForm || form.closest('.section-manager') || !form.querySelector('input[name="action"]')) return;
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -663,6 +742,27 @@ try {
     if (editor) editor.open = true;
   }
   applyFilters();
+
+  // Section manager — edit panel toggle
+  const smEditPanel = document.getElementById('sm-edit-panel') as HTMLElement | null;
+  const smEditId = document.getElementById('sm-edit-id') as HTMLInputElement | null;
+  const smName = document.getElementById('sm-name') as HTMLInputElement | null;
+  const smSubtitle = document.getElementById('sm-subtitle') as HTMLInputElement | null;
+  const smNote = document.getElementById('sm-note') as HTMLTextAreaElement | null;
+  document.querySelectorAll<HTMLButtonElement>('.sm-edit-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (smEditId) smEditId.value = btn.dataset.id ?? '';
+      if (smName) smName.value = btn.dataset.name ?? '';
+      if (smSubtitle) smSubtitle.value = btn.dataset.subtitle ?? '';
+      if (smNote) smNote.value = btn.dataset.note ?? '';
+      if (smEditPanel) { smEditPanel.hidden = false; smEditPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+    });
+  });
+  document.getElementById('sm-cancel')?.addEventListener('click', () => { if (smEditPanel) smEditPanel.hidden = true; });
+  document.getElementById('sm-edit-form')?.addEventListener('submit', (e) => {
+    const clickedAction = (e.submitter as HTMLButtonElement | null)?.value;
+    if (clickedAction === 'delete-section' && !confirm('Delete this section? This only works if the section has no menu items.')) e.preventDefault();
+  });
 </script>
 
 <style>
@@ -840,12 +940,9 @@ try {
   .preview{max-width:560px}
   .preview img{object-fit:contain}
   .pick-btn{min-height:52px;font-size:.9rem;letter-spacing:.04em}
-  .row-actions button,.rotate-photo,.remove-photo,.delete-zone button,.section-details-form button,#clear-add-photo,#clear-filters{min-height:46px;padding:10px 14px;border:2px solid var(--ink);border-radius:6px;background:transparent;font:700 .95rem var(--label);cursor:pointer}
+  .row-actions button,.rotate-photo,.remove-photo,.delete-zone button,#clear-add-photo,#clear-filters{min-height:46px;padding:10px 14px;border:2px solid var(--ink);border-radius:6px;background:transparent;font:700 .95rem var(--label);cursor:pointer}
   .delete-zone{margin-top:24px;padding:16px 0 0;border-top:1px dashed var(--crimson);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;color:var(--ink-2);font-size:.9rem}
   .delete-zone button,.remove-photo{color:var(--crimson);border-color:var(--crimson)}
-  .cat>details>summary{min-height:44px;padding:10px 0;cursor:pointer}
-  .section-details-form{display:grid;gap:12px;margin:8px 0 16px;padding:16px;background:#fff;border-radius:8px}
-  .section-details-form button{justify-self:start}
   .menu-item[hidden],.cat[hidden],.jump-card[hidden],.menu-filters[hidden],.photo-tools[hidden],.hidden-badge[hidden],.add-photo-preview[hidden],#clear-add-photo[hidden]{display:none}
   @media(max-width:680px){
     .menu-admin{padding:24px 12px 32px}
@@ -863,4 +960,34 @@ try {
     .edit-form button,.add-form>button{width:100%}
   }
   @media(max-width:1099px){.toast{bottom:calc(150px + env(safe-area-inset-bottom))}}
+
+  /* ---- Manage Sections ---- */
+  .section-manager{margin-top:32px;border:1px solid rgba(36,22,16,.18);border-radius:10px;background:#fff;box-shadow:0 4px 12px rgba(36,22,16,.07)}
+  .section-manager>summary{cursor:pointer;padding:14px 18px;font-family:var(--label);font-size:.9rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+  .section-manager[open]>summary{border-bottom:1px solid rgba(36,22,16,.12);color:var(--ink)}
+  .section-manager__body{padding:20px 18px;display:grid;gap:28px}
+  .sm-hint{margin:0 0 12px;font-size:.88rem;color:var(--ink-2)}
+  .sm-table{width:100%;border-collapse:collapse;font-size:.95rem}
+  .sm-table th{font-family:var(--label);font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2);padding:6px 8px 6px 0;border-bottom:2px solid var(--cream-2);text-align:left}
+  .sm-table td{padding:8px 8px 8px 0;border-bottom:1px solid var(--cream-2);vertical-align:middle}
+  .sm-sort-input{width:60px;padding:6px 8px;border:2px solid rgba(36,22,16,.2);border-radius:6px;background:var(--cream);font:inherit;font-size:.95rem;text-align:center}
+  .sm-name-cell{font-weight:600}
+  .sm-sub{display:block;font-size:.8rem;font-weight:400;color:var(--ink-2);margin-top:2px}
+  .sm-edit-btn{min-height:38px;padding:6px 12px;border:1px solid var(--ink-2);border-radius:6px;background:transparent;font:600 .82rem var(--label);letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+  .sm-edit-btn:hover{background:rgba(36,22,16,.06)}
+  .sm-save-order{margin-top:12px}
+  .sm-edit-panel{padding:16px;background:var(--cream);border-radius:8px;border:2px solid var(--gold)}
+  .sm-edit-panel[hidden]{display:none}
+  .sm-panel-heading{margin:0 0 14px;font-family:var(--label);font-size:.82rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
+  .sm-edit-form .field,.sm-add-form .field{display:grid;gap:5px;margin-bottom:12px}
+  .sm-edit-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:4px}
+  .sm-delete{min-height:44px;padding:10px 14px;border:1px solid var(--crimson);border-radius:6px;background:transparent;color:var(--crimson);font:700 .88rem var(--label);letter-spacing:.06em;text-transform:uppercase;cursor:pointer;margin:0;margin-left:auto}
+  .sm-delete:hover{background:rgba(141,22,38,.06)}
+  .sm-add-block{border-top:1px solid var(--cream-2);padding-top:20px}
+  @media(max-width:680px){
+    .section-manager__body{padding:14px 12px;gap:20px}
+    .sm-table th:first-child,.sm-table td:first-child{width:60px}
+    .sm-edit-actions{display:grid;grid-template-columns:1fr 1fr}
+    .sm-delete{margin-left:0;grid-column:1/-1}
+  }
 </style>

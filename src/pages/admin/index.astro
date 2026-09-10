@@ -11,6 +11,10 @@ let authed = await isAuthed(Astro.cookies, env);
 let error = '';
 let notice = '';
 
+if (Astro.request.method === 'GET' && authed && !Astro.url.searchParams.has('settings')) {
+  return Astro.redirect('/admin/specials', 302);
+}
+
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = form.get('action');
@@ -33,7 +37,7 @@ if (Astro.request.method === 'POST') {
 
   } else if (action === 'logout') {
     await logout(Astro.cookies, env);
-    authed = false;
+    return Astro.redirect('/', 303);
 
   } else if (action === 'save-announcements' && authed) {
     try {
@@ -105,11 +109,6 @@ const deliveryDisplay = authed ? await getSetting(env, 'delivery_display', 'avai
         <button class="btn btn-primary" type="submit">Save delivery status</button>
       </form>
 
-      <form method="post" class="signout-form">
-        <p>Finished managing the site?</p>
-        <input type="hidden" name="action" value="logout" />
-        <button class="btn btn-ghost" type="submit">Sign out</button>
-      </form>
     </div>
   ) : (
     <form method="post" class="panel">
@@ -149,9 +148,6 @@ const deliveryDisplay = authed ? await getSetting(env, 'delivery_display', 'avai
   .admin-dashboard{max-width:760px;text-align:left}
   .settings-intro{color:var(--ink-2);font-size:1rem}
   .panel input,.panel select{min-width:0;min-height:48px;max-width:100%}
-  .signout-form{margin-top:30px;padding-top:22px;border-top:2px solid var(--cream-2);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-  .signout-form p{color:var(--ink-2)}
-  .signout-form button{border-color:var(--crimson);color:var(--crimson)}
   .cf-turnstile{min-height:140px}
   @media(max-width:680px){
     .settings-page{padding:24px 12px 32px}
@@ -159,7 +155,5 @@ const deliveryDisplay = authed ? await getSetting(env, 'delivery_display', 'avai
     .section-head{margin-bottom:20px}
     .panel .btn{width:100%;padding-inline:12px;letter-spacing:.04em}
     .panel input,.panel select{font-size:16px}
-    .signout-form{display:block}
-    .signout-form p{margin-bottom:10px}
   }
 </style>
