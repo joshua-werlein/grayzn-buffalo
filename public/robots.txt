@@ -1,4 +1,5 @@
-# Public pages and the menu data feed are available to search and AI crawlers.
+# Public pages and the menu data feed are available to general search crawlers.
+# Cloudflare may prepend additional managed rules for specific AI crawlers.
 User-agent: *
 Allow: /
 Disallow: /admin/

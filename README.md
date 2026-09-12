@@ -44,7 +44,7 @@ A separate scheduled Cloudflare Worker integrates the restaurant's Facebook Page
 - Keyboard-accessible dialogs and lightboxes
 - Reduced-motion support
 - Structured SEO, sitemap, Open Graph, and LocalBusiness data
-- Staging-to-production deployment workflow
+- Production deployment workflow with a completed staging-to-production launch
 
 ---
 
@@ -87,7 +87,7 @@ The customer-facing application includes:
 - Restaurant hours and location
 - Google Maps integration
 - Contact form
-- Server-rendered Facebook feed
+- Client-rendered Facebook cards from a server-cached feed endpoint
 - Welcome photography
 - Privacy and accessibility pages
 - Mobile navigation
@@ -186,10 +186,14 @@ Every 30 minutes, the Worker:
 
 1. Requests recent Page content through the Facebook Graph API.
 2. Normalizes the post data required by the public website.
-3. Stores the current feed state in Cloudflare KV.
-4. Copies supported remote media into Cloudflare R2.
-5. Prunes feed-owned media when appropriate.
-6. Serves the resulting feed through a same-origin endpoint.
+3. Copies supported remote media into Cloudflare R2.
+4. Publishes the replacement feed and retired-post retention information together in KV.
+5. After successful publication, retries cleanup of eligible retired media on every refresh.
+
+Retired posts retain their media for four days plus five minutes, covering the
+public stale-feed window and an additional cache/propagation buffer. Current post
+versions and recent uploads are protected. A failed KV write never triggers pruning.
+The GET endpoint serves the public feed; the browser builds its cards.
 
 ### Failure Handling
 
@@ -199,7 +203,9 @@ If Facebook or another refresh dependency becomes temporarily unavailable, the W
 
 The public page therefore does not depend on a live Facebook browser embed.
 
-No Facebook SDK or feed script is required in the visitor's browser.
+No Facebook SDK or third-party Facebook script is required in the visitor's browser.
+The site's own script fetches the feed; server-rendered fallback content is present
+before it loads. Feeds older than four days produce the Facebook-link fallback.
 
 ---
 
@@ -224,6 +230,10 @@ Current protections include:
 - Secrets stored in Cloudflare configuration rather than source control
 
 Sensitive credentials, API tokens, and passwords must never be committed to this repository.
+
+CSP deliberately remains Content-Security-Policy-Report-Only because Cloudflare
+JavaScript Detections injects changing executable inline scripts at the edge.
+Do not enforce the policy or add 'unsafe-inline' to script-src to work around this.
 
 ---
 
@@ -353,6 +363,14 @@ Runtime secrets/environment variables include:
 
 Secret values are configured in Cloudflare and are not stored in source control.
 
+Contact delivery requires TURNSTILE_SECRET, RESEND_API_KEY, and CONTACT_TO_EMAIL;
+TURNSTILE_SITEKEY renders the browser widget. Missing server configuration returns
+a controlled unavailable response and never bypasses verification or selects a
+fallback recipient. CONTACT_TO_EMAIL must be a single valid email address.
+Contact inputs are limited to 100 characters for name, 254 for email, and 5,000
+for message. Provider failures return generic errors; the browser resets the
+Turnstile widget after each submission so a retry gets a fresh token.
+
 ---
 
 ## Database
@@ -377,7 +395,9 @@ The repository also contains:
 schema.sql
 ```
 
-for the current schema/bootstrap state.
+for fresh database bootstrapping. Do not replay historical migrations over it;
+existing production legacy columns are intentionally left alone. See the recovery
+instructions before restoring menu data.
 
 Production database operations should be performed deliberately against the configured remote database rather than by assuming local development data matches production.
 
@@ -397,7 +417,8 @@ The canonical production hostname is:
 https://grayznbuffalo.com
 ```
 
-A separate staging hostname is used for pre-production validation.
+A separate staging hostname was used before launch; grazynbuffalo.com now redirects
+to the canonical production site.
 
 The Facebook feed Worker has its own configuration under:
 
@@ -444,7 +465,7 @@ See the live site's Privacy page for the current user-facing disclosure.
 
 ## Screenshots
 
-The screenshots below show representative public views from the current staging deployment. Administrative screenshots are intentionally omitted because those routes require authentication and no credentials or private operational data are included in repository documentation.
+The screenshots below show representative public views captured before production cutover. Administrative screenshots are intentionally omitted because those routes require authentication and no credentials or private operational data are included in repository documentation.
 
 ### Homepage
 

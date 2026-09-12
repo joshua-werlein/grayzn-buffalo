@@ -2,6 +2,9 @@ const TIME_ZONE = 'America/Chicago';
 const GRAPH_API_VERSION = 'v26.0';
 const FEED_KEY = 'fb:feed';
 const MAX_POSTS = 4;
+// Retain retired media beyond the four-day public stale limit, plus a buffer
+// for KV propagation and the endpoint's 60-second edge/browser cache.
+const IMAGE_RETENTION_MS = (4 * 24 * 60 * 60 + 5 * 60) * 1000;
 
 const RESPONSE_SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
@@ -89,9 +92,6 @@ function imageKeyFromPost(post) {
 function emptyFeed() {
   return { updatedAt: new Date().toISOString(), posts: [] };
 }
-function postSetChanged(previousPosts, posts) {
-  return previousPosts.map((post) => post.id).join('|') !== posts.map((post) => post.id).join('|');
-}
 async function saveImage(post, env, previousPost) {
   if (!post.full_picture) return { imageKey: null, imageUrl: null };
   const sourceVersion = imageSourceVersion(post);
@@ -126,13 +126,19 @@ function belongsToLivePost(key, livePostIds) {
   });
 }
 
-async function pruneFeedImages(env, livePostIds) {
+async function pruneFeedImages(env, protectedPosts, now) {
+  const livePostIds = new Set(protectedPosts.map((post) => post.id));
+  const protectedKeys = new Set(protectedPosts.map(imageKeyFromPost).filter(Boolean));
   let cursor;
   do {
     const page = await env.PHOTOS.list({ prefix: 'facebook/', cursor });
     // Keep every version for posts still in the feed. This preserves local
     // cache compatibility when a post image refreshes to a new versioned key.
-    const staleKeys = page.objects.map((object) => object.key).filter((key) => !belongsToLivePost(key, livePostIds));
+    const staleKeys = page.objects.filter((object) =>
+      !protectedKeys.has(object.key) && !belongsToLivePost(object.key, livePostIds) &&
+      // Also protect recent uploads that are not yet visible in a KV reader.
+      new Date(object.uploaded).getTime() <= now - IMAGE_RETENTION_MS,
+    ).map((object) => object.key);
     await Promise.all(staleKeys.map((key) => env.PHOTOS.delete(key)));
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
@@ -186,7 +192,14 @@ async function refreshFeed(env) {
 
     return;
   }
-  const result = await response.json();
+  let result;
+  try {
+    result = await response.json();
+    if (!Array.isArray(result?.data)) throw new Error('Invalid Facebook feed shape');
+  } catch {
+    console.error('Facebook Graph API returned an invalid feed');
+    return;
+  }
   const latestPosts = (result.data ?? [])
     .map((post) => ({ ...post, message: cleanMessage(post.message) }))
     .filter((post) => post.id && post.created_time && post.permalink_url && (post.message || post.full_picture))
@@ -199,15 +212,35 @@ async function refreshFeed(env) {
     permalinkUrl: post.permalink_url,
     ...(await saveImage(post, env, previousById.get(post.id))),
   })));
-  if (postSetChanged(previous.posts ?? [], posts)) {
-    try {
-      await pruneFeedImages(env, new Set(posts.map((post) => post.id)));
-    } catch (error) {
-      // A later scheduled refresh retries cleanup; a failed prune never blocks the feed.
-      console.error('Unable to prune stale Facebook feed images', String(error));
+  const now = Date.now();
+  const liveIds = new Set(posts.map((post) => post.id));
+  const liveKeys = new Set(posts.map(imageKeyFromPost).filter(Boolean));
+  const retainedPosts = (previous.retainedPosts ?? []).filter((post) =>
+    post.retainUntil > now && !liveKeys.has(post.imageKey),
+  );
+  for (const post of previous.posts ?? []) {
+    const key = imageKeyFromPost(post);
+    // An old exact key may use a legacy dated path even when its post remains
+    // live. Preserve it too when the image changes or disappears from Graph.
+    if (!liveIds.has(post.id) || (key && !liveKeys.has(key))) {
+      retainedPosts.push({ id: post.id, imageKey: key, retainUntil: now + IMAGE_RETENTION_MS });
     }
   }
-  await env.FB_KV.put(FEED_KEY, JSON.stringify({ updatedAt: new Date().toISOString(), posts }));
+  // Commit the feed and retention information together. If publication fails,
+  // leave every old image intact; a later cron can try publication again.
+  try {
+    await env.FB_KV.put(FEED_KEY, JSON.stringify({ updatedAt: new Date(now).toISOString(), posts, retainedPosts }));
+  } catch {
+    console.error('Unable to publish Facebook feed');
+    return;
+  }
+  try {
+    // Scan on every successful refresh, even if posts are unchanged. Failed
+    // deletes remain eligible on the next refresh without another post change.
+    await pruneFeedImages(env, [...posts, ...retainedPosts], now);
+  } catch {
+    console.error('Unable to prune stale Facebook feed images; will retry after the next successful refresh');
+  }
 }
 
 export default {

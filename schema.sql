@@ -1,4 +1,6 @@
--- Grayz'n Buffalo menu system. One system, admin-managed categories.
+-- Current bootstrap for a NEW database, not an upgrade script.
+-- Do not replay historical ALTER/backfill migrations on top of this schema.
+-- Categories are printed menu sections; Daily/Late Night are per-item views.
 CREATE TABLE IF NOT EXISTS categories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,           -- Real menu section name
@@ -14,7 +16,7 @@ CREATE TABLE IF NOT EXISTS items (
   sort INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
   photo_key TEXT,
-  photo_orientation TEXT NOT NULL DEFAULT 'portrait',
+  photo_orientation TEXT NOT NULL DEFAULT 'portrait' CHECK (photo_orientation IN ('portrait', 'square', 'landscape')),
   late_night INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS welcome_photos (
@@ -22,9 +24,10 @@ CREATE TABLE IF NOT EXISTS welcome_photos (
   photo_key TEXT,
   alt TEXT NOT NULL DEFAULT '',
   caption TEXT NOT NULL DEFAULT '',
-  orientation TEXT NOT NULL DEFAULT 'portrait'
+  orientation TEXT NOT NULL DEFAULT 'portrait' CHECK (orientation IN ('portrait', 'square', 'landscape'))
 );
--- Specials: one per day-of-week (0=Sun..6=Sat); tag e.g. 'Mexican Night'
+-- Retained legacy table, matching the historical schema through migration 0008.
+-- Current pages use weekly_specials; no legacy specials are seeded here.
 CREATE TABLE IF NOT EXISTS specials (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   day_of_week INTEGER NOT NULL UNIQUE,
@@ -36,45 +39,12 @@ CREATE TABLE IF NOT EXISTS specials (
   lunch_tag TEXT DEFAULT NULL,
   night_name TEXT NOT NULL DEFAULT '',
   night_description TEXT NOT NULL DEFAULT '',
-  night_tag TEXT DEFAULT NULL
+  night_tag TEXT DEFAULT NULL,
+  allday_name TEXT NOT NULL DEFAULT '',
+  allday_description TEXT NOT NULL DEFAULT '',
+  allday_tag TEXT DEFAULT NULL
 );
 
--- Grayz'n Buffalo menu system. One system, admin-managed categories.
--- categories = the real printed menu sections. "Daily" / "Late Night" are
--- UI tabs on /menu, NOT rows here. Late Night is a per-item flag (see items).
-CREATE TABLE IF NOT EXISTS categories (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,           -- 'Appetizers', 'Burgers', 'Pizzas', ...
-  sort INTEGER NOT NULL DEFAULT 0,
-  subtitle TEXT NOT NULL DEFAULT '',
-  note TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS items (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  category_id INTEGER NOT NULL REFERENCES categories(id),
-  name TEXT NOT NULL,
-  description TEXT DEFAULT '',
-  sort INTEGER NOT NULL DEFAULT 0,
-  active INTEGER NOT NULL DEFAULT 1,
-  photo_key TEXT,
-  photo_orientation TEXT NOT NULL DEFAULT 'portrait',
-  late_night INTEGER NOT NULL DEFAULT 0   -- 1 = available after the grill closes
-);
--- Specials: one per day-of-week (0=Sun..6=Sat); tag e.g. 'Mexican Night'
-CREATE TABLE IF NOT EXISTS specials (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  day_of_week INTEGER NOT NULL UNIQUE,
-  name TEXT NOT NULL,
-  description TEXT DEFAULT '',
-  tag TEXT DEFAULT NULL,
-  lunch_name TEXT NOT NULL DEFAULT '',
-  lunch_description TEXT NOT NULL DEFAULT '',
-  lunch_tag TEXT DEFAULT NULL,
-  night_name TEXT NOT NULL DEFAULT '',
-  night_description TEXT NOT NULL DEFAULT '',
-  night_tag TEXT DEFAULT NULL
-);
- 
 -- Settings: single key/value store for site-wide toggles and copy.
 -- Reusable for the delivery pause switch, happy-hour notice, holiday hours, etc.
 CREATE TABLE IF NOT EXISTS settings (
@@ -83,6 +53,8 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 
 -- Weekly specials are deliberately separate from the legacy fixed-weekday table.
+-- Fresh databases need only the two current all-day fields. Migration 0011
+-- retains/backfills allday_content on EXISTING databases; it is not replayed here.
 CREATE TABLE IF NOT EXISTS weekly_specials (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   week_start_date TEXT NOT NULL,
@@ -100,7 +72,6 @@ CREATE TABLE IF NOT EXISTS weekly_special_days (
   weekly_special_id INTEGER NOT NULL REFERENCES weekly_specials(id) ON DELETE CASCADE,
   day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
   lunch_content TEXT NOT NULL DEFAULT '',
-  allday_content TEXT NOT NULL DEFAULT '',
   all_day_1_content TEXT NOT NULL DEFAULT '',
   all_day_2_content TEXT NOT NULL DEFAULT '',
   nightly_content TEXT NOT NULL DEFAULT '',
@@ -118,7 +89,7 @@ CREATE TABLE IF NOT EXISTS weekly_special_recurring_default_days (
   nightly_content TEXT
 );
 
--- Seed from the verified latest calendar-week data. These are templates only:
+-- Initial recurring templates from migration 0012, not live business data:
 -- changing them never changes an existing weekly_special_days row.
 INSERT INTO weekly_special_recurring_default_days (
   day_of_week,
@@ -155,19 +126,3 @@ INSERT INTO settings (key, value) VALUES
 ON CONFLICT(key) DO NOTHING;
  
 -- Menu content is restored separately from recovery/menu-canonical.sql into empty menu tables.
-
-INSERT INTO specials (day_of_week, name, description, tag) VALUES
- (0, 'Broasted Chicken Dinner', 'Golden broasted chicken with all the fixings.', NULL),
- (1, 'Burger & Basket Night', 'Grayz''n Burger with a basket of waffle fries.', NULL),
- (2, 'Mexican Night', 'Tacos, quesadillas, and wet burritos.', 'Mexican Night'),
- (3, 'Grilled Chicken Salad', 'Plus the Grayz''n Burger with a side.', NULL),
- (4, 'Soup & Sandwich', 'Cup of the day''s soup with a grilled sandwich.', NULL),
- (5, 'Friday Fish', 'It''s Wisconsin — you know what night it is.', NULL),
- (6, 'Grill Master''s Pick', 'Whatever the kitchen''s fired up about.', NULL);
-
--- Fresh installs begin with the existing daily lineup as their Nightly specials.
-UPDATE specials
-SET night_name = name,
-    night_description = description,
-    night_tag = tag
-WHERE night_name = '';

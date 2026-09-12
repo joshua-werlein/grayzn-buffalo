@@ -1,59 +1,14 @@
 import menuBaseline from '../data/menu-baseline.json';
 // D1 helpers with graceful fallback so dev/build works before provisioning.
-export type Special = {
-  day_of_week: number;
-  lunch_name: string;
-  lunch_description: string;
-  lunch_tag: string | null;
-  night_name: string;
-  night_description: string;
-  night_tag: string | null;
-  allday_name: string;
-  allday_description: string;
-  allday_tag: string | null;
-};
 export type PhotoOrientation = 'portrait' | 'square' | 'landscape';
 export type Item = { id: number; category_id: number; name: string; description: string; sort: number; active: number; photo_key: string | null; late_night: number; photo_orientation?: PhotoOrientation };
 export type Category = { id: number; name: string; sort: number; subtitle?: string; note?: string };
 export type WelcomePhoto = { slot: number; photo_key: string | null; alt: string; caption: string; orientation: PhotoOrientation };
 export const thumbKey = (key: string) => key.replace(/\.webp$/, '@600.webp');
  
-const FALLBACK_SPECIALS = [
-  { day_of_week: 0, name: 'Broasted Chicken Dinner', description: 'Golden broasted chicken with all the fixings.', tag: null },
-  { day_of_week: 1, name: 'Burger & Basket Night', description: "Grayz'n Burger with a basket of waffle fries.", tag: null },
-  { day_of_week: 2, name: 'Mexican Night', description: 'Tacos, quesadillas, and wet burritos.', tag: 'Mexican Night' },
-  { day_of_week: 3, name: 'Grilled Chicken Salad', description: "Plus the Grayz'n Burger with a side.", tag: null },
-  { day_of_week: 4, name: 'Soup & Sandwich', description: "Cup of the day's soup with a grilled sandwich.", tag: null },
-  { day_of_week: 5, name: 'Friday Fish', description: "It's Wisconsin — you know what night it is.", tag: null },
-  { day_of_week: 6, name: "Grill Master's Pick", description: "Whatever the kitchen's fired up about.", tag: null },
-];
- 
-const toSpecial = (row: any): Special => ({
-  day_of_week: Number(row.day_of_week),
-  lunch_name: String(row.lunch_name ?? ''),
-  lunch_description: String(row.lunch_description ?? ''),
-  lunch_tag: row.lunch_tag || null,
-  night_name: String(row.night_name ?? row.name ?? ''),
-  night_description: String(row.night_description ?? row.description ?? ''),
-  night_tag: row.night_tag ?? row.tag ?? null,
-  allday_name: String(row.allday_name ?? ''),
-  allday_description: String(row.allday_description ?? ''),
-  allday_tag: row.allday_tag ?? null,
-});
-
 // Emergency fallback uses the verified production recovery snapshot.
 const FALLBACK_CATEGORIES: Category[] = menuBaseline.categories;
 const FALLBACK_ITEMS: Item[] = menuBaseline.items.map(item => ({ ...item, description: item.description ?? '', photo_orientation: item.photo_orientation as PhotoOrientation }));
-
-export async function getSpecials(env: any): Promise<Special[]> {
-  try {
-    const { results } = await env.DB.prepare(
-      'SELECT day_of_week, lunch_name, lunch_description, lunch_tag, night_name, night_description, night_tag, allday_name, allday_description, allday_tag FROM specials ORDER BY day_of_week'
-    ).all();
-    if (results?.length) return results.map(toSpecial);
-  } catch {}
-  return FALLBACK_SPECIALS.map(toSpecial);
-}
 
 export type WeeklySpecial = {
   id: number;
@@ -71,11 +26,6 @@ export type WeeklySpecialDay = {
   all_day_2_content: string;
   nightly_content: string;
 };
-
-export type ApplicableWeeklySpecial =
-  | { status: 'current'; special: WeeklySpecial }
-  | { status: 'expired'; special: WeeklySpecial }
-  | { status: 'missing' };
 
 function toWeeklySpecial(row: any, days: WeeklySpecialDay[]): WeeklySpecial {
   return {
@@ -103,30 +53,6 @@ async function weeklySpecialWithDays(env: any, row: any): Promise<WeeklySpecial>
   return toWeeklySpecial(row, days);
 }
 
-/** Returns a current entry, or the most recently expired one for an honest notice. */
-export async function getApplicableWeeklySpecial(env: any, calendarDate: string): Promise<ApplicableWeeklySpecial> {
-  try {
-    const current = await env.DB.prepare(
-      `SELECT id, week_start_date, week_end_date, created_at, updated_at
-       FROM weekly_specials
-       WHERE week_start_date <= ?1 AND week_end_date >= ?1
-       ORDER BY week_start_date DESC
-       LIMIT 1`,
-    ).bind(calendarDate).first();
-    if (current) return { status: 'current', special: await weeklySpecialWithDays(env, current) };
-
-    const expired = await env.DB.prepare(
-      `SELECT id, week_start_date, week_end_date, created_at, updated_at
-       FROM weekly_specials
-       WHERE week_end_date < ?1
-       ORDER BY week_end_date DESC
-       LIMIT 1`,
-    ).bind(calendarDate).first();
-    if (expired) return { status: 'expired', special: await weeklySpecialWithDays(env, expired) };
-  } catch {}
-  return { status: 'missing' };
-}
-
 /** Returns every saved weekly-special record that overlaps the requested calendar range. */
 export async function getWeeklySpecialsForDateRange(env: any, startDate: string, endDate: string): Promise<WeeklySpecial[]> {
   try {
@@ -136,7 +62,7 @@ export async function getWeeklySpecialsForDateRange(env: any, startDate: string,
        WHERE week_start_date <= ?2 AND week_end_date >= ?1
        ORDER BY week_start_date ASC`,
     ).bind(startDate, endDate).all();
-    return Promise.all((results ?? []).map((row: any) => weeklySpecialWithDays(env, row)));
+    return await Promise.all((results ?? []).map((row: any) => weeklySpecialWithDays(env, row)));
   } catch {}
   return [];
 }

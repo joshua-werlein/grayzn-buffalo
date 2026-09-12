@@ -17,10 +17,10 @@ const sitekey = env.TURNSTILE_SITEKEY;
   </div>
   <div class="contact-grid">
     <form id="contactForm" class="card">
-      <label>Name <input name="name" required autocomplete="name" /></label>
-      <label>Email <input name="email" type="email" required autocomplete="email" /></label>
-      <label>Message <textarea name="message" rows="5" required></textarea></label>
-      <div class="cf-turnstile" data-sitekey={sitekey}></div>
+      <label>Name <input name="name" maxlength="100" required autocomplete="name" /></label>
+      <label>Email <input name="email" type="email" maxlength="254" required autocomplete="email" /></label>
+      <label>Message <textarea name="message" rows="5" maxlength="5000" required></textarea></label>
+      <div id="contact-turnstile" class="cf-turnstile" data-sitekey={sitekey}></div>
       <button class="btn btn-primary" type="submit">Send Message</button>
       <p id="formStatus" role="status"></p>
     </form>
@@ -231,8 +231,14 @@ const sitekey = env.TURNSTILE_SITEKEY;
 <script>
   const form = document.getElementById('contactForm') as HTMLFormElement;
   const status = document.getElementById('formStatus')!;
+  const submitButton = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  let submitting = false;
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (submitting) return;
+    submitting = true;
+    submitButton.disabled = true;
+    form.setAttribute('aria-busy', 'true');
     status.textContent = 'Sending…';
     const data = Object.fromEntries(new FormData(form).entries());
     try {
@@ -242,10 +248,17 @@ const sitekey = env.TURNSTILE_SITEKEY;
         body: JSON.stringify(data),
       });
       const out = await res.json();
-      status.textContent = out.ok ? 'Message sent — we\u2019ll get back to you!' : (out.error || 'Something went wrong. Give us a call instead.');
-      if (out.ok) form.reset();
+      status.textContent = res.ok && out.ok ? 'Message sent — we\u2019ll get back to you!' : (out.error || 'Something went wrong. Give us a call instead.');
+      if (res.ok && out.ok) form.reset();
     } catch {
       status.textContent = 'Something went wrong. Give us a call instead.';
+    } finally {
+      // Verification tokens are single-use, including when delivery later fails.
+      const turnstile = (window as Window & { turnstile?: { reset: (container: string) => void } }).turnstile;
+      try { turnstile?.reset('#contact-turnstile'); } catch { /* The widget may not have loaded. */ }
+      submitting = false;
+      submitButton.disabled = false;
+      form.removeAttribute('aria-busy');
     }
   });
 </script>

@@ -421,11 +421,30 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
     saveError.hidden = false;
     saveError.textContent = message;
   };
-  const confirmLeave = () => !dirty || window.confirm('This week contains unsaved changes. Leave without saving the week?');
+  const recurringSnapshot = () => JSON.stringify(recurringDefaultsForm
+    ? Array.from(new FormData(recurringDefaultsForm).entries())
+      .filter(([name, value]) => name.startsWith('recurring_') && typeof value === 'string')
+      .map(([name, value]) => [name, String(value).replace(/\r\n?/g, '\n').trim()])
+    : []);
+  let recurringBaseline = recurringSnapshot();
+  let recurringDirty = false;
+  const updateRecurringDirty = () => { recurringDirty = recurringSnapshot() !== recurringBaseline; };
+  recurringDefaultsForm?.addEventListener('input', updateRecurringDirty);
+  recurringDefaultsForm?.addEventListener('change', updateRecurringDirty);
+  const confirmLeave = () => {
+    updateRecurringDirty();
+    if (!dirty && !recurringDirty) return true;
+    const message = recurringDirty
+      ? dirty ? 'This week and Recurring Defaults contain unsaved changes. Leave without saving?'
+        : 'Recurring Defaults contain unsaved changes. Leave without saving them?'
+      : 'This week contains unsaved changes. Leave without saving the week?';
+    return window.confirm(message);
+  };
   weeklyForm?.addEventListener('input', updateDirty);
   weeklyForm?.addEventListener('change', updateDirty);
   window.addEventListener('beforeunload', (event) => {
-    if (!dirty || leaving) return;
+    updateRecurringDirty();
+    if ((!dirty && !recurringDirty) || leaving) return;
     event.preventDefault();
     event.returnValue = ''; // Legacy browser support alongside preventDefault().
   });
@@ -442,6 +461,7 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
     weeklyForm?.removeAttribute('aria-busy');
     recurringDefaultsForm?.removeAttribute('aria-busy');
     updateDirty();
+    updateRecurringDirty();
   });
 
   const saveBtn = weeklyForm?.querySelector<HTMLButtonElement>('button[value="save-weekly-specials"]') ?? null;
@@ -505,6 +525,12 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
       event.preventDefault();
       return;
     }
+    // Saving the week navigates away too; it does not save recurring edits.
+    updateRecurringDirty();
+    if (recurringDirty && !window.confirm('Recurring Defaults contain unsaved changes. Save the week and leave without saving those defaults?')) {
+      event.preventDefault();
+      return;
+    }
     const dayInput = weeklyForm.querySelector<HTMLInputElement>('[name="weekly_active_day"]');
     const scrollInput = weeklyForm.querySelector<HTMLInputElement>('[name="weekly_scroll_y"]');
     if (dayInput) dayInput.value = String(currentDay);
@@ -538,8 +564,8 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
   }
 
   recurringDefaultsForm?.addEventListener('submit', async (event) => {
-    // Serialize the weekly draft first — the hidden field is needed for the
-    // noscript POST fallback path (event.preventDefault only runs with JS).
+    // Serialize the draft for the server's POST restoration support. This
+    // JavaScript handler sends AJAX; without JavaScript the hidden draft is empty.
     if (weeklyForm && weeklyDraft) {
       const fields = Object.fromEntries(Array.from(new FormData(weeklyForm).entries()).filter(([, value]) => typeof value === 'string'));
       weeklyDraft.value = JSON.stringify({ fields, dirty, activeDay: currentDay });
@@ -549,6 +575,7 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
     if (saveBtn) saveBtn.disabled = true;
     recurringDefaultsForm.setAttribute('aria-busy', 'true');
     try {
+      const submittedSnapshot = recurringSnapshot();
       const body = new FormData(recurringDefaultsForm);
       body.set('action', 'save-recurring-defaults');
       const res = await fetch('/admin/specials', {
@@ -558,6 +585,8 @@ const dailySandwichPreset = dailySandwichContent === DAILY_SANDWICH_PRESETS['chi
       });
       const data = await res.json() as { ok: boolean; message?: string; error?: string };
       if (!res.ok || !data.ok) throw new Error(data.error ?? 'Could not save recurring defaults.');
+      recurringBaseline = submittedSnapshot;
+      updateRecurringDirty(); // Edits made while the request was in flight remain unsaved.
       showRdFlash(data.message ?? 'Recurring defaults saved.', 'ok');
     } catch (err) {
       showRdFlash((err as Error).message, 'bad');

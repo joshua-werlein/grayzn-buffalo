@@ -18,61 +18,61 @@ export const POST: APIRoute = async ({ request, locals }) => {
       headers: { 'Content-Type': 'application/json' },
     });
 
-  let body: Record<string, unknown>;
+  let parsed: unknown;
 
   try {
-    body = await request.json();
+    parsed = await request.json();
   } catch {
     return json({ ok: false, error: 'Bad request' }, 400);
   }
 
-  const name = String(body.name ?? '').trim();
-  const email = String(body.email ?? '').trim();
-  const message = String(body.message ?? '').trim();
-  const token = String(body['cf-turnstile-response'] ?? '');
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return json({ ok: false, error: 'Bad request' }, 400);
+  }
+  const body = parsed as Record<string, unknown>;
+  const field = (key: string) => typeof body[key] === 'string' ? body[key].trim() : '';
+  const name = field('name');
+  const email = field('email');
+  const message = field('message');
+  const token = field('cf-turnstile-response');
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   if (!name || !email || !message) {
-    return json(
-      { ok: false, error: 'All fields are required.' },
-      400,
-    );
+    return json({ ok: false, error: 'All fields are required.' }, 400);
+  }
+  if (name.length > 100 || email.length > 254 || message.length > 5000) {
+    return json({ ok: false, error: 'Use at most 100 characters for your name, 254 for email, and 5,000 for your message.' }, 400);
+  }
+  if (!emailPattern.test(email)) {
+    return json({ ok: false, error: 'Enter a valid email address.' }, 400);
   }
 
-  if (env.TURNSTILE_SECRET) {
-    const verifyResponse = await fetch(
-      'https://challenges.cloudflare.com/turnstile/v0/siteverify',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          secret: env.TURNSTILE_SECRET,
-          response: token,
-        }),
-      },
-    );
-
-    const verify = (await verifyResponse.json()) as {
-      success?: boolean;
-    };
-
-    if (!verify.success) {
-      return json(
-        {
-          ok: false,
-          error: 'Verification failed — please retry.',
-        },
-        400,
-      );
+  // Required in every environment: a missing setting must never bypass
+  // verification or silently deliver messages to a fallback recipient.
+  const configured = (key: string) => typeof env[key] === 'string' ? env[key].trim() : '';
+  const secret = configured('TURNSTILE_SECRET');
+  const resendKey = configured('RESEND_API_KEY');
+  const destination = configured('CONTACT_TO_EMAIL');
+  if (!secret || !resendKey || !destination || !emailPattern.test(destination)) {
+    return json({ ok: false, error: 'Contact form is unavailable. Please call us.' }, 503);
+  }
+  if (!token || token.length > 2048) {
+    return json({ ok: false, error: 'Verification failed — please retry.' }, 400);
+  }
+  try {
+    const verifyResponse = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ secret, response: token }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!verifyResponse.ok) throw new Error('Verification unavailable');
+    const verify = await verifyResponse.json() as { success?: boolean } | null;
+    if (verify?.success !== true) {
+      return json({ ok: false, error: 'Verification failed — please retry.' }, 400);
     }
-  }
-
-  if (!env.RESEND_API_KEY) {
-    return json(
-      { ok: false, error: 'Email not configured yet.' },
-      500,
-    );
+  } catch {
+    return json({ ok: false, error: 'Verification is unavailable. Please retry or call us.' }, 502);
   }
 
   const safeName = escapeHtml(name);
@@ -224,21 +224,27 @@ export const POST: APIRoute = async ({ request, locals }) => {
     </html>
   `;
 
-  const send = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: "Grayz'n Buffalo Website <noreply@grayznbuffalo.com>",
-      to: [env.CONTACT_TO_EMAIL ?? 'grayznbar@outlook.com'],
-      reply_to: email,
-      subject: `Website contact from ${name}`,
-      text,
-      html,
-    }),
-  });
+  let send: Response;
+  try {
+    send = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${resendKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: "Grayz'n Buffalo Website <noreply@grayznbuffalo.com>",
+        to: [destination],
+        reply_to: email,
+        subject: `Website contact from ${name}`,
+        text,
+        html,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch {
+    return json({ ok: false, error: 'Could not send right now — please call us.' }, 502);
+  }
 
   if (!send.ok) {
     return json(

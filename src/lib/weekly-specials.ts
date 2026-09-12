@@ -6,10 +6,6 @@ const chicagoDateFormatter = new Intl.DateTimeFormat('en-CA', {
   month: '2-digit',
   day: '2-digit',
 });
-const chicagoWeekdayFormatter = new Intl.DateTimeFormat('en-US', {
-  timeZone: BUSINESS_TIME_ZONE,
-  weekday: 'long',
-});
 const displayDateFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: 'UTC',
   month: 'long',
@@ -36,10 +32,6 @@ export function chicagoCalendarDate(value = new Date()): string {
       .map((part) => [part.type, part.value]),
   );
   return `${parts.year}-${parts.month}-${parts.day}`;
-}
-
-export function chicagoWeekday(value = new Date()): string {
-  return chicagoWeekdayFormatter.format(value);
 }
 
 export function isIsoCalendarDate(value: string): boolean {

@@ -1,6 +1,7 @@
 import { defineMiddleware } from 'astro:middleware';
 
-// Report-Only is deliberate. Do not enforce this policy until Astro’s executable inline scripts have been externalized and staging verification is complete.
+// CSP remains Report-Only: Cloudflare JavaScript Detections injects changing
+// executable inline scripts at the edge. Do not add script-src unsafe-inline.
 const CSP_REPORT_ONLY = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -51,10 +52,6 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // canonical production domain in search results.
   if (!isProductionHost) {
     headers.set('X-Robots-Tag', 'noindex, nofollow');
-  }
-
-  if (pathname.startsWith('/img/')) {
-    headers.set('Cache-Control', 'public, max-age=31536000, immutable');
   }
 
   if (pathname === '/menu.json') {
