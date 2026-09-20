@@ -29,13 +29,6 @@ const period = `${date(window.start)} – ${date(window.today)}`;
           {data?.firstRecordedDay && <p>First recorded activity in this window: {date(data.firstRecordedDay)}.</p>}
         </article>
       </div>
-      <article class="metric daily"><h2>Visits by day</h2><p class="period">Last 30 days · Today is incomplete</p>
-        {data ? <ol class="daily-bars" aria-label="Daily visits">{data.daily.map(day => <li>
-          <time datetime={day.date}>{date(day.date)}{day.date === window.today ? ' · so far' : ''}</time>
-          <span class="bar-track" aria-hidden="true"><span style={`width:${day.visits / maxDaily * 100}%`}></span></span>
-          <strong>{number(day.visits)}</strong>
-        </li>)}</ol> : <p>Daily visits unavailable.</p>}
-      </article>
       <div class="detail-cards">
         <article class="metric"><h2>Visits by month</h2>
           {data ? <table><thead><tr><th scope="col">Month</th><th scope="col">Visits</th></tr></thead><tbody>{data.monthly.map(row => <tr><th scope="row">{month(row.month)}{row.partial && <small>{row.month === window.today.slice(0, 7) ? 'Month so far' : 'Partial coverage'}</small>}</th><td>{number(row.visits)}</td></tr>)}</tbody></table> : <p>Monthly visits unavailable.</p>}
@@ -51,6 +44,13 @@ const period = `${date(window.start)} – ${date(window.today)}`;
           <p>Recorded link activations, not unique people or confirmed Facebook arrivals.</p>
         </article>
       </div>
+      <article class="metric daily"><h2>Visits by day</h2><p class="period">Last 30 days · Today is incomplete</p>
+        {data ? <ol class="daily-bars" aria-label="Daily visits">{data.daily.map(day => <li>
+          <time datetime={day.date}>{date(day.date)}{day.date === window.today ? ' · so far' : ''}</time>
+          <span class="bar-track" aria-hidden="true"><span style={`width:${day.visits / maxDaily * 100}%`}></span></span>
+          <strong>{number(day.visits)}</strong>
+        </li>)}</ol> : <p>Daily visits unavailable.</p>}
+      </article>
       <p class="data-note">Cloudflare visits are not unique people. Traffic figures may be estimated through sampling, and blocked analytics or excluded regions are not included. Missing referrers are grouped under Direct / Other. Older traffic before collection began is unavailable.</p>
     </div>
   </section>

@@ -74,10 +74,19 @@ test('normalizes verified response shape, pageviews, recent/history totals and m
   assert.equal(r.data.recentVisits, 5);
   assert.equal(r.data.historyVisits, 18);
   assert.equal(r.data.daily.length, 30);
+  assert.equal(r.data.daily[0].date, '2026-09-20');  // newest first
+  assert.equal(r.data.daily[29].date, '2026-08-22'); // oldest last
+  assert.equal(r.data.monthly.length, 6);
   assert.equal(r.data.monthly[0].visits, 3);
-  assert.equal(r.data.monthly[0].partial, true);
+  assert.equal(r.data.monthly[0].partial, true);   // current month: always partial
   assert.equal(r.data.monthly[1].visits, 11);
+  assert.equal(r.data.monthly[1].partial, false);
   assert.equal(r.data.monthly[2].visits, 4);
+  assert.equal(r.data.monthly[2].partial, false);
+  assert.equal(r.data.monthly[3].visits, 0);        // Jun 2026: no traffic in sample
+  assert.equal(r.data.monthly[3].partial, false);   // Jun 1 is after history start (~Mar 20)
+  assert.equal(r.data.monthly[4].visits, 0);        // May 2026
+  assert.equal(r.data.monthly[5].visits, 0);        // Apr 2026
   assert.equal(r.data.pages[0].path, '/menu');
   assert.equal(r.data.pages[0].views, 15);
   assert.deepEqual(r.data.sources.map(s => s.visits), [2, 1, 2]);
