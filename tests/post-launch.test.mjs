@@ -1,23 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { resolve } from 'node:path';
-import ts from 'typescript';
-
-// Transpile the actual handlers in memory, using the existing TypeScript dev
-// dependency. No build output, Cloudflare bindings, or remote services are used.
-function loadTs(path) {
-  const filename = resolve(path);
-  const code = ts.transpileModule(readFileSync(filename, 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
-  }).outputText;
-  const localRequire = createRequire(filename);
-  const module = { exports: {} };
-  new Function('exports', 'require', 'module', code)(module.exports,
-    (id) => id === 'astro:middleware' ? { defineMiddleware: (handler) => handler } : localRequire(id), module);
-  return module.exports;
-}
+import { loadTs } from './load-ts.mjs';
 const { onRequest } = loadTs('src/middleware.ts');
 const { GET: imageGet } = loadTs('src/pages/img/[...key].ts');
 const { POST: contactPost } = loadTs('src/pages/api/contact.ts');

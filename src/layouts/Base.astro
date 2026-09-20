@@ -513,11 +513,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .admin-shell .site-chrome nav.site.admin-primary{background:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.35)}
     .admin-shell .admin-primary ul{display:flex;width:auto;margin:0;gap:8px}
     .admin-shell .admin-primary a{color:var(--cream)}
-    .admin-settings-circle,.admin-signout-circle{display:none}
-    .admin-signout-nav{display:contents}
-    .admin-signout-nav button{display:flex;align-items:center;min-height:44px;padding:8px 14px;border-radius:6px;border:1px solid rgba(238,224,196,.4);background:transparent;color:rgba(238,224,196,.75);font:700 1rem var(--label);letter-spacing:.03em;cursor:pointer;margin:0}
-    .admin-signout-nav button:hover{background:rgba(238,224,196,.1);color:var(--cream)}
-    .admin-signout-nav button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+    .admin-settings-circle,.admin-analytics-circle{display:none}
   }
   @media(max-width:1099px){
     .admin-shell nav.site.admin-primary{display:none}
@@ -530,12 +526,10 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .admin-settings-circle:active{transform:translateY(1px)}
     .admin-settings-circle:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
     .admin-settings-circle--active{background:var(--crimson)}
-    .admin-signout-circle{position:fixed;left:calc(100vw/6 - 32px);bottom:calc(70px + env(safe-area-inset-bottom));z-index:61;width:64px;height:64px}
-    .admin-signout-circle form{width:100%;height:100%}
-    .admin-signout-circle button{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border:2px solid rgba(238,224,196,.78);border-radius:50%;background:var(--ink);box-shadow:0 5px 13px rgba(20,10,6,.42),inset 0 1px rgba(255,255,255,.16);color:var(--cream);font-size:1.5rem;line-height:1;cursor:pointer;padding:0;margin:0}
-    .admin-signout-circle button:active{transform:translateY(1px)}
-    .admin-signout-circle button:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
-    .admin-signout-nav{display:none}
+    .admin-analytics-circle{display:flex;align-items:center;justify-content:center;position:fixed;left:calc(100vw/6 - 32px);bottom:calc(70px + env(safe-area-inset-bottom));z-index:61;width:64px;height:64px;border:2px solid rgba(238,224,196,.78);border-radius:50%;background:var(--ink);box-shadow:0 5px 13px rgba(20,10,6,.42),inset 0 1px rgba(255,255,255,.16);color:var(--cream);text-decoration:none}
+    .admin-analytics-circle[aria-current="page"]{background:var(--crimson);color:var(--gold)}
+    .admin-analytics-circle:active{transform:translateY(1px)}
+    .admin-analytics-circle:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
   }
   @media(prefers-reduced-motion:reduce){.admin-shell .admin-primary{transition:none}}
 </style>}
@@ -549,14 +543,9 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
         <li><a href="/admin/specials" aria-current={path === '/admin/specials' ? 'page' : undefined}>Specials</a></li>
         <li><a href="/admin/menu" aria-current={path === '/admin/menu' ? 'page' : undefined}>Menu</a></li>
         <li><a href="/admin/welcome-photos" aria-current={path === '/admin/welcome-photos' ? 'page' : undefined}>Photos</a></li>
+        <li><a href="/admin/analytics" aria-current={path === '/admin/analytics' ? 'page' : undefined}>Analytics</a></li>
         <li><a href="/admin?settings=1" aria-current={path === '/admin' || path === '/admin/' ? 'page' : undefined}>Settings</a></li>
         <li><a href="/">View public site ↗</a></li>
-        <li>
-          <form class="admin-signout-nav" method="post" action="/admin">
-            <input type="hidden" name="action" value="logout" />
-            <button type="submit">Sign Out</button>
-          </form>
-        </li>
       </ul>
     </nav>
   ) : (
@@ -617,12 +606,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   <a class={"admin-settings-circle" + (isAdminSettings ? " admin-settings-circle--active" : "")} href="/admin?settings=1" aria-label="Admin Settings" aria-current={isAdminSettings ? 'page' : undefined}><img src={isAdminSettings ? '/admin-settings-cog-gold-v2.svg' : '/admin-settings-cog-v2.svg'} alt="" width="30" height="30" /></a>
 )}
 {isAdmin && !isAdminLogin && (
-  <div class="admin-signout-circle">
-    <form method="post" action="/admin">
-      <input type="hidden" name="action" value="logout" />
-      <button type="submit" aria-label="Sign Out"><img src="/admin-signout-power.svg" alt="" width="30" height="30" /></button>
-    </form>
-  </div>
+  <a class="admin-analytics-circle" href="/admin/analytics" aria-label="Admin Analytics" aria-current={path === '/admin/analytics' ? 'page' : undefined}><img src={path === '/admin/analytics' ? '/admin-analytics-chart-gold-v2.svg' : '/admin-analytics-chart-v2.svg'} alt="" width="30" height="30" /></a>
 )}
 <main><slot /></main>
 
@@ -674,6 +658,11 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 </aside>
 
 <script>
+  import { trackFacebookActivation } from '../lib/facebook-click-client';
+  // Window bubbling runs after document handlers that may cancel local previews.
+  window.addEventListener('click', event => trackFacebookActivation(event));
+  window.addEventListener('auxclick', event => trackFacebookActivation(event));
+
   type BeforeInstallPromptEvent = Event & {
     prompt: () => Promise<void>;
     userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;

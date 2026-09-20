@@ -56,7 +56,7 @@ test('recurring-only edits warn on week change, links, and unload; successful sa
   await f.picker.emit('change');
   assert.equal(f.picker.value, '');
   assert.match(f.prompts[0], /Recurring Defaults/);
-  const link = { href: 'https://example.com/', protocol: 'https:', target: '', hasAttribute: () => false };
+  const link = { href: 'https://example.com/admin/analytics', protocol: 'https:', target: '', hasAttribute: () => false };
   const click = event({ target: { closest: () => link } });
   await f.doc.emit('click', click);
   assert.equal(click.prevented, true);

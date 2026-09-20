@@ -122,6 +122,11 @@ const deliveryDisplay = authed ? await getSetting(env, 'delivery_display', 'avai
         <button class="btn btn-primary" type="submit">Save delivery status</button>
       </form>
 
+      <form method="post" action="/admin" class="signout-form">
+        <input type="hidden" name="action" value="logout" />
+        <button class="btn btn-ghost" type="submit">Sign Out</button>
+      </form>
+
     </div>
   ) : (
     <form method="post" class="panel">
@@ -166,6 +171,7 @@ const deliveryDisplay = authed ? await getSetting(env, 'delivery_display', 'avai
   .announce-form .hint,.delivery-form .hint{font-size:.85rem;color:var(--ink-2);margin:0 0 10px}
   .delivery-form{margin-top:26px;padding-top:22px;border-top:1px solid rgba(36,22,16,.12);text-align:left}
   .delivery-title{font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.85rem}
+  .signout-form{margin-top:26px;padding-top:22px;border-top:1px solid rgba(36,22,16,.12)}
   .cf-turnstile{margin:0 0 16px;display:flex;justify-content:center;min-height:65px}
   .err{color:var(--crimson);font-weight:600;margin-bottom:12px}
   .warn{background:var(--amber);color:var(--ink);font-weight:700;padding:8px 12px;border-radius:8px;margin-bottom:14px;font-size:.9rem}

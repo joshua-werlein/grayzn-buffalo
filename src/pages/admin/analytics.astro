@@ -1,0 +1,70 @@
+---
+import Base from '../../layouts/Base.astro';
+import { isAuthed } from '../../lib/auth';
+import { loadAnalytics, reportingWindow, ANALYTICS_MESSAGES } from '../../lib/analytics';
+import { getFacebookClicks } from '../../lib/db';
+
+const env = (Astro.locals as any).runtime?.env ?? {};
+if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
+const now = new Date();
+const window = reportingWindow(now);
+const [result, clicks] = await Promise.all([loadAnalytics(env, now), getFacebookClicks(env, window.start, window.today)]);
+const data = result.status === 'ok' ? result.data : null;
+const number = (value: number) => value.toLocaleString('en-US');
+const date = (value: string) => new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' })
+  .format(new Date(value.length === 10 ? `${value}T12:00:00Z` : value));
+const month = (value: string) => new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(new Date(`${value}-01T12:00:00Z`));
+const maxDaily = Math.max(1, ...(data?.daily.map(day => day.visits) ?? []));
+const period = `${date(window.start)} – ${date(window.today)}`;
+---
+<Base title="Admin Analytics — Grayz'n Buffalo">
+  <section class="analytics-page">
+    <div class="section-head"><h1>Website Analytics</h1><p>{period} · America/Chicago</p></div>
+    <div class="analytics-content">
+      {result.status !== 'ok' && <p class="analytics-notice" role="status">{ANALYTICS_MESSAGES[result.status]}</p>}
+      <div class="primary-cards">
+        <article class="metric primary"><h2>Visits <span>Last 30 days</span></h2><p class="metric-value">{data ? number(data.recentVisits) : 'Unavailable'}</p><p>Includes today so far.</p></article>
+        <article class="metric primary history"><h2>Total site visits <span>Available history</span></h2><p class="metric-value">{data ? number(data.historyVisits) : 'Unavailable'}</p>
+          {data && <p>{date(data.historyStart)} – {date(window.today)}. Available records only; not lifetime traffic.</p>}
+          {data?.firstRecordedDay && <p>First recorded activity in this window: {date(data.firstRecordedDay)}.</p>}
+        </article>
+      </div>
+      <article class="metric daily"><h2>Visits by day</h2><p class="period">Last 30 days · Today is incomplete</p>
+        {data ? <ol class="daily-bars" aria-label="Daily visits">{data.daily.map(day => <li>
+          <time datetime={day.date}>{date(day.date)}{day.date === window.today ? ' · so far' : ''}</time>
+          <span class="bar-track" aria-hidden="true"><span style={`width:${day.visits / maxDaily * 100}%`}></span></span>
+          <strong>{number(day.visits)}</strong>
+        </li>)}</ol> : <p>Daily visits unavailable.</p>}
+      </article>
+      <div class="detail-cards">
+        <article class="metric"><h2>Visits by month</h2>
+          {data ? <table><thead><tr><th scope="col">Month</th><th scope="col">Visits</th></tr></thead><tbody>{data.monthly.map(row => <tr><th scope="row">{month(row.month)}{row.partial && <small>{row.month === window.today.slice(0, 7) ? 'Month so far' : 'Partial coverage'}</small>}</th><td>{number(row.visits)}</td></tr>)}</tbody></table> : <p>Monthly visits unavailable.</p>}
+        </article>
+        <article class="metric"><h2>Most-viewed pages</h2><p class="period">Page views · Last 30 days</p>
+          {data ? data.pages.length ? <table><thead><tr><th scope="col">Page</th><th scope="col">Views</th></tr></thead><tbody>{data.pages.map(row => <tr><th scope="row">{row.path}</th><td>{number(row.views)}</td></tr>)}</tbody></table> : <p>No page views recorded for this period.</p> : <p>Page views unavailable.</p>}
+        </article>
+        <article class="metric"><h2>Traffic source</h2><p class="period">Incoming visits · Last 30 days</p>
+          {data ? <table><thead><tr><th scope="col">Source</th><th scope="col">Visits</th></tr></thead><tbody>{data.sources.map(row => <tr><th scope="row">{row.name}</th><td>{number(row.visits)}</td></tr>)}</tbody></table> : <p>Traffic sources unavailable.</p>}
+        </article>
+        <article class="metric"><h2>Facebook outbound clicks</h2><p class="period">Last 30 days · Page and post links combined</p>
+          {clicks.status === 'ok' ? <><p class="metric-value">{number(clicks.count)}</p><p>{clicks.started > window.start ? `Tracking began ${date(clicks.started)}; earlier days are not included.` : `Tracking since ${date(clicks.started)}.`}</p></> : <p role="status">{clicks.status === 'not-started' ? 'Facebook click tracking has not started yet.' : 'Facebook click counts are temporarily unavailable.'}</p>}
+          <p>Recorded link activations, not unique people or confirmed Facebook arrivals.</p>
+        </article>
+      </div>
+      <p class="data-note">Cloudflare visits are not unique people. Traffic figures may be estimated through sampling, and blocked analytics or excluded regions are not included. Missing referrers are grouped under Direct / Other. Older traffic before collection began is unavailable.</p>
+    </div>
+  </section>
+</Base>
+<style>
+  .analytics-page{padding-block:28px}.analytics-content{max-width:1040px;margin:auto}.section-head{margin-bottom:24px}
+  .primary-cards,.detail-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+  .metric{min-width:0;padding:24px;background:var(--surface-parchment);border:1px solid var(--rule);border-radius:8px;box-shadow:var(--panel-shadow)}
+  .metric h2{font-family:var(--label);font-size:1.4rem;line-height:1.25;color:var(--ink)}.metric h2 span{display:block;font-size:1rem;font-weight:600;margin-top:6px}
+  .metric p{color:var(--ink-2);font-size:.95rem;margin-top:8px}.metric .metric-value{font-family:var(--display);font-size:clamp(1.6rem,4vw,2.8rem);line-height:1.3;color:var(--ink);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;margin:14px 0}
+  .primary{border-top:5px solid var(--crimson)}.history{border-top-color:var(--gold)}.daily{margin:20px 0}.metric .period{margin:6px 0 14px}
+  .daily-bars{list-style:none;padding:0;margin-top:16px}.daily-bars li{display:grid;grid-template-columns:170px minmax(0,1fr) 60px;gap:12px;align-items:center;padding:5px 0;font-size:.9rem}.daily-bars strong{text-align:right;font-variant-numeric:tabular-nums}
+  .bar-track{height:12px;background:var(--cream-2);border-radius:2px;overflow:hidden}.bar-track>span{display:block;height:100%;background:var(--crimson)}
+  table{width:100%;border-collapse:collapse;margin-top:12px}th,td{text-align:left;padding:10px 0;border-bottom:1px solid var(--rule);overflow-wrap:anywhere}thead th{font:700 .85rem var(--label);text-transform:uppercase;color:var(--ink-2)}tbody th{font-weight:500}td,th:last-child{text-align:right;font-variant-numeric:tabular-nums}td{padding-left:12px}small{display:block;color:var(--ink-2);font-size:.8rem}
+  .data-note{margin:20px 0;color:var(--ink-2);font-size:.9rem}.analytics-notice{padding:16px;margin-bottom:20px;border-left:4px solid var(--crimson);background:var(--surface-parchment)}
+  @media(max-width:680px){.analytics-page{padding:24px 12px 32px}.primary-cards,.detail-cards{grid-template-columns:1fr;gap:14px}.metric{padding:18px}.daily-bars li{grid-template-columns:130px minmax(0,1fr) 42px;gap:8px;font-size:.8rem}}
+</style>

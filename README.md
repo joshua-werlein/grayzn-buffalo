@@ -405,6 +405,69 @@ Production database operations should be performed deliberately against the conf
 
 ## Deployment
 
+### Admin Analytics
+
+`/admin/analytics` uses the existing staff session and server-side Cloudflare
+Web Analytics queries. It shows only recent visits, available-history visits,
+daily/monthly visits, public page views, three incoming-source groups, and a
+combined Facebook outbound-click count. There is no browser analytics API or
+chart dependency.
+
+Runtime configuration:
+
+- `CF_ANALYTICS_API_TOKEN`: Pages **runtime secret**, with Account → Account
+  Analytics → Read restricted to this account. Use a separate token from deployment.
+- `CF_ANALYTICS_ACCOUNT_ID` and `CF_ANALYTICS_SITE_TAG`: nonsecret production
+  identifiers in `wrangler.toml`. Preview properties must not replace this site tag.
+- Local development reads the token from ignored `.dev.vars`; never commit it.
+
+Authenticated schema and production queries were verified September 20, 2026:
+`rumPageloadEventsAdaptiveGroups`, `sum.visits`, `count`, `datetimeHour`,
+`requestPath`, `refererHost`, and the production host/site filters. Account settings
+reported 15,897,600 seconds (184 days) of retention, 8,035,200 seconds (93 days)
+maximum query duration, and 10,000 rows. The utility reads those settings at runtime,
+splits history into bounded requests, and rejects truncated/invalid responses.
+The moving retention boundary includes a two-minute request safety margin.
+
+Visits use Chicago calendar dates, including DST. Last 30 days means today plus
+29 preceding dates; current day/month are incomplete. Available history is not
+lifetime traffic. Cloudflare sampling and collection exclusions still apply;
+missing data before collection began cannot be recovered. Zero means no recorded
+traffic in a successful query, not proof that nobody visited. Provider failures
+display unavailable states rather than zeros. Page rankings use page views;
+incoming sources use visits, so internal page navigation adds no incoming visits.
+
+Facebook clicks use only `facebook_outbound_clicks_daily(date, count)`. Both page
+and post links count together, including the lightbox's final outbound action.
+Opening a local preview/text modal does not count. One empty, same-origin POST
+increments the server's Chicago day atomically. Production host/Origin checks
+reject trivial cross-site submissions; this intentionally is not fraud detection.
+There are no identifiers, cookies, IP/user-agent storage, destination logs, raw
+events, duplicate suppression, queues, CAPTCHA, or per-user rate limits. Repeated
+activations count repeatedly. Navigation never waits for tracking; blocked scripts,
+network failures, and browser context-menu navigation can miss activations.
+Counts are not unique people or confirmed Facebook arrivals. Daily aggregates are
+retained without individual histories.
+
+Before deploying this feature to an existing database:
+
+1. Apply **only** `migrations/0014_facebook_outbound_clicks.sql` to `grayzn-db`.
+   Fresh databases use the updated `schema.sql`; do not replay historical ALTERs.
+2. Set the Pages runtime analytics secret. The GitHub deployment token is unrelated.
+3. Set `settings.facebook_click_tracking_started` to the actual Chicago rollout
+   date (`YYYY-MM-DD`). Tracking stays disabled until this is present. Preserve it
+   on later deployments; never infer it from the first nonzero daily total.
+4. Deploy after tests and build pass. Verify authentication, both navigation layouts,
+   Settings logout, the seven dashboard areas, and outbound navigation.
+
+The workflow below does not apply D1 migrations automatically. Local tests can use
+an isolated Wrangler persistence directory to avoid touching production or other
+local data. Run `node --test tests/analytics.test.mjs tests/client-workflows.test.mjs
+tests/post-launch.test.mjs`, the existing Facebook worker tests, and `npm run build`.
+
+Reference: [Cloudflare dataset settings](https://developers.cloudflare.com/analytics/graphql-api/features/discovery/settings/),
+[Web Analytics retention and sampling](https://developers.cloudflare.com/web-analytics/faq/).
+
 The main application uses the Cloudflare configuration defined in:
 
 ```text

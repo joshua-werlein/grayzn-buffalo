@@ -126,3 +126,7 @@ INSERT INTO settings (key, value) VALUES
 ON CONFLICT(key) DO NOTHING;
  
 -- Menu content is restored separately from recovery/menu-canonical.sql into empty menu tables.
+CREATE TABLE IF NOT EXISTS facebook_outbound_clicks_daily (
+  date TEXT PRIMARY KEY CHECK (date GLOB '????-??-??'),
+  count INTEGER NOT NULL DEFAULT 0 CHECK (count >= 0)
+);
