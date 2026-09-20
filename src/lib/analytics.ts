@@ -155,8 +155,12 @@ export async function loadAnalytics(env: Record<string, any>, now = new Date(), 
       byDay.set(day, (byDay.get(day) ?? 0) + visits);
     }
     const daily = calendarDatesFrom(window.start, 30).map(date => ({ date, visits: byDay.get(date) ?? 0 })).reverse();
+    const historyStartMonth = chicagoCalendarDate(new Date(chunks[0][0])).slice(0, 7);
+    const [sy, sm] = historyStartMonth.split('-').map(Number);
+    const [cy, cm] = window.today.slice(0, 7).split('-').map(Number);
+    const monthCount = Math.min(7, (cy * 12 + cm) - (sy * 12 + sm) + 1);
     const monthDate = new Date(`${window.today.slice(0, 7)}-01T12:00:00Z`);
-    const monthly = Array.from({ length: 6 }, (_, i) => {
+    const monthly = Array.from({ length: monthCount }, (_, i) => {
       const d = new Date(monthDate); d.setUTCMonth(d.getUTCMonth() - i);
       const month = d.toISOString().slice(0, 7);
       return { month, visits: [...byDay].filter(([day]) => day.startsWith(month)).reduce((sum, [, n]) => sum + n, 0),

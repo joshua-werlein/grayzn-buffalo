@@ -40,7 +40,7 @@ const period = `${date(window.start)} – ${date(window.today)}`;
           {data ? <table><thead><tr><th scope="col">Source</th><th scope="col">Visits</th></tr></thead><tbody>{data.sources.map(row => <tr><th scope="row">{row.name}</th><td>{number(row.visits)}</td></tr>)}</tbody></table> : <p>Traffic sources unavailable.</p>}
         </article>
         <article class="metric"><h2>Facebook outbound clicks</h2><p class="period">Last 30 days · Page and post links combined</p>
-          {clicks.status === 'ok' ? <><p class="metric-value">{number(clicks.count)}</p><p>{clicks.started > window.start ? `Tracking began ${date(clicks.started)}; earlier days are not included.` : `Tracking since ${date(clicks.started)}.`}</p></> : <p role="status">{clicks.status === 'not-started' ? 'Facebook click tracking has not started yet.' : 'Facebook click counts are temporarily unavailable.'}</p>}
+          {clicks.status === 'ok' ? <p class="metric-value">{number(clicks.count)}</p> : <p role="status">{clicks.status === 'not-started' ? 'Facebook click tracking has not started yet.' : 'Facebook click counts are temporarily unavailable.'}</p>}
           <p>Recorded link activations, not unique people or confirmed Facebook arrivals.</p>
         </article>
       </div>
