@@ -25,8 +25,7 @@ const period = `${date(window.start)} – ${date(window.today)}`;
       <div class="primary-cards">
         <article class="metric primary"><h2>Visits <span>Last 30 days</span></h2><p class="metric-value">{data ? number(data.recentVisits) : 'Unavailable'}</p><p>Includes today so far.</p></article>
         <article class="metric primary history"><h2>Total site visits <span>Available history</span></h2><p class="metric-value">{data ? number(data.historyVisits) : 'Unavailable'}</p>
-          {data && <p>{date(data.historyStart)} – {date(window.today)}. Available records only; not lifetime traffic.</p>}
-          {data?.firstRecordedDay && <p>First recorded activity in this window: {date(data.firstRecordedDay)}.</p>}
+          {data && <p>{date(data.historyStart)} – {date(window.today)}</p>}
         </article>
       </div>
       <div class="detail-cards">
