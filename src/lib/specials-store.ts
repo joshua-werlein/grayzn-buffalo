@@ -25,7 +25,18 @@ export class SpecialConflict extends Error {
 export const displayedSpecial = (slot: Pick<SpecialSlot, 'content' | 'price'>) =>
   [slot.content ?? '', slot.price].filter(Boolean).join(' ');
 export const visibleSlots = (group: SpecialGroup) => group.slots.filter(slot => (slot.content ?? '').trim()).sort((a,b) => a.position-b.position);
+// Compare complete offers only; never guess that differently priced dishes match.
+const offerKey = (text: string) => text.replace(/\s+/g,' ').trim().toLowerCase();
+export function specialInputCount(group: Pick<SpecialGroup,'service'|'day_of_week'>): number {
+  if (group.service === 'lunch') return 1;
+  if (group.service === 'all-day') return 2;
+  if (group.service === 'nightly') return [0,6].includes(group.day_of_week) ? 0 : [1,5].includes(group.day_of_week) ? 2 : 1;
+  return group.day_of_week === -1 ? 4 : 1;
+}
 export const visibleGroups = (groups: SpecialGroup[], day?: number) => groups
+  .map(group => [1,5].includes(group.day_of_week) && ['lunch','nightly'].includes(group.service)
+    ? {...group, slots: group.slots.filter(slot => !groups.some(other => other.enabled === 1 && other.day_of_week === group.day_of_week && other.service === 'all-day' && visibleSlots(other).some(item => offerKey(displayedSpecial(item)) === offerKey(displayedSpecial(slot)))))}
+    : group)
   .filter(group => group.enabled === 1 && (day === undefined || group.day_of_week === day) && visibleSlots(group).length)
   .sort((a,b) => a.sort-b.sort);
 export const slotValue = (slot: SpecialSlot) => JSON.stringify([slot.content, slot.price, slot.section_link]);
@@ -67,7 +78,7 @@ export async function getMexicanNight(env: any): Promise<SpecialCollection | nul
 
 // ── Import review ─────────────────────────────────────────────────────────────
 
-export type CandidateItem = { content: string; price: string };
+export type CandidateItem = { content: string; price?: string };
 export type CandidateGroup = { label: string; day_of_week: number; service: string; items: CandidateItem[] };
 export type ImportCandidate = {
   id: string; fb_post_id: string; fb_created_time: string; fb_updated_time: string | null;
@@ -80,7 +91,27 @@ export type ImportCandidate = {
 
 export function parseCandidateJson(json: string | null): CandidateGroup[] {
   if (!json) return [];
-  try { return JSON.parse(json) as CandidateGroup[]; } catch { return []; }
+  try { return normalizeCandidateGroups(JSON.parse(json)); } catch { return []; }
+}
+
+/** Accept older split-price candidates, but only write inline text from now on. */
+export function normalizeCandidateGroups(input: CandidateGroup[]): CandidateGroup[] {
+  if (!Array.isArray(input) || input.length > 84) throw new Error('Invalid candidate groups.');
+  const groups = input.map(g => {
+    if (!g || typeof g.label !== 'string' || !Number.isInteger(g.day_of_week) || g.day_of_week < -1 || g.day_of_week > 6 || !['lunch','all-day','nightly','custom'].includes(g.service) || !Array.isArray(g.items)) throw new Error('Invalid candidate group.');
+    return {...g, items:g.items.map(item => {
+      if (!item || typeof item.content !== 'string' || (item.price != null && typeof item.price !== 'string')) throw new Error('Invalid candidate item.');
+      const content = displayedSpecial({content:item.content,price:item.price ?? ''});
+      if (content.length > SPECIAL_LIMIT) throw new Error('Each special, including its price, must be 150 characters or fewer.');
+      return {content};
+    })};
+  });
+  return groups.map(g => {
+    const items = [1,5].includes(g.day_of_week) && ['lunch','nightly'].includes(g.service)
+      ? g.items.filter(item => !groups.some(other => other.day_of_week === g.day_of_week && other.service === 'all-day' && other.items.some(allDay => offerKey(allDay.content) === offerKey(item.content)))) : g.items;
+    if (items.length > specialInputCount(g)) throw new Error('Too many specials for this service. Review the All Day items separately.');
+    return {...g,items};
+  });
 }
 
 export async function readImportCandidates(env: any): Promise<ImportCandidate[]> {
@@ -99,14 +130,14 @@ export async function readImportCandidates(env: any): Promise<ImportCandidate[]>
 
 function applyCandidateGroupsToCollection(collection: SpecialCollection, candidateGroups: CandidateGroup[]): SpecialCollection {
   const groups = collection.groups.map(g => ({ ...g, slots: g.slots.map(s => ({ ...s })) }));
-  for (const cg of candidateGroups) {
+  for (const cg of normalizeCandidateGroups(candidateGroups)) {
     // Sections always use day_of_week=-1 regardless of what AI returned.
     const dayNum = collection.kind === 'section' ? -1 : cg.day_of_week;
     const existingIdx = groups.findIndex(g => g.day_of_week === dayNum && g.service === cg.service);
     const slots = ([1, 2, 3, 4] as const).map(pos => ({
       position: pos as number,
       content: cg.items[pos - 1]?.content ?? '',
-      price: cg.items[pos - 1]?.price ?? '',
+      price: '',
       section_link: '',
       origin: 'manual' as const,
       manual_locked: 1,
@@ -234,12 +265,18 @@ export function collectionFromForm(form: FormData, baseline: SpecialCollection):
       service_time: value(p+'time'), sort: old?.sort ?? index, enabled: form.has(p+'enabled') ? 1 : 0,
       slots: [1,2,3,4].map(position => {
         const prior = old?.slots.find(s => s.position === position);
+        if (prior && !form.has(p+position+'_content')) return {...prior};
         // Unavailable default is explicit and separate from an intentional blank.
         let content: string | null = baseline.kind === 'defaults' && form.has(p+position+'_unavailable') ? null : value(p+position+'_content');
         // Browsers normalize textarea line endings. An untouched legacy CRLF
         // value must not become a manual correction merely because of that.
+        if (prior?.content != null && content === displayedSpecial(prior).replace(/\r\n?/g,'\n') && !form.has(p+position+'_price')) {
+          return {...prior, section_link: form.has(p+position+'_link') ? value(p+position+'_link') : prior.section_link};
+        }
         if (prior?.content != null && content === prior.content.replace(/\r\n?/g,'\n')) content = prior.content;
-        return { position, content, price: value(p+position+'_price'), section_link: value(p+position+'_link'),
+        const price = value(p+position+'_price');
+        if (content?.trim() && price) content = displayedSpecial({content,price});
+        return { position, content, price: '', section_link: content?.trim() ? (form.has(p+position+'_link') ? value(p+position+'_link') : prior?.section_link ?? '') : '',
           origin: prior?.origin ?? 'manual', manual_locked: prior?.manual_locked ?? 1, last_auto_value: prior?.last_auto_value ?? null };
       }) };
   });
@@ -308,41 +345,32 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
   const gate = 'EXISTS(SELECT 1 FROM special_collections WHERE id=?1 AND mutation_token=?2)';
   if (next.kind==='week') writes.push(prepare(`UPDATE weekly_specials SET week_start_date=?3,week_end_date=?4,updated_at=CURRENT_TIMESTAMP WHERE id=?5 AND ${gate}`,collectionId,token,dates!.start,dates!.end,weekId));
   const groupRows: any[][] = [];
-  const slotWrites: any[] = [];
+  const slotRows: any[][] = [];
   for (const group of next.groups) {
     const previous = fresh?.groups.find(g => g.id===group.id);
     const groupId = previous ? group.id : crypto.randomUUID();
     if (!previous) groupIds[group.id] = groupId;
     groupRows.push([groupId,group.day_of_week,group.service,group.label,group.service_time,group.sort,group.enabled]);
-    const changedSlots: {slot: SpecialSlot; old?: SpecialSlot}[] = [];
     for (const slot of group.slots) {
       const old = previous?.slots.find(s=>s.position===slot.position);
       if (old && slotValue(old)===slotValue(slot)) continue;
-      changedSlots.push({slot,old});
-    }
-    if (changedSlots.length) {
-      const args: any[] = [collectionId,token,groupId];
-      const selects = changedSlots.map(({slot,old}) => {
-        const offset=args.length+1;
-        args.push(slot.position,slot.content,slot.price,slot.section_link,old?.last_auto_value ?? null);
-        return `SELECT ?3,?${offset},?${offset+1},?${offset+2},?${offset+3},'manual',1,?${offset+4} WHERE ${gate}`;
-      });
-      slotWrites.push(prepare(`INSERT INTO special_slots(group_id,position,content,price,section_link,origin,manual_locked,last_auto_value)
-        ${selects.join(' UNION ALL ')}
-        ON CONFLICT(group_id,position) DO UPDATE SET content=excluded.content,price=excluded.price,section_link=excluded.section_link,origin='manual',manual_locked=1`,...args));
+      slotRows.push([groupId,slot.position,slot.content,slot.price,slot.section_link,old?.last_auto_value ?? null]);
     }
   }
-  // Keep each statement below D1's parameter cap and avoid one query per item.
-  for (let index=0;index<groupRows.length;index+=10) {
-    const args: any[]=[collectionId,token];
-    const selects=groupRows.slice(index,index+10).map(row=>{
-      const n=args.length+1;args.push(...row);
-      return `SELECT ?${n},?1,?${n+1},?${n+2},?${n+3},?${n+4},?${n+5},?${n+6} WHERE ${gate}`;
-    });
-    writes.push(prepare(`INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled)
-      ${selects.join(' UNION ALL ')} ON CONFLICT(id) DO UPDATE SET label=excluded.label,service_time=excluded.service_time,sort=excluded.sort,enabled=excluded.enabled`,...args));
-  }
-  writes.push(...slotWrites);
+  // JSON rowsets use one SELECT and three bound parameters per statement,
+  // independent of week size. Keep every write in the same gated D1 batch.
+  writes.push(prepare(`INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled)
+    SELECT json_extract(value,'$[0]'),?1,json_extract(value,'$[1]'),json_extract(value,'$[2]'),
+      json_extract(value,'$[3]'),json_extract(value,'$[4]'),json_extract(value,'$[5]'),json_extract(value,'$[6]')
+    FROM json_each(?3) WHERE ${gate}
+    ON CONFLICT(id) DO UPDATE SET label=excluded.label,service_time=excluded.service_time,sort=excluded.sort,enabled=excluded.enabled`,
+    collectionId,token,JSON.stringify(groupRows)));
+  writes.push(prepare(`INSERT INTO special_slots(group_id,position,content,price,section_link,origin,manual_locked,last_auto_value)
+    SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]'),json_extract(value,'$[2]'),
+      json_extract(value,'$[3]'),json_extract(value,'$[4]'),'manual',1,json_extract(value,'$[5]')
+    FROM json_each(?3) WHERE ${gate}
+    ON CONFLICT(group_id,position) DO UPDATE SET content=excluded.content,price=excluded.price,section_link=excluded.section_link,origin='manual',manual_locked=1`,
+    collectionId,token,JSON.stringify(slotRows)));
   writes.push(prepare('SELECT id FROM special_collections WHERE id=?1 AND mutation_token=?2',collectionId,token));
   const results = await env.DB.batch(writes);
   if (!results.at(-1)?.results?.length) throw new SpecialConflict();

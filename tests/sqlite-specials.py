@@ -21,6 +21,7 @@ try:
         db.executescript('BEGIN;\n' + Path('migrations/0015_weekly_special_groups.sql').read_text(encoding='utf-8') + '\n' + Path('migrations/0016_recurring_special_sections.sql').read_text(encoding='utf-8') + '\n' + Path('migrations/0017_special_import_tracking.sql').read_text(encoding='utf-8') + '\nCOMMIT;')
         print('[]')
     else:
+        db.setlimit(sqlite3.SQLITE_LIMIT_COMPOUND_SELECT, 3)
         result=[]
         with db:
             for statement in request['statements']:

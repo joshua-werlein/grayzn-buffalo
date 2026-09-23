@@ -59,18 +59,18 @@ if (Astro.request.method==='POST') {
         const weekIdRaw = form.get('week_id');
         const weekId = weekIdRaw ? Number(weekIdRaw) : null;
         const expectedRevision = Number(form.get('collection_revision') ?? 0);
-        // Override groups: staff-edited items submitted as ig{n}_{pos}_content/price.
+        // Override groups: staff-edited items submitted as ig{n}_{pos}_content.
         const overrideCountRaw = form.get('override_group_count');
         let overrideGroups: import('../../lib/specials-store').CandidateGroup[] | undefined;
         if (overrideCountRaw !== null) {
           const n = Number(overrideCountRaw);
+          if (!Number.isInteger(n) || n < 1 || n > 84) throw new Error('Invalid candidate groups.');
           overrideGroups = Array.from({length: n}, (_, gi) => ({
             label: String(form.get(`ig${gi}_label`) ?? ''),
             day_of_week: Number(form.get(`ig${gi}_day`) ?? -1),
             service: String(form.get(`ig${gi}_service`) ?? 'custom'),
             items: [1,2,3,4].map(pos => ({
               content: String(form.get(`ig${gi}_${pos}_content`) ?? '').replace(/\r\n?/g,'\n'),
-              price: String(form.get(`ig${gi}_${pos}_price`) ?? ''),
             })).filter(item => item.content.trim()),
           })).filter(g => g.label.trim() || g.items.length);
         }
@@ -130,9 +130,8 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
             <input type="hidden" class="ig-label" data-gi={gi} value={g.label}/>
             <input type="hidden" class="ig-day" data-gi={gi} value={String(g.day_of_week)}/>
             <input type="hidden" class="ig-service" data-gi={gi} value={g.service}/>
-            {g.items.slice(0,4).map((item,pos) => <div class="import-item-row">
+            {g.items.map((item,pos) => <div class="import-item-row">
               <textarea class="import-item-content" data-gi={gi} data-pos={pos+1} rows={2} maxlength="150" aria-label={`Item ${pos+1} text`}>{item.content}</textarea>
-              <input class="import-item-price" data-gi={gi} data-pos={pos+1} type="text" maxlength="30" placeholder="Price" value={item.price} aria-label={`Item ${pos+1} price`}/>
             </div>)}
           </div>
         </details>)}
@@ -164,13 +163,13 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
     <input type="hidden" name="weekly_id" value={editingId}/><input type="hidden" name="revision" value={weekly.revision}/><input type="hidden" name="group_count" value={weekly.groups.length}/>
     <input type="hidden" name="weekly_active_day" value={activeDay}/><input type="hidden" name="weekly_scroll_y" value={weeklyScrollY}/>
     <fieldset class="week-dates"><legend>{editingId ? 'Editing saved week' : 'New weekly specials'}</legend><div class="week-date-controls"><label class="week-date-group">Week starting<input id="week-start" type="date" name="week_start_date" value={weekStart} required/></label><div class="week-date-group"><span>Week ending</span><output id="week-end">{weekEnd || 'Choose a week'}</output></div></div><p>Monday through Sunday. Recurring defaults prefill new weeks only.</p></fieldset>
-    <p class="instructions">Each group has four optional slots. Special text and price together allow 150 characters. Blank slots are hidden publicly.</p>
+    <p class="instructions">Include the price in the special text (150 characters maximum). Leave a field empty to save it blank. Blank specials are hidden publicly.</p>
     <div class="day-navigation" hidden><p id="day-progress" class="day-progress" role="status">{DAYS[activeDay]} · {activeDay+1} of 7</p><div class="day-selector">{DAYS.map((day,index)=><button type="button" data-day-select={index} aria-controls={`weekly-day-${index}`} aria-pressed={index===activeDay}>{day.slice(0,3)}</button>)}</div><p class="swipe-hint">Swipe the card heading or use the day buttons.</p></div>
     <div class="week-actions"><div class="week-save-row"><div><p>All seven days save together</p><p id="weekly-save-status" role="status">No unsaved changes.</p></div><button class="btn btn-primary" type="submit" name="action" value="save-weekly-specials">Save Week</button></div><p id="weekly-save-error" class="error" role="alert" tabindex="-1" hidden={!weeklySaveError}>{weeklySaveError}</p><div class="day-stepper" hidden><button type="button" id="previous-day">← Previous</button><button type="button" id="next-day">Next →</button></div></div>
-    <div class="day-grid">{DAY_NUMBERS.map((day,index)=><fieldset class="day-fields" id={`weekly-day-${index}`} data-day-name={DAYS[index]} tabindex="-1"><legend>{DAYS[index]}</legend>{weekly.groups.map((group,i)=>group.day_of_week===day && <GroupFields group={group} index={i} formPrefix="weekly"/>)}<button type="button" class="btn btn-ghost" data-add-group={day}>Add service/group</button></fieldset>)}</div>
+    <div class="day-grid">{DAY_NUMBERS.map((day,index)=><fieldset class="day-fields" id={`weekly-day-${index}`} data-day-name={DAYS[index]} tabindex="-1"><legend>{DAYS[index]}</legend>{weekly.groups.map((group,i)=>group.day_of_week===day && <GroupFields group={group} index={i} formPrefix="weekly"/>)}</fieldset>)}</div>
   </form>}
   {recurringError && <p class="error">{recurringError}</p>}
-  {defaults && <form method="post" id="recurring-defaults-form" class="recurring-defaults-form"><input type="hidden" name="action" value="save-recurring-defaults"/><input type="hidden" name="revision" value={defaults.revision}/><input type="hidden" name="group_count" value={defaults.groups.length}/><details class="recurring-defaults"><summary>Recurring Defaults</summary><div class="recurring-defaults__content"><p>These values prefill new weeks only. Saved weeks and intentional blanks are never changed.</p><label>Daily sandwich preset<select id="sandwich-preset"><option value="">Choose a preset…</option><option value="Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25">Chicken Salad Sandwich</option><option value="Grilled Ham &amp; Cheese with cup of Chili or Coleslaw $7.25">Grilled Ham &amp; Cheese</option></select></label>{DAY_NUMBERS.map(day=><details class="default-day"><summary>{DAY_NAMES[day]}</summary>{defaults!.groups.map((group,index)=>group.day_of_week===day && <><GroupFields group={group} index={index} defaults formPrefix="defaults"/>{group.service==='all-day' && <span hidden data-sandwich-index={index}/>}</>)}<button type="button" class="btn btn-ghost" data-add-group={day}>Add service/group</button></details>)}<p class="rd-flash" id="rd-flash" role="status" hidden/><button class="btn btn-primary recurring-defaults__save" type="submit" name="action" value="save-recurring-defaults">Save Recurring Defaults</button></div></details></form>}
+  {defaults && <form method="post" id="recurring-defaults-form" class="recurring-defaults-form"><input type="hidden" name="action" value="save-recurring-defaults"/><input type="hidden" name="revision" value={defaults.revision}/><input type="hidden" name="group_count" value={defaults.groups.length}/><details class="recurring-defaults"><summary>Recurring Defaults</summary><div class="recurring-defaults__content"><p>These values prefill new weeks only. Saved weeks and intentional blanks are never changed.</p><label>Daily sandwich preset<select id="sandwich-preset"><option value="">Choose a preset…</option><option value="Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25">Chicken Salad Sandwich</option><option value="Grilled Ham &amp; Cheese with cup of Chili or Coleslaw $7.25">Grilled Ham &amp; Cheese</option></select></label>{DAY_NUMBERS.map(day=><details class="default-day"><summary>{DAY_NAMES[day]}</summary>{defaults!.groups.map((group,index)=>group.day_of_week===day && <><GroupFields group={group} index={index} defaults formPrefix="defaults"/>{group.service==='all-day' && <span hidden data-sandwich-index={index}/>}</>)}</details>)}<p class="rd-flash" id="rd-flash" role="status" hidden/><button class="btn btn-primary recurring-defaults__save" type="submit" name="action" value="save-recurring-defaults">Save Recurring Defaults</button></div></details></form>}
   {mexican && <form method="post" id="mexican-form" class="recurring-defaults-form"><input type="hidden" name="action" value="save-mexican-night"/><input type="hidden" name="revision" value={mexican.revision}/><input type="hidden" name="group_count" value={mexican.groups.length}/><details class="recurring-defaults"><summary>Mexican Night menu</summary><div class="recurring-defaults__content"><p>Published separately at <a href="/specials#mexican-night">Mexican Night</a>. Add only confirmed menu items. This does not change saved Tuesday specials.</p><label>Title<input name="title" maxlength="80" value={mexican.title}/></label><label>Schedule<input name="schedule" maxlength="80" value={mexican.schedule}/></label><div class="section-groups">{mexican.groups.map((group,index)=><GroupFields group={group} index={index} formPrefix="mexican"/>)}<button type="button" class="btn btn-ghost" data-add-group="-1">Add menu group</button></div><p id="mexican-status" role="status"/><button class="btn btn-primary" type="submit">Save Mexican Night</button></div></details></form>}
   <template id="group-template"><GroupFields group={blankGroup(-1)} index={0} formPrefix="template"/></template>
 </section>
@@ -204,32 +203,13 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
   const updateCharacterLimitError = () => { if (characterLimitError) characterLimitError.hidden = !textareas.some((input) => input.value.length > input.maxLength); };
   const updateCounts = () => document.querySelectorAll<HTMLElement>('.slot-fields').forEach(slot => {
     const text = slot.querySelector<HTMLTextAreaElement>('[data-content]');
-    const price = slot.querySelector<HTMLInputElement>('[data-price]');
     const count = slot.querySelector<HTMLOutputElement>('[data-count]');
-    const length = [text?.value || '', price?.value || ''].filter(Boolean).join(' ').length;
+    const length = (text?.value || '').length;
     if (count) count.textContent = `${length} / 150`;
-    price?.setCustomValidity(length > 150 ? 'Special and price together must be 150 characters or fewer.' : '');
+    text?.setCustomValidity(length > 150 ? 'Special and price together must be 150 characters or fewer.' : '');
   });
   document.addEventListener('input', updateCounts);
   updateCounts();
-  document.addEventListener('click', event => {
-    const button = (event.target as Element).closest<HTMLButtonElement>('[data-move]');
-    const slot = button?.closest<HTMLElement>('.slot-fields');
-    if (!button || !slot) return;
-    const siblings = Array.from(slot.parentElement!.querySelectorAll<HTMLElement>(':scope > .slot-fields'));
-    const other = siblings[siblings.indexOf(slot) + Number(button.dataset.move)];
-    if (!other) return;
-    (slot as HTMLDetailsElement).open = true;
-    (other as HTMLDetailsElement).open = true;
-    for (const selector of ['[data-content]', '[data-price]', '[data-link]', '[data-unavailable]']) {
-      const a = slot.querySelector<HTMLInputElement>(selector), b = other.querySelector<HTMLInputElement>(selector);
-      if (!a || !b) continue;
-      if (a.type === 'checkbox') [a.checked, b.checked] = [b.checked, a.checked];
-      else [a.value,b.value] = [b.value,a.value];
-    }
-    slot.dispatchEvent(new Event('input', { bubbles: true }));
-    updateCounts();
-  });
   updateCharacterLimitError();
   // Hidden cards remain enabled successful controls in the one weekly form.
   const cards = Array.from(document.querySelectorAll<HTMLFieldSetElement>('.day-fields'));
@@ -504,7 +484,6 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
       const prefix = `g${marker.dataset.sandwichIndex}_2_`;
       const input = recurringDefaultsForm.querySelector<HTMLTextAreaElement>(`[name="${prefix}content"]`)!;
       input.value = preset.value;
-      recurringDefaultsForm.querySelector<HTMLInputElement>(`[name="${prefix}price"]`)!.value = '';
       recurringDefaultsForm.querySelector<HTMLInputElement>(`[name="${prefix}unavailable"]`)!.checked = false;
     });
     recurringDefaultsForm.dispatchEvent(new Event('input', { bubbles: true }));
@@ -553,7 +532,6 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
           grpEl.querySelectorAll<HTMLTextAreaElement>('.import-item-content').forEach(ta => {
             const pos = ta.dataset.pos!;
             body.set(`ig${gi}_${pos}_content`, ta.value);
-            body.set(`ig${gi}_${pos}_price`, grpEl.querySelector<HTMLInputElement>(`.import-item-price[data-pos="${pos}"]`)?.value ?? '');
           });
         });
       }
@@ -615,9 +593,8 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
   .import-group-edit{border:1px solid rgba(36,22,16,.12);border-radius:8px;background:#fff;padding:8px}
   .import-group-edit summary{cursor:pointer;font-weight:700;font-size:.9rem;padding:4px 0}
   .import-group-fields{display:grid;gap:8px;margin-top:8px}
-  .import-item-row{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:start}
+  .import-item-row{display:grid;grid-template-columns:1fr;gap:6px;align-items:start}
   .import-item-content{min-height:52px;font-size:.88rem;padding:6px 8px;resize:vertical}
-  .import-item-price{width:80px;font-size:.88rem;padding:6px 8px}
   .import-card__actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid rgba(36,22,16,.1)}
   .import-week-label{display:flex;flex-direction:column;gap:4px;font-size:.78rem;font-family:var(--label);font-weight:700;letter-spacing:.06em;text-transform:uppercase}
   .import-week-label select{font-size:.9rem;padding:6px 8px;height:auto;margin:0}
@@ -630,7 +607,6 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
     .import-card__actions{flex-direction:column;align-items:stretch}
     .import-accept-btn,.import-keep,.import-dismiss{width:100%;text-align:center}
     .import-item-row{grid-template-columns:1fr}
-    .import-item-price{width:100%;box-sizing:border-box}
   }
 </style>
 <style>

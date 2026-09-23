@@ -1,7 +1,7 @@
 // Caption-based classification for specials import. Pure functions; no I/O.
 // Increment PARSER_VERSION whenever these rules change so the source-version
 // id changes and existing staged records are not silently reclassified.
-export const PARSER_VERSION = 1;
+export const PARSER_VERSION = 2;
 
 // Day-of-week mapping: 0=Sunday … 6=Saturday
 const DAY_BY_NAME = new Map([

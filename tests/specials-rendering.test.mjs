@@ -65,3 +65,24 @@ test('compiled admin preserves drafts on stale POST and rejects wrong origin wit
   assert.ok(html.includes('UnsavedBartenderDraft'));assert.ok(html.includes('changed after you opened'));
   assert.ok(html.includes('data-active-day="6"'));assert.deepEqual(f.sql('SELECT * FROM special_slots ORDER BY group_id,position'),before);
 });
+
+test('compiled simple editor has service-specific inputs, inline prices and no database controls',async t=>{
+  const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};
+  const week=f.sql('SELECT id FROM weekly_specials LIMIT 1')[0];
+  const g=f.sql("SELECT id FROM special_groups WHERE collection_id=(SELECT id FROM special_collections WHERE weekly_special_id=?) AND day_of_week=1 AND service='lunch'",week.id)[0];
+  f.sql("UPDATE special_slots SET content='Pizza Bread',price='$9.75' WHERE group_id=? AND position=1",g.id);
+  const html=await container.renderToString(adminPage,{request:new Request('http://localhost/admin/specials?week='+week.id,{headers:{cookie:'gb_session='+'a'.repeat(32)}}),locals:{runtime:{env:f.env}}});
+  const form=html.match(/<form[^>]*id="weekly-form"[\s\S]*?<\/form>/)[0];
+  const fields=[...form.matchAll(/<fieldset class="group-fields"([^>]*)>([\s\S]*?)<\/fieldset>/g)];
+  assert.equal(fields.length,21);
+  for(const [,attrs,body] of fields) {
+    const day=Number(attrs.match(/data-group-day="([^"]*)"/)[1]);
+    const service=attrs.match(/data-service="([^"]*)"/)[1];
+    const expected=service==='lunch'?1:service==='all-day'?2:[0,6].includes(day)?0:[1,5].includes(day)?2:1;
+    assert.equal((body.match(/<textarea /g)||[]).length,expected,`${day} ${service}`);
+  }
+  assert.match(form,/>Pizza Bread \$9.75<\/textarea>/);
+  assert.doesNotMatch(html,/<input[^>]*(?:name="[^"]*_price"|class="import-item-price")/);
+  assert.doesNotMatch(form,/Slot [1-4]|data-move|Add service\/group|>Group label/);
+  assert.match(form,/Save Week/);
+});

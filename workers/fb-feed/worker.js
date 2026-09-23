@@ -330,7 +330,9 @@ async function runAiExtraction(env, imageR2Key, caption, modelId) {
   const bytes = await r2Object.arrayBuffer();
   const base64 = await arrayBufferToBase64(bytes);
   const prompt = `Extract restaurant daily specials from this image. Return ONLY a JSON array:
-[{"label":"<name>","day_of_week":<0-6 or -1>,"service":"<lunch|nightly|all-day|custom>","items":[{"content":"<item>","price":"<price or empty>"}]}]
+[{"label":"<name>","day_of_week":<0-6 or -1>,"service":"<lunch|nightly|all-day|custom>","items":[{"content":"<complete special including inline price>"}]}]
+Keep prices inside content, maximum 150 characters including prices. Lunch has 1 item; All Day has 2; Monday and Friday Nightly have 2; other weekday Nightly has 1. Weekend special groups have 1 item (All Day still has 2); no weekend Nightly.
+Monday/Friday graphics repeat All Day offers alongside Lunch/Nightly. Put those offers ONLY in an all-day group, never duplicate them into lunch/nightly. Keep price variants for one dish together in one item. Do not invent or truncate offers; if the grouping is unclear return [].
 Day: 0=Sun,1=Mon,...,6=Sat; -1=untied to a specific day. Return [] if no specials visible. Caption: ${caption.slice(0, 200)}`;
   try {
     const result = await env.AI.run(modelId, {
@@ -367,7 +369,7 @@ function validateExtraction(extractedJson) {
   }
   const groups = [];
   for (const g of parsed) {
-    if (typeof g.label !== 'string') {
+    if (!g || typeof g.label !== 'string') {
       return { candidateJson: null, validationResult: 'rejected', validationReason: 'group missing string label' };
     }
     if (!Number.isInteger(g.day_of_week) || g.day_of_week < -1 || g.day_of_week > 6) {
@@ -381,15 +383,24 @@ function validateExtraction(extractedJson) {
     }
     const items = [];
     for (const item of g.items) {
-      if (typeof item.content !== 'string') {
+      if (!item || typeof item.content !== 'string' || (item.price != null && typeof item.price !== 'string')) {
         return { candidateJson: null, validationResult: 'rejected', validationReason: 'item missing string content' };
       }
-      if (item.content.length > 150) {
+      const content = [item.content, item.price ?? ''].filter(Boolean).join(' ');
+      if (content.length > 150) {
         return { candidateJson: null, validationResult: 'rejected', validationReason: 'item content exceeds 150 characters' };
       }
-      items.push({ content: item.content, price: String(item.price ?? '') });
+      items.push({ content });
     }
     groups.push({ label: g.label.slice(0, 80), day_of_week: g.day_of_week, service: g.service, items });
+  }
+  const offerKey = text => text.replace(/\s+/g, ' ').trim().toLowerCase();
+  for (const g of groups) {
+    if ([1,5].includes(g.day_of_week) && ['lunch','nightly'].includes(g.service)) {
+      g.items = g.items.filter(item => !groups.some(other => other.day_of_week === g.day_of_week && other.service === 'all-day' && other.items.some(allDay => offerKey(allDay.content) === offerKey(item.content))));
+    }
+    const capacity = g.service === 'lunch' ? 1 : g.service === 'all-day' ? 2 : g.service === 'nightly' ? ([0,6].includes(g.day_of_week) ? 0 : [1,5].includes(g.day_of_week) ? 2 : 1) : g.day_of_week === -1 ? 4 : 1;
+    if (g.items.length > capacity) return { candidateJson: null, validationResult: 'rejected', validationReason: 'too many items for service; review All Day grouping' };
   }
   return {
     candidateJson: JSON.stringify(groups),

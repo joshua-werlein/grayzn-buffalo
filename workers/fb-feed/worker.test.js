@@ -530,3 +530,28 @@ test('fetch and extract events are written to special_import_events', async (t) 
   assert.ok(evTypes.includes('extract'));
   assert.ok(evTypes.includes('validate'));
 });
+
+test('import contract combines prices and removes Monday/Friday All Day repetitions',async t=>{
+  for(const day of [1,5]) {
+    const groups=[
+      {label:'Lunch',day_of_week:day,service:'lunch',items:[{content:'Lunch',price:'$9.75'},{content:'Sandwich',price:'$7.25'}]},
+      {label:'All Day',day_of_week:day,service:'all-day',items:[{content:'Sandwich',price:'$7.25'},{content:'Burger $10.25'}]},
+      {label:'Nightly',day_of_week:day,service:'nightly',items:[{content:'Dinner $14'},{content:'Ribs $18.75'},{content:'Sandwich $7.25'},{content:'Burger $10.25'}]},
+    ];
+    const f=importFixture(t,{aiResponse:JSON.stringify(groups)});
+    await f.run();
+    const candidate=JSON.parse(f.state.imports[0].candidate_json);
+    assert.deepEqual(candidate.map(g=>g.items.length),[1,2,2]);
+    assert.deepEqual(candidate[0].items[0],{content:'Lunch $9.75'});
+    assert.match(f.state.aiCalls[0].params.messages[0].content[0].text,/ONLY in an all-day group/);
+  }
+});
+
+test('import rejects combined text over 150 and excess service items without truncation',async t=>{
+  for(const items of [[{content:'a'.repeat(148),price:'$10'}],[{content:'One'},{content:'Two'}]]) {
+    const f=importFixture(t,{aiResponse:JSON.stringify([{label:'Lunch',day_of_week:1,service:'lunch',items}])});
+    await f.run();
+    assert.equal(f.state.imports[0].validation_result,'rejected');
+    assert.equal(f.state.imports[0].candidate_json,null);
+  }
+});

@@ -1,12 +1,12 @@
 ---
-import { visibleSlots, type SpecialGroup } from '../lib/specials-store';
+import { displayedSpecial, visibleSlots, type SpecialGroup } from '../lib/specials-store';
 interface Props { group: SpecialGroup; showTime?: boolean; mexicanAvailable?: boolean }
 const { group, showTime = true, mexicanAvailable = false } = Astro.props;
 const slots = group.enabled ? visibleSlots(group) : [];
 ---
 {slots.length > 0 && <section class="special-group">
   <p class="special-group__label">{group.label}{showTime && group.service_time && <span>{group.service_time}</span>}</p>
-  <ul class="special-group__items">{slots.map(slot => <li><span>{slot.content}</span>{slot.price && <> <strong>{slot.price}</strong></>}{slot.section_link === 'mexican-night' && mexicanAvailable && <a href="/specials#mexican-night">View Mexican Night menu →</a>}</li>)}</ul>
+  <ul class="special-group__items">{slots.map(slot => <li><span>{displayedSpecial(slot)}</span>{slot.section_link === 'mexican-night' && mexicanAvailable && <a href="/specials#mexican-night">View Mexican Night menu →</a>}</li>)}</ul>
 </section>}
 <style>
   .special-group{min-width:0;align-self:start}.special-group__label{margin:0 0 6px;font-weight:700}.special-group__label span{display:block;font-size:.82em;font-weight:400}.special-group__items{display:grid;gap:10px;list-style:none;padding:0;margin:0}.special-group__items li{margin:0;white-space:pre-line;overflow-wrap:anywhere;line-height:1.4}.special-group__items li+li{border-top:1px dashed currentColor;padding-top:10px}.special-group__items a{display:block;font-size:.9em;margin-top:6px;color:inherit;text-underline-offset:3px}

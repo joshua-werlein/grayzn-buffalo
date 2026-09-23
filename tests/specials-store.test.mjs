@@ -98,7 +98,7 @@ test('applyCandidate applies staged items to target week with manual ownership',
   const {weeklySpecialId}=await s.applyCandidate(f.env,importId,weekRow.id,0);
   assert.ok(weeklySpecialId);
   const slots=f.sql("SELECT ss.* FROM special_slots ss JOIN special_groups sg ON sg.id=ss.group_id WHERE sg.collection_id=(SELECT sc.id FROM special_collections sc WHERE sc.weekly_special_id=?) AND sg.day_of_week=1 AND sg.service='nightly' ORDER BY ss.position",weeklySpecialId);
-  assert.equal(slots[0].content,'Test Item');
+  assert.equal(slots[0].content,'Test Item $10');
   assert.equal(slots[0].origin,'manual');
   assert.equal(slots[0].manual_locked,1);
   const imp=f.sql('SELECT review_status FROM special_imports WHERE id=?',importId)[0];
@@ -112,8 +112,8 @@ test('applyCandidate with override groups writes staff-corrected values with man
   const overrides=[{label:'Edited Monday Nightly',day_of_week:1,service:'nightly',items:[{content:'Staff Override',price:'$12'}]}];
   await s.applyCandidate(f.env,importId,weekRow.id,0,overrides);
   const slots=f.sql("SELECT ss.* FROM special_slots ss JOIN special_groups sg ON sg.id=ss.group_id WHERE sg.collection_id=(SELECT sc.id FROM special_collections sc WHERE sc.weekly_special_id=?) AND sg.day_of_week=1 AND sg.service='nightly' ORDER BY ss.position",weekRow.id);
-  assert.equal(slots[0].content,'Staff Override');
-  assert.equal(slots[0].price,'$12');
+  assert.equal(slots[0].content,'Staff Override $12');
+  assert.equal(slots[0].price,'');
   assert.equal(slots[0].origin,'manual');
   assert.equal(slots[0].manual_locked,1);
 });
@@ -137,7 +137,7 @@ test('applyCandidate for section candidate applies to mexican-night collection',
   const before=await s.readCollection(f.env,'mexican-night');
   await s.applyCandidate(f.env,importId,null,before.revision);
   const after=await s.readCollection(f.env,'mexican-night');
-  assert.ok(after.groups.some(g=>g.slots.some(slot=>slot.content==='Tacos al Pastor')));
+  assert.ok(after.groups.some(g=>g.slots.some(slot=>slot.content==='Tacos al Pastor $13')));
   assert.ok(after.groups.every(g=>g.slots.every(slot=>slot.origin==='manual'&&slot.manual_locked===1)));
 });
 
@@ -205,7 +205,7 @@ test('review actions cannot affect a different week via forged form data', async
   await s.applyCandidate(f.env,importId,targetWeekId,0);
   // Verify other week's nightly slot 1 was NOT changed.
   const otherSlots=f.sql("SELECT ss.content FROM special_slots ss JOIN special_groups sg ON sg.id=ss.group_id WHERE sg.collection_id=(SELECT id FROM special_collections WHERE weekly_special_id=?) AND sg.day_of_week=1 AND sg.service='nightly' ORDER BY ss.position",otherWeekId);
-  assert.ok(!otherSlots.some(s=>s.content==='Test Item'),'Other week must not be affected');
+  assert.ok(!otherSlots.some(s=>s.content==='Test Item $10'),'Other week must not be affected');
 });
 
 test('readImportCandidates returns pending staged records and no already-reviewed records', async t=>{
