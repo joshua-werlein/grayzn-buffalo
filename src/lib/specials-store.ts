@@ -282,6 +282,58 @@ export async function unlockBlankSlots(
   return { collectionId, revision: expectedRevision + 1, unlockedCount: results[1]?.meta?.changes ?? 0 };
 }
 
+/** Re-lock blank slots so the guarded Worker may not auto-fill them.
+ *  Only blank slots are affected; populated values are never changed. */
+export async function lockBlankSlots(
+  env: any,
+  weekId: number,
+  expectedRevision: number,
+): Promise<{ collectionId: string; revision: number; lockedCount: number }> {
+  const weekRow: any = await env.DB.prepare(
+    "SELECT sc.id cid, sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id AND sc.kind='week' WHERE ws.id=?1"
+  ).bind(weekId).first();
+  if (!weekRow) throw new Error('That saved week no longer exists.');
+  if (weekRow.revision !== expectedRevision) throw new SpecialConflict();
+  const token = crypto.randomUUID();
+  const collectionId = weekRow.cid;
+  const prepare = (sql: string, ...args: any[]) => env.DB.prepare(sql).bind(...args);
+  const gate = 'EXISTS(SELECT 1 FROM special_collections WHERE id=?1 AND mutation_token=?2)';
+  const results = await env.DB.batch([
+    prepare('UPDATE special_collections SET revision=revision+1,mutation_token=?1 WHERE id=?2 AND revision=?3', token, collectionId, expectedRevision),
+    prepare(`UPDATE special_slots SET manual_locked=1,origin='manual'
+      WHERE group_id IN (SELECT id FROM special_groups WHERE collection_id=?1)
+        AND (content='' OR content IS NULL) AND price='' AND section_link=''
+        AND ${gate}`, collectionId, token),
+    prepare('SELECT id FROM special_collections WHERE id=?1 AND mutation_token=?2', collectionId, token),
+  ]);
+  if (!results.at(-1)?.results?.length) throw new SpecialConflict();
+  return { collectionId, revision: expectedRevision + 1, lockedCount: results[1]?.meta?.changes ?? 0 };
+}
+
+/** Derive the Facebook blank-fill state from actual slot ownership.
+ *  'on'       = all blank slots are eligible (manual_locked=0, origin≠manual)
+ *  'off'      = all blank slots are locked
+ *  'mixed'    = some eligible, some locked
+ *  'no-blanks'= no blank slots to fill */
+export async function readFbFillState(
+  env: any,
+  collectionId: string,
+): Promise<'on' | 'off' | 'mixed' | 'no-blanks'> {
+  const stats: any = await env.DB.prepare(
+    `SELECT SUM(CASE WHEN ss.manual_locked=0 AND ss.origin<>'manual' THEN 1 ELSE 0 END) unlocked,
+            COUNT(*) total
+     FROM special_slots ss JOIN special_groups sg ON sg.id=ss.group_id
+     WHERE sg.collection_id=?1
+       AND (ss.content='' OR ss.content IS NULL) AND ss.price='' AND ss.section_link=''`
+  ).bind(collectionId).first();
+  const unlocked = Number(stats?.unlocked ?? 0);
+  const total = Number(stats?.total ?? 0);
+  if (total === 0) return 'no-blanks';
+  if (unlocked === total) return 'on';
+  if (unlocked === 0) return 'off';
+  return 'mixed';
+}
+
 /** Parse only editable values. Ownership/automatic baselines never come from a form. */
 export function collectionFromForm(form: FormData, baseline: SpecialCollection): SpecialCollection {
   const value = (key: string) => String(form.get(key) ?? '').replace(/\r\n?/g,'\n');

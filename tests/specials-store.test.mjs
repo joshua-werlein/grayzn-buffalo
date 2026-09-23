@@ -343,3 +343,117 @@ test('saveCollection does not relock an unchanged unlocked blank slot', async t 
   const pos1=f.sql('SELECT manual_locked FROM special_slots WHERE group_id=? AND position=1',groupId)[0];
   assert.equal(pos1.manual_locked,0,'unchanged unlocked blank slot must stay unlocked after save');
 });
+
+// ── lockBlankSlots + readFbFillState ─────────────────────────────────────────
+
+test('readFbFillState returns off when blank slots are all locked', async t => {
+  const f=fixture(t);
+  // All blank slots in a freshly-loaded week start as manual/locked from migration.
+  const weekRow=f.sql('SELECT ws.id,sc.id cid FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id LIMIT 1')[0];
+  f.sql("UPDATE special_slots SET content='',origin='manual',manual_locked=1 WHERE group_id IN (SELECT id FROM special_groups WHERE collection_id=?)",weekRow.cid);
+  assert.equal(await s.readFbFillState(f.env,weekRow.cid),'off',
+    'OFF state — UI must render "Allow Facebook to fill blank spots" button');
+});
+
+test('readFbFillState returns on when blank slots are all eligible', async t => {
+  const f=fixture(t);
+  const weekRow=f.sql('SELECT ws.id,sc.id cid,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id LIMIT 1')[0];
+  f.sql("UPDATE special_slots SET content='',origin='manual',manual_locked=1 WHERE group_id IN (SELECT id FROM special_groups WHERE collection_id=?)",weekRow.cid);
+  await s.unlockBlankSlots(f.env,weekRow.id,weekRow.revision);
+  assert.equal(await s.readFbFillState(f.env,weekRow.cid),'on',
+    'ON state — UI must render "Don\'t allow Facebook to fill blank spots" button');
+});
+
+test('readFbFillState returns no-blanks when all slots have content', async t => {
+  const f=fixture(t);
+  const weekRow=f.sql('SELECT ws.id,sc.id cid FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id LIMIT 1')[0];
+  f.sql("UPDATE special_slots SET content='Something',origin='manual',manual_locked=1 WHERE group_id IN (SELECT id FROM special_groups WHERE collection_id=?)",weekRow.cid);
+  assert.equal(await s.readFbFillState(f.env,weekRow.cid),'no-blanks');
+});
+
+test('readFbFillState returns mixed when some blank slots eligible and some locked', async t => {
+  const f=fixture(t);
+  const weekRow=f.sql('SELECT ws.id,sc.id cid FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id LIMIT 1')[0];
+  const groups=f.sql('SELECT id FROM special_groups WHERE collection_id=?',weekRow.cid);
+  // Lock all blank slots first.
+  f.sql("UPDATE special_slots SET content='',origin='manual',manual_locked=1 WHERE group_id IN (SELECT id FROM special_groups WHERE collection_id=?)",weekRow.cid);
+  // Then unlock one specific slot by hand.
+  f.sql("UPDATE special_slots SET origin='legacy',manual_locked=0 WHERE group_id=? AND position=1",groups[0].id);
+  assert.equal(await s.readFbFillState(f.env,weekRow.cid),'mixed');
+});
+
+test('lockBlankSlots re-locks blank eligible slots and leaves populated slots unchanged', async t => {
+  const f=fixture(t);
+  const weekRow=f.sql('SELECT ws.id,sc.id cid,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id LIMIT 1')[0];
+  const groupId=f.sql('SELECT id FROM special_groups WHERE collection_id=? LIMIT 1',weekRow.cid)[0].id;
+
+  // Give position 1 a populated value; make position 2 blank and unlocked.
+  f.sql("UPDATE special_slots SET content='Stay untouched',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",groupId);
+  f.sql("UPDATE special_slots SET content='',origin='legacy',manual_locked=0 WHERE group_id=? AND position=2",groupId);
+
+  const revBefore=f.sql('SELECT revision FROM special_collections WHERE id=?',weekRow.cid)[0].revision;
+  const result=await s.lockBlankSlots(f.env,weekRow.id,revBefore);
+  assert.equal(result.revision,revBefore+1);
+
+  const slot1=f.sql('SELECT * FROM special_slots WHERE group_id=? AND position=1',groupId)[0];
+  const slot2=f.sql('SELECT * FROM special_slots WHERE group_id=? AND position=2',groupId)[0];
+
+  assert.equal(slot1.content,'Stay untouched','populated slot content must not change');
+  assert.equal(slot1.manual_locked,1,'populated slot must stay locked');
+  assert.equal(slot1.origin,'manual','populated slot origin must stay manual');
+
+  assert.equal(slot2.content,'','blank slot content must not change');
+  assert.equal(slot2.manual_locked,1,'blank slot must now be locked');
+  assert.equal(slot2.origin,'manual','blank slot origin must be set to manual');
+  assert.equal(slot2.last_auto_value,null,'last_auto_value must not be changed');
+});
+
+test('lockBlankSlots throws SpecialConflict on stale revision', async t => {
+  const f=fixture(t);
+  const weekRow=f.sql('SELECT ws.id,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id LIMIT 1')[0];
+  await assert.rejects(
+    ()=>s.lockBlankSlots(f.env,weekRow.id,weekRow.revision-1),
+    s.SpecialConflict,
+    'stale revision must throw SpecialConflict'
+  );
+});
+
+test('lockBlankSlots throws on unknown week id', async t => {
+  const f=fixture(t);
+  await assert.rejects(()=>s.lockBlankSlots(f.env,9999999,0),/no longer exists/);
+});
+
+test('lockBlankSlots cannot affect a different week', async t => {
+  const f=fixture(t);
+  const weeks=f.sql('SELECT ws.id,sc.id cid,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id ORDER BY ws.week_start_date LIMIT 2');
+  assert.ok(weeks.length>=2,'need at least two saved weeks for isolation test');
+  const [target,other]=weeks;
+
+  // Unlock all blank slots in both weeks.
+  f.sql("UPDATE special_slots SET content='',origin='legacy',manual_locked=0 WHERE group_id IN (SELECT id FROM special_groups WHERE collection_id=?)",target.cid);
+  f.sql("UPDATE special_slots SET content='',origin='legacy',manual_locked=0 WHERE group_id IN (SELECT id FROM special_groups WHERE collection_id=?)",other.cid);
+
+  // Lock only the target week's blank slots.
+  const revNow=f.sql('SELECT revision FROM special_collections WHERE id=?',target.cid)[0].revision;
+  await s.lockBlankSlots(f.env,target.id,revNow);
+
+  // The other week's slots must remain unlocked.
+  const otherSlots=f.sql('SELECT manual_locked FROM special_slots WHERE group_id IN (SELECT id FROM special_groups WHERE collection_id=?)',other.cid);
+  assert.ok(otherSlots.every(sl=>sl.manual_locked===0),'other week slots must remain unlocked');
+});
+
+test('readFbFillState returns off after lockBlankSlots and on after unlockBlankSlots round-trip', async t => {
+  const f=fixture(t);
+  const weekRow=f.sql('SELECT ws.id,sc.id cid,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id LIMIT 1')[0];
+  f.sql("UPDATE special_slots SET content='',origin='manual',manual_locked=1 WHERE group_id IN (SELECT id FROM special_groups WHERE collection_id=?)",weekRow.cid);
+
+  assert.equal(await s.readFbFillState(f.env,weekRow.cid),'off');
+
+  const rev1=f.sql('SELECT revision FROM special_collections WHERE id=?',weekRow.cid)[0].revision;
+  await s.unlockBlankSlots(f.env,weekRow.id,rev1);
+  assert.equal(await s.readFbFillState(f.env,weekRow.cid),'on');
+
+  const rev2=f.sql('SELECT revision FROM special_collections WHERE id=?',weekRow.cid)[0].revision;
+  await s.lockBlankSlots(f.env,weekRow.id,rev2);
+  assert.equal(await s.readFbFillState(f.env,weekRow.cid),'off');
+});
