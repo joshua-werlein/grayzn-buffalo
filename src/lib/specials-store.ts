@@ -65,6 +65,162 @@ export async function getMexicanNight(env: any): Promise<SpecialCollection | nul
   try { return await readCollection(env, 'mexican-night'); } catch { return null; }
 }
 
+// ── Import review ─────────────────────────────────────────────────────────────
+
+export type CandidateItem = { content: string; price: string };
+export type CandidateGroup = { label: string; day_of_week: number; service: string; items: CandidateItem[] };
+export type ImportCandidate = {
+  id: string; fb_post_id: string; fb_created_time: string; fb_updated_time: string | null;
+  caption: string; permalink_url: string; image_r2_key: string | null;
+  target_kind: string; target_day: number | null; target_service: string | null;
+  target_collection_id: string | null; classification_reason: string;
+  candidate_json: string | null; validation_result: string | null;
+  processing_status: string; review_status: string; fetched_at: string;
+};
+
+export function parseCandidateJson(json: string | null): CandidateGroup[] {
+  if (!json) return [];
+  try { return JSON.parse(json) as CandidateGroup[]; } catch { return []; }
+}
+
+export async function readImportCandidates(env: any): Promise<ImportCandidate[]> {
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT id,fb_post_id,fb_created_time,fb_updated_time,caption,permalink_url,image_r2_key,
+       target_kind,target_day,target_service,target_collection_id,classification_reason,
+       candidate_json,validation_result,processing_status,review_status,fetched_at
+       FROM special_imports
+       WHERE review_status='pending' AND processing_status IN ('staged','failed','skipped')
+       ORDER BY fb_created_time DESC LIMIT 50`
+    ).all();
+    return (results ?? []) as ImportCandidate[];
+  } catch { return []; }
+}
+
+function applyCandidateGroupsToCollection(collection: SpecialCollection, candidateGroups: CandidateGroup[]): SpecialCollection {
+  const groups = collection.groups.map(g => ({ ...g, slots: g.slots.map(s => ({ ...s })) }));
+  for (const cg of candidateGroups) {
+    // Sections always use day_of_week=-1 regardless of what AI returned.
+    const dayNum = collection.kind === 'section' ? -1 : cg.day_of_week;
+    const existingIdx = groups.findIndex(g => g.day_of_week === dayNum && g.service === cg.service);
+    const slots = ([1, 2, 3, 4] as const).map(pos => ({
+      position: pos as number,
+      content: cg.items[pos - 1]?.content ?? '',
+      price: cg.items[pos - 1]?.price ?? '',
+      section_link: '',
+      origin: 'manual' as const,
+      manual_locked: 1,
+      last_auto_value: null as string | null,
+    }));
+    if (existingIdx >= 0) {
+      const existing = groups[existingIdx];
+      // Preserve last_auto_value baseline for slots that already exist.
+      groups[existingIdx] = {
+        ...existing,
+        label: cg.label || existing.label,
+        enabled: 1,
+        slots: slots.map((s, i) => ({ ...s, last_auto_value: existing.slots[i]?.last_auto_value ?? null })),
+      };
+    } else {
+      const newGroup = blankGroup(dayNum, groups.length);
+      newGroup.label = cg.label;
+      newGroup.service = cg.service as SpecialGroup['service'];
+      newGroup.slots = slots;
+      groups.push(newGroup);
+    }
+  }
+  return { ...collection, groups };
+}
+
+/** Apply a staged import candidate to a live specials collection.
+ *  Reads candidate_json and target metadata from D1; never trusts client-submitted
+ *  candidate data or ownership fields.  overrideGroups lets staff correct AI values
+ *  before accepting — those corrections are still written with manual ownership.
+ *
+ *  Stale-candidate detection: for week targets, compares the week's updated_at
+ *  against the candidate's fetched_at.  For sections, compares expectedRevision
+ *  against the live collection revision.  Either mismatch throws SpecialConflict.
+ */
+export async function applyCandidate(
+  env: any,
+  importId: string,
+  targetWeekId: number | null,
+  expectedRevision: number,
+  overrideGroups?: CandidateGroup[]
+): Promise<{ weeklySpecialId: number | null; collectionId: string }> {
+  const record: ImportCandidate | null = await env.DB.prepare(
+    `SELECT id,target_kind,target_day,target_service,target_collection_id,
+     candidate_json,review_status,fetched_at FROM special_imports WHERE id=?1`
+  ).bind(importId).first();
+  if (!record) throw new Error('Import record not found.');
+  if (record.review_status !== 'pending') throw new Error('This import has already been reviewed.');
+
+  const candidateGroups = overrideGroups ?? parseCandidateJson(record.candidate_json);
+  if (!candidateGroups.length) throw new Error('No candidate items to apply.');
+
+  let collectionId: string;
+  let weekDates: { start: string; end: string } | undefined;
+
+  if (record.target_kind === 'section') {
+    if (!record.target_collection_id) throw new Error('Missing section target.');
+    collectionId = record.target_collection_id;
+  } else if (record.target_kind === 'week' || record.target_kind === 'ambiguous') {
+    if (!targetWeekId) throw new Error('Select a saved week to apply this candidate to.');
+    // Validate the week exists and get its collection/dates.
+    const weekRow: any = await env.DB.prepare(
+      "SELECT ws.id,ws.week_start_date,ws.week_end_date,ws.updated_at,sc.id cid FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id WHERE ws.id=?1"
+    ).bind(targetWeekId).first();
+    if (!weekRow) throw new Error('That saved week no longer exists.');
+    collectionId = weekRow.cid;
+    weekDates = { start: weekRow.week_start_date, end: weekRow.week_end_date };
+    // Stale detection: was this week saved more recently than the candidate was staged?
+    if (record.fetched_at && weekRow.updated_at && weekRow.updated_at > record.fetched_at) {
+      throw new SpecialConflict();
+    }
+  } else {
+    throw new Error(`Cannot apply an import with kind "${record.target_kind}".`);
+  }
+
+  const collection = await readCollection(env, collectionId);
+  // Stale detection for sections (no updated_at; use revision from page load).
+  if (record.target_kind === 'section' && collection.revision !== expectedRevision) {
+    throw new SpecialConflict();
+  }
+
+  const next = applyCandidateGroupsToCollection(collection, candidateGroups);
+  const result = await saveCollection(env, next, weekDates);
+
+  await env.DB.prepare(
+    "UPDATE special_imports SET review_status='accepted',reviewed_at=CURRENT_TIMESTAMP WHERE id=?1"
+  ).bind(importId).run();
+  await env.DB.prepare(
+    "INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?1,'review','accepted')"
+  ).bind(importId).run();
+
+  return { weeklySpecialId: result.id, collectionId: result.collectionId };
+}
+
+/** Record a Keep or Dismiss decision without touching specials content. */
+export async function recordReviewDecision(
+  env: any,
+  importId: string,
+  decision: 'kept' | 'dismissed',
+  reason: string = ''
+): Promise<void> {
+  const record: any = await env.DB.prepare(
+    'SELECT review_status FROM special_imports WHERE id=?1'
+  ).bind(importId).first();
+  if (!record) throw new Error('Import record not found.');
+  if (record.review_status !== 'pending') throw new Error('This import has already been reviewed.');
+
+  await env.DB.prepare(
+    "UPDATE special_imports SET review_status=?1,review_reason=?2,reviewed_at=CURRENT_TIMESTAMP WHERE id=?3"
+  ).bind(decision, reason, importId).run();
+  await env.DB.prepare(
+    "INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?1,'review',?2)"
+  ).bind(importId, decision).run();
+}
+
 /** Parse only editable values. Ownership/automatic baselines never come from a form. */
 export function collectionFromForm(form: FormData, baseline: SpecialCollection): SpecialCollection {
   const value = (key: string) => String(form.get(key) ?? '').replace(/\r\n?/g,'\n');

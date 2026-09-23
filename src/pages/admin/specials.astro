@@ -3,7 +3,7 @@ import Base from '../../layouts/Base.astro';
 import GroupFields from '../../components/SpecialGroupFields.astro';
 import { isAuthed } from '../../lib/auth';
 import { isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from '../../lib/weekly-specials';
-import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, readCollection, readWeek, collectionFromForm, saveCollection, SpecialConflict, type SpecialCollection } from '../../lib/specials-store';
+import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, readCollection, readWeek, collectionFromForm, saveCollection, applyCandidate, recordReviewDecision, readImportCandidates, parseCandidateJson, SpecialConflict, type SpecialCollection, type ImportCandidate } from '../../lib/specials-store';
 const env = (Astro.locals as any).runtime?.env ?? {};
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 const empty = (kind: SpecialCollection['kind'], id=''): SpecialCollection => ({ id,kind,weekly_special_id:null,title:'',schedule:'',revision:0,groups:[] });
@@ -11,6 +11,7 @@ let defaults: SpecialCollection | null = null, mexican: SpecialCollection | null
 let weekly = empty('week'), weekStart='', weekEnd='', editingId='', notice='', error='', recurringError='';
 let activeDay=0, weeklyDirty=false, weeklySaveAttempted=false, weeklyScrollY=0, weeklySaveError='';
 let ready=true;
+let candidates: ImportCandidate[] = [];
 try { defaults=await readCollection(env,'defaults'); } catch { recurringError='Recurring defaults are unavailable. New weeks cannot be initialized.'; }
 try { mexican=await readCollection(env,'mexican-night'); } catch { /* Weekly editing does not depend on section availability. */ }
 const requestedId = Number(Astro.url.searchParams.get('week') ?? '');
@@ -50,6 +51,36 @@ if (Astro.request.method==='POST') {
       const saved=await saveCollection(env,next);
       if (json) return Response.json({ok:true,message:'Saved.',revision:saved.revision,groupIds:saved.groupIds});
       return Astro.redirect('/admin/specials?saved=1',303);
+    } else if (action==='accept-import' || action==='keep-import' || action==='dismiss-import') {
+      if (!json) throw new Error('Review actions require JSON response.');
+      const importId = String(form.get('import_id') ?? '');
+      if (!importId) throw new Error('Missing import id.');
+      if (action==='accept-import') {
+        const weekIdRaw = form.get('week_id');
+        const weekId = weekIdRaw ? Number(weekIdRaw) : null;
+        const expectedRevision = Number(form.get('collection_revision') ?? 0);
+        // Override groups: staff-edited items submitted as ig{n}_{pos}_content/price.
+        const overrideCountRaw = form.get('override_group_count');
+        let overrideGroups: import('../../lib/specials-store').CandidateGroup[] | undefined;
+        if (overrideCountRaw !== null) {
+          const n = Number(overrideCountRaw);
+          overrideGroups = Array.from({length: n}, (_, gi) => ({
+            label: String(form.get(`ig${gi}_label`) ?? ''),
+            day_of_week: Number(form.get(`ig${gi}_day`) ?? -1),
+            service: String(form.get(`ig${gi}_service`) ?? 'custom'),
+            items: [1,2,3,4].map(pos => ({
+              content: String(form.get(`ig${gi}_${pos}_content`) ?? '').replace(/\r\n?/g,'\n'),
+              price: String(form.get(`ig${gi}_${pos}_price`) ?? ''),
+            })).filter(item => item.content.trim()),
+          })).filter(g => g.label.trim() || g.items.length);
+        }
+        await applyCandidate(env, importId, weekId, expectedRevision, overrideGroups?.length ? overrideGroups : undefined);
+        return Response.json({ok:true, message:'Import accepted and applied.'});
+      } else {
+        const decision = action==='keep-import' ? 'kept' : 'dismissed';
+        await recordReviewDecision(env, importId, decision);
+        return Response.json({ok:true, message:`Import ${decision}.`});
+      }
     } else throw new Error('Invalid form action.');
   } catch (caught) {
     const message=caught instanceof Error ? caught.message : 'Could not save specials.';
@@ -58,13 +89,74 @@ if (Astro.request.method==='POST') {
   }
 }
 if (Astro.url.searchParams.get('saved')) notice='Specials saved.';
+candidates = await readImportCandidates(env);
 const savedWeeks: any[] = [];
-try { savedWeeks.push(...((await env.DB.prepare('SELECT id,week_start_date,week_end_date FROM weekly_specials ORDER BY week_start_date DESC').all()).results ?? [])); } catch {}
+try {
+  const weeksResult = await env.DB.prepare('SELECT ws.id,ws.week_start_date,ws.week_end_date,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id ORDER BY ws.week_start_date DESC').all();
+  savedWeeks.push(...(weeksResult.results ?? []));
+} catch { try { savedWeeks.push(...((await env.DB.prepare('SELECT id,week_start_date,week_end_date FROM weekly_specials ORDER BY week_start_date DESC').all()).results ?? [])); } catch {} }
 const DAYS=DAY_NUMBERS.map(day=>DAY_NAMES[day]);
 const savedWeeksExpanded=savedWeeks.findIndex(week=>String(week.id)===editingId)>=4;
 if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
 ---
 <Base title="Admin · Weekly Specials — Grayz'n Buffalo">
+{candidates.length > 0 && <section class="staged-imports" aria-label="Staged Import Candidates">
+  <h2 class="imports-heading">Staged Import Candidates <span class="imports-badge">{candidates.length}</span></h2>
+  <p class="imports-intro">Candidates extracted from Facebook. Review before applying. All accepted values are saved with manual ownership and will not be auto-overwritten.</p>
+  {candidates.map(candidate => {
+    const groups = parseCandidateJson(candidate.candidate_json);
+    const dayLabel = candidate.target_day !== null && candidate.target_day >= 0 ? DAY_NAMES[candidate.target_day] : null;
+    const serviceLabel = candidate.target_service ?? (candidate.target_collection_id ?? '');
+    const isSection = candidate.target_kind === 'section';
+    const sectionRevision = isSection && mexican ? mexican.revision : 0;
+    return <article class="import-card" data-import-id={candidate.id}>
+      <header class="import-card__head">
+        <div class="import-card__meta">
+          <strong class="import-card__label">{dayLabel ? `${dayLabel} · ${serviceLabel}` : serviceLabel || candidate.target_kind}</strong>
+          <span class="import-card__kind">{candidate.target_kind}{candidate.validation_result !== 'ok' ? ' · no AI data' : ''}</span>
+        </div>
+        <time class="import-card__date" datetime={candidate.fb_created_time}>{new Date(candidate.fb_created_time).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</time>
+      </header>
+      <p class="import-card__caption">{candidate.caption.slice(0,120)}{candidate.caption.length>120 ? '…' : ''}</p>
+      <p class="import-card__reason">{candidate.classification_reason}</p>
+      {candidate.image_r2_key && <a href={`/admin/img/${candidate.image_r2_key}`} target="_blank" rel="noopener" class="import-card__img-link">
+        <img src={`/admin/img/${candidate.image_r2_key}`} alt="Facebook post image evidence" class="import-card__thumb" loading="lazy" width="120" height="90"/>
+      </a>}
+      {groups.length > 0 && <div class="import-card__proposed">
+        <h4 class="import-card__proposed-head">Proposed</h4>
+        {groups.map((g, gi) => <details class="import-group-edit" data-gi={gi} open={groups.length===1}>
+          <summary>{g.label || `Group ${gi+1}`}</summary>
+          <div class="import-group-fields">
+            <input type="hidden" class="ig-label" data-gi={gi} value={g.label}/>
+            <input type="hidden" class="ig-day" data-gi={gi} value={String(g.day_of_week)}/>
+            <input type="hidden" class="ig-service" data-gi={gi} value={g.service}/>
+            {g.items.slice(0,4).map((item,pos) => <div class="import-item-row">
+              <textarea class="import-item-content" data-gi={gi} data-pos={pos+1} rows={2} maxlength="150" aria-label={`Item ${pos+1} text`}>{item.content}</textarea>
+              <input class="import-item-price" data-gi={gi} data-pos={pos+1} type="text" maxlength="30" placeholder="Price" value={item.price} aria-label={`Item ${pos+1} price`}/>
+            </div>)}
+          </div>
+        </details>)}
+      </div>}
+      <div class="import-card__actions">
+        {!isSection && <label class="import-week-label">Apply to week
+          <select class="import-week-select" aria-label="Target week">
+            {savedWeeks.map(w => <option value={w.id} data-revision={w.revision ?? 0}>{w.week_start_date} – {w.week_end_date}</option>)}
+          </select>
+        </label>}
+        <form class="import-accept-form">
+          <input type="hidden" name="import_id" value={candidate.id}/>
+          {isSection && <input type="hidden" name="collection_revision" value={String(sectionRevision)}/>}
+          {!isSection && <input type="hidden" name="collection_revision" value="0" class="import-revision-field"/>}
+          {!isSection && <input type="hidden" name="week_id" value="" class="import-weekid-field"/>}
+          <button type="submit" class="btn btn-primary import-accept-btn" disabled={!isSection && savedWeeks.length===0}>Accept</button>
+        </form>
+        <button type="button" class="btn btn-ghost import-keep" data-import-id={candidate.id}>Keep current</button>
+        <button type="button" class="btn btn-ghost import-dismiss" data-import-id={candidate.id}>Dismiss</button>
+        <p class="import-action-error error" role="alert" hidden/>
+      </div>
+    </article>;
+  })}
+</section>}
 <section class="specials-admin">
   <div class="section-head"><h2>Weekly Specials</h2>{notice && <p class="specials-notice" role="status">{notice}</p>}{error && <p class="error" role="alert">{error}</p>}</div>
   <div class="week-picker"><label for="saved-week">Saved week to edit</label><select id="saved-week"><option value="">Select a saved week...</option>{savedWeeks.map((week,index)=><option value={week.id} data-older-week={index>=4 ? 'true' : undefined} hidden={index>=4 && !savedWeeksExpanded} selected={String(week.id)===editingId}>{week.week_start_date} – {week.week_end_date}</option>)}</select>{savedWeeks.length>4 && <button id="saved-weeks-toggle" type="button" class="btn btn-ghost week-picker__action" aria-expanded={savedWeeksExpanded}>View {savedWeeksExpanded ? 'fewer' : 'more'} weeks</button>}<a class="btn btn-ghost week-picker__action" href="/admin/specials?new=1">Create new week</a></div>
@@ -418,6 +510,67 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
     recurringDefaultsForm.dispatchEvent(new Event('input', { bubbles: true }));
     updateCounts();
   });
+  // ── Import review ────────────────────────────────────────────────────────────
+
+  function importAjax(body: FormData, card: Element) {
+    card.setAttribute('aria-busy', 'true');
+    const errEl = card.querySelector<HTMLElement>('.import-action-error');
+    if (errEl) errEl.hidden = true;
+    return fetch('/admin/specials', { method: 'POST', headers: { accept: 'application/json' }, body })
+      .then(res => res.json().then((data: any) => { if (!res.ok || !data.ok) throw new Error(data.error || 'Could not complete action.'); card.remove(); }))
+      .catch((err: Error) => {
+        if (errEl) { errEl.textContent = err.message; errEl.hidden = false; }
+        card.removeAttribute('aria-busy');
+      });
+  }
+
+  // Sync week selection → hidden week_id and collection_revision fields in Accept form.
+  document.querySelectorAll<HTMLSelectElement>('.import-week-select').forEach(sel => {
+    const card = sel.closest('.import-card')!;
+    const updateFields = () => {
+      const opt = sel.selectedOptions[0];
+      card.querySelector<HTMLInputElement>('.import-revision-field')!.value = opt?.dataset.revision ?? '0';
+      card.querySelector<HTMLInputElement>('.import-weekid-field')!.value = opt?.value ?? '';
+    };
+    sel.addEventListener('change', updateFields);
+    updateFields();
+  });
+
+  document.querySelectorAll<HTMLFormElement>('.import-accept-form').forEach(form => {
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const card = form.closest('.import-card')!;
+      const body = new FormData(form);
+      body.set('action', 'accept-import');
+      // Collect editable override items from the card.
+      const editableGroups = card.querySelectorAll<HTMLElement>('.import-group-edit');
+      if (editableGroups.length) {
+        body.set('override_group_count', String(editableGroups.length));
+        editableGroups.forEach((grpEl, gi) => {
+          body.set(`ig${gi}_label`, grpEl.querySelector<HTMLInputElement>('.ig-label')?.value ?? '');
+          body.set(`ig${gi}_day`, grpEl.querySelector<HTMLInputElement>('.ig-day')?.value ?? '-1');
+          body.set(`ig${gi}_service`, grpEl.querySelector<HTMLInputElement>('.ig-service')?.value ?? 'custom');
+          grpEl.querySelectorAll<HTMLTextAreaElement>('.import-item-content').forEach(ta => {
+            const pos = ta.dataset.pos!;
+            body.set(`ig${gi}_${pos}_content`, ta.value);
+            body.set(`ig${gi}_${pos}_price`, grpEl.querySelector<HTMLInputElement>(`.import-item-price[data-pos="${pos}"]`)?.value ?? '');
+          });
+        });
+      }
+      importAjax(body, card);
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.import-keep, .import-dismiss').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const card = btn.closest('.import-card')!;
+      const body = new FormData();
+      body.set('action', btn.classList.contains('import-keep') ? 'keep-import' : 'dismiss-import');
+      body.set('import_id', btn.dataset.importId!);
+      importAjax(body, card);
+    });
+  });
+
   sectionForm?.addEventListener('submit', async event => {
     event.preventDefault();
     const message = document.getElementById('mexican-status')!;
@@ -441,6 +594,45 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
   });
 
 </script>
+<style>
+  /* ── Staged import review ───────────────────────────────────────────────── */
+  .staged-imports{width:100%;max-width:1440px;margin:0 auto 24px;padding:20px;background:#fff;border-radius:12px;box-shadow:0 6px 16px rgba(36,22,16,.1)}
+  .imports-heading{margin:0 0 6px;font-family:var(--label);font-size:1rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+  .imports-badge{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:var(--gold);font-size:.78rem;font-weight:700}
+  .imports-intro{margin:0 0 16px;font-size:.9rem;color:var(--ink-2)}
+  .import-card{border:1px solid rgba(36,22,16,.18);border-radius:10px;padding:16px;margin-bottom:14px;background:var(--surface-parchment)}
+  .import-card[aria-busy="true"]{opacity:.6;pointer-events:none}
+  .import-card__head{display:flex;justify-content:space-between;align-items:start;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  .import-card__label{font-size:1rem;font-weight:700}
+  .import-card__kind{font-size:.78rem;color:var(--ink-2);text-transform:uppercase;letter-spacing:.06em}
+  .import-card__date{font-size:.8rem;color:var(--ink-2);white-space:nowrap}
+  .import-card__caption{margin:0 0 4px;font-size:.9rem;font-style:italic;color:var(--ink-2)}
+  .import-card__reason{margin:0 0 10px;font-size:.78rem;color:var(--ink-2)}
+  .import-card__img-link{display:block;margin-bottom:10px;width:fit-content}
+  .import-card__thumb{display:block;border-radius:6px;border:1px solid rgba(36,22,16,.12);object-fit:cover}
+  .import-card__proposed{margin:10px 0}
+  .import-card__proposed-head{margin:0 0 6px;font-size:.78rem;font-family:var(--label);font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .import-group-edit{border:1px solid rgba(36,22,16,.12);border-radius:8px;background:#fff;padding:8px}
+  .import-group-edit summary{cursor:pointer;font-weight:700;font-size:.9rem;padding:4px 0}
+  .import-group-fields{display:grid;gap:8px;margin-top:8px}
+  .import-item-row{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:start}
+  .import-item-content{min-height:52px;font-size:.88rem;padding:6px 8px;resize:vertical}
+  .import-item-price{width:80px;font-size:.88rem;padding:6px 8px}
+  .import-card__actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid rgba(36,22,16,.1)}
+  .import-week-label{display:flex;flex-direction:column;gap:4px;font-size:.78rem;font-family:var(--label);font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .import-week-label select{font-size:.9rem;padding:6px 8px;height:auto;margin:0}
+  .import-accept-form{display:contents}
+  .import-accept-btn,.import-keep,.import-dismiss{margin:0;padding:8px 16px;font-size:.9rem}
+  .import-action-error{width:100%;margin:4px 0 0;font-size:.85rem;font-weight:700}
+  @media(max-width:680px){
+    .staged-imports{padding:14px;border-radius:8px}
+    .import-card{padding:12px}
+    .import-card__actions{flex-direction:column;align-items:stretch}
+    .import-accept-btn,.import-keep,.import-dismiss{width:100%;text-align:center}
+    .import-item-row{grid-template-columns:1fr}
+    .import-item-price{width:100%;box-sizing:border-box}
+  }
+</style>
 <style>
   .week-picker,.weekly-form,.recurring-defaults-form{width:100%;max-width:1440px;margin:0 auto;background:#fff;border-radius:12px;padding:20px;box-shadow:0 6px 16px rgba(36,22,16,.1)}.week-picker{background:var(--surface-parchment);border:1px solid rgba(36,22,16,.16);display:flex;align-items:end;gap:12px;margin-bottom:18px;flex-wrap:wrap}.week-picker label{width:100%}.week-picker select{width:320px;min-width:0;white-space:nowrap;box-shadow:0 0 0 5px #fff,0 0 0 6px rgba(36,22,16,.16)}.week-picker .btn{margin:0;white-space:nowrap}.week-picker__action{box-sizing:border-box;width:210px;height:48px;min-height:48px;padding:12px 24px;border-width:2px;border-radius:var(--control-radius);font-size:1rem;font-weight:700;line-height:20px}.recurring-defaults-form{margin:0 auto 18px}.recurring-defaults{margin:0;border:1px solid rgba(36,22,16,.2);border-radius:10px;background:var(--surface-parchment)}.recurring-defaults summary{cursor:pointer;padding:14px 16px;font-family:var(--label);font-size:.9rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.recurring-defaults[open] summary{border-bottom:1px solid rgba(36,22,16,.16)}.recurring-defaults__content{padding:16px}.recurring-defaults__intro{margin:0 0 16px;color:var(--ink-2);font-weight:700}.recurring-defaults__error{margin:0 0 16px}.recurring-defaults__shared{margin:0;padding:14px;border:1px solid rgba(36,22,16,.16);border-radius:8px;background:#fff;display:grid;gap:6px}.recurring-defaults__shared legend{padding:0 5px;font-size:.78rem}.recurring-defaults__preset{display:grid;grid-template-columns:auto minmax(220px,420px);align-items:center;gap:8px;margin-bottom:6px}.recurring-defaults__preset select{width:100%}.recurring-defaults__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}.recurring-day-fields{min-width:0;margin:0;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px;background:#fff;display:grid;gap:12px}.recurring-day-fields legend{padding:0 5px;font-size:.78rem}.recurring-defaults__save{margin-top:16px}.week-dates{border:0}.week-date-controls{display:flex;align-items:center;gap:20px;flex-wrap:wrap}.week-date-group{display:grid;grid-template-columns:auto 230px;align-items:center;gap:8px}.week-date-group--end{grid-template-columns:auto 160px auto}.week-dates>p{margin:10px 0 0;color:var(--ink-2)}.week-dates input{width:230px;box-sizing:border-box;height:44px}.week-end-label{font-family:var(--label);font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.week-end-value{display:block;box-sizing:border-box;width:160px;height:44px;min-height:44px;padding:10px;overflow:hidden;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit;line-height:20px;white-space:nowrap}.week-end-helper{margin:0!important;color:var(--ink-2);font-size:.9rem;font-style:italic;font-weight:700;white-space:nowrap}legend,label{font-family:var(--label);font-weight:700;letter-spacing:.08em;text-transform:uppercase}.week-dates legend{margin-bottom:8px}label{font-size:.78rem}.day-fields label span,.recurring-defaults label span{text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-2)}input,select,textarea{padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit}textarea{width:100%;resize:vertical}.instructions{margin:18px 0;color:var(--ink-2)}.day-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.day-fields{min-width:0;border:1px solid rgba(36,22,16,.16);border-radius:10px;padding:16px;background:var(--surface-parchment);display:grid;gap:14px}.service-group,.all-day-group{display:grid;gap:6px;min-width:0}.day-fields>.service-group,.all-day-group{margin:0;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px;background:#fff}.all-day-group legend{padding:0 5px;font-size:.78rem}.count{justify-self:end;font-size:.75rem;color:var(--ink-2)}button{margin-top:20px}.error{color:var(--crimson)}@media(min-width:1280px){.day-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(max-width:900px){.day-grid,.recurring-defaults__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:680px){.weekly-form,.recurring-defaults-form{padding:16px}.week-date-controls,.week-date-group,.week-date-group--end,.day-grid,.recurring-defaults__grid{grid-template-columns:1fr}.week-date-controls{display:grid}.week-date-group{gap:6px}.week-dates input,.week-end-value{width:100%}.week-end-helper{grid-column:1;white-space:normal}.week-picker select{width:100%}.recurring-defaults__content{padding:14px}.recurring-defaults__preset{grid-template-columns:1fr}.recurring-defaults__preset select{min-width:0}}
 

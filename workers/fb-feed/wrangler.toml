@@ -10,6 +10,14 @@ routes = [
 [triggers]
 crons = ["*/30 * * * *"]
 
+[vars]
+# OFF = disabled; DRY_RUN = fetch/classify/extract/stage only, no auto-publish;
+# GUARDED_AUTO = reserved for future use (not yet implemented).
+SPECIALS_IMPORT_MODE = "DRY_RUN"
+SPECIALS_AI_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct"
+# Maximum Workers AI vision calls per Chicago calendar day.
+SPECIALS_AI_DAILY_LIMIT = "50"
+
 [[kv_namespaces]]
 binding = "FB_KV"
 id = "319aa824b570400c82d3fe85edaa36d6"
@@ -17,6 +25,14 @@ id = "319aa824b570400c82d3fe85edaa36d6"
 [[r2_buckets]]
 binding = "PHOTOS"
 bucket_name = "grayzn-photos"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "grayzn-db"
+database_id = "c998bfd4-7031-4ae2-9eea-df86f16ddb15"
+
+[ai]
+binding = "AI"
 
 [observability]
 enabled = true

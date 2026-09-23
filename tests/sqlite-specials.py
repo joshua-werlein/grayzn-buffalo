@@ -18,7 +18,7 @@ try:
             for row in fixture[key]:
                 db.execute(f"INSERT INTO {name} ({','.join(row)}) VALUES ({','.join('?' for _ in row)})", list(row.values()))
         db.commit()
-        db.executescript('BEGIN;\n' + Path('migrations/0015_weekly_special_groups.sql').read_text(encoding='utf-8') + '\n' + Path('migrations/0016_recurring_special_sections.sql').read_text(encoding='utf-8') + '\nCOMMIT;')
+        db.executescript('BEGIN;\n' + Path('migrations/0015_weekly_special_groups.sql').read_text(encoding='utf-8') + '\n' + Path('migrations/0016_recurring_special_sections.sql').read_text(encoding='utf-8') + '\n' + Path('migrations/0017_special_import_tracking.sql').read_text(encoding='utf-8') + '\nCOMMIT;')
         print('[]')
     else:
         result=[]

@@ -238,3 +238,49 @@ CREATE TRIGGER legacy_special_defaults_delete BEFORE DELETE ON weekly_special_re
 -- Title/schedule already present in src/pages/specials.astro. No menu invented.
 INSERT INTO special_collections(id,kind,title,schedule)
 VALUES ('mexican-night','section','Mexican Night','Tuesdays · 5 – 10 PM');
+
+-- Facebook import tracking (migration 0017). Apply with d1 execute only.
+CREATE TABLE IF NOT EXISTS special_imports (
+  id TEXT PRIMARY KEY,
+  fb_post_id TEXT NOT NULL,
+  fb_created_time TEXT NOT NULL,
+  fb_updated_time TEXT,
+  caption TEXT NOT NULL DEFAULT '',
+  permalink_url TEXT NOT NULL DEFAULT '',
+  caption_hash TEXT NOT NULL DEFAULT '',
+  image_source_version TEXT NOT NULL DEFAULT '',
+  image_r2_key TEXT,
+  image_hash TEXT,
+  parser_version INTEGER NOT NULL DEFAULT 1,
+  model_id TEXT NOT NULL DEFAULT '',
+  target_kind TEXT CHECK(target_kind IN ('week','section','ambiguous','ignored')),
+  target_day INTEGER CHECK(target_day BETWEEN -1 AND 6),
+  target_service TEXT,
+  target_collection_id TEXT,
+  classification_reason TEXT NOT NULL DEFAULT '',
+  extracted_json TEXT,
+  candidate_json TEXT,
+  validation_result TEXT CHECK(validation_result IN ('ok','rejected')),
+  validation_reason TEXT NOT NULL DEFAULT '',
+  processing_status TEXT NOT NULL DEFAULT 'pending'
+    CHECK(processing_status IN ('pending','processing','staged','failed','skipped')),
+  review_status TEXT NOT NULL DEFAULT 'pending'
+    CHECK(review_status IN ('pending','accepted','edited','kept','dismissed')),
+  review_reason TEXT NOT NULL DEFAULT '',
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  processed_at TEXT,
+  reviewed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS special_imports_review ON special_imports(review_status, processing_status, fetched_at);
+CREATE INDEX IF NOT EXISTS special_imports_post ON special_imports(fb_post_id, fb_created_time);
+CREATE TABLE IF NOT EXISTS special_import_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  import_id TEXT NOT NULL REFERENCES special_imports(id) ON DELETE CASCADE,
+  event_type TEXT NOT NULL
+    CHECK(event_type IN ('fetch','classify','extract','validate','stage','review','retry','error')),
+  detail TEXT NOT NULL DEFAULT '',
+  occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS special_import_events_import ON special_import_events(import_id, occurred_at);
