@@ -174,3 +174,14 @@ test('every result has kind, day, service, collectionId, reason fields', () => {
     assert.ok(typeof r.reason === 'string' && r.reason.length > 0);
   }
 });
+
+test('All Day and Nightly captions are explicit; mixed or weekly captions are never a unique day/service',()=>{
+  isWeek(classifyCaption('Wednesday All Day Specials'),3,'all-day');
+  isWeek(classifyCaption('Wednesday Nightly Specials'),3,'nightly');
+  isWeek(classifyCaption('Wednesday Lunch Specials'),3,'lunch');
+  isAmbiguous(classifyCaption('Wednesday Specials'),3);
+  isAmbiguous(classifyCaption('Wednesday Lunch and Night Specials'),3);
+  isAmbiguous(classifyCaption('Wednesday and Thursday Lunch Specials'),null);
+  isWeek(classifyCaption('Weekly Wednesday All Day Specials'),null,'all-day');
+  isIgnored(classifyCaption('Specials Today'));
+});

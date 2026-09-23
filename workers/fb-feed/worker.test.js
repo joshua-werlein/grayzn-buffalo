@@ -206,49 +206,26 @@ test('malformed Graph JSON or a missing data array cannot replace the last good 
 // ── Import pipeline tests ─────────────────────────────────────────────────────
 
 // Named field positions for the INSERT OR IGNORE INTO special_imports bind args.
-const IMPORT_FIELDS = [
-  'id','fb_post_id','fb_created_time','fb_updated_time','caption','permalink_url',
-  'caption_hash','image_source_version','image_r2_key','image_hash',
-  'parser_version','model_id',
-  'target_kind','target_day','target_service','target_collection_id','classification_reason',
-  'extracted_json','candidate_json','validation_result','validation_reason',
-  'processing_status','processed_at',
-];
-
+const IMPORT_FIELDS = ['id','fb_post_id','fb_created_time','fb_updated_time','caption','permalink_url',
+  'caption_hash','image_source_version','parser_version','model_id','target_kind','target_day','target_service','target_collection_id','classification_reason','fetched_at'];
 function makeFakeDb(state) {
   return {
-    prepare(sql) {
-      return {
-        bind(...args) {
-          return {
-            async first() {
-              if (/SELECT 1 FROM special_imports WHERE id/.test(sql)) {
-                return state.imports.find((r) => r.id === args[0]) ?? null;
-              }
-              return null;
-            },
-            async run() {
-              if (/INSERT OR IGNORE INTO special_imports/.test(sql)) {
-                const id = args[0];
-                if (!state.imports.find((r) => r.id === id)) {
-                  state.imports.push(Object.fromEntries(IMPORT_FIELDS.map((f, i) => [f, args[i]])));
-                }
-              } else if (/INSERT INTO special_import_events/.test(sql)) {
-                state.events.push({ import_id: args[0], event_type: args[1], detail: args[2] });
-              }
-              return {};
-            },
-            async all() {
-              if (/count\(\*\)/.test(sql)) {
-                const n = state.imports.filter((r) => r.processed_at !== null).length;
-                return { results: [{ n }] };
-              }
-              return { results: [] };
-            },
-          };
-        },
-      };
-    },
+    async batch() { return []; },
+    prepare(sql) { return {bind(...args) {return {
+      async first() {return state.imports.find(r=>r.id===args[0]) ?? null;},
+      async run() {
+        if (/INSERT OR IGNORE INTO special_imports/.test(sql)) {
+          if (state.imports.some(r=>r.id===args[0])) return {meta:{changes:0}};
+          state.imports.push({...Object.fromEntries(IMPORT_FIELDS.map((f,i)=>[f,args[i]])),processing_status:'processing',processed_at:null});
+          return {meta:{changes:1}};
+        }
+        if (/SET processed_at=/.test(sql)) state.imports.find(r=>r.id===args[1]).processed_at=args[0];
+        else if (/SET image_r2_key=/.test(sql)) Object.assign(state.imports.find(r=>r.id===args[8]),Object.fromEntries(['image_r2_key','image_hash','extracted_json','candidate_json','validation_result','validation_reason','processing_status','processed_at'].map((f,i)=>[f,args[i]])));
+        else if (/INSERT INTO special_import_events/.test(sql)) state.events.push({import_id:args[0],event_type:args[1],detail:args[2]});
+        return {meta:{changes:1}};
+      },
+      async all() {return {results:/count\(\*\)/.test(sql)?[{n:state.imports.filter(r=>r.processed_at!==null).length}]:[]};},
+    }}};},
   };
 }
 
@@ -260,8 +237,8 @@ const OUTSIDE_HOURS_MS = new Date('2026-09-21T07:00:00Z').getTime();
 const DEFAULT_IMPORT_POST = {
   id: 'post1',
   message: 'Monday Night Specials',
-  created_time: '2026-09-21T18:00:00+0000',
-  updated_time: '2026-09-21T18:00:00+0000',
+  created_time: '2026-09-21T13:00:00+0000',
+  updated_time: '2026-09-21T13:00:00+0000',
   permalink_url: 'https://www.facebook.com/post1',
   full_picture: 'https://cdn.facebook.example/post1.jpg',
 };

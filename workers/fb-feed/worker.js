@@ -1,4 +1,5 @@
 import { classifyCaption, PARSER_VERSION } from './classify.js';
+import { guardedAutoWrite, pruneImportHistory } from './guarded-auto.js';
 
 const TIME_ZONE = 'America/Chicago';
 const GRAPH_API_VERSION = 'v26.0';
@@ -248,7 +249,7 @@ async function refreshFeed(env) {
 
 // ── Specials import pipeline ──────────────────────────────────────────────────
 
-const IMPORT_SCAN_LIMIT = 20;
+
 const IMPORT_HOUR_START = 7;   // 7 AM Chicago, inclusive
 const IMPORT_HOUR_END = 20;    // 8 PM Chicago, exclusive
 const IMPORT_IMAGE_RETENTION_DAYS = 30;
@@ -278,20 +279,49 @@ async function importSourceId(postId, captionDigest, imageSrcVer, parserVersion,
   return hexDigest(`${postId}:${captionDigest}:${imageSrcVer}:${parserVersion}:${modelId}`, 16);
 }
 
-async function fetchScanPosts(env) {
+// Resolve each local midnight independently: DST days can be 23 or 25 hours.
+export function chicagoDayWindow(now) {
+  const formatter = new Intl.DateTimeFormat('en-US', {timeZone:TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+  const midnight = iso => {
+    const target = Date.parse(`${iso}T00:00:00Z`);
+    let guess = target;
+    for (let i=0;i<3;i++) {
+      const p = Object.fromEntries(formatter.formatToParts(new Date(guess)).map(x=>[x.type,x.value]));
+      const observed = Date.UTC(Number(p.year),Number(p.month)-1,Number(p.day),Number(p.hour),Number(p.minute),Number(p.second));
+      guess += target-observed;
+    }
+    return guess/1000;
+  };
+  const today = chicagoDate(now);
+  return {today,weekday:new Date(`${today}T12:00:00Z`).getUTCDay(),since:midnight(today),until:midnight(chicagoCalendarOffset(now,1))};
+}
+
+async function fetchScanPosts(env, now, window) {
   const url = new URL(`https://graph.facebook.com/${GRAPH_API_VERSION}/${env.FB_PAGE_ID}/posts`);
   url.search = new URLSearchParams({
     fields: 'id,message,created_time,updated_time,permalink_url,full_picture',
-    limit: String(IMPORT_SCAN_LIMIT),
+    since: String(window.since), until: String(window.until), limit: '100',
   }).toString();
+  const posts = new Map(), cursors = new Set();
   try {
-    const response = await fetch(url, { headers: { Authorization: `Bearer ${env.FB_SYSTEM_TOKEN}` } });
-    if (!response.ok) return [];
-    const result = await response.json();
-    return Array.isArray(result?.data) ? result.data.filter((p) => p.id && p.created_time) : [];
-  } catch {
-    return [];
-  }
+    // Page only within today's bounds; never fall back to a recent-post scan.
+    for (let page=0;page<10;page++) {
+      const response = await fetch(url, { headers: { Authorization: `Bearer ${env.FB_SYSTEM_TOKEN}` } });
+      if (!response.ok) return [];
+      const result = await response.json();
+      if (!Array.isArray(result?.data)) return [];
+      for (const post of result.data) {
+        const created = Date.parse(post.created_time);
+        if (post.id && Number.isFinite(created) && created >= window.since*1000 && created < window.until*1000 && created <= now.getTime()) posts.set(post.id,post);
+      }
+      if (!result.paging?.next) return [...posts.values()].sort((a,b)=>Date.parse(a.updated_time || a.created_time)-Date.parse(b.updated_time || b.created_time));
+      const after = result.paging?.cursors?.after;
+      if (typeof after !== 'string' || !after || cursors.has(after)) return [];
+      cursors.add(after);
+      url.searchParams.set('after',after);
+    }
+  } catch { /* Failed or incomplete retrieval must not publish a partial scan. */ }
+  return [];
 }
 
 async function storeImportImage(env, post, imageSrcVer) {
@@ -301,6 +331,13 @@ async function storeImportImage(env, post, imageSrcVer) {
     if (!response.ok) return { imageR2Key: null, imageHash: null };
     const format = imageFormat(response.headers.get('content-type'));
     const bytes = await response.arrayBuffer();
+    const data = new Uint8Array(bytes);
+    const starts = signature => signature.every((byte,i)=>data[i]===byte);
+    const valid = format.contentType === 'image/jpeg' ? starts([255,216,255]) :
+      format.contentType === 'image/png' ? starts([137,80,78,71,13,10,26,10]) :
+      format.contentType === 'image/gif' ? /^GIF8[79]a/.test(new TextDecoder().decode(data.slice(0,6))) :
+      format.contentType === 'image/webp' ? starts([82,73,70,70]) && new TextDecoder().decode(data.slice(8,12)) === 'WEBP' : false;
+    if (!valid || bytes.byteLength > 10*1024*1024) return {imageR2Key:null,imageHash:null};
     const imgDigest = await crypto.subtle.digest('SHA-256', bytes);
     const imageHash = Array.from(new Uint8Array(imgDigest))
       .slice(0, 8)
@@ -364,10 +401,11 @@ function validateExtraction(extractedJson) {
   } catch {
     return { candidateJson: null, validationResult: 'rejected', validationReason: 'response is not valid JSON' };
   }
-  if (!Array.isArray(parsed)) {
+  if (!Array.isArray(parsed) || parsed.length > 84) {
     return { candidateJson: null, validationResult: 'rejected', validationReason: 'expected a JSON array' };
   }
   const groups = [];
+  const groupKeys = new Set();
   for (const g of parsed) {
     if (!g || typeof g.label !== 'string') {
       return { candidateJson: null, validationResult: 'rejected', validationReason: 'group missing string label' };
@@ -381,13 +419,16 @@ function validateExtraction(extractedJson) {
     if (!Array.isArray(g.items)) {
       return { candidateJson: null, validationResult: 'rejected', validationReason: 'group missing items array' };
     }
+    const groupKey = `${g.day_of_week}:${g.service}`;
+    if (g.service !== 'custom' && groupKeys.has(groupKey)) return {candidateJson:null,validationResult:'rejected',validationReason:'duplicate day/service group'};
+    groupKeys.add(groupKey);
     const items = [];
     for (const item of g.items) {
       if (!item || typeof item.content !== 'string' || (item.price != null && typeof item.price !== 'string')) {
         return { candidateJson: null, validationResult: 'rejected', validationReason: 'item missing string content' };
       }
       const content = [item.content, item.price ?? ''].filter(Boolean).join(' ');
-      if (content.length > 150) {
+      if (!item.content.trim() || content.length > 150) {
         return { candidateJson: null, validationResult: 'rejected', validationReason: 'item content exceeds 150 characters' };
       }
       items.push({ content });
@@ -409,14 +450,14 @@ function validateExtraction(extractedJson) {
   };
 }
 
-async function countTodayAiCalls(env, modelId, today) {
+async function countTodayAiCalls(env, modelId, window) {
   try {
     const { results } = await env.DB.prepare(
-      "SELECT count(*) AS n FROM special_imports WHERE date(processed_at)=?1 AND model_id=?2"
-    ).bind(today, modelId).all();
+      "SELECT count(*) AS n FROM special_imports WHERE julianday(processed_at)>=julianday(?1) AND julianday(processed_at)<julianday(?2) AND model_id=?3"
+    ).bind(new Date(window.since*1000).toISOString(), new Date(window.until*1000).toISOString(), modelId).all();
     return Number(results?.[0]?.n ?? 0);
   } catch {
-    return 0;
+    return Infinity; // No inference when the budget cannot be checked.
   }
 }
 
@@ -434,104 +475,83 @@ async function pruneImportImages(env) {
   } while (cursor);
 }
 
-async function runImportPipeline(env) {
+export async function runImportPipeline(env) {
   const mode = env.SPECIALS_IMPORT_MODE ?? 'OFF';
-  if (mode === 'OFF') return;
-  if (!env.DB) return;
-
+  if (!['DRY_RUN','GUARDED_AUTO'].includes(mode) || !env.DB) return;
   const now = new Date(Date.now());
   if (!isWithinProcessingHours(now)) return;
-
+  const window = chicagoDayWindow(now);
   const modelId = env.SPECIALS_AI_MODEL ?? SPECIALS_AI_MODEL_DEFAULT;
   const dailyLimit = Number(env.SPECIALS_AI_DAILY_LIMIT ?? 50);
-  const today = chicagoDate(now);
-
-  let aiCallsToday = await countTodayAiCalls(env, modelId, today);
-
-  const rawPosts = await fetchScanPosts(env);
-
+  let aiCallsToday = await countTodayAiCalls(env, modelId, window);
+  const rawPosts = await fetchScanPosts(env, now, window);
   for (const raw of rawPosts) {
+    const processingNow = new Date(Date.now());
+    if (!isWithinProcessingHours(processingNow) || chicagoDate(processingNow) !== window.today) break;
+    let importId, claimed = false;
     try {
       const caption = cleanMessage(raw.message ?? '');
       const classification = classifyCaption(caption);
       if (classification.kind === 'ignored') continue;
-
       const captionDigest = await hexDigest(caption, 8);
       const imgSrcVer = imageSourceVersion(raw);
-      const importId = await importSourceId(raw.id, captionDigest, imgSrcVer, PARSER_VERSION, modelId);
-
-      const existing = await env.DB.prepare(
-        'SELECT 1 FROM special_imports WHERE id=?1'
-      ).bind(importId).first();
-      if (existing) continue;
-
-      const { imageR2Key, imageHash } = await storeImportImage(env, raw, imgSrcVer);
-
-      let extractedJson = null;
-      let candidateJson = null;
-      let validationResult = null;
-      let validationReason = '';
-      let processedAt = null;
-      let processingStatus = 'staged';
-
+      importId = await importSourceId(raw.id, captionDigest, imgSrcVer, PARSER_VERSION, modelId);
+      // Claim BEFORE image/AI work. Concurrent crons cannot extract the same version.
+      const claim = await env.DB.prepare(`INSERT OR IGNORE INTO special_imports(
+        id,fb_post_id,fb_created_time,fb_updated_time,caption,permalink_url,
+        caption_hash,image_source_version,parser_version,model_id,
+        target_kind,target_day,target_service,target_collection_id,classification_reason,processing_status,fetched_at)
+        VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'processing',?16)`).bind(
+        importId,raw.id,raw.created_time,raw.updated_time ?? null,caption,raw.permalink_url ?? '',
+        captionDigest,imgSrcVer,PARSER_VERSION,modelId,classification.kind,classification.day,
+        classification.service,classification.collectionId,classification.reason,new Date(Date.now()).toISOString()).run();
+      if (claim.meta?.changes !== 1) continue;
+      claimed = true;
+      const event = (type,detail) => env.DB.prepare('INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?1,?2,?3)').bind(importId,type,detail).run();
+      await event('fetch',`mode:${mode}`);
+      await event('classify',classification.reason);
+      const {imageR2Key,imageHash} = await storeImportImage(env,raw,imgSrcVer);
+      let extractedJson=null, candidateJson=null, validationResult=null, validationReason='', processedAt=null, processingStatus='staged';
       if (imageR2Key && aiCallsToday < dailyLimit) {
-        const aiResult = await runAiExtraction(env, imageR2Key, caption, modelId);
-        extractedJson = aiResult.extractedJson;
         processedAt = new Date(Date.now()).toISOString();
+        // Reserve the daily inference count before invoking AI.
+        await env.DB.prepare('UPDATE special_imports SET processed_at=?1 WHERE id=?2').bind(processedAt,importId).run();
         aiCallsToday++;
-        const validation = validateExtraction(extractedJson);
-        candidateJson = validation.candidateJson;
-        validationResult = validation.validationResult;
-        validationReason = validation.validationReason;
-        if (validationResult === 'rejected') processingStatus = 'failed';
-      } else if (!imageR2Key) {
-        processingStatus = 'skipped';
-        validationReason = 'no image';
+        const aiResult = await runAiExtraction(env,imageR2Key,caption,modelId);
+        extractedJson = aiResult.extractedJson;
+        ({candidateJson,validationResult,validationReason} = validateExtraction(extractedJson));
+        if (validationResult === 'rejected') processingStatus='failed';
+        await event('extract',modelId);
+        await event('validate',validationReason);
       } else {
-        processingStatus = 'skipped';
-        validationReason = 'daily AI limit reached';
+        processingStatus='skipped';
+        validationReason=imageR2Key ? 'daily AI limit reached' : 'no image';
       }
-
-      await env.DB.prepare(
-        `INSERT OR IGNORE INTO special_imports(
-          id,fb_post_id,fb_created_time,fb_updated_time,caption,permalink_url,
-          caption_hash,image_source_version,image_r2_key,image_hash,
-          parser_version,model_id,
-          target_kind,target_day,target_service,target_collection_id,classification_reason,
-          extracted_json,candidate_json,validation_result,validation_reason,
-          processing_status,processed_at
-        ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)`
-      ).bind(
-        importId, raw.id, raw.created_time, raw.updated_time ?? null,
-        caption, raw.permalink_url ?? '',
-        captionDigest, imgSrcVer, imageR2Key, imageHash,
-        PARSER_VERSION, modelId,
-        classification.kind, classification.day, classification.service,
-        classification.collectionId, classification.reason,
-        extractedJson, candidateJson, validationResult, validationReason,
-        processingStatus, processedAt,
-      ).run();
-
-      const events = [
-        { type: 'fetch', detail: `mode:${mode}` },
-        ...(extractedJson !== null ? [{ type: 'extract', detail: modelId }] : []),
-        ...(validationResult ? [{ type: 'validate', detail: validationReason }] : []),
-      ];
-      for (const ev of events) {
-        await env.DB.prepare(
-          'INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?1,?2,?3)'
-        ).bind(importId, ev.type, ev.detail).run();
+      await env.DB.prepare(`UPDATE special_imports SET image_r2_key=?1,image_hash=?2,extracted_json=?3,candidate_json=?4,
+        validation_result=?5,validation_reason=?6,processing_status=?7,processed_at=?8 WHERE id=?9`).bind(
+        imageR2Key,imageHash,extractedJson,candidateJson,validationResult,validationReason,processingStatus,processedAt,importId).run();
+      let outcome = {written:false,reason:mode === 'DRY_RUN' ? 'DRY_RUN; review only' : validationReason};
+      // Recheck the clock after slow external requests. No publication after 8 PM
+      // or across a business-day boundary, even if a run started earlier.
+      const writeNow = new Date(Date.now());
+      if (mode === 'GUARDED_AUTO' && validationResult === 'ok' && imageR2Key && isWithinProcessingHours(writeNow) && chicagoDate(writeNow) === window.today) {
+        outcome = await guardedAutoWrite(env,{importId,classification,candidateJson,today:window.today,weekday:window.weekday});
       }
+      if (!outcome.written) await event('stage',outcome.reason || 'Outside processing window; review only');
     } catch (error) {
-      console.error('Import pipeline: error processing post', { postId: raw.id, error: String(error) });
+      console.error('Import pipeline: error processing post', {postId:raw.id,error:String(error)});
+      if (claimed) {
+        try {
+          await env.DB.prepare("UPDATE special_imports SET processing_status='failed',last_error=?1 WHERE id=?2 AND review_status='pending'").bind(String(error),importId).run();
+          await env.DB.prepare("INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?1,'error',?2)").bind(importId,String(error)).run();
+        } catch { /* Keep the durable source claim; never blindly rerun AI. */ }
+      }
     }
   }
-
-  try {
-    await pruneImportImages(env);
-  } catch {
-    console.error('Import pipeline: unable to prune old import images');
-  }
+  try { await pruneImportImages(env); }
+  catch { console.error('Import pipeline: unable to prune old import images'); }
+  try { await pruneImportHistory(env,now); }
+  catch { console.error('Import pipeline: unable to prune old import history'); }
 }
 
 export default {
