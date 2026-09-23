@@ -1,5 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
+import SpecialGroup from '../components/SpecialGroup.astro';
+import { visibleGroups, getMexicanNight } from '../lib/specials-store';
 import { getMenu, getWeeklySpecialsForDateRange, getWelcomePhotos, thumbKey, type Item, type WelcomePhoto } from '../lib/db';
 import { calendarDatesFrom, calendarDayOfWeek, chicagoCalendarDate, formatWeeklyBoardDate } from '../lib/weekly-specials';
 
@@ -10,11 +12,12 @@ const upcomingDates = calendarDatesFrom(today, 7);
 const weeklySpecials = upcomingDates.length
   ? await getWeeklySpecialsForDateRange(env, upcomingDates[0], upcomingDates[upcomingDates.length - 1])
   : [];
-const hasWeeklyContent = (day: { day_of_week: number; lunch_content: string; all_day_1_content: string; all_day_2_content: string; nightly_content: string }) => Boolean(day.lunch_content || day.all_day_1_content || day.all_day_2_content || (day.day_of_week >= 1 && day.day_of_week <= 5 && day.nightly_content));
-const weeklyHomeDays = upcomingDates.flatMap((date) => {
-  const weekly = weeklySpecials.find((special) => special.week_start_date <= date && special.week_end_date >= date);
-  const day = weekly?.days.find((specialDay) => specialDay.day_of_week === calendarDayOfWeek(date));
-  return day && hasWeeklyContent(day) ? [{ date, day }] : [];
+const mexican = await getMexicanNight(env);
+const mexicanAvailable = !!mexican && visibleGroups(mexican.groups).length > 0;
+const weeklyHomeDays = upcomingDates.flatMap(date => {
+  const week = weeklySpecials.find(special => special.week_start_date <= date && special.week_end_date >= date);
+  const groups = week ? visibleGroups(week.collection.groups, calendarDayOfWeek(date)) : [];
+  return groups.length ? [{ date, groups }] : [];
 });
 const welcomePhotos = await getWelcomePhotos(env);
 type WelcomeTile =
@@ -115,11 +118,8 @@ const welcomeHolderAssets = [
   <div class="home-weekly__card reveal">
     <p class="home-weekly__label"><span aria-hidden="true">★</span> THIS WEEK AT GRAYZ'N <span aria-hidden="true">★</span></p>
     {weeklyHomeDays.length > 0 ? (
-      <><h2 id="home-weekly-title">Specials</h2><div class="home-weekly__days">{weeklyHomeDays.map(({ date, day }) => {
-        const weekendSpecialLabel = day.day_of_week === 6 ? 'Saturday Special' : day.day_of_week === 0 ? 'Sunday Special' : 'Lunch';
-        const allDaySpecials = [day.all_day_1_content, day.all_day_2_content].filter(Boolean);
-        const isWeekend = day.day_of_week === 0 || day.day_of_week === 6;
-        return <article class:list={['home-weekly__day', { 'is-today': date === today, 'is-weekend': isWeekend }]}>{date === today && <span class="home-weekly__today">TODAY</span>}<h3><span class="home-weekly__date-long">{formatWeeklyBoardDate(date)}</span><span class="home-weekly__date-compact">{formatWeeklyBoardDate(date, true)}</span></h3><div class="home-weekly__fields">{day.lunch_content && <section class="home-weekly__service home-weekly__service--lunch"><p class="home-weekly__field-label">{weekendSpecialLabel}</p><p class="home-weekly__field-value">{day.lunch_content}</p></section>}{allDaySpecials.length > 0 && <section class="home-weekly__service home-weekly__service--all-day"><p class="home-weekly__field-label">All Day Specials</p><div class="home-weekly__all-day-values">{allDaySpecials.map((content, index) => <p class:list={['home-weekly__field-value', { 'has-divider': index > 0 }]}>{content}</p>)}</div></section>}{!isWeekend && day.nightly_content && <section class="home-weekly__service home-weekly__service--nightly"><p class="home-weekly__field-label">Nightly</p><p class="home-weekly__field-value">{day.nightly_content}</p></section>}</div></article>;
+      <><h2 id="home-weekly-title">Specials</h2><div class="home-weekly__days">{weeklyHomeDays.map(({ date, groups }) => {
+        return <article class:list={['home-weekly__day', { 'is-today': date === today }]}>{date === today && <span class="home-weekly__today">TODAY</span>}<h3><span class="home-weekly__date-long">{formatWeeklyBoardDate(date)}</span><span class="home-weekly__date-compact">{formatWeeklyBoardDate(date, true)}</span></h3><div class="home-weekly__groups">{groups.map(group => <SpecialGroup group={group} showTime={false} mexicanAvailable={mexicanAvailable}/>)}</div></article>;
       })}</div>{weeklyHomeDays.length <= 3 && <p class="home-weekly__more-soon">More specials coming soon.</p>}</>
     ) : <><h2 id="home-weekly-title">Upcoming Specials</h2><p class="home-weekly__fallback">No specials are posted right now. Check back soon.</p></>}
     <a class="home-weekly__cta" href="/specials">MORE DETAILS <span aria-hidden="true">→</span></a>
@@ -1261,3 +1261,6 @@ const welcomeHolderAssets = [
   } else {
     window.addEventListener('load', scheduleFacebookFeed, { once: true });
   }
+
+</script>
+<style>.home-weekly__groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:18px;align-items:start}@media(max-width:520px){.home-weekly__groups{grid-template-columns:1fr}}</style>

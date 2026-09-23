@@ -1,0 +1,26 @@
+---
+import { type SpecialGroup } from '../lib/specials-store';
+interface Props { group: SpecialGroup; index: number; defaults?: boolean; formPrefix: string }
+const { group, index, defaults = false, formPrefix } = Astro.props;
+const p = `g${index}_`;
+---
+<fieldset class="group-fields" data-group-index={index} data-group-day={group.day_of_week}>
+  <legend>{group.label || 'New group'}</legend>
+  <input type="hidden" name={p+'id'} value={group.id}/><input type="hidden" name={p+'day'} value={group.day_of_week}/><input type="hidden" name={p+'service'} value={group.service}/>
+  <label>Group label<input name={p+'label'} value={group.label} maxlength="80" /></label>
+  <label>Service time <span>(optional)</span><input name={p+'time'} value={group.service_time} maxlength="80" /></label>
+  <label class="check"><input type="checkbox" name={p+'enabled'} checked={group.enabled === 1}/> Show this group when it has specials</label>
+  {group.slots.map(slot => <details class="slot-fields" data-slot={slot.position} open={Boolean(slot.content)}>
+    <summary class="slot-heading"><strong>Slot {slot.position}</strong>{slot.origin==='automation' ? <span>From Facebook</span> : slot.origin==='manual' && slot.content ? <span>Manually corrected</span> : <span>{slot.content ? '' : 'Optional'}</span>}</summary>
+    <label for={`${formPrefix}-${index}-${slot.position}`}>Special <span>(optional)</span></label>
+    <textarea id={`${formPrefix}-${index}-${slot.position}`} name={p+slot.position+'_content'} rows="2" maxlength="150" data-content>{slot.content ?? ''}</textarea>
+    <label>Price <span>(optional; included in 150-character limit)</span><input name={p+slot.position+'_price'} value={slot.price} maxlength="150" data-price/></label>
+    <output class="count" data-count>0 / 150</output>
+    <label>Menu link<select name={p+slot.position+'_link'} data-link><option value="" selected={!slot.section_link}>None</option><option value="mexican-night" selected={slot.section_link==='mexican-night'}>Mexican Night</option></select></label>
+    {defaults && <label class="check"><input type="checkbox" name={p+slot.position+'_unavailable'} checked={slot.content === null} data-unavailable/> No default (different from a saved blank)</label>}
+    <div class="slot-order"><button type="button" data-move="-1" disabled={slot.position===1}>↑ Move up</button><button type="button" data-move="1" disabled={slot.position===4}>↓ Move down</button></div>
+  </details>)}
+</fieldset>
+<style>
+  .group-fields{min-width:0;display:grid;gap:10px;padding:12px;border:1px solid #c8bba6;border-radius:8px;background:white;margin:0}.group-fields legend{font-weight:700;padding:0 5px}.group-fields label{display:grid;gap:4px;font-weight:600}.group-fields label span{font-weight:400;font-size:.85em}.group-fields input:not([type=checkbox]),.group-fields textarea,.group-fields select{box-sizing:border-box;width:100%;min-width:0;max-width:100%;padding:10px;border:2px solid #b8aa98;border-radius:6px;background:var(--cream);font:inherit;font-size:16px}.group-fields textarea{resize:vertical}.group-fields .check{display:flex;gap:8px;align-items:center;font-size:.88rem}.check input{width:20px;height:20px;flex-shrink:0}.slot-fields{border-top:1px solid #c8bba6;padding-top:12px;display:grid;gap:6px}.slot-heading{display:flex;justify-content:space-between;gap:8px}.slot-heading span{font-size:.8rem}.count{justify-self:end;font-size:.8rem}.slot-order{display:flex;gap:8px}.slot-order button{min-height:40px;border:1px solid #b8aa98;background:var(--cream);border-radius:5px;padding:6px 12px;font:inherit}.slot-order button:disabled{opacity:.4}
+</style>

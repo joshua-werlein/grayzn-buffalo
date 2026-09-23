@@ -101,23 +101,14 @@ test('valid contact uses only the configured recipient and escapes HTML', async 
   assert.ok(!mail.html.includes('<script>bad</script>'));
 });
 
-function weeklyDb(failDays) {
-  return { DB: { prepare: (sql) => ({ bind: () => ({ all: async () => {
-    if (sql.includes('FROM weekly_special_days')) {
-      await Promise.resolve();
-      if (failDays) throw new Error('day load failed');
-      return { results: [{ day_of_week: 1, lunch_content: '', all_day_1_content: '', all_day_2_content: '', nightly_content: 'Dinner' }] };
-    }
-    return { results: [{ id: 1, week_start_date: '2026-09-07', week_end_date: '2026-09-13' }] };
-  } }) }) } };
-}
-test('weekly day-query rejection reaches the public empty-list fallback', async () => {
-  assert.deepEqual(await getWeeklySpecialsForDateRange(weeklyDb(true), '2026-09-07', '2026-09-13'), []);
+test('weekly query rejection reaches the public empty-list fallback', async () => {
+  assert.deepEqual(await getWeeklySpecialsForDateRange({ DB: {prepare(){throw Error('unavailable')}} }, '2026-09-07', '2026-09-13'), []);
 });
-test('successful weekly loads retain their shape and intentional blanks', async () => {
-  const weeks = await getWeeklySpecialsForDateRange(weeklyDb(false), '2026-09-07', '2026-09-13');
-  assert.equal(weeks.length, 1);
-  assert.equal(weeks[0].days[0].lunch_content, '');
-  assert.equal(weeks[0].days[0].nightly_content, 'Dinner');
-  assert.equal(weeks[0].week_start_date, '2026-09-07');
+test('successful normalized loads retain intentional blanks and saved date ranges', async (t) => {
+  const {fixture}=await import('./specials-fixture.mjs');
+  const f=fixture(t);
+  const weeks=await getWeeklySpecialsForDateRange(f.env,'1900-01-01','9999-12-31');
+  assert.equal(weeks.length,6);
+  assert.ok(weeks.some(week=>week.collection.groups.some(group=>group.slots.some(slot=>slot.content===''))));
+  assert.equal(weeks[0].week_start_date,f.sql('SELECT week_start_date FROM weekly_specials ORDER BY week_start_date')[0].week_start_date);
 });

@@ -1,0 +1,554 @@
+{
+  "captured_on": "2026-09-22 America/Chicago",
+  "schema": [
+    {
+      "name": "specials",
+      "sql": "CREATE TABLE specials (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  day_of_week INTEGER NOT NULL UNIQUE,\n  name TEXT NOT NULL,\n  description TEXT DEFAULT '',\n  tag TEXT DEFAULT NULL\n, lunch_name TEXT NOT NULL DEFAULT '', lunch_description TEXT NOT NULL DEFAULT '', lunch_tag TEXT DEFAULT NULL, night_name TEXT NOT NULL DEFAULT '', night_description TEXT NOT NULL DEFAULT '', night_tag TEXT DEFAULT NULL, allday_name TEXT NOT NULL DEFAULT '', allday_description TEXT NOT NULL DEFAULT '', allday_tag TEXT DEFAULT NULL)"
+    },
+    {
+      "name": "sqlite_autoindex_specials_1",
+      "sql": null
+    },
+    {
+      "name": "weekly_specials",
+      "sql": "CREATE TABLE weekly_specials (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  week_start_date TEXT NOT NULL,\n  week_end_date TEXT NOT NULL,\n  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  CHECK (week_start_date GLOB '????-??-??'),\n  CHECK (week_end_date GLOB '????-??-??'),\n  CHECK (week_start_date <= week_end_date),\n  UNIQUE (week_start_date, week_end_date)\n)"
+    },
+    {
+      "name": "sqlite_autoindex_weekly_specials_1",
+      "sql": null
+    },
+    {
+      "name": "weekly_specials_range_idx",
+      "sql": "CREATE INDEX weekly_specials_range_idx ON weekly_specials (week_start_date, week_end_date)"
+    },
+    {
+      "name": "weekly_special_days",
+      "sql": "CREATE TABLE weekly_special_days (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  weekly_special_id INTEGER NOT NULL REFERENCES weekly_specials(id) ON DELETE CASCADE,\n  day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),\n  lunch_content TEXT NOT NULL DEFAULT '',\n  nightly_content TEXT NOT NULL DEFAULT '',\n  allday_content TEXT NOT NULL DEFAULT '', all_day_1_content TEXT NOT NULL DEFAULT '', all_day_2_content TEXT NOT NULL DEFAULT '',\n  UNIQUE (weekly_special_id, day_of_week)\n)"
+    },
+    {
+      "name": "sqlite_autoindex_weekly_special_days_1",
+      "sql": null
+    },
+    {
+      "name": "weekly_special_recurring_default_days",
+      "sql": "CREATE TABLE weekly_special_recurring_default_days (\n  day_of_week INTEGER PRIMARY KEY CHECK (day_of_week BETWEEN 0 AND 6),\n  lunch_content TEXT,\n  all_day_1_content TEXT,\n  all_day_2_content TEXT,\n  nightly_content TEXT\n)"
+    }
+  ],
+  "weeks": [
+    {
+      "id": 1,
+      "week_start_date": "2026-08-17",
+      "week_end_date": "2026-08-23",
+      "created_at": "2026-08-27 02:56:19",
+      "updated_at": "2026-09-10 06:40:14"
+    },
+    {
+      "id": 2,
+      "week_start_date": "2026-08-31",
+      "week_end_date": "2026-09-06",
+      "created_at": "2026-08-28 10:25:09",
+      "updated_at": "2026-08-29 21:43:40"
+    },
+    {
+      "id": 3,
+      "week_start_date": "2026-08-24",
+      "week_end_date": "2026-08-30",
+      "created_at": "2026-08-29 20:42:43",
+      "updated_at": "2026-08-30 00:24:00"
+    },
+    {
+      "id": 6,
+      "week_start_date": "2026-09-07",
+      "week_end_date": "2026-09-13",
+      "created_at": "2026-08-30 18:47:25",
+      "updated_at": "2026-09-07 18:27:24"
+    },
+    {
+      "id": 7,
+      "week_start_date": "2026-09-14",
+      "week_end_date": "2026-09-20",
+      "created_at": "2026-09-16 01:48:38",
+      "updated_at": "2026-09-16 01:48:38"
+    },
+    {
+      "id": 8,
+      "week_start_date": "2026-09-21",
+      "week_end_date": "2026-09-27",
+      "created_at": "2026-09-22 20:49:54",
+      "updated_at": "2026-09-22 20:49:54"
+    }
+  ],
+  "days": [
+    {
+      "id": 190,
+      "weekly_special_id": 2,
+      "day_of_week": 1,
+      "lunch_content": "3 Topping Personal Pizza & a Drink $9.75",
+      "nightly_content": "2 Burgers and 1 order of French Fries $14\r\n\r\n1/2 Rack Ribs with Mac N Cheese & Coleslaw $18.75",
+      "allday_content": "",
+      "all_day_1_content": "Club on Rye with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 191,
+      "weekly_special_id": 2,
+      "day_of_week": 2,
+      "lunch_content": "Philly Cheese Wrap on Garlic Herb with Beer Fries & a Drink $9.75",
+      "nightly_content": "Mexican Night!  Ask to see our Menu!",
+      "allday_content": "",
+      "all_day_1_content": "Jalapeño Burger with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 192,
+      "weekly_special_id": 2,
+      "day_of_week": 3,
+      "lunch_content": "Chicken Bacon Ranch Tots & a Drink $9.75",
+      "nightly_content": "Wing Night!\r\n\r\n$.89 Boneless Wings\r\n$.99 Bone In Wings\r\nAdd Fries",
+      "allday_content": "",
+      "all_day_1_content": "Patty Melt with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 193,
+      "weekly_special_id": 2,
+      "day_of_week": 4,
+      "lunch_content": "Gyro Salad & a Drink $9.75",
+      "nightly_content": "12” 3-Topping Pizza $13.50\r\n16” 3-Topping Pizza $16",
+      "allday_content": "",
+      "all_day_1_content": "Hangover Burger with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 194,
+      "weekly_special_id": 2,
+      "day_of_week": 5,
+      "lunch_content": "Fish Sandwich with French Fries & a Drink $9.75",
+      "nightly_content": "1 or 2 Piece Fish with 3 Jumbo Shrimp, French Fries & Choice of Side Salad or Coleslaw $12.99/$13.99\r\n\r\nChicken Stir Fry $12.99\r\nSteak Stir Fry $13.99",
+      "allday_content": "",
+      "all_day_1_content": "Cheeseburger or Fish Sandwich with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 195,
+      "weekly_special_id": 2,
+      "day_of_week": 6,
+      "lunch_content": "Philly & French Fries $11",
+      "nightly_content": "",
+      "allday_content": "",
+      "all_day_1_content": "Bacon Cheeseburger with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 196,
+      "weekly_special_id": 2,
+      "day_of_week": 0,
+      "lunch_content": "16” 3-Topping Pizza & 12 Wings $30",
+      "nightly_content": "",
+      "allday_content": "",
+      "all_day_1_content": "Western Burger with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 239,
+      "weekly_special_id": 3,
+      "day_of_week": 1,
+      "lunch_content": "3 Topping Personal Pizza & a Drink\n$9.75",
+      "nightly_content": "2 Burgers and 1 order of French\nFries $14",
+      "allday_content": "",
+      "all_day_1_content": "Club on Rye with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 240,
+      "weekly_special_id": 3,
+      "day_of_week": 2,
+      "lunch_content": "Philly Cheese Wrap on Garlic Herb\nwith Beer Fries & a Drink $9.75",
+      "nightly_content": "Mexican Night! Ask to see our Menu!",
+      "allday_content": "",
+      "all_day_1_content": "Jalapeno Burger with Side Salad,\nChili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 241,
+      "weekly_special_id": 3,
+      "day_of_week": 3,
+      "lunch_content": "Chicken Bacon Ranch Tots & a Drink\n$9.75",
+      "nightly_content": "Wing Night!",
+      "allday_content": "",
+      "all_day_1_content": "Patty Melt with Side Salad, Chili or\nColeslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 242,
+      "weekly_special_id": 3,
+      "day_of_week": 4,
+      "lunch_content": "Gyro Salad & a Drink $9.75",
+      "nightly_content": "12\" 3-Topping Pizza $13.50\n6\"3-Topping Pizza $16",
+      "allday_content": "",
+      "all_day_1_content": "Hangover Burger with Side Salad,\nChili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 243,
+      "weekly_special_id": 3,
+      "day_of_week": 5,
+      "lunch_content": "Fish Sandwich with French Fries & a Drink $9.75",
+      "nightly_content": "1 or 2 Piece Fish with 3 Jumbo Shrimp, French Fries & Choice of Side Salad or Coleslaw $12.99/$13.99\n\nChicken Stir Fry $12.99\nSteak Stir Fry $13.99",
+      "allday_content": "",
+      "all_day_1_content": "Sandwich\nwith Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup\nof Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 244,
+      "weekly_special_id": 3,
+      "day_of_week": 6,
+      "lunch_content": "Philly & French Fries $11",
+      "nightly_content": "",
+      "allday_content": "",
+      "all_day_1_content": "Bacon Cheeseburger with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw$7.25"
+    },
+    {
+      "id": 245,
+      "weekly_special_id": 3,
+      "day_of_week": 0,
+      "lunch_content": "16\" 3-Topping Pizza & 12 Wings $30",
+      "nightly_content": "",
+      "allday_content": "",
+      "all_day_1_content": "Western Burger with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 274,
+      "weekly_special_id": 6,
+      "day_of_week": 1,
+      "lunch_content": "Chicken Strips, FF & a Drink $9.75",
+      "nightly_content": "2 Burgers and 1 order of French Fries $14",
+      "allday_content": "",
+      "all_day_1_content": "BLT on Texas Toast w/Side Salad,\nChili or Coleslaw\n$10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 275,
+      "weekly_special_id": 6,
+      "day_of_week": 2,
+      "lunch_content": "Fish Wrap, Beer Fries & a Drink $9.75",
+      "nightly_content": "Mexican Night!  Ask to see our Menu!",
+      "allday_content": "",
+      "all_day_1_content": "Crispy Grayz’n Chicken Sandwich w/side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 276,
+      "weekly_special_id": 6,
+      "day_of_week": 3,
+      "lunch_content": "Garlic Parmesan Chicken,\nBreadsticks & a Drink  $9.75",
+      "nightly_content": "Wing Night!\n\n$.89 Boneless Wings\n$.99 Bone In Wings\nAdd Fries",
+      "allday_content": "",
+      "all_day_1_content": "Mushroom & Swiss w/side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 277,
+      "weekly_special_id": 6,
+      "day_of_week": 4,
+      "lunch_content": "Pizza Burger, Waffle Fries & a Drink $9.75",
+      "nightly_content": "12” 3-Topping Pizza $13.50\n16” 3-Topping Pizza $16",
+      "allday_content": "",
+      "all_day_1_content": "Club Wrap w/side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 278,
+      "weekly_special_id": 6,
+      "day_of_week": 5,
+      "lunch_content": "Fish Sandwich, FF & a Drink $9.75",
+      "nightly_content": "1 or 2 Piece Fish with 3 Jumbo Shrimp, French Fries & Choice of Side Salad or Coleslaw $12.99/$13.99\n\nChicken Stir Fry $12.99\nSteak Stir Fry $13.99",
+      "allday_content": "",
+      "all_day_1_content": "Cheeseburger or Fish Sandwich w/side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 279,
+      "weekly_special_id": 6,
+      "day_of_week": 6,
+      "lunch_content": "Philly & French Fries $11",
+      "nightly_content": "",
+      "allday_content": "",
+      "all_day_1_content": "Southwest Burger with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 280,
+      "weekly_special_id": 6,
+      "day_of_week": 0,
+      "lunch_content": "16” 3-Topping Pizza & 12 Wings $30",
+      "nightly_content": "",
+      "allday_content": "",
+      "all_day_1_content": "Olive Burger with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 281,
+      "weekly_special_id": 1,
+      "day_of_week": 1,
+      "lunch_content": "Grilled Hawaiian\nChicken Salad & a Drink",
+      "nightly_content": "2 Burgers & 1 Order of Fries",
+      "allday_content": "",
+      "all_day_1_content": "BLT Wrap with Side Salad,\nChili or Coleslaw",
+      "all_day_2_content": "Half Rack Ribs with Mac n\nCheese & Coleslaw"
+    },
+    {
+      "id": 282,
+      "weekly_special_id": 1,
+      "day_of_week": 2,
+      "lunch_content": "Grilled Bacon Ham &\nCheese w/FF & a Drink",
+      "nightly_content": "",
+      "allday_content": "",
+      "all_day_1_content": "",
+      "all_day_2_content": ""
+    },
+    {
+      "id": 283,
+      "weekly_special_id": 1,
+      "day_of_week": 3,
+      "lunch_content": "French Dip w/Beer\nFries & a Drink",
+      "nightly_content": "French Dip w/Beer\nFries & a Drink",
+      "allday_content": "",
+      "all_day_1_content": "Dovi Burger w/Side Salad, Chili\nor Coleslaw",
+      "all_day_2_content": "Chicken Salad Sandwich w/cup\nof Chili or Coleslaw"
+    },
+    {
+      "id": 284,
+      "weekly_special_id": 1,
+      "day_of_week": 4,
+      "lunch_content": "Reuben w/Waffle Fries\n& a Drink",
+      "nightly_content": "Mexican Night",
+      "allday_content": "",
+      "all_day_1_content": "",
+      "all_day_2_content": ""
+    },
+    {
+      "id": 285,
+      "weekly_special_id": 1,
+      "day_of_week": 5,
+      "lunch_content": "Fish Sandwich w/FF & a\nDrink",
+      "nightly_content": "",
+      "allday_content": "",
+      "all_day_1_content": "",
+      "all_day_2_content": ""
+    },
+    {
+      "id": 286,
+      "weekly_special_id": 1,
+      "day_of_week": 6,
+      "lunch_content": "PHILLY & FRIES",
+      "nightly_content": "",
+      "allday_content": "",
+      "all_day_1_content": "G MAC BURGER W/SIDE SALAD, CHILI OR COLESLAW",
+      "all_day_2_content": "CHICKEN SALAD SANDWICH W/CUP OF CHILI OR COLESLAW"
+    },
+    {
+      "id": 287,
+      "weekly_special_id": 1,
+      "day_of_week": 0,
+      "lunch_content": "",
+      "nightly_content": "",
+      "allday_content": "",
+      "all_day_1_content": "",
+      "all_day_2_content": ""
+    },
+    {
+      "id": 288,
+      "weekly_special_id": 7,
+      "day_of_week": 1,
+      "lunch_content": "",
+      "nightly_content": "2 Burgers and 1 order of French Fries $14",
+      "allday_content": "",
+      "all_day_1_content": "",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 289,
+      "weekly_special_id": 7,
+      "day_of_week": 2,
+      "lunch_content": "",
+      "nightly_content": "Mexican Night!  Ask to see our Menu!",
+      "allday_content": "",
+      "all_day_1_content": "",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 290,
+      "weekly_special_id": 7,
+      "day_of_week": 3,
+      "lunch_content": "",
+      "nightly_content": "Wing Night!\n\n$.89 Boneless Wings\n$.99 Bone In Wings\nAdd Fries",
+      "allday_content": "",
+      "all_day_1_content": "",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 291,
+      "weekly_special_id": 7,
+      "day_of_week": 4,
+      "lunch_content": "",
+      "nightly_content": "12” 3-Topping Pizza $13.50\n16” 3-Topping Pizza $16",
+      "allday_content": "",
+      "all_day_1_content": "",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 292,
+      "weekly_special_id": 7,
+      "day_of_week": 5,
+      "lunch_content": "",
+      "nightly_content": "1 or 2 Piece Fish with 3 Jumbo Shrimp, French Fries & Choice of Side Salad or Coleslaw $12.99/$13.99\n\nChicken Stir Fry $12.99\nSteak Stir Fry $13.99",
+      "allday_content": "",
+      "all_day_1_content": "",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 293,
+      "weekly_special_id": 7,
+      "day_of_week": 6,
+      "lunch_content": "Philly & French Fries $11",
+      "nightly_content": "",
+      "allday_content": "",
+      "all_day_1_content": "Bacon Cheeseburger with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 294,
+      "weekly_special_id": 7,
+      "day_of_week": 0,
+      "lunch_content": "16” 3-Topping Pizza & 12 Wings $30",
+      "nightly_content": "",
+      "allday_content": "",
+      "all_day_1_content": "Western Burger with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 295,
+      "weekly_special_id": 8,
+      "day_of_week": 1,
+      "lunch_content": "",
+      "nightly_content": "2 Burgers and 1 order of French Fries fries",
+      "allday_content": "",
+      "all_day_1_content": "",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 296,
+      "weekly_special_id": 8,
+      "day_of_week": 2,
+      "lunch_content": "",
+      "nightly_content": "Mexican Night!  Ask to see our Menu!",
+      "allday_content": "",
+      "all_day_1_content": "",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 297,
+      "weekly_special_id": 8,
+      "day_of_week": 3,
+      "lunch_content": "",
+      "nightly_content": "Wing Night!\n\n$.89 Boneless Wings\n$.99 Bone In Wings\nAdd Fries",
+      "allday_content": "",
+      "all_day_1_content": "",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 298,
+      "weekly_special_id": 8,
+      "day_of_week": 4,
+      "lunch_content": "",
+      "nightly_content": "12” 3-Topping Pizza $13.50\n16” 3-Topping Pizza $16",
+      "allday_content": "",
+      "all_day_1_content": "",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 299,
+      "weekly_special_id": 8,
+      "day_of_week": 5,
+      "lunch_content": "",
+      "nightly_content": "1 or 2 Piece Fish with 3 Jumbo Shrimp, French Fries & Choice of Side Salad or Coleslaw $12.99/$13.99\n\nChicken Stir Fry $12.99\nSteak Stir Fry $13.99",
+      "allday_content": "",
+      "all_day_1_content": "",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 300,
+      "weekly_special_id": 8,
+      "day_of_week": 6,
+      "lunch_content": "Philly & French Fries $11",
+      "nightly_content": "",
+      "allday_content": "",
+      "all_day_1_content": "Bacon Cheeseburger with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    },
+    {
+      "id": 301,
+      "weekly_special_id": 8,
+      "day_of_week": 0,
+      "lunch_content": "16” 3-Topping Pizza & 12 Wings $30",
+      "nightly_content": "",
+      "allday_content": "",
+      "all_day_1_content": "Western Burger with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25"
+    }
+  ],
+  "defaults": [
+    {
+      "day_of_week": 0,
+      "lunch_content": "16” 3-Topping Pizza & 12 Wings $30",
+      "all_day_1_content": "Western Burger with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25",
+      "nightly_content": null
+    },
+    {
+      "day_of_week": 1,
+      "lunch_content": null,
+      "all_day_1_content": null,
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25",
+      "nightly_content": "2 Burgers and 1 order of French Fries $14"
+    },
+    {
+      "day_of_week": 2,
+      "lunch_content": null,
+      "all_day_1_content": null,
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25",
+      "nightly_content": "Mexican Night!  Ask to see our Menu!"
+    },
+    {
+      "day_of_week": 3,
+      "lunch_content": null,
+      "all_day_1_content": null,
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25",
+      "nightly_content": "Wing Night!\n\n$.89 Boneless Wings\n$.99 Bone In Wings\nAdd Fries"
+    },
+    {
+      "day_of_week": 4,
+      "lunch_content": null,
+      "all_day_1_content": null,
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25",
+      "nightly_content": "12” 3-Topping Pizza $13.50\n16” 3-Topping Pizza $16"
+    },
+    {
+      "day_of_week": 5,
+      "lunch_content": null,
+      "all_day_1_content": null,
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25",
+      "nightly_content": "1 or 2 Piece Fish with 3 Jumbo Shrimp, French Fries & Choice of Side Salad or Coleslaw $12.99/$13.99\n\nChicken Stir Fry $12.99\nSteak Stir Fry $13.99"
+    },
+    {
+      "day_of_week": 6,
+      "lunch_content": "Philly & French Fries $11",
+      "all_day_1_content": "Bacon Cheeseburger with Side Salad, Chili or Coleslaw $10.25",
+      "all_day_2_content": "Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25",
+      "nightly_content": null
+    }
+  ]
+}

@@ -11,62 +11,7 @@ export const thumbKey = (key: string) => key.replace(/\.webp$/, '@600.webp');
 const FALLBACK_CATEGORIES: Category[] = menuBaseline.categories;
 const FALLBACK_ITEMS: Item[] = menuBaseline.items.map(item => ({ ...item, description: item.description ?? '', photo_orientation: item.photo_orientation as PhotoOrientation }));
 
-export type WeeklySpecial = {
-  id: number;
-  week_start_date: string;
-  week_end_date: string;
-  created_at: string;
-  updated_at: string;
-  days: WeeklySpecialDay[];
-};
-
-export type WeeklySpecialDay = {
-  day_of_week: number;
-  lunch_content: string;
-  all_day_1_content: string;
-  all_day_2_content: string;
-  nightly_content: string;
-};
-
-function toWeeklySpecial(row: any, days: WeeklySpecialDay[]): WeeklySpecial {
-  return {
-    id: Number(row.id),
-    week_start_date: String(row.week_start_date),
-    week_end_date: String(row.week_end_date),
-    created_at: String(row.created_at ?? ''),
-    updated_at: String(row.updated_at ?? ''),
-    days,
-  };
-}
-
-async function weeklySpecialWithDays(env: any, row: any): Promise<WeeklySpecial> {
-  const { results } = await env.DB.prepare(
-    `SELECT day_of_week, lunch_content, all_day_1_content, all_day_2_content, nightly_content
-     FROM weekly_special_days WHERE weekly_special_id = ?1 ORDER BY day_of_week`,
-  ).bind(row.id).all();
-  const days = (results ?? []).map((day: any) => ({
-    day_of_week: Number(day.day_of_week),
-    lunch_content: String(day.lunch_content ?? ''),
-    all_day_1_content: String(day.all_day_1_content ?? ''),
-    all_day_2_content: String(day.all_day_2_content ?? ''),
-    nightly_content: String(day.nightly_content ?? ''),
-  }));
-  return toWeeklySpecial(row, days);
-}
-
-/** Returns every saved weekly-special record that overlaps the requested calendar range. */
-export async function getWeeklySpecialsForDateRange(env: any, startDate: string, endDate: string): Promise<WeeklySpecial[]> {
-  try {
-    const { results } = await env.DB.prepare(
-      `SELECT id, week_start_date, week_end_date, created_at, updated_at
-       FROM weekly_specials
-       WHERE week_start_date <= ?2 AND week_end_date >= ?1
-       ORDER BY week_start_date ASC`,
-    ).bind(startDate, endDate).all();
-    return await Promise.all((results ?? []).map((row: any) => weeklySpecialWithDays(env, row)));
-  } catch {}
-  return [];
-}
+export { getWeeklySpecialsForDateRange, type WeeklySpecial } from './specials-store';
 
 export async function getMenu(env: any): Promise<{ categories: Category[]; items: Item[] }> {
   try {
