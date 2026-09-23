@@ -252,6 +252,36 @@ export async function recordReviewDecision(
   ).bind(importId, decision).run();
 }
 
+/** Unlock blank slots in a saved week so the guarded Worker may fill them.
+ *  Only slots whose content is empty and that carry no manual value are affected.
+ *  The slot content and last_auto_value are not changed; origin is set to 'legacy'
+ *  so the Worker's safe() check (origin !== 'manual') will pass. */
+export async function unlockBlankSlots(
+  env: any,
+  weekId: number,
+  expectedRevision: number,
+): Promise<{ collectionId: string; revision: number; unlockedCount: number }> {
+  const weekRow: any = await env.DB.prepare(
+    "SELECT sc.id cid, sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id AND sc.kind='week' WHERE ws.id=?1"
+  ).bind(weekId).first();
+  if (!weekRow) throw new Error('That saved week no longer exists.');
+  if (weekRow.revision !== expectedRevision) throw new SpecialConflict();
+  const token = crypto.randomUUID();
+  const collectionId = weekRow.cid;
+  const prepare = (sql: string, ...args: any[]) => env.DB.prepare(sql).bind(...args);
+  const gate = 'EXISTS(SELECT 1 FROM special_collections WHERE id=?1 AND mutation_token=?2)';
+  const results = await env.DB.batch([
+    prepare('UPDATE special_collections SET revision=revision+1,mutation_token=?1 WHERE id=?2 AND revision=?3', token, collectionId, expectedRevision),
+    prepare(`UPDATE special_slots SET manual_locked=0,origin='legacy'
+      WHERE group_id IN (SELECT id FROM special_groups WHERE collection_id=?1)
+        AND (content='' OR content IS NULL) AND price='' AND section_link=''
+        AND ${gate}`, collectionId, token),
+    prepare('SELECT id FROM special_collections WHERE id=?1 AND mutation_token=?2', collectionId, token),
+  ]);
+  if (!results.at(-1)?.results?.length) throw new SpecialConflict();
+  return { collectionId, revision: expectedRevision + 1, unlockedCount: results[1]?.meta?.changes ?? 0 };
+}
+
 /** Parse only editable values. Ownership/automatic baselines never come from a form. */
 export function collectionFromForm(form: FormData, baseline: SpecialCollection): SpecialCollection {
   const value = (key: string) => String(form.get(key) ?? '').replace(/\r\n?/g,'\n');
@@ -266,8 +296,8 @@ export function collectionFromForm(form: FormData, baseline: SpecialCollection):
       slots: [1,2,3,4].map(position => {
         const prior = old?.slots.find(s => s.position === position);
         if (prior && !form.has(p+position+'_content')) return {...prior};
-        // Unavailable default is explicit and separate from an intentional blank.
-        let content: string | null = baseline.kind === 'defaults' && form.has(p+position+'_unavailable') ? null : value(p+position+'_content');
+        // Blank textarea in a defaults collection means "no recurring default".
+        let content: string | null = baseline.kind === 'defaults' && !value(p+position+'_content').trim() ? null : value(p+position+'_content');
         // Browsers normalize textarea line endings. An untouched legacy CRLF
         // value must not become a manual correction merely because of that.
         if (prior?.content != null && content === displayedSpecial(prior).replace(/\r\n?/g,'\n') && !form.has(p+position+'_price')) {

@@ -68,7 +68,6 @@ test('form parsing preserves untouched CRLF bytes and ignores client ownership f
     if(g.enabled) body.set(`g${i}_enabled`,'on');
     g.slots.forEach(slot=>{
       body.set(`g${i}_${slot.position}_content`,(slot.content??'').replaceAll('\r\n','\n'));
-      if(slot.content===null) body.set(`g${i}_${slot.position}_unavailable`,'on');
     });
   });
   body.set('origin','automation');body.set('manual_locked','0');
@@ -217,4 +216,130 @@ test('readImportCandidates returns pending staged records and no already-reviewe
   const candidates=await s.readImportCandidates(f.env);
   assert.equal(candidates.length,2);
   assert.ok(candidates.every(c=>c.review_status==='pending'));
+});
+
+// ── Blank-defaults semantics ──────────────────────────────────────────────────
+
+test('collectionFromForm: blank textarea in defaults stores null', async t => {
+  const f=fixture(t);
+  const defaults=await s.readCollection(f.env,'defaults');
+  const g=defaults.groups[0]; const p=`g0_`;
+  const body=new FormData();
+  body.set('group_count','1'); body.set('revision',String(defaults.revision));
+  body.set(`${p}id`,g.id); body.set(`${p}day`,String(g.day_of_week));
+  body.set(`${p}service`,g.service); body.set(`${p}label`,g.label);
+  body.set(`${p}time`,g.service_time); if(g.enabled) body.set(`${p}enabled`,'on');
+  // All slots submitted as blank.
+  for(const slot of g.slots) body.set(`${p}${slot.position}_content`,'');
+  const parsed=s.collectionFromForm(body,{...defaults,groups:[g]});
+  assert.ok(parsed.groups[0].slots.every(slot=>slot.content===null),'blank defaults slot must be null');
+});
+
+test('collectionFromForm: blank textarea in saved week stores empty string', async t => {
+  const f=fixture(t);
+  const defaults=await s.readCollection(f.env,'defaults');
+  const week=s.newWeekFromDefaults(defaults);
+  const g=week.groups[0]; const p=`g0_`;
+  const body=new FormData();
+  body.set('group_count','1'); body.set('revision','0');
+  body.set(`${p}id`,g.id); body.set(`${p}day`,String(g.day_of_week));
+  body.set(`${p}service`,g.service); body.set(`${p}label`,g.label);
+  body.set(`${p}time`,g.service_time); if(g.enabled) body.set(`${p}enabled`,'on');
+  for(const slot of g.slots) body.set(`${p}${slot.position}_content`,'');
+  // Use the week collection (kind='week') not defaults.
+  const fakeWeek={...defaults,kind:'week',id:'',weekly_special_id:null,revision:0,groups:[g]};
+  const parsed=s.collectionFromForm(body,fakeWeek);
+  assert.ok(parsed.groups[0].slots.every(slot=>slot.content===''),'blank weekly slot must be empty string');
+});
+
+// ── unlockBlankSlots ─────────────────────────────────────────────────────────
+
+test('unlockBlankSlots sets manual_locked=0 and origin=legacy for blank slots only', async t => {
+  const f=fixture(t);
+  const weekRow=f.sql('SELECT ws.id,sc.id cid,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id LIMIT 1')[0];
+  const groupId=f.sql('SELECT id FROM special_groups WHERE collection_id=? LIMIT 1',weekRow.cid)[0].id;
+  // Give slot 1 a populated manual value, leave slot 2 blank.
+  f.sql("UPDATE special_slots SET content='Has content',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",groupId);
+  f.sql("UPDATE special_slots SET content='',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",groupId);
+
+  const result=await s.unlockBlankSlots(f.env,weekRow.id,weekRow.revision);
+  assert.equal(result.revision,weekRow.revision+1);
+
+  const slot1=f.sql('SELECT * FROM special_slots WHERE group_id=? AND position=1',groupId)[0];
+  const slot2=f.sql('SELECT * FROM special_slots WHERE group_id=? AND position=2',groupId)[0];
+
+  // Populated slot must remain locked.
+  assert.equal(slot1.manual_locked,1,'populated slot must stay locked');
+  assert.equal(slot1.origin,'manual','populated slot origin must stay manual');
+  assert.equal(slot1.content,'Has content');
+
+  // Blank slot must be unlocked with legacy origin.
+  assert.equal(slot2.manual_locked,0,'blank slot must be unlocked');
+  assert.equal(slot2.origin,'legacy','blank slot origin must be set to legacy');
+  assert.equal(slot2.content,'','content must not be changed');
+  assert.equal(slot2.last_auto_value,null,'last_auto_value must not be changed');
+});
+
+test('unlockBlankSlots throws SpecialConflict on stale revision', async t => {
+  const f=fixture(t);
+  const weekRow=f.sql('SELECT ws.id,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id LIMIT 1')[0];
+  await assert.rejects(
+    ()=>s.unlockBlankSlots(f.env,weekRow.id,weekRow.revision-1),
+    s.SpecialConflict,
+    'stale revision must throw SpecialConflict'
+  );
+});
+
+test('unlockBlankSlots throws on unknown week id', async t => {
+  const f=fixture(t);
+  await assert.rejects(()=>s.unlockBlankSlots(f.env,9999999,0),/no longer exists/);
+});
+
+test('saveCollection relocks a slot when its content is changed after unlock', async t => {
+  const f=fixture(t);
+  const weekRow=f.sql('SELECT ws.id,ws.week_start_date,ws.week_end_date,sc.id cid,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id LIMIT 1')[0];
+  const groupId=f.sql('SELECT id FROM special_groups WHERE collection_id=? AND service<>\'nightly\' LIMIT 1',weekRow.cid)[0]?.id
+    ?? f.sql('SELECT id FROM special_groups WHERE collection_id=? LIMIT 1',weekRow.cid)[0].id;
+
+  // Unlock blank slots — the slot we care about must be blank first.
+  f.sql("UPDATE special_slots SET content='',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",groupId);
+  const revBefore=f.sql('SELECT revision FROM special_collections WHERE id=?',weekRow.cid)[0].revision;
+  await s.unlockBlankSlots(f.env,weekRow.id,revBefore);
+
+  const unlocked=f.sql('SELECT * FROM special_slots WHERE group_id=? AND position=1',groupId)[0];
+  assert.equal(unlocked.manual_locked,0,'slot must be unlocked before edit');
+  assert.equal(unlocked.origin,'legacy');
+
+  // A bartender now edits the slot and saves: content changes → slot gets re-locked.
+  const collection=await s.readWeek(f.env,weekRow.id);
+  const group=collection.collection.groups.find(g=>g.id===groupId);
+  group.slots.find(s=>s.position===1).content='Edited by staff';
+  await s.saveCollection(f.env,collection.collection,{start:weekRow.week_start_date,end:weekRow.week_end_date});
+
+  const relocked=f.sql('SELECT manual_locked,origin FROM special_slots WHERE group_id=? AND position=1',groupId)[0];
+  assert.equal(relocked.manual_locked,1,'edited slot must be relocked');
+  assert.equal(relocked.origin,'manual','edited slot origin must be manual');
+});
+
+test('saveCollection does not relock an unchanged unlocked blank slot', async t => {
+  const f=fixture(t);
+  const weekRow=f.sql('SELECT ws.id,ws.week_start_date,ws.week_end_date,sc.id cid,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id LIMIT 1')[0];
+  const groupId=f.sql('SELECT id FROM special_groups WHERE collection_id=? LIMIT 1',weekRow.cid)[0].id;
+
+  f.sql("UPDATE special_slots SET content='',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",groupId);
+  const rev=f.sql('SELECT revision FROM special_collections WHERE id=?',weekRow.cid)[0].revision;
+  await s.unlockBlankSlots(f.env,weekRow.id,rev);
+  assert.equal(f.sql('SELECT manual_locked FROM special_slots WHERE group_id=? AND position=1',groupId)[0].manual_locked,0);
+
+  // Save a different slot (so the batch is not a no-op) but leave position 1 unchanged.
+  const collection=await s.readWeek(f.env,weekRow.id);
+  const group=collection.collection.groups.find(g=>g.id===groupId);
+  // Change a different position to force a real save.
+  const otherSlot=group.slots.find(s=>s.position===2);
+  if(otherSlot) otherSlot.content='Touched by test';
+  await s.saveCollection(f.env,collection.collection,{start:weekRow.week_start_date,end:weekRow.week_end_date});
+
+  // Position 1 was not changed, so it must still be unlocked.
+  const pos1=f.sql('SELECT manual_locked FROM special_slots WHERE group_id=? AND position=1',groupId)[0];
+  assert.equal(pos1.manual_locked,0,'unchanged unlocked blank slot must stay unlocked after save');
 });

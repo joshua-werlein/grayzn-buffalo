@@ -21,11 +21,9 @@ const section = group.day_of_week === -1;
     <label for={`${formPrefix}-${index}-${slot.position}`}>{capacity === 1 ? 'Special' : `${slot.position === 1 ? 'First' : slot.position === 2 ? 'Second' : slot.position === 3 ? 'Third' : 'Fourth'} special`} <span>(optional)</span></label>
     <textarea id={`${formPrefix}-${index}-${slot.position}`} name={p+slot.position+'_content'} rows="2" maxlength="150" data-content>{displayedSpecial(slot)}</textarea>
     <output class="count" data-count>0 / 150</output>
-    {defaults && <label class="check"><input type="checkbox" name={p+slot.position+'_unavailable'} checked={slot.content === null} data-unavailable/> No default</label>}
   </div> : <>
     {/* Retain existing extra content without exposing extra editing slots. */}
     <input type="hidden" name={p+slot.position+'_content'} value={displayedSpecial(slot)}/>
-    {defaults && slot.content === null && <input type="hidden" name={p+slot.position+'_unavailable'} value="on"/>}
   </>)}
   {group.slots.map(slot => <input type="hidden" name={p+slot.position+'_link'} value={slot.section_link}/>)}
 </fieldset>

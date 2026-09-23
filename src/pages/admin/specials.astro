@@ -3,7 +3,7 @@ import Base from '../../layouts/Base.astro';
 import GroupFields from '../../components/SpecialGroupFields.astro';
 import { isAuthed } from '../../lib/auth';
 import { isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from '../../lib/weekly-specials';
-import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, readCollection, readWeek, collectionFromForm, saveCollection, applyCandidate, recordReviewDecision, readImportCandidates, parseCandidateJson, SpecialConflict, type SpecialCollection, type ImportCandidate } from '../../lib/specials-store';
+import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, readCollection, readWeek, collectionFromForm, saveCollection, applyCandidate, recordReviewDecision, readImportCandidates, parseCandidateJson, unlockBlankSlots, SpecialConflict, type SpecialCollection, type ImportCandidate } from '../../lib/specials-store';
 const env = (Astro.locals as any).runtime?.env ?? {};
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 const empty = (kind: SpecialCollection['kind'], id=''): SpecialCollection => ({ id,kind,weekly_special_id:null,title:'',schedule:'',revision:0,groups:[] });
@@ -81,6 +81,13 @@ if (Astro.request.method==='POST') {
         await recordReviewDecision(env, importId, decision);
         return Response.json({ok:true, message:`Import ${decision}.`});
       }
+    } else if (action === 'allow-fb-unlock') {
+      const weekIdRaw = String(form.get('week_id') ?? '');
+      const weekId = Number(weekIdRaw);
+      if (!Number.isSafeInteger(weekId) || weekId < 1) throw new Error('Invalid saved week.');
+      const expectedRevision = Number(form.get('collection_revision') ?? 0);
+      await unlockBlankSlots(env, weekId, expectedRevision);
+      return Astro.redirect(`/admin/specials?week=${weekId}&unlocked=1`, 303);
     } else throw new Error('Invalid form action.');
   } catch (caught) {
     const message=caught instanceof Error ? caught.message : 'Could not save specials.';
@@ -89,6 +96,7 @@ if (Astro.request.method==='POST') {
   }
 }
 if (Astro.url.searchParams.get('saved')) notice='Specials saved.';
+if (Astro.url.searchParams.get('unlocked')) notice='Facebook can now fill blank specials in this saved week.';
 candidates = await readImportCandidates(env);
 const savedWeeks: any[] = [];
 try {
@@ -99,7 +107,7 @@ const DAYS=DAY_NUMBERS.map(day=>DAY_NAMES[day]);
 const savedWeeksExpanded=savedWeeks.findIndex(week=>String(week.id)===editingId)>=4;
 if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
 ---
-<Base title="Admin · Weekly Specials — Grayz'n Buffalo">
+<Base title="Admin · Specials — Grayz'n Buffalo">
 {candidates.length > 0 && <section class="staged-imports" aria-label="Staged Import Candidates">
   <h2 class="imports-heading">Staged Import Candidates <span class="imports-badge">{candidates.length}</span></h2>
   <p class="imports-intro">Candidates extracted from Facebook. Review before applying. All accepted values are saved with manual ownership and will not be auto-overwritten.</p>
@@ -157,8 +165,13 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
   })}
 </section>}
 <section class="specials-admin">
-  <div class="section-head"><h2>Weekly Specials</h2>{notice && <p class="specials-notice" role="status">{notice}</p>}{error && <p class="error" role="alert">{error}</p>}</div>
+  <div class="section-head"><h2>Specials</h2>{notice && <p class="specials-notice" role="status">{notice}</p>}{error && <p class="error" role="alert">{error}</p>}</div>
+  {recurringError && <p class="error">{recurringError}</p>}
+  {defaults && <form method="post" id="recurring-defaults-form" class="recurring-defaults-form"><input type="hidden" name="action" value="save-recurring-defaults"/><input type="hidden" name="revision" value={defaults.revision}/><input type="hidden" name="group_count" value={defaults.groups.length}/><details class="recurring-defaults"><summary>Recurring Defaults</summary><div class="recurring-defaults__content"><p>These values prefill new weeks only. Saved weeks and intentional blanks are never changed. Leave a field empty to remove its default.</p><label>Daily sandwich preset<select id="sandwich-preset"><option value="">Choose a preset…</option><option value="Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25">Chicken Salad Sandwich</option><option value="Grilled Ham &amp; Cheese with cup of Chili or Coleslaw $7.25">Grilled Ham &amp; Cheese</option></select></label>{DAY_NUMBERS.map(day=><details class="default-day"><summary>{DAY_NAMES[day]}</summary>{defaults!.groups.map((group,index)=>group.day_of_week===day && <><GroupFields group={group} index={index} defaults formPrefix="defaults"/>{group.service==='all-day' && <span hidden data-sandwich-index={index}/>}</>)}</details>)}<p class="rd-flash" id="rd-flash" role="status" hidden/><button class="btn btn-primary recurring-defaults__save" type="submit" name="action" value="save-recurring-defaults">Save Recurring Defaults</button></div></details></form>}
+  {mexican && <form method="post" id="mexican-form" class="recurring-defaults-form"><input type="hidden" name="action" value="save-mexican-night"/><input type="hidden" name="revision" value={mexican.revision}/><input type="hidden" name="group_count" value={mexican.groups.length}/><details class="recurring-defaults"><summary>Mexican Night menu</summary><div class="recurring-defaults__content"><p>Published separately at <a href="/specials#mexican-night">Mexican Night</a>. Add only confirmed menu items. This does not change saved Tuesday specials.</p><label>Title<input name="title" maxlength="80" value={mexican.title}/></label><label>Schedule<input name="schedule" maxlength="80" value={mexican.schedule}/></label><div class="section-groups">{mexican.groups.map((group,index)=><GroupFields group={group} index={index} formPrefix="mexican"/>)}<button type="button" class="btn btn-ghost" data-add-group="-1">Add menu group</button></div><p id="mexican-status" role="status"/><button class="btn btn-primary" type="submit">Save Mexican Night</button></div></details></form>}
+  <div class="weekly-section-head"><h3>Weekly Specials</h3></div>
   <div class="week-picker"><label for="saved-week">Saved week to edit</label><select id="saved-week"><option value="">Select a saved week...</option>{savedWeeks.map((week,index)=><option value={week.id} data-older-week={index>=4 ? 'true' : undefined} hidden={index>=4 && !savedWeeksExpanded} selected={String(week.id)===editingId}>{week.week_start_date} – {week.week_end_date}</option>)}</select>{savedWeeks.length>4 && <button id="saved-weeks-toggle" type="button" class="btn btn-ghost week-picker__action" aria-expanded={savedWeeksExpanded}>View {savedWeeksExpanded ? 'fewer' : 'more'} weeks</button>}<a class="btn btn-ghost week-picker__action" href="/admin/specials?new=1">Create new week</a></div>
+  {editingId && <form method="post" class="fb-unlock-form"><input type="hidden" name="action" value="allow-fb-unlock"/><input type="hidden" name="week_id" value={editingId}/><input type="hidden" name="collection_revision" value={weekly.revision}/><button type="submit" class="btn btn-ghost fb-unlock-btn">Allow Facebook to fill blank specials</button></form>}
   {ready && <form method="post" id="weekly-form" class="weekly-form" data-dirty={String(weeklyDirty)} data-active-day={activeDay} data-save-attempted={String(weeklySaveAttempted)} data-scroll-y={weeklyScrollY}>
     <input type="hidden" name="weekly_id" value={editingId}/><input type="hidden" name="revision" value={weekly.revision}/><input type="hidden" name="group_count" value={weekly.groups.length}/>
     <input type="hidden" name="weekly_active_day" value={activeDay}/><input type="hidden" name="weekly_scroll_y" value={weeklyScrollY}/>
@@ -168,9 +181,6 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
     <div class="week-actions"><div class="week-save-row"><div><p>All seven days save together</p><p id="weekly-save-status" role="status">No unsaved changes.</p></div><button class="btn btn-primary" type="submit" name="action" value="save-weekly-specials">Save Week</button></div><p id="weekly-save-error" class="error" role="alert" tabindex="-1" hidden={!weeklySaveError}>{weeklySaveError}</p><div class="day-stepper" hidden><button type="button" id="previous-day">← Previous</button><button type="button" id="next-day">Next →</button></div></div>
     <div class="day-grid">{DAY_NUMBERS.map((day,index)=><fieldset class="day-fields" id={`weekly-day-${index}`} data-day-name={DAYS[index]} tabindex="-1"><legend>{DAYS[index]}</legend>{weekly.groups.map((group,i)=>group.day_of_week===day && <GroupFields group={group} index={i} formPrefix="weekly"/>)}</fieldset>)}</div>
   </form>}
-  {recurringError && <p class="error">{recurringError}</p>}
-  {defaults && <form method="post" id="recurring-defaults-form" class="recurring-defaults-form"><input type="hidden" name="action" value="save-recurring-defaults"/><input type="hidden" name="revision" value={defaults.revision}/><input type="hidden" name="group_count" value={defaults.groups.length}/><details class="recurring-defaults"><summary>Recurring Defaults</summary><div class="recurring-defaults__content"><p>These values prefill new weeks only. Saved weeks and intentional blanks are never changed.</p><label>Daily sandwich preset<select id="sandwich-preset"><option value="">Choose a preset…</option><option value="Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25">Chicken Salad Sandwich</option><option value="Grilled Ham &amp; Cheese with cup of Chili or Coleslaw $7.25">Grilled Ham &amp; Cheese</option></select></label>{DAY_NUMBERS.map(day=><details class="default-day"><summary>{DAY_NAMES[day]}</summary>{defaults!.groups.map((group,index)=>group.day_of_week===day && <><GroupFields group={group} index={index} defaults formPrefix="defaults"/>{group.service==='all-day' && <span hidden data-sandwich-index={index}/>}</>)}</details>)}<p class="rd-flash" id="rd-flash" role="status" hidden/><button class="btn btn-primary recurring-defaults__save" type="submit" name="action" value="save-recurring-defaults">Save Recurring Defaults</button></div></details></form>}
-  {mexican && <form method="post" id="mexican-form" class="recurring-defaults-form"><input type="hidden" name="action" value="save-mexican-night"/><input type="hidden" name="revision" value={mexican.revision}/><input type="hidden" name="group_count" value={mexican.groups.length}/><details class="recurring-defaults"><summary>Mexican Night menu</summary><div class="recurring-defaults__content"><p>Published separately at <a href="/specials#mexican-night">Mexican Night</a>. Add only confirmed menu items. This does not change saved Tuesday specials.</p><label>Title<input name="title" maxlength="80" value={mexican.title}/></label><label>Schedule<input name="schedule" maxlength="80" value={mexican.schedule}/></label><div class="section-groups">{mexican.groups.map((group,index)=><GroupFields group={group} index={index} formPrefix="mexican"/>)}<button type="button" class="btn btn-ghost" data-add-group="-1">Add menu group</button></div><p id="mexican-status" role="status"/><button class="btn btn-primary" type="submit">Save Mexican Night</button></div></details></form>}
   <template id="group-template"><GroupFields group={blankGroup(-1)} index={0} formPrefix="template"/></template>
 </section>
 </Base>
@@ -484,7 +494,6 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
       const prefix = `g${marker.dataset.sandwichIndex}_2_`;
       const input = recurringDefaultsForm.querySelector<HTMLTextAreaElement>(`[name="${prefix}content"]`)!;
       input.value = preset.value;
-      recurringDefaultsForm.querySelector<HTMLInputElement>(`[name="${prefix}unavailable"]`)!.checked = false;
     });
     recurringDefaultsForm.dispatchEvent(new Event('input', { bubbles: true }));
     updateCounts();
@@ -666,5 +675,7 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
 </style>
 
 <style>
+.weekly-section-head{width:100%;max-width:1440px;margin:24px auto 0}.weekly-section-head h3{font-family:var(--label);font-size:1rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin:0 0 14px}
+.fb-unlock-form{width:100%;max-width:1440px;margin:0 auto 14px}.fb-unlock-btn{margin:0;font-size:.88rem;padding:10px 18px}
 .day-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))}.day-fields{align-content:start}.default-day{margin:12px 0;border:1px solid #b8aa98;padding:8px}.default-day summary{cursor:pointer;font-weight:700;padding:10px}.default-day :global(.group-fields){margin:10px 0}.section-groups{display:grid;gap:14px;margin:16px 0}.recurring-defaults-form{margin-top:24px}.recurring-defaults__content>label{display:grid;gap:6px;margin:10px 0}.recurring-defaults__content>label input{width:100%;box-sizing:border-box}@media(max-width:680px){.day-grid{grid-template-columns:1fr}}
 </style>
