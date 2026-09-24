@@ -36,15 +36,15 @@ for(const heading of ['Thursday Night Specials','Thursday Nightly Specials','Thu
   const p=daytime();p.poster_evidence=heading;
   assert.deepEqual(reconcilePosters([p],4),[]);
 });
-for(const evidence of ['Nightly','Wing Night','5–10 PM','Lunch and Night']) test(`per-offer ${evidence} blocks daytime fallback`,()=>{
-  const p=daytime();p.offers[0].evidence=evidence;
+for(const service_time of ['Nightly','Wing Night','5–10 PM','Lunch and Night']) test(`per-offer service_time ${service_time} blocks daytime fallback`,()=>{
+  const p=daytime();p.offers[0].service_time=service_time;
   assert.ok(reconcilePosters([p],4).every(g=>!['lunch','all-day'].includes(g.service)));
 });
-test('explicit evidence in other positions is never overridden by offer order',()=>{
-  const p=daytime();p.offers[1].evidence='Lunch';
+test('explicit service_time in other positions is never overridden by offer order',()=>{
+  const p=daytime();p.offers[1].service_time='Lunch';
   const groups=reconcilePosters([p],4);
   assert.equal(groups.find(g=>g.service==='lunch').items[0].content,dishes[1]);
-  p.offers[1].evidence='';p.offers[0].evidence='All Day';
+  p.offers[1].service_time='';p.offers[0].service_time='All Day';
   assert.deepEqual(reconcilePosters([p],4),[]);
 });
 test('matching partial service evidence supports the same three-offer pattern',()=>{
@@ -81,16 +81,35 @@ test('Thursday evening price conflict never replaces established All Day or crea
   f.state.candidate.offers[1].content=f.state.candidate.offers[1].content.replace('10.25','10.50');
   await f.run();assert.deepEqual(f.slots(4,'all-day'),before);assert.ok(f.slots(4,'nightly').every(s=>s.content===''));
 });
-test('parser 6 reprocesses a Thursday source claimed by parser 5 without deleting history',async t=>{
-  assert.equal(PARSER_VERSION,6);
+test('parser 7 reprocesses a Thursday source claimed by parser 6 without deleting history',async t=>{
+  assert.equal(PARSER_VERSION,7);
   const f=makeHarness(t);const raw=f.state.posts[0];
   const digest=(s,n)=>createHash('sha256').update(s).digest('hex').slice(0,n*2);
   const captionHash=digest(raw.message,8), version=`updated:${raw.updated_time}`;
   const model='@cf/meta/llama-3.2-11b-vision-instruct';
-  const oldId=digest(`test:${raw.id}:${captionHash}:${version}:5:${model}`,16);
+  const oldId=digest(`test:${raw.id}:${captionHash}:${version}:6:${model}`,16);
   f.sql(`INSERT INTO special_imports(id,fb_post_id,fb_created_time,caption_hash,image_source_version,parser_version,model_id,processing_status,fetched_at)
-    VALUES(?,?,?,?,?,5,?,'staged',?)`,oldId,raw.id,raw.created_time,captionHash,version,model,raw.created_time);
+    VALUES(?,?,?,?,?,6,?,'staged',?)`,oldId,raw.id,raw.created_time,captionHash,version,model,raw.created_time);
   await f.run();assert.equal(f.state.aiCalls,1);assert.equal(f.slots(4,'lunch')[0].content,dishes[0]);
-  assert.deepEqual(f.imports().map(r=>r.parser_version),[5,6]);
+  assert.deepEqual(f.imports().map(r=>r.parser_version),[6,7]);
   assert.equal(f.imports()[0].id,oldId);await f.run();assert.equal(f.state.aiCalls,1);
+});
+
+test('live parser-6 Thursday candidate: polluted evidence on offers 2-3 must not produce Lunch; no Nightly',()=>{
+  const candidate={
+    day_of_week:4,day_evidence:'Thursday',poster_evidence:'Thursday Specials',
+    offers:[
+      {content:'Chicken Mashed Potato Bowl and a Drink - $9.75',service_time:'11-1:30',evidence:'11-1:30'},
+      {content:'California Burger w/ Side Salad, Chili or Coleslaw - $10.25',service_time:'',evidence:'11-1:30'},
+      {content:'Chicken Salad Sandwich w/ Cup of Chili or Coleslaw - $7.25',service_time:'',evidence:'11-1:30'},
+    ],
+  };
+  const result=reconcilePosters([candidate],4);
+  assert.equal(result.length,2);
+  assert.equal(result[0].service,'lunch');
+  assert.equal(result[0].items[0].content,'Chicken Mashed Potato Bowl and a Drink - $9.75');
+  assert.equal(result[1].service,'all-day');
+  assert.equal(result[1].items[0].content,'California Burger w/ Side Salad, Chili or Coleslaw - $10.25');
+  assert.equal(result[1].items[1].content,'Chicken Salad Sandwich w/ Cup of Chili or Coleslaw - $7.25');
+  assert.ok(!result.some(g=>g.service==='nightly'),'no Nightly from a daytime poster');
 });

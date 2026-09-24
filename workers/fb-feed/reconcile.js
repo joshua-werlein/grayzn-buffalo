@@ -31,7 +31,7 @@ function forToday(value,weekday) {
     const p=validateEvidence(value);
     const days=DAYS.flatMap((d,i)=>new RegExp(`\\b${d}\\b`,'i').test(p.day_evidence)?[i]:[]);
     if (p.day_of_week!==weekday || days.length!==1 || days[0]!==weekday) return null;
-    const offers=p.offers.map(o=>({...o,service:serviceOf(`${o.service_time} ${o.evidence}`)}));
+    const offers=p.offers.map(o=>({...o,service:serviceOf(o.service_time)}));
     if (offers.some(o=>o.service==='conflict')) return null;
     return {...p,offers,service:serviceOf(p.poster_evidence)};
   } catch { return null; }

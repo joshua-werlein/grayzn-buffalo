@@ -88,7 +88,7 @@ for(const failure of ['wrong day','missing weekday','conflicting weekdays','no i
   if(failure==='invalid image') t.mock.method(globalThis,'fetch',async input=>String(input).includes('graph.facebook.com')?Response.json({data:f.state.posts}):new Response('bad',{headers:{'content-type':'image/jpeg'}}));
   if(failure==='two wings') f.state.candidate.offers.push(offer('Wing Night $5','Wing Night'));
   if(failure==='non-wing Wednesday') f.state.candidate=poster(3,'Night Specials',[offer('Dinner $14','Night')]);
-  if(failure==='conflicting service') f.state.candidate.offers[0].evidence='Lunch Night';
+  if(failure==='conflicting service') f.state.candidate.offers[0].service_time='Lunch Night';
   await f.run();assert.equal(f.slots()[0].content,'');
 });
 test('Tuesday Mexican Night remains isolated, Thursday supports one night item, weekend keeps configured services',()=>{
