@@ -27,3 +27,16 @@ test('defaults retain unavailable NULL versus explicit blank; saved weeks use ex
   assert.equal(c.groups[0].slots[0].content,null);assert.equal(c.groups[0].slots[1].content,'');
   assert.equal(s.newWeekFromDefaults(c).groups[0].slots[0].content,'');assert.equal(c.groups[0].slots[0].content,null);
 });
+const blank=(id,postId,fetched,created)=>({id,fb_post_id:postId,fb_created_time:created,fb_updated_time:null,caption:'',permalink_url:'',image_r2_key:null,target_kind:'ambiguous',target_day:null,target_service:null,target_collection_id:null,classification_reason:'',candidate_json:null,validation_result:null,processing_status:'staged',review_status:'pending',fetched_at:fetched});
+test('deduplicateCandidatesByPost keeps newest fetched_at per fb_post_id and sorts by fb_created_time DESC',()=>{
+  const v6=blank('id-v6','post-1','2026-09-24T10:00:00Z','2026-09-24T14:00:00Z');
+  const v7=blank('id-v7','post-1','2026-09-24T11:30:00Z','2026-09-24T14:00:00Z');
+  const other=blank('id-other','post-2','2026-09-24T09:00:00Z','2026-09-24T15:00:00Z');
+  const result=s.deduplicateCandidatesByPost([v6,v7,other]);
+  assert.equal(result.length,2,'superseded v6 is excluded; two unique posts remain');
+  assert.equal(result[0].id,'id-other','post-2 has later fb_created_time and sorts first');
+  assert.equal(result[1].id,'id-v7','post-1 shows only its newest parser version');
+  assert.ok(!result.some(c=>c.id==='id-v6'),'parser-6 candidate hidden behind parser-7');
+  const single=s.deduplicateCandidatesByPost([v6]);
+  assert.equal(single[0].id,'id-v6','single candidate with no newer version is kept');
+});

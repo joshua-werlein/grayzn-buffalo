@@ -3,7 +3,7 @@ import Base from '../../layouts/Base.astro';
 import GroupFields from '../../components/SpecialGroupFields.astro';
 import { isAuthed } from '../../lib/auth';
 import { isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from '../../lib/weekly-specials';
-import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, readCollection, readWeek, currentSavedWeekId, collectionFromForm, saveCollection, applyCandidate, recordReviewDecision, readImportCandidates, parseCandidateJson, unlockBlankSlots, lockBlankSlots, readFbFillState, SpecialConflict, type SpecialCollection, type ImportCandidate } from '../../lib/specials-store';
+import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, readCollection, readWeek, currentSavedWeekId, collectionFromForm, saveCollection, applyCandidate, recordReviewDecision, readImportCandidates, deduplicateCandidatesByPost, parseCandidateJson, unlockBlankSlots, lockBlankSlots, readFbFillState, SpecialConflict, type SpecialCollection, type ImportCandidate } from '../../lib/specials-store';
 const env = (Astro.locals as any).runtime?.env ?? {};
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 const empty = (kind: SpecialCollection['kind'], id=''): SpecialCollection => ({ id,kind,weekly_special_id:null,title:'',schedule:'',revision:0,groups:[] });
@@ -104,13 +104,13 @@ if (Astro.request.method==='POST') {
   }
 }
 if (Astro.url.searchParams.get('saved')) notice='Specials saved.';
-if (Astro.url.searchParams.get('fb')==='on') notice='Facebook blank fill turned on — blank slots may be filled automatically.';
-if (Astro.url.searchParams.get('fb')==='off') notice='Facebook blank fill turned off — blank slots are now protected.';
+if (Astro.url.searchParams.get('fb')==='on') notice='Facebook auto-fill turned on — empty specials may be filled automatically. Anything entered or changed by staff is protected.';
+if (Astro.url.searchParams.get('fb')==='off') notice='Facebook auto-fill turned off — staff can still enter and save specials manually.';
 let fbFillState: 'on'|'off'|'mixed'|'no-blanks'|null = null;
 if (editingId && weekly.id && ready) {
   try { fbFillState = await readFbFillState(env, weekly.id); } catch { /* non-fatal; control hidden */ }
 }
-candidates = await readImportCandidates(env);
+candidates = deduplicateCandidatesByPost(await readImportCandidates(env));
 const savedWeeks: any[] = [];
 try {
   const weeksResult = await env.DB.prepare('SELECT ws.id,ws.week_start_date,ws.week_end_date,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id ORDER BY ws.week_start_date DESC').all();
@@ -121,9 +121,45 @@ const savedWeeksExpanded=savedWeeks.findIndex(week=>String(week.id)===editingId)
 if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
 ---
 <Base title="Admin · Specials — Grayz'n Buffalo">
-{candidates.length > 0 && <section class="staged-imports" aria-label="Staged Import Candidates">
-  <h2 class="imports-heading">Staged Import Candidates <span class="imports-badge">{candidates.length}</span></h2>
-  <p class="imports-intro">Facebook image evidence is reconciled automatically when the day and offers are clear. Unresolved offers wait for additional same-day evidence. Manual review is optional; manually accepted values stay protected.</p>
+<section class="specials-admin">
+  <div class="section-head"><h2>Specials</h2>{notice && <p class="specials-notice" role="status">{notice}</p>}{error && <p class="error" role="alert">{error}</p>}</div>
+  {recurringError && <p class="error">{recurringError}</p>}
+  {defaults && <form method="post" id="recurring-defaults-form" class="recurring-defaults-form"><input type="hidden" name="action" value="save-recurring-defaults"/><input type="hidden" name="revision" value={defaults.revision}/><input type="hidden" name="group_count" value={defaults.groups.length}/><details class="recurring-defaults"><summary>Recurring Defaults</summary><div class="recurring-defaults__content"><p>These values prefill new weeks only. Saved weeks and intentional blanks are never changed. Leave a field empty to remove its default.</p><label>Daily sandwich preset<select id="sandwich-preset"><option value="">Choose a preset…</option><option value="Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25">Chicken Salad Sandwich</option><option value="Grilled Ham &amp; Cheese with cup of Chili or Coleslaw $7.25">Grilled Ham &amp; Cheese</option></select></label>{DAY_NUMBERS.map(day=><details class="default-day"><summary>{DAY_NAMES[day]}</summary>{defaults!.groups.map((group,index)=>group.day_of_week===day && <><GroupFields group={group} index={index} defaults formPrefix="defaults"/>{group.service==='all-day' && <span hidden data-sandwich-index={index}/>}</>)}</details>)}<p class="rd-flash" id="rd-flash" role="status" hidden/><button class="btn btn-primary recurring-defaults__save" type="submit" name="action" value="save-recurring-defaults">Save Recurring Defaults</button></div></details></form>}
+  {mexican && <form method="post" id="mexican-form" class="recurring-defaults-form"><input type="hidden" name="action" value="save-mexican-night"/><input type="hidden" name="revision" value={mexican.revision}/><input type="hidden" name="group_count" value={mexican.groups.length}/><details class="recurring-defaults"><summary>Mexican Night menu</summary><div class="recurring-defaults__content"><p>Published separately at <a href="/specials#mexican-night">Mexican Night</a>. Add only confirmed menu items. This does not change saved Tuesday specials.</p><label>Title<input name="title" maxlength="80" value={mexican.title}/></label><label>Schedule<input name="schedule" maxlength="80" value={mexican.schedule}/></label><div class="section-groups">{mexican.groups.map((group,index)=><GroupFields group={group} index={index} formPrefix="mexican"/>)}<button type="button" class="btn btn-ghost" data-add-group="-1">Add menu group</button></div><p id="mexican-status" role="status"/><button class="btn btn-primary" type="submit">Save Mexican Night</button></div></details></form>}
+  <div class="weekly-section-head"><h3>Weekly Specials</h3></div>
+  <div class="week-picker"><label for="saved-week">Saved week to edit</label><select id="saved-week"><option value="">Select a saved week...</option>{savedWeeks.map((week,index)=><option value={week.id} data-older-week={index>=4 ? 'true' : undefined} hidden={index>=4 && !savedWeeksExpanded} selected={String(week.id)===editingId}>{week.week_start_date} – {week.week_end_date}</option>)}</select>{savedWeeks.length>4 && <button id="saved-weeks-toggle" type="button" class="btn btn-ghost week-picker__action" aria-expanded={savedWeeksExpanded}>View {savedWeeksExpanded ? 'fewer' : 'more'} weeks</button>}<a class="btn btn-ghost week-picker__action" href="/admin/specials?new=1">Create new week</a>
+    {editingId && fbFillState !== null && <div class="week-picker__fb-row">
+      <p class="fb-fill-status">
+        <span>Facebook auto-fill:</span>
+        {fbFillState==='on' && <strong class="fb-fill-badge fb-fill-badge--on"> ON</strong>}
+        {(fbFillState==='off'||fbFillState==='no-blanks') && <strong class="fb-fill-badge fb-fill-badge--off"> OFF</strong>}
+        {fbFillState==='mixed' && <strong class="fb-fill-badge fb-fill-badge--mixed"> PARTIAL</strong>}
+      </p>
+      {fbFillState==='on' && <p class="fb-fill-help">Facebook can automatically fill empty specials for this week. Anything entered or changed by staff is protected and will not be overwritten.</p>}
+      {(fbFillState==='off'||fbFillState==='no-blanks') && <p class="fb-fill-help">Facebook will not fill empty specials for this week. Staff can still enter and save specials manually.</p>}
+      {fbFillState==='mixed' && <p class="fb-fill-help">Some empty specials can be filled automatically, while others are protected from Facebook changes.</p>}
+      {(fbFillState==='off') && <form method="post" class="fb-fill-form"><input type="hidden" name="action" value="allow-fb-unlock"/><input type="hidden" name="week_id" value={editingId}/><input type="hidden" name="collection_revision" value={weekly.revision}/><button type="submit" class="fb-fill-btn fb-fill-btn--allow">Allow Facebook to fill blank spots</button></form>}
+      {(fbFillState==='on') && <form method="post" class="fb-fill-form"><input type="hidden" name="action" value="lock-blank-slots"/><input type="hidden" name="week_id" value={editingId}/><input type="hidden" name="collection_revision" value={weekly.revision}/><button type="submit" class="fb-fill-btn fb-fill-btn--deny">Don't allow Facebook to fill blank spots</button></form>}
+      {fbFillState==='mixed' && <>
+        <form method="post" class="fb-fill-form"><input type="hidden" name="action" value="allow-fb-unlock"/><input type="hidden" name="week_id" value={editingId}/><input type="hidden" name="collection_revision" value={weekly.revision}/><button type="submit" class="fb-fill-btn fb-fill-btn--allow">Allow Facebook to fill blank spots</button></form>
+        <form method="post" class="fb-fill-form"><input type="hidden" name="action" value="lock-blank-slots"/><input type="hidden" name="week_id" value={editingId}/><input type="hidden" name="collection_revision" value={weekly.revision}/><button type="submit" class="fb-fill-btn fb-fill-btn--deny">Don't allow Facebook to fill blank spots</button></form>
+      </>}
+    </div>}
+  </div>
+  {ready && <form method="post" id="weekly-form" class="weekly-form" data-dirty={String(weeklyDirty)} data-active-day={activeDay} data-save-attempted={String(weeklySaveAttempted)} data-scroll-y={weeklyScrollY}>
+    <input type="hidden" name="weekly_id" value={editingId}/><input type="hidden" name="revision" value={weekly.revision}/><input type="hidden" name="group_count" value={weekly.groups.length}/>
+    <input type="hidden" name="weekly_active_day" value={activeDay}/><input type="hidden" name="weekly_scroll_y" value={weeklyScrollY}/>
+    <fieldset class="week-dates"><legend>{editingId ? 'Editing saved week' : 'New weekly specials'}</legend><div class="week-date-controls"><label class="week-date-group">Week starting<input id="week-start" type="date" name="week_start_date" value={weekStart} required/></label><div class="week-date-group"><span>Week ending</span><output id="week-end">{weekEnd || 'Choose a week'}</output></div></div><p>Monday through Sunday. Recurring defaults prefill new weeks only.</p></fieldset>
+    <p class="instructions">Include the price in the special text (150 characters maximum). Leave a field empty to save it blank. Blank specials are hidden publicly.</p>
+    <div class="day-navigation" hidden><p id="day-progress" class="day-progress" role="status">{DAYS[activeDay]} · {activeDay+1} of 7</p><div class="day-selector">{DAYS.map((day,index)=><button type="button" data-day-select={index} aria-controls={`weekly-day-${index}`} aria-pressed={index===activeDay}>{day.slice(0,3)}</button>)}</div><p class="swipe-hint">Swipe the card heading or use the day buttons.</p></div>
+    <div class="week-actions"><div class="week-save-row"><div><p>All seven days save together</p><p id="weekly-save-status" role="status">No unsaved changes.</p></div><button class="btn btn-primary" type="submit" name="action" value="save-weekly-specials">Save Week</button></div><p id="weekly-save-error" class="error" role="alert" tabindex="-1" hidden={!weeklySaveError}>{weeklySaveError}</p><div class="day-stepper" hidden><button type="button" id="previous-day">← Previous</button><button type="button" id="next-day">Next →</button></div></div>
+    <div class="day-grid">{DAY_NUMBERS.map((day,index)=><fieldset class="day-fields" id={`weekly-day-${index}`} data-day-name={DAYS[index]} tabindex="-1"><legend>{DAYS[index]}</legend>{weekly.groups.map((group,i)=>group.day_of_week===day && <GroupFields group={group} index={i} formPrefix="weekly"/>)}</fieldset>)}</div>
+  </form>}
+  <template id="group-template"><GroupFields group={blankGroup(-1)} index={0} formPrefix="template"/></template>
+</section>
+{candidates.length > 0 && <details class="staged-imports" id="fb-import-review">
+  <summary class="imports-heading">Facebook Import Review <span class="imports-badge">{candidates.length}</span></summary>
+  <p class="imports-intro">Usually no action is needed here. Posts appear here only when Facebook automation could not confidently place a special.</p>
   {candidates.map(candidate => {
     const groups = parseCandidateJson(candidate.candidate_json);
     let evidenceOffers: {content: string}[] = [];
@@ -164,11 +200,12 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
         </details>)}
       </div>}
       <div class="import-card__actions">
-        {!isSection && <label class="import-week-label">Apply to week
+        {!isSection && <label class="import-week-label">Apply to saved week
           <select class="import-week-select" aria-label="Target week">
             {savedWeeks.map(w => <option value={w.id} data-revision={w.revision ?? 0}>{w.week_start_date} – {w.week_end_date}</option>)}
           </select>
         </label>}
+        {!isSection && <p class="import-action-hint">Accept adds this Facebook result to the selected saved week and protects it as a staff-approved value.</p>}
         <form class="import-accept-form">
           <input type="hidden" name="import_id" value={candidate.id}/>
           {isSection && <input type="hidden" name="collection_revision" value={String(sectionRevision)}/>}
@@ -182,42 +219,7 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
       </div>
     </article>;
   })}
-</section>}
-<section class="specials-admin">
-  <div class="section-head"><h2>Specials</h2>{notice && <p class="specials-notice" role="status">{notice}</p>}{error && <p class="error" role="alert">{error}</p>}</div>
-  {recurringError && <p class="error">{recurringError}</p>}
-  {defaults && <form method="post" id="recurring-defaults-form" class="recurring-defaults-form"><input type="hidden" name="action" value="save-recurring-defaults"/><input type="hidden" name="revision" value={defaults.revision}/><input type="hidden" name="group_count" value={defaults.groups.length}/><details class="recurring-defaults"><summary>Recurring Defaults</summary><div class="recurring-defaults__content"><p>These values prefill new weeks only. Saved weeks and intentional blanks are never changed. Leave a field empty to remove its default.</p><label>Daily sandwich preset<select id="sandwich-preset"><option value="">Choose a preset…</option><option value="Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25">Chicken Salad Sandwich</option><option value="Grilled Ham &amp; Cheese with cup of Chili or Coleslaw $7.25">Grilled Ham &amp; Cheese</option></select></label>{DAY_NUMBERS.map(day=><details class="default-day"><summary>{DAY_NAMES[day]}</summary>{defaults!.groups.map((group,index)=>group.day_of_week===day && <><GroupFields group={group} index={index} defaults formPrefix="defaults"/>{group.service==='all-day' && <span hidden data-sandwich-index={index}/>}</>)}</details>)}<p class="rd-flash" id="rd-flash" role="status" hidden/><button class="btn btn-primary recurring-defaults__save" type="submit" name="action" value="save-recurring-defaults">Save Recurring Defaults</button></div></details></form>}
-  {mexican && <form method="post" id="mexican-form" class="recurring-defaults-form"><input type="hidden" name="action" value="save-mexican-night"/><input type="hidden" name="revision" value={mexican.revision}/><input type="hidden" name="group_count" value={mexican.groups.length}/><details class="recurring-defaults"><summary>Mexican Night menu</summary><div class="recurring-defaults__content"><p>Published separately at <a href="/specials#mexican-night">Mexican Night</a>. Add only confirmed menu items. This does not change saved Tuesday specials.</p><label>Title<input name="title" maxlength="80" value={mexican.title}/></label><label>Schedule<input name="schedule" maxlength="80" value={mexican.schedule}/></label><div class="section-groups">{mexican.groups.map((group,index)=><GroupFields group={group} index={index} formPrefix="mexican"/>)}<button type="button" class="btn btn-ghost" data-add-group="-1">Add menu group</button></div><p id="mexican-status" role="status"/><button class="btn btn-primary" type="submit">Save Mexican Night</button></div></details></form>}
-  <div class="weekly-section-head"><h3>Weekly Specials</h3></div>
-  <div class="week-picker"><label for="saved-week">Saved week to edit</label><select id="saved-week"><option value="">Select a saved week...</option>{savedWeeks.map((week,index)=><option value={week.id} data-older-week={index>=4 ? 'true' : undefined} hidden={index>=4 && !savedWeeksExpanded} selected={String(week.id)===editingId}>{week.week_start_date} – {week.week_end_date}</option>)}</select>{savedWeeks.length>4 && <button id="saved-weeks-toggle" type="button" class="btn btn-ghost week-picker__action" aria-expanded={savedWeeksExpanded}>View {savedWeeksExpanded ? 'fewer' : 'more'} weeks</button>}<a class="btn btn-ghost week-picker__action" href="/admin/specials?new=1">Create new week</a>
-    {editingId && fbFillState !== null && <div class="week-picker__fb-row">
-      <p class="fb-fill-status">
-        <span>Facebook blank fill:</span>
-        {fbFillState==='on' && <strong class="fb-fill-badge fb-fill-badge--on"> ON</strong>}
-        {(fbFillState==='off'||fbFillState==='no-blanks') && <strong class="fb-fill-badge fb-fill-badge--off"> OFF</strong>}
-        {fbFillState==='mixed' && <strong class="fb-fill-badge fb-fill-badge--mixed"> MIXED</strong>}
-        {fbFillState==='no-blanks' && <span class="fb-fill-note"> — no blank slots in this week</span>}
-        {fbFillState==='mixed' && <span class="fb-fill-note"> — some slots eligible, some locked</span>}
-      </p>
-      {(fbFillState==='off') && <form method="post" class="fb-fill-form"><input type="hidden" name="action" value="allow-fb-unlock"/><input type="hidden" name="week_id" value={editingId}/><input type="hidden" name="collection_revision" value={weekly.revision}/><button type="submit" class="fb-fill-btn fb-fill-btn--allow">Allow Facebook to fill blank spots</button></form>}
-      {(fbFillState==='on') && <form method="post" class="fb-fill-form"><input type="hidden" name="action" value="lock-blank-slots"/><input type="hidden" name="week_id" value={editingId}/><input type="hidden" name="collection_revision" value={weekly.revision}/><button type="submit" class="fb-fill-btn fb-fill-btn--deny">Don't allow Facebook to fill blank spots</button></form>}
-      {fbFillState==='mixed' && <>
-        <form method="post" class="fb-fill-form"><input type="hidden" name="action" value="allow-fb-unlock"/><input type="hidden" name="week_id" value={editingId}/><input type="hidden" name="collection_revision" value={weekly.revision}/><button type="submit" class="fb-fill-btn fb-fill-btn--allow">Allow Facebook to fill blank spots</button></form>
-        <form method="post" class="fb-fill-form"><input type="hidden" name="action" value="lock-blank-slots"/><input type="hidden" name="week_id" value={editingId}/><input type="hidden" name="collection_revision" value={weekly.revision}/><button type="submit" class="fb-fill-btn fb-fill-btn--deny">Don't allow Facebook to fill blank spots</button></form>
-      </>}
-    </div>}
-  </div>
-  {ready && <form method="post" id="weekly-form" class="weekly-form" data-dirty={String(weeklyDirty)} data-active-day={activeDay} data-save-attempted={String(weeklySaveAttempted)} data-scroll-y={weeklyScrollY}>
-    <input type="hidden" name="weekly_id" value={editingId}/><input type="hidden" name="revision" value={weekly.revision}/><input type="hidden" name="group_count" value={weekly.groups.length}/>
-    <input type="hidden" name="weekly_active_day" value={activeDay}/><input type="hidden" name="weekly_scroll_y" value={weeklyScrollY}/>
-    <fieldset class="week-dates"><legend>{editingId ? 'Editing saved week' : 'New weekly specials'}</legend><div class="week-date-controls"><label class="week-date-group">Week starting<input id="week-start" type="date" name="week_start_date" value={weekStart} required/></label><div class="week-date-group"><span>Week ending</span><output id="week-end">{weekEnd || 'Choose a week'}</output></div></div><p>Monday through Sunday. Recurring defaults prefill new weeks only.</p></fieldset>
-    <p class="instructions">Include the price in the special text (150 characters maximum). Leave a field empty to save it blank. Blank specials are hidden publicly.</p>
-    <div class="day-navigation" hidden><p id="day-progress" class="day-progress" role="status">{DAYS[activeDay]} · {activeDay+1} of 7</p><div class="day-selector">{DAYS.map((day,index)=><button type="button" data-day-select={index} aria-controls={`weekly-day-${index}`} aria-pressed={index===activeDay}>{day.slice(0,3)}</button>)}</div><p class="swipe-hint">Swipe the card heading or use the day buttons.</p></div>
-    <div class="week-actions"><div class="week-save-row"><div><p>All seven days save together</p><p id="weekly-save-status" role="status">No unsaved changes.</p></div><button class="btn btn-primary" type="submit" name="action" value="save-weekly-specials">Save Week</button></div><p id="weekly-save-error" class="error" role="alert" tabindex="-1" hidden={!weeklySaveError}>{weeklySaveError}</p><div class="day-stepper" hidden><button type="button" id="previous-day">← Previous</button><button type="button" id="next-day">Next →</button></div></div>
-    <div class="day-grid">{DAY_NUMBERS.map((day,index)=><fieldset class="day-fields" id={`weekly-day-${index}`} data-day-name={DAYS[index]} tabindex="-1"><legend>{DAYS[index]}</legend>{weekly.groups.map((group,i)=>group.day_of_week===day && <GroupFields group={group} index={i} formPrefix="weekly"/>)}</fieldset>)}</div>
-  </form>}
-  <template id="group-template"><GroupFields group={blankGroup(-1)} index={0} formPrefix="template"/></template>
-</section>
+</details>}
 </Base>
 <script>
   const weeklyForm = document.getElementById('weekly-form') as HTMLFormElement | null;
@@ -617,11 +619,17 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
 
 </script>
 <style>
-  /* ── Staged import review ───────────────────────────────────────────────── */
-  .staged-imports{width:100%;max-width:1440px;margin:0 auto 24px;padding:20px;background:#fff;border-radius:12px;box-shadow:0 6px 16px rgba(36,22,16,.1)}
-  .imports-heading{margin:0 0 6px;font-family:var(--label);font-size:1rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+  /* ── Facebook Import Review (collapsed details) ─────────────────────────── */
+  .staged-imports{width:100%;max-width:1440px;margin:24px auto 0;background:#fff;border-radius:12px;box-shadow:0 6px 16px rgba(36,22,16,.1)}
+  .staged-imports summary.imports-heading{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;padding:16px 20px;border-radius:12px}
+  .staged-imports[open] summary.imports-heading{border-radius:12px 12px 0 0;border-bottom:1px solid rgba(36,22,16,.1)}
+  .staged-imports .imports-intro,.staged-imports .import-card{padding-left:20px;padding-right:20px}
+  .staged-imports .imports-intro{padding-top:14px}
+  .staged-imports .import-card:last-of-type{margin-bottom:14px}
+  .imports-heading{margin:0;font-family:var(--label);font-size:1rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
   .imports-badge{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:var(--gold);font-size:.78rem;font-weight:700}
   .imports-intro{margin:0 0 16px;font-size:.9rem;color:var(--ink-2)}
+  .import-action-hint{width:100%;margin:0 0 4px;font-size:.82rem;color:var(--ink-2)}
   .import-card{border:1px solid rgba(36,22,16,.18);border-radius:10px;padding:16px;margin-bottom:14px;background:var(--surface-parchment)}
   .import-card[aria-busy="true"]{opacity:.6;pointer-events:none}
   .import-card__head{display:flex;justify-content:space-between;align-items:start;gap:8px;flex-wrap:wrap;margin-bottom:6px}
@@ -646,10 +654,14 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
   .import-accept-btn,.import-keep,.import-dismiss{margin:0;padding:8px 16px;font-size:.9rem}
   .import-action-error{width:100%;margin:4px 0 0;font-size:.85rem;font-weight:700}
   @media(max-width:680px){
-    .staged-imports{padding:14px;border-radius:8px}
+    .staged-imports{border-radius:8px}
+    .staged-imports summary.imports-heading{padding:12px 14px;border-radius:8px}
+    .staged-imports[open] summary.imports-heading{border-radius:8px 8px 0 0}
+    .staged-imports .imports-intro,.staged-imports .import-card{padding-left:14px;padding-right:14px}
     .import-card{padding:12px}
     .import-card__actions{flex-direction:column;align-items:stretch}
     .import-accept-btn,.import-keep,.import-dismiss{width:100%;text-align:center}
+    .import-action-hint{font-size:.8rem}
     .import-item-row{grid-template-columns:1fr}
   }
 </style>

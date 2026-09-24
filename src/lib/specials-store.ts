@@ -133,6 +133,18 @@ export async function readImportCandidates(env: any): Promise<ImportCandidate[]>
   } catch { return []; }
 }
 
+/** Presentation filter: for each Facebook source post keep only the most-recently-fetched
+ *  candidate. Superseded versions from older parser runs stay in the database but are
+ *  hidden from review until the newer version is resolved. */
+export function deduplicateCandidatesByPost(candidates: ImportCandidate[]): ImportCandidate[] {
+  const newest = new Map<string, ImportCandidate>();
+  for (const c of candidates) {
+    const existing = newest.get(c.fb_post_id);
+    if (!existing || c.fetched_at > existing.fetched_at) newest.set(c.fb_post_id, c);
+  }
+  return [...newest.values()].sort((a, b) => b.fb_created_time.localeCompare(a.fb_created_time));
+}
+
 function applyCandidateGroupsToCollection(collection: SpecialCollection, candidateGroups: CandidateGroup[]): SpecialCollection {
   const groups = collection.groups.map(g => ({ ...g, slots: g.slots.map(s => ({ ...s })) }));
   for (const cg of normalizeCandidateGroups(candidateGroups)) {
