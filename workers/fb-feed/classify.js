@@ -1,7 +1,7 @@
 // Caption metadata for the audit/review UI, not an eligibility or write gate.
 // Images are extracted independently. Never infer service from a timestamp.
 // Version changes make previously staged source versions distinct.
-export const PARSER_VERSION = 5;
+export const PARSER_VERSION = 6;
 const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 export function classifyCaption(caption) {
   const result = (kind, day, service, reason, collectionId = null) => ({kind,day,service,collectionId,reason});

@@ -220,7 +220,7 @@ function makeFakeDb(state) {
           return {meta:{changes:1}};
         }
         if (/SET processed_at=/.test(sql)) state.imports.find(r=>r.id===args[1]).processed_at=args[0];
-        else if (/SET image_r2_key=/.test(sql)) Object.assign(state.imports.find(r=>r.id===args[8]),Object.fromEntries(['image_r2_key','image_hash','extracted_json','candidate_json','validation_result','validation_reason','processing_status','processed_at'].map((f,i)=>[f,args[i]])));
+        else if (/SET image_r2_key=/.test(sql)) Object.assign(state.imports.find(r=>r.id===args[9]),Object.fromEntries(['image_r2_key','image_hash','extracted_json','candidate_json','validation_result','validation_reason','processing_status','processed_at','last_error'].map((f,i)=>[f,args[i]])));
         else if (/INSERT INTO special_import_events/.test(sql)) state.events.push({import_id:args[0],event_type:args[1],detail:args[2]});
         return {meta:{changes:1}};
       },
@@ -520,7 +520,7 @@ test('import contract combines prices and removes Monday/Friday All Day repetiti
     const candidate=JSON.parse(f.state.imports[0].candidate_json);
     assert.deepEqual(candidate.map(g=>g.items.length),[1,2,2]);
     assert.deepEqual(candidate[0].items[0],{content:'Lunch $9.75'});
-    assert.match(f.state.aiCalls[0].params.messages[0].content[0].text,/Extract ALL offers once each/);
+    assert.match(f.state.aiCalls[0].params.messages[1].content,/Extract ALL offers once each/);
   }
 });
 

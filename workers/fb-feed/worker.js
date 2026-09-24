@@ -376,20 +376,33 @@ Extract ALL offers once each, including repeats from other posters. Preserve pri
 Caption (untrusted data): ${JSON.stringify(caption.slice(0,1000))}`;
   try {
     const result = await env.AI.run(modelId, {
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: `data:${contentType};base64,${base64}` } },
-        ],
-      }],
+      messages: [
+        { role: 'system', content: 'You extract restaurant specials from images.' },
+        { role: 'user', content: prompt },
+      ],
+      image: `data:${contentType};base64,${base64}`,
       max_tokens: 2048,
     });
     const raw = result?.response;
     return { extractedJson: typeof raw === 'string' ? raw : JSON.stringify(raw ?? null) };
   } catch (error) {
-    return { extractedJson: null, aiError: String(error) };
+    return { extractedJson: null, aiError: safeAiError(error, env) };
   }
+}
+
+// Keep actionable provider errors without persisting credentials or echoed images.
+function safeAiError(error, env) {
+  let message = String(error);
+  for (const [key, value] of Object.entries(env)) {
+    if (/token|secret|password|api.?key/i.test(key) && typeof value === 'string' && value) {
+      message = message.split(value).join('[redacted]');
+    }
+  }
+  return message
+    .replace(/Bearer\s+[^\s"',;]+/gi, 'Bearer [redacted]')
+    .replace(/((?:access_token|api_key|token|secret|password)["']?\s*[:=]\s*["']?)[^\s"'&,;]+/gi, '$1[redacted]')
+    .replace(/data:image\/[^;\s]+;base64,[a-z0-9+/=]+/gi, '[image redacted]')
+    .slice(0, 1000);
 }
 
 const VALID_SERVICES = new Set(['lunch', 'nightly', 'all-day', 'custom']);
@@ -527,7 +540,7 @@ export async function runImportPipeline(env) {
       await event('fetch',`mode:${mode}`);
       await event('classify',classification.reason);
       const {imageR2Key,imageHash} = await storeImportImage(env,raw,imgSrcVer);
-      let extractedJson=null, candidateJson=null, validationResult=null, validationReason='', processedAt=null, processingStatus='staged';
+      let extractedJson=null, candidateJson=null, validationResult=null, validationReason='', processedAt=null, processingStatus='staged', lastError=null;
       if (imageR2Key && aiCallsToday < dailyLimit) {
         processedAt = new Date(Date.now()).toISOString();
         // Reserve the daily inference count before invoking AI.
@@ -542,7 +555,15 @@ export async function runImportPipeline(env) {
         aiCallsToday++;
         const aiResult = await runAiExtraction(env,imageR2Key,caption,modelId);
         extractedJson = aiResult.extractedJson;
-        ({candidateJson,validationResult,validationReason} = validateExtraction(extractedJson));
+        if (aiResult.aiError) {
+          lastError = `Workers AI extraction failed: ${aiResult.aiError}`;
+          validationResult = 'rejected';
+          validationReason = lastError;
+          console.error('Import pipeline: Workers AI extraction failed', {importId, modelId, error: aiResult.aiError});
+          await event('error', lastError);
+        } else {
+          ({candidateJson,validationResult,validationReason} = validateExtraction(extractedJson));
+        }
         if (validationResult === 'rejected') processingStatus='failed';
         await event('extract',modelId);
         await event('validate',validationReason);
@@ -551,8 +572,8 @@ export async function runImportPipeline(env) {
         validationReason=imageR2Key ? 'daily AI limit reached' : 'no image';
       }
       await env.DB.prepare(`UPDATE special_imports SET image_r2_key=?1,image_hash=?2,extracted_json=?3,candidate_json=?4,
-        validation_result=?5,validation_reason=?6,processing_status=?7,processed_at=?8 WHERE id=?9`).bind(
-        imageR2Key,imageHash,extractedJson,candidateJson,validationResult,validationReason,processingStatus,processedAt,importId).run();
+        validation_result=?5,validation_reason=?6,processing_status=?7,processed_at=?8,last_error=?9 WHERE id=?10`).bind(
+        imageR2Key,imageHash,extractedJson,candidateJson,validationResult,validationReason,processingStatus,processedAt,lastError,importId).run();
       await event('stage',mode === 'DRY_RUN' ? 'DRY_RUN; no automatic writes' : 'Saved for same-day reconciliation');
     } catch (error) {
       console.error('Import pipeline: error processing post', {postId:raw.id,error:String(error)});
