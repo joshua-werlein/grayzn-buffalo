@@ -45,6 +45,20 @@ export function reconcilePosters(candidates,weekday,existingAllDay=[]) {
   const posters=candidates.map(c=>forToday(c,weekday)).filter(Boolean);
   const proposals={'lunch':[],'all-day':[],'nightly':[]};
   for (const p of posters) {
+    // Restaurant weekday pattern: generic three-offer posters list Lunch first,
+    // then the two All Day offers, even when no lunch time is printed.
+    // Explicit evidence must agree with those positions; never reinterpret a
+    // night poster (including Wing Night) or apply this pattern on weekends.
+    const heading=`${p.day_evidence} ${p.poster_evidence}`;
+    const orderedDaytime=weekday>=1 && weekday<=5 && p.offers.length===3 &&
+      /\bspecials?\b/i.test(heading) && !/\bweekly\b/i.test(heading) && serviceOf(heading)==='unknown' &&
+      p.offers.every((o,i)=>['unknown',i===0?'lunch':'all-day'].includes(o.service) &&
+        !['nightly','conflict'].includes(serviceOf(o.content)));
+    if (orderedDaytime) {
+      proposals.lunch.push(p.offers.slice(0,1));
+      proposals['all-day'].push(p.offers.slice(1));
+      continue;
+    }
     const lunch=p.offers.filter(o=>o.service==='lunch');
     const untimed=p.offers.filter(o=>o.service==='unknown');
     const explicit=p.offers.filter(o=>o.service==='all-day');

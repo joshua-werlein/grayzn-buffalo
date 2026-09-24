@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {Miniflare} from 'miniflare';
 import {fixture} from './specials-fixture.mjs';
 import {reconcileToday} from '../workers/fb-feed/guarded-auto.js';
+import {PARSER_VERSION} from '../workers/fb-feed/classify.js';
 
 test('real local D1 guarded publication and audit are atomic; stale snapshots fail closed',async t=>{
   const f=fixture(t);
@@ -20,7 +21,7 @@ test('real local D1 guarded publication and audit are atomic; stale snapshots fa
   ]);
   const candidateJson=JSON.stringify({day_of_week:3,day_evidence:'Wednesday',poster_evidence:'All Day',offers:[{content:'One $1',service_time:'',evidence:'All Day'},{content:'Two $2',service_time:'',evidence:'All Day'}]});
   await DB.prepare(`INSERT INTO special_imports(id,fb_post_id,fb_created_time,candidate_json,validation_result,image_r2_key,processing_status,parser_version)
-    VALUES('i','p','2030-01-09',?,'ok','special-imports/test.jpg','staged',4)`).bind(candidateJson).run();
+    VALUES('i','p','2030-01-09',?,'ok','special-imports/test.jpg','staged',?)`).bind(candidateJson,PARSER_VERSION).run();
   const input={sourceIds:['i'],today:'2030-01-09',weekday:3};
   const failing={DB:{prepare:DB.prepare.bind(DB),batch:statements=>DB.batch([...statements,DB.prepare('INSERT INTO missing_table VALUES(1)')])}};
   await assert.rejects(()=>reconcileToday(failing,input));
