@@ -128,7 +128,7 @@ test('Chicago date windows cover DST and year rollover',()=>{
     const w=chicagoDayWindow(new Date(date));assert.equal(w.since,Date.parse(start)/1000);assert.equal(w.until,Date.parse(end)/1000);
   }
 });
-test('history cleanup removes only records beyond 90 days and cascades events',async t=>{
+test('history cleanup removes only records beyond 30 days and cascades events',async t=>{
   const f=harness(t);await f.run();const before=f.slots();f.sql("INSERT INTO special_imports(id,fb_post_id,fb_created_time,fetched_at) VALUES('old','old','2020-01-01','2020-01-01')");f.sql("INSERT INTO special_import_events(import_id,event_type) VALUES('old','stage')");await pruneImportHistory(f.env,new Date(f.state.now));assert.equal(f.sql("SELECT * FROM special_imports WHERE id='old'").length,0);assert.deepEqual(f.slots(),before);
 });
 test('saved automation All Day pair resolves a later night poster without rewriting the pair',async t=>{

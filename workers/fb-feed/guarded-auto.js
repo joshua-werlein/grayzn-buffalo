@@ -78,7 +78,7 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
 export async function pruneImportHistory(env, now) {
   // Migration 0017 has ON DELETE CASCADE; explicit event deletion also works
   // with FK enforcement enabled. No specials table is part of this cleanup.
-  const cutoff = new Date(now.getTime() - 90*24*60*60*1000).toISOString();
+  const cutoff = new Date(now.getTime() - 30*24*60*60*1000).toISOString();
   await env.DB.batch([
     env.DB.prepare(`DELETE FROM special_import_events WHERE import_id IN
       (SELECT id FROM special_imports WHERE julianday(fetched_at)<julianday(?1))`).bind(cutoff),
