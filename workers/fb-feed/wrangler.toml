@@ -12,7 +12,7 @@ crons = ["*/30 * * * *"]
 
 [vars]
 # OFF = disabled; DRY_RUN = fetch/classify/extract/stage only, no auto-publish;
-# GUARDED_AUTO = today-only, explicit day/service, unlocked safe slots only.
+# GUARDED_AUTO = today-only image evidence, same-day reconciliation, safe slots.
 SPECIALS_IMPORT_MODE = "GUARDED_AUTO"
 SPECIALS_AI_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct"
 # Maximum Workers AI vision calls per Chicago calendar day.

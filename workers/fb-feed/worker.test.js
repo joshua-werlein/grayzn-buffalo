@@ -364,12 +364,12 @@ test('import pipeline classifies and stages a recognizable post with image', asy
   assert.equal(f.state.aiCalls.length, 1);
 });
 
-test('import pipeline skips posts whose captions are classified as ignored', async (t) => {
+test('import pipeline extracts image posts even when the caption is generic', async (t) => {
   const ignoredPost = { ...DEFAULT_IMPORT_POST, message: 'Come join us for a great time!' };
   const f = importFixture(t, { graphPosts: [ignoredPost] });
   await f.run();
-  assert.equal(f.state.imports.length, 0);
-  assert.equal(f.state.aiCalls.length, 0);
+  assert.equal(f.state.imports.length, 1);
+  assert.equal(f.state.aiCalls.length, 1);
 });
 
 test('import pipeline is idempotent: re-running does not create duplicate records', async (t) => {
@@ -520,7 +520,7 @@ test('import contract combines prices and removes Monday/Friday All Day repetiti
     const candidate=JSON.parse(f.state.imports[0].candidate_json);
     assert.deepEqual(candidate.map(g=>g.items.length),[1,2,2]);
     assert.deepEqual(candidate[0].items[0],{content:'Lunch $9.75'});
-    assert.match(f.state.aiCalls[0].params.messages[0].content[0].text,/ONLY in an all-day group/);
+    assert.match(f.state.aiCalls[0].params.messages[0].content[0].text,/Extract ALL offers once each/);
   }
 });
 

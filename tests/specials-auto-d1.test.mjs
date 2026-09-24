@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Miniflare} from 'miniflare';
 import {fixture} from './specials-fixture.mjs';
-import {guardedAutoWrite} from '../workers/fb-feed/guarded-auto.js';
+import {reconcileToday} from '../workers/fb-feed/guarded-auto.js';
 
 test('real local D1 guarded publication and audit are atomic; stale snapshots fail closed',async t=>{
   const f=fixture(t);
@@ -18,19 +18,19 @@ test('real local D1 guarded publication and audit are atomic; stale snapshots fa
     DB.prepare("INSERT INTO special_slots(group_id,position,content,origin,manual_locked) VALUES('g',1,'','automation',0),('g',2,'','automation',0)"),
     DB.prepare('INSERT INTO special_migration_checks VALUES(15,0)'),
   ]);
-  const candidateJson=JSON.stringify([{label:'All Day',day_of_week:3,service:'all-day',items:[{content:'One $1'},{content:'Two $2'}]}]);
-  await DB.prepare(`INSERT INTO special_imports(id,fb_post_id,fb_created_time,candidate_json,validation_result,image_r2_key,processing_status)
-    VALUES('i','p','2030-01-09',?,'ok','special-imports/test.jpg','staged')`).bind(candidateJson).run();
-  const input={importId:'i',classification:{kind:'week',day:3,service:'all-day'},candidateJson,today:'2030-01-09',weekday:3};
+  const candidateJson=JSON.stringify({day_of_week:3,day_evidence:'Wednesday',poster_evidence:'All Day',offers:[{content:'One $1',service_time:'',evidence:'All Day'},{content:'Two $2',service_time:'',evidence:'All Day'}]});
+  await DB.prepare(`INSERT INTO special_imports(id,fb_post_id,fb_created_time,candidate_json,validation_result,image_r2_key,processing_status,parser_version)
+    VALUES('i','p','2030-01-09',?,'ok','special-imports/test.jpg','staged',4)`).bind(candidateJson).run();
+  const input={sourceIds:['i'],today:'2030-01-09',weekday:3};
   const failing={DB:{prepare:DB.prepare.bind(DB),batch:statements=>DB.batch([...statements,DB.prepare('INSERT INTO missing_table VALUES(1)')])}};
-  await assert.rejects(()=>guardedAutoWrite(failing,input));
+  await assert.rejects(()=>reconcileToday(failing,input));
   assert.equal((await DB.prepare("SELECT revision FROM special_collections WHERE id='w'").first()).revision,0);
   assert.ok((await DB.prepare('SELECT content FROM special_slots').all()).results.every(s=>s.content===''));
   assert.equal((await DB.prepare('SELECT count(*) n FROM special_import_events').first()).n,0);
-  assert.equal((await guardedAutoWrite({DB},input)).written,true);
+  assert.equal((await reconcileToday({DB},input)).written,true);
   const slots=(await DB.prepare('SELECT * FROM special_slots ORDER BY position').all()).results;
   assert.deepEqual(slots.map(s=>[s.content,s.last_auto_value,s.origin,s.manual_locked]),[['One $1','One $1','automation',0],['Two $2','Two $2','automation',0]]);
-  assert.equal((await DB.prepare("SELECT review_status FROM special_imports WHERE id='i'").first()).review_status,'accepted');
+  assert.equal((await DB.prepare("SELECT review_status FROM special_imports WHERE id='i'").first()).review_status,'pending');
   await DB.prepare("UPDATE special_imports SET review_status='pending' WHERE id='i'").run();
   const changed=candidateJson.replace('One $1','New $3');
   await DB.prepare("UPDATE special_imports SET candidate_json=? WHERE id='i'").bind(changed).run();
@@ -38,6 +38,6 @@ test('real local D1 guarded publication and audit are atomic; stale snapshots fa
     await DB.prepare("UPDATE special_slots SET content='Staff',origin='manual',manual_locked=1 WHERE group_id='g' AND position=2").run();
     return DB.batch(statements);
   }}};
-  assert.equal((await guardedAutoWrite(racing,{...input,candidateJson:changed})).written,false);
+  assert.equal((await reconcileToday(racing,{...input,candidateJson:changed})).written,false);
   assert.equal((await DB.prepare("SELECT content FROM special_slots WHERE group_id='g' AND position=1").first()).content,'One $1');
 });

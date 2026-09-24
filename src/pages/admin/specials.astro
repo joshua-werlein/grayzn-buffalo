@@ -3,7 +3,7 @@ import Base from '../../layouts/Base.astro';
 import GroupFields from '../../components/SpecialGroupFields.astro';
 import { isAuthed } from '../../lib/auth';
 import { isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from '../../lib/weekly-specials';
-import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, readCollection, readWeek, collectionFromForm, saveCollection, applyCandidate, recordReviewDecision, readImportCandidates, parseCandidateJson, unlockBlankSlots, lockBlankSlots, readFbFillState, SpecialConflict, type SpecialCollection, type ImportCandidate } from '../../lib/specials-store';
+import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, readCollection, readWeek, currentSavedWeekId, collectionFromForm, saveCollection, applyCandidate, recordReviewDecision, readImportCandidates, parseCandidateJson, unlockBlankSlots, lockBlankSlots, readFbFillState, SpecialConflict, type SpecialCollection, type ImportCandidate } from '../../lib/specials-store';
 const env = (Astro.locals as any).runtime?.env ?? {};
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 const empty = (kind: SpecialCollection['kind'], id=''): SpecialCollection => ({ id,kind,weekly_special_id:null,title:'',schedule:'',revision:0,groups:[] });
@@ -14,7 +14,10 @@ let ready=true;
 let candidates: ImportCandidate[] = [];
 try { defaults=await readCollection(env,'defaults'); } catch { recurringError='Recurring defaults are unavailable. New weeks cannot be initialized.'; }
 try { mexican=await readCollection(env,'mexican-night'); } catch { /* Weekly editing does not depend on section availability. */ }
-const requestedId = Number(Astro.url.searchParams.get('week') ?? '');
+let requestedId = Number(Astro.url.searchParams.get('week') ?? '');
+if (!Astro.url.searchParams.has('week') && !Astro.url.searchParams.has('new')) {
+  try { requestedId = (await currentSavedWeekId(env)) ?? 0; } catch { /* Preserve existing fallback. */ }
+}
 if (Number.isSafeInteger(requestedId) && requestedId>0) {
   try { const saved=await readWeek(env,requestedId); weekly=saved.collection; editingId=String(saved.id); weekStart=saved.week_start_date; weekEnd=saved.week_end_date; }
   catch { ready=false; error='That saved week could not be loaded. Please reload.'; }
@@ -120,9 +123,14 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
 <Base title="Admin · Specials — Grayz'n Buffalo">
 {candidates.length > 0 && <section class="staged-imports" aria-label="Staged Import Candidates">
   <h2 class="imports-heading">Staged Import Candidates <span class="imports-badge">{candidates.length}</span></h2>
-  <p class="imports-intro">Candidates extracted from Facebook. Review before applying. All accepted values are saved with manual ownership and will not be auto-overwritten.</p>
+  <p class="imports-intro">Facebook image evidence is reconciled automatically when the day and offers are clear. Unresolved offers wait for additional same-day evidence. Manual review is optional; manually accepted values stay protected.</p>
   {candidates.map(candidate => {
     const groups = parseCandidateJson(candidate.candidate_json);
+    let evidenceOffers: {content: string}[] = [];
+    try {
+      const evidence = JSON.parse(candidate.candidate_json ?? 'null');
+      if (Array.isArray(evidence?.offers)) evidenceOffers = evidence.offers.filter((o: any) => typeof o?.content === 'string');
+    } catch { /* Historical or failed extraction. */ }
     const dayLabel = candidate.target_day !== null && candidate.target_day >= 0 ? DAY_NAMES[candidate.target_day] : null;
     const serviceLabel = candidate.target_service ?? (candidate.target_collection_id ?? '');
     const isSection = candidate.target_kind === 'section';
@@ -140,6 +148,7 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
       {candidate.image_r2_key && <a href={`/admin/img/${candidate.image_r2_key}`} target="_blank" rel="noopener" class="import-card__img-link">
         <img src={`/admin/img/${candidate.image_r2_key}`} alt="Facebook post image evidence" class="import-card__thumb" loading="lazy" width="120" height="90"/>
       </a>}
+      {evidenceOffers.length > 0 && <details><summary>Saved image evidence</summary><ul>{evidenceOffers.map(o=><li>{o.content}</li>)}</ul><p>Reused automatically for today's specials. No approval is required.</p></details>}
       {groups.length > 0 && <div class="import-card__proposed">
         <h4 class="import-card__proposed-head">Proposed</h4>
         {groups.map((g, gi) => <details class="import-group-edit" data-gi={gi} open={groups.length===1}>
@@ -165,7 +174,7 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
           {isSection && <input type="hidden" name="collection_revision" value={String(sectionRevision)}/>}
           {!isSection && <input type="hidden" name="collection_revision" value="0" class="import-revision-field"/>}
           {!isSection && <input type="hidden" name="week_id" value="" class="import-weekid-field"/>}
-          <button type="submit" class="btn btn-primary import-accept-btn" disabled={!isSection && savedWeeks.length===0}>Accept</button>
+          <button type="submit" class="btn btn-primary import-accept-btn" disabled={groups.length===0 || (!isSection && savedWeeks.length===0)}>Accept</button>
         </form>
         <button type="button" class="btn btn-ghost import-keep" data-import-id={candidate.id}>Keep current</button>
         <button type="button" class="btn btn-ghost import-dismiss" data-import-id={candidate.id}>Dismiss</button>

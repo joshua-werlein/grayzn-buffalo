@@ -1,4 +1,4 @@
-import { isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from './weekly-specials';
+import { chicagoCalendarDate, isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from './weekly-specials';
 
 export const SPECIAL_LIMIT = 150;
 export const DAY_NUMBERS = [1, 2, 3, 4, 5, 6, 0];
@@ -65,6 +65,11 @@ export async function readWeek(env: any, id: number): Promise<WeeklySpecial> {
   const collection = await env.DB.prepare("SELECT id FROM special_collections WHERE weekly_special_id=?1 AND kind='week'").bind(id).first();
   if (!collection) throw new Error('The normalized specials migration is not available.');
   return { ...row, collection: await readCollection(env, collection.id) };
+}
+/** Read-only default selection; ambiguity keeps the existing new-week view. */
+export async function currentSavedWeekId(env: any, now = new Date()): Promise<number | null> {
+  const {results} = await env.DB.prepare('SELECT id FROM weekly_specials WHERE week_start_date<=?1 AND week_end_date>=?1').bind(chicagoCalendarDate(now)).all();
+  return results?.length === 1 ? results[0].id : null;
 }
 export async function getWeeklySpecialsForDateRange(env: any, start: string, end: string): Promise<WeeklySpecial[]> {
   try {
