@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateMexicanNight} from './reconcile.js';
+import {validateMexicanNight,containsConsumerAdvisory} from './reconcile.js';
 import {harness, offer, poster} from './test-fixture.js';
 import {reconcileMexicanNight} from './guarded-auto.js';
 import {PARSER_VERSION} from './classify.js';
@@ -53,6 +53,63 @@ const mnGroups = f => f.sql("SELECT * FROM special_groups WHERE collection_id='m
 const mnSlots = f => f.sql("SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='mexican-night' ORDER BY g.sort,g.id,s.position");
 const mnCollection = f => f.sql("SELECT * FROM special_collections WHERE id='mexican-night'")[0];
 
+const advisoryFooter = '*Consuming raw or undercooked meats, eggs, and seafood may cause foodborne illness.';
+const alternateFooter = 'Consuming raw or undercooked meats, poultry, seafood, shellfish, or eggs may increase your risk of foodborne illness.';
+for (const label of ['Entrees','Add-Ons','Substitutions']) {
+  for (const field of ['title','description']) test(`consumer advisory in ${label} ${field} rejects the entire candidate`,()=>{
+    const item={title:'Burrito $10.25',description:''};item[field]=advisoryFooter;
+    assert.throws(()=>validateMexicanNight(mexicanNightCandidate({groups:[{label,items:[item]}]})),/consumer advisory/);
+  });
+}
+
+test('advisory detection handles alternate wording, punctuation, case and split fields',()=>{
+  for(const text of [alternateFooter,'*CONSUMING RAW / OR UNDER-COOKED MEATS: may cause FOOD-BORNE ILLNESS!','May increase your risk of foodborne illness.']) {
+    assert.equal(containsConsumerAdvisory(text),true);
+    assert.throws(()=>validateMexicanNight(mexicanNightCandidate({groups:[{label:'Food',items:[{title:'Taco',description:text}]}]})),/consumer advisory/);
+  }
+  assert.throws(()=>validateMexicanNight(mexicanNightCandidate({groups:[{label:'Food',items:[{title:'Consuming raw',description:'or undercooked meats'}]}]})),/consumer advisory/);
+  assert.throws(()=>validateMexicanNight(mexicanNightCandidate({groups:[{label:'Foodborne illness warning',items:[{title:'Taco',description:''}]}]})),/consumer advisory/);
+});
+
+test('normal meat, egg, seafood descriptions and title-only add-ons remain valid verbatim',()=>{
+  const items=[
+    {title:'Burrito - $10.25',description:'Meat, refried beans, shredded cheese'},
+    {title:'Taco Salad - Large $9.00 / Small $8.50 / Mini $6.00',description:'Meat, shredded cheese, lettuce'},
+    {title:'Egg taco',description:'Egg, cheese and salsa'},
+    {title:'Seafood taco',description:'Seafood, chicken and slaw'},
+    {title:'Substitute chicken +$1.50',description:''},
+    {title:'Add nacho cheese +$1.50',description:''},
+  ];
+  const candidate=mexicanNightCandidate({groups:[{label:'Entrees',items:items.slice(0,4)},{label:'Add-Ons',items:items.slice(4)}]});
+  assert.deepEqual(validateMexicanNight(candidate),candidate);
+  for(const item of items) assert.equal(containsConsumerAdvisory(composeMexicanItem(item.title,item.description)),false);
+});
+
+test('advisory rejection makes zero live menu writes and preserves the complete existing collection',async t=>{
+  const f=mnHarness(t);await f.run();
+  const snapshot=()=>JSON.stringify({collection:mnCollection(f),groups:mnGroups(f),slots:mnSlots(f)});
+  const before=snapshot();
+  // SQLite triggers count attempted menu mutations, including writes that might
+  // otherwise leave the same final content. Import audit writes remain allowed.
+  f.sql('CREATE TABLE menu_write_probe(n INTEGER)');
+  for(const table of ['special_collections','special_groups','special_slots']) {
+    for(const operation of ['INSERT','UPDATE','DELETE']) f.sql(`CREATE TRIGGER probe_${table}_${operation} AFTER ${operation} ON ${table} BEGIN INSERT INTO menu_write_probe VALUES(1); END`);
+  }
+  let index=0;
+  for(const label of ['Entrees','Add-Ons']) for(const field of ['title','description']) {
+    f.state.posts=[{...f.state.posts[0],id:`bad-${++index}`}];
+    const item={title:'Burrito $10.25',description:''};item[field]=advisoryFooter;
+    f.state.candidate=mexicanNightCandidate({groups:[{label,items:[item]}]});
+    await f.run();
+    const row=f.imports().at(-1);
+    assert.equal(row.validation_result,'rejected');
+    assert.match(row.validation_reason,/consumer advisory/);
+    assert.equal(row.candidate_json,null);
+    assert.equal(snapshot(),before);
+  }
+  assert.deepEqual(f.sql('SELECT * FROM menu_write_probe'),[]);
+});
+
 test('Mexican title/description contract rejects malformed items and enforces composed limit',()=>{
   const validate=item=>validateMexicanNight(mexicanNightCandidate({groups:[{label:'Entrees',items:[item]}]}));
   for(const item of [{content:'Old v9 shape'}, {description:''}, {title:'',description:''}, {title:'T'}, {title:'T',description:null}, {title:2,description:''}, {title:'T\nX',description:''}, {title:'T'.repeat(75),description:'D'.repeat(75)}]) assert.throws(()=>validate(item));
@@ -70,7 +127,7 @@ test('automated descriptions use canonical admin format across seven foods and a
   assert.equal(slots[0].content,composeMexicanItem(entrees[0].title,'Beans\nSalsa'));
   assert.deepEqual(splitMexicanItem(slots[0].content),{title:entrees[0].title,description:'Beans\nSalsa'});
   assert.equal(slots[7].content,addons[0].title);
-  assert.equal(PARSER_VERSION,10);
+  assert.equal(PARSER_VERSION,11);
 });
 
 test('validateMexicanNight accepts valid complete poster', () => {

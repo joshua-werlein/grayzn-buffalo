@@ -55,6 +55,16 @@ export function validateWeeklyLunch(value) {
   if (new Set(days).size !== days.length) throw Error('Invalid weekly lunch: duplicate day_of_week in entries');
   return {type: 'weekly-lunch', poster_evidence: posterEvidence, date_range: dateRange, service_time: serviceTime, entries};
 }
+// Match warning phrases, never ordinary ingredient words. Normalization is for
+// detection only; accepted menu text is not stripped or rewritten.
+export function containsConsumerAdvisory(text) {
+  if (typeof text !== 'string') return false;
+  const normalized = text.normalize('NFKC').toLowerCase().replace(/[^a-z]+/g, ' ').trim();
+  return /\bfood\s*borne illness(?:es)?\b/.test(normalized)
+    || /\bconsuming (?:raw|under\s*cooked)\b/.test(normalized)
+    || (/\bincrease (?:your |the )?risk\b/.test(normalized) && /\b(?:raw|under\s*cooked)\b/.test(normalized));
+}
+
 export function validateMexicanNight(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('Invalid Mexican Night: not an object');
   if (value.type !== 'mexican-night') throw Error('Invalid Mexican Night: type must be mexican-night');
@@ -68,11 +78,13 @@ export function validateMexicanNight(value) {
   const groups = value.groups.map((g, i) => {
     if (!g || typeof g !== 'object') throw Error(`Invalid Mexican Night: group ${i} is not an object`);
     if (typeof g.label !== 'string' || !g.label.trim() || g.label.length > 80) throw Error(`Invalid Mexican Night: group ${i} label must be non-empty string ≤ 80 chars`);
+    if (containsConsumerAdvisory(g.label)) throw Error(`Invalid Mexican Night: consumer advisory in group ${i} label`);
     if (!Array.isArray(g.items) || g.items.length < 1 || g.items.length > 4) throw Error(`Invalid Mexican Night: group ${i} items must be array with 1-4 items`);
     const items = g.items.map((item, j) => {
       if (!item || typeof item !== 'object') throw Error(`Invalid Mexican Night: group ${i} item ${j} is not an object`);
       if (typeof item.title !== 'string' || !item.title.trim()) throw Error(`Invalid Mexican Night: group ${i} item ${j} title must be non-empty text`);
-      composeMexicanItem(item.title, item.description);
+      const content = composeMexicanItem(item.title, item.description);
+      if (containsConsumerAdvisory(content)) throw Error(`Invalid Mexican Night: consumer advisory in group ${i} item ${j}`);
       return {title: item.title, description: item.description};
     });
     return {label: g.label, items};
