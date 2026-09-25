@@ -26,6 +26,34 @@ export function validateEvidence(value) {
   if (new Set(offers.map(o=>offerKey(o.content))).size !== offers.length) throw Error('Duplicate extracted offer');
   return {day_of_week:value.day_of_week,day_evidence:value.day_evidence,poster_evidence:value.poster_evidence,offers};
 }
+export function validateWeeklyLunch(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('Invalid weekly lunch: not an object');
+  if (value.type !== 'weekly-lunch') throw Error('Invalid weekly lunch: type must be weekly-lunch');
+  const str = (v, n) => typeof v === 'string' && v.length <= n;
+  const posterEvidence = value.poster_evidence != null ? value.poster_evidence : '';
+  if (!str(posterEvidence, 160)) throw Error('Invalid weekly lunch: poster_evidence must be string ≤ 160 chars');
+  const serviceTime = value.service_time != null ? value.service_time : '';
+  if (!str(serviceTime, 80)) throw Error('Invalid weekly lunch: service_time must be string ≤ 80 chars');
+  let dateRange = value.date_range != null ? value.date_range : null;
+  if (dateRange !== null) {
+    if (typeof dateRange !== 'string' || dateRange.length > 20) throw Error('Malformed date_range: must be null or string ≤ 20 chars');
+    if (!/^\d{1,2}\/\d{1,2}-\d{1,2}\/\d{1,2}$/.test(dateRange)) throw Error('Malformed date_range: expected M/D-M/D format');
+    const parts = dateRange.match(/^(\d{1,2})\/(\d{1,2})-(\d{1,2})\/(\d{1,2})$/);
+    const [sm, sd, em, ed] = [Number(parts[1]), Number(parts[2]), Number(parts[3]), Number(parts[4])];
+    if (sm < 1 || sm > 12 || em < 1 || em > 12) throw Error('Malformed date_range: month must be 1-12');
+    if (sd < 1 || sd > 31 || ed < 1 || ed > 31) throw Error('Malformed date_range: day must be 1-31');
+  }
+  if (!Array.isArray(value.entries) || value.entries.length < 1 || value.entries.length > 5) throw Error('Invalid weekly lunch: entries must be array with 1-5 items');
+  const entries = value.entries.map((e, i) => {
+    if (!e || typeof e !== 'object') throw Error(`Invalid weekly lunch: entry ${i} is not an object`);
+    if (!Number.isInteger(e.day_of_week) || e.day_of_week < 1 || e.day_of_week > 5) throw Error(`Invalid weekly lunch: entry ${i} day_of_week must be integer weekday 1-5`);
+    if (typeof e.content !== 'string' || !e.content.trim() || e.content.length > 150) throw Error(`Invalid weekly lunch: entry ${i} content must be non-empty string ≤ 150 chars`);
+    return {day_of_week: e.day_of_week, content: e.content};
+  });
+  const days = entries.map(e => e.day_of_week);
+  if (new Set(days).size !== days.length) throw Error('Invalid weekly lunch: duplicate day_of_week in entries');
+  return {type: 'weekly-lunch', poster_evidence: posterEvidence, date_range: dateRange, service_time: serviceTime, entries};
+}
 function forToday(value,weekday) {
   try {
     const p=validateEvidence(value);

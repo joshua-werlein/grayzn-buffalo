@@ -1,6 +1,6 @@
 // The Worker owns only automatic writes. Manual saves remain in specials-store.ts.
 // Every write, revision bump and acceptance audit commits in one D1 batch.
-import {reconcilePosters} from './reconcile.js';
+import {reconcilePosters,validateWeeklyLunch} from './reconcile.js';
 import {PARSER_VERSION} from './classify.js';
 
 export async function reconcileToday(env,{sourceIds,today,weekday}) {
@@ -73,6 +73,127 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
     prepare('SELECT id FROM special_collections WHERE id=?1 AND mutation_token=?2',week.collection_id,token),
   ]);
   return results.at(-1)?.results?.length ? {written:true,reason:detail} : stage('Concurrent change; nothing written');
+}
+
+function chicagoYearOf(isoString) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit'}).formatToParts(new Date(isoString));
+    return Number(Object.fromEntries(parts.filter(p => p.type !== 'literal').map(p => [p.type, p.value])).year);
+  } catch { return null; }
+}
+
+async function resolveWeeklyLunchTargetWeek(env, evidence, fbCreatedTime, today) {
+  if (evidence.date_range) {
+    const m = evidence.date_range.match(/^(\d{1,2})\/(\d{1,2})-(\d{1,2})\/(\d{1,2})$/);
+    if (!m) return null;
+    const startMonth = Number(m[1]).toString().padStart(2, '0');
+    const startDay = Number(m[2]).toString().padStart(2, '0');
+    const baseYear = chicagoYearOf(fbCreatedTime);
+    if (!baseYear) return null;
+    for (const year of [baseYear, baseYear + 1]) {
+      const weekStart = `${year}-${startMonth}-${startDay}`;
+      const {results} = await env.DB.prepare(`SELECT w.id,c.id collection_id,c.revision FROM weekly_specials w
+        LEFT JOIN special_collections c ON c.weekly_special_id=w.id AND c.kind='week'
+        WHERE w.week_start_date=?1`).bind(weekStart).all();
+      if (results.length === 1 && results[0].collection_id != null) return results[0];
+    }
+    return null;
+  }
+  // Fall back to current week
+  const {results} = await env.DB.prepare(`SELECT w.id,c.id collection_id,c.revision FROM weekly_specials w
+    LEFT JOIN special_collections c ON c.weekly_special_id=w.id AND c.kind='week'
+    WHERE w.week_start_date<=?1 AND w.week_end_date>=?1`).bind(today).all();
+  if (results.length !== 1 || !results[0].collection_id) return null;
+  return results[0];
+}
+
+async function applyWeeklyLunch(env, source, evidence, week) {
+  const stage = reason => ({written: false, reason});
+  const {results: groups} = await env.DB.prepare(
+    'SELECT * FROM special_groups WHERE collection_id=?1 AND day_of_week IN (1,2,3,4,5)'
+  ).bind(week.collection_id).all();
+  const {results: slots} = await env.DB.prepare(
+    `SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id
+     WHERE g.collection_id=?1 AND g.day_of_week IN (1,2,3,4,5) ORDER BY s.position`
+  ).bind(week.collection_id).all();
+
+  const safe = s => s && s.manual_locked === 0 && s.origin !== 'manual' && s.price === '' && s.section_link === '' && (
+    ((s.content === '' || s.content === null) && (s.last_auto_value === null || s.last_auto_value === s.content)) ||
+    (s.origin === 'automation' && typeof s.last_auto_value === 'string' && s.content === s.last_auto_value)
+  );
+
+  const rows = [];
+  for (const entry of evidence.entries) {
+    const lunchGroups = groups.filter(g => g.service === 'lunch' && g.day_of_week === entry.day_of_week && g.enabled === 1);
+    if (lunchGroups.length !== 1) continue;
+    const dest = lunchGroups[0];
+    const slot = slots.find(s => s.group_id === dest.id && s.position === 1);
+    if (!slot) continue;
+    if (slot.content !== '' && slot.content !== null) continue;
+    if (!safe(slot)) continue;
+    if (slot.origin === 'automation' && slot.content === entry.content && slot.last_auto_value === entry.content) continue;
+    rows.push({group_id: dest.id, position: 1, content: entry.content, old: slot});
+  }
+  if (!rows.length) return stage('No unambiguous eligible weekly lunch changes');
+
+  const token = crypto.randomUUID();
+  const prepare = (sql, ...args) => env.DB.prepare(sql).bind(...args);
+  const dateRangeLabel = evidence.date_range ?? 'no date range';
+  const claim = prepare(`UPDATE special_collections SET revision=revision+1,mutation_token=?1
+    WHERE id=?2 AND revision=?3 AND kind='week' AND weekly_special_id=?4
+    AND EXISTS(SELECT 1 FROM special_migration_checks WHERE version=15 AND mismatches=0)
+    AND (SELECT count(*) FROM weekly_specials WHERE id=?4)=1
+    AND (SELECT count(*) FROM special_groups WHERE collection_id=?2 AND day_of_week IN (1,2,3,4,5))=json_array_length(?5)
+    AND NOT EXISTS(SELECT 1 FROM json_each(?5) j WHERE NOT EXISTS(SELECT 1 FROM special_groups g
+      WHERE g.id=json_extract(j.value,'$.id') AND g.collection_id=?2 AND g.day_of_week=json_extract(j.value,'$.day_of_week')
+      AND g.service=json_extract(j.value,'$.service') AND g.enabled=json_extract(j.value,'$.enabled')))
+    AND (SELECT count(*) FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id=?2 AND g.day_of_week IN (1,2,3,4,5))=json_array_length(?6)
+    AND NOT EXISTS(SELECT 1 FROM json_each(?6) j WHERE NOT EXISTS(SELECT 1 FROM special_slots s
+      WHERE s.group_id=json_extract(j.value,'$.group_id') AND s.position=json_extract(j.value,'$.position')
+      AND s.content IS json_extract(j.value,'$.content') AND s.price=json_extract(j.value,'$.price')
+      AND s.section_link=json_extract(j.value,'$.section_link') AND s.origin=json_extract(j.value,'$.origin')
+      AND s.manual_locked=json_extract(j.value,'$.manual_locked') AND s.last_auto_value IS json_extract(j.value,'$.last_auto_value')))
+    AND NOT EXISTS(SELECT 1 FROM json_each(?7) j WHERE NOT EXISTS(SELECT 1 FROM special_imports i
+      WHERE i.id=json_extract(j.value,'$.id') AND i.candidate_json=json_extract(j.value,'$.candidate_json')
+      AND i.processing_status='staged' AND i.validation_result='ok' AND i.review_status=json_extract(j.value,'$.review_status')
+      AND i.image_r2_key IS NOT NULL AND NOT EXISTS(SELECT 1 FROM special_imports newer
+        WHERE newer.fb_post_id=i.fb_post_id AND newer.parser_version=i.parser_version AND newer.rowid>i.rowid)))`,
+    token, week.collection_id, week.revision, week.id,
+    JSON.stringify(groups), JSON.stringify(slots), JSON.stringify([source]));
+
+  const gate = 'EXISTS(SELECT 1 FROM special_collections WHERE id=?1 AND mutation_token=?2)';
+  const detail = `GUARDED_WEEKLY_LUNCH: ${dateRangeLabel}; ${rows.length} slot(s)`;
+  const results = await env.DB.batch([
+    claim,
+    ...rows.map(r => prepare(`UPDATE special_slots SET content=?3,price='',origin='automation',manual_locked=0,last_auto_value=?3
+      WHERE group_id=?4 AND position=?5 AND ${gate}`, week.collection_id, token, r.content, r.group_id, r.position)),
+    prepare(`UPDATE weekly_specials SET updated_at=CURRENT_TIMESTAMP WHERE id=?3 AND ${gate}`, week.collection_id, token, week.id),
+    prepare(`INSERT INTO special_import_events(import_id,event_type,detail) SELECT ?3,'review',?4 WHERE ${gate}`, week.collection_id, token, source.id, detail),
+    prepare('SELECT id FROM special_collections WHERE id=?1 AND mutation_token=?2', week.collection_id, token),
+  ]);
+  return results.at(-1)?.results?.length ? {written: true, reason: detail} : stage('Concurrent change; nothing written');
+}
+
+export async function reconcileWeeklyLunch(env, today) {
+  const {results: sources} = await env.DB.prepare(
+    `SELECT * FROM special_imports WHERE parser_version=?1 AND processing_status='staged' AND validation_result='ok'
+     AND image_r2_key IS NOT NULL AND review_status IN ('pending','accepted')
+     AND candidate_json LIKE ?2
+     AND NOT EXISTS(SELECT 1 FROM special_imports newer WHERE newer.fb_post_id=special_imports.fb_post_id
+       AND newer.parser_version=?1 AND newer.rowid>special_imports.rowid)`
+  ).bind(PARSER_VERSION, '{"type":"weekly-lunch"%').all();
+  if (!sources.length) return {written: false, reason: 'No weekly lunch sources'};
+  const perSource = [];
+  for (const source of sources) {
+    let evidence;
+    try { evidence = validateWeeklyLunch(JSON.parse(source.candidate_json)); }
+    catch { perSource.push({written: false, reason: 'Invalid evidence'}); continue; }
+    const week = await resolveWeeklyLunchTargetWeek(env, evidence, source.fb_created_time, today);
+    if (!week) { perSource.push({written: false, reason: 'No matching saved week'}); continue; }
+    const result = await applyWeeklyLunch(env, source, evidence, week);
+    perSource.push(result);
+  }
+  return perSource;
 }
 
 export async function pruneImportHistory(env, now) {
