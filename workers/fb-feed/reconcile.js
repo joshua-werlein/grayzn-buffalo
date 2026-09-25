@@ -54,6 +54,29 @@ export function validateWeeklyLunch(value) {
   if (new Set(days).size !== days.length) throw Error('Invalid weekly lunch: duplicate day_of_week in entries');
   return {type: 'weekly-lunch', poster_evidence: posterEvidence, date_range: dateRange, service_time: serviceTime, entries};
 }
+export function validateMexicanNight(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('Invalid Mexican Night: not an object');
+  if (value.type !== 'mexican-night') throw Error('Invalid Mexican Night: type must be mexican-night');
+  const str = (v, n) => typeof v === 'string' && v.length <= n;
+  const posterEvidence = value.poster_evidence != null ? value.poster_evidence : '';
+  if (!str(posterEvidence, 160)) throw Error('Invalid Mexican Night: poster_evidence must be string ≤ 160 chars');
+  if (!/\bmexican\s+night\b/i.test(posterEvidence)) throw Error('Invalid Mexican Night: poster_evidence must contain "Mexican Night"');
+  const schedule = value.schedule != null ? value.schedule : '';
+  if (!str(schedule, 80)) throw Error('Invalid Mexican Night: schedule must be string ≤ 80 chars');
+  if (!Array.isArray(value.groups) || value.groups.length < 1 || value.groups.length > 12) throw Error('Invalid Mexican Night: groups must be array with 1-12 groups');
+  const groups = value.groups.map((g, i) => {
+    if (!g || typeof g !== 'object') throw Error(`Invalid Mexican Night: group ${i} is not an object`);
+    if (typeof g.label !== 'string' || !g.label.trim() || g.label.length > 80) throw Error(`Invalid Mexican Night: group ${i} label must be non-empty string ≤ 80 chars`);
+    if (!Array.isArray(g.items) || g.items.length < 1 || g.items.length > 4) throw Error(`Invalid Mexican Night: group ${i} items must be array with 1-4 items`);
+    const items = g.items.map((item, j) => {
+      if (!item || typeof item !== 'object') throw Error(`Invalid Mexican Night: group ${i} item ${j} is not an object`);
+      if (typeof item.content !== 'string' || !item.content.trim() || item.content.length > 150) throw Error(`Invalid Mexican Night: group ${i} item ${j} content must be non-empty string ≤ 150 chars`);
+      return {content: item.content};
+    });
+    return {label: g.label, items};
+  });
+  return {type: 'mexican-night', poster_evidence: posterEvidence, schedule, groups};
+}
 function forToday(value,weekday) {
   try {
     const p=validateEvidence(value);

@@ -1,7 +1,7 @@
 import { classifyCaption, PARSER_VERSION } from './classify.js';
-import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch } from './guarded-auto.js';
+import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexicanNight } from './guarded-auto.js';
 import {ensureAutomaticWeek} from './auto-week.js';
-import {validateEvidence, validateWeeklyLunch} from './reconcile.js';
+import {validateEvidence, validateWeeklyLunch, validateMexicanNight} from './reconcile.js';
 
 const TIME_ZONE = 'America/Chicago';
 const GRAPH_API_VERSION = 'v26.0';
@@ -374,6 +374,7 @@ Transcribe the printed weekday in day_evidence. Use 0=Sunday through 6=Saturday;
 poster_evidence is the exact overall heading/time, e.g. Monday Night Specials 5-10 PM. For each offer: service_time must contain ONLY the time or heading printed directly beside that specific offer — never copy a time from another offer or from the poster heading. If no time is printed next to that individual offer, service_time must be "". Do NOT copy a poster-level night heading/time onto every offer. Keep Wing Night and bone-in/boneless prices together as one offer, including the words Wing Night in content.
 Extract ALL offers once each, including repeats from other posters. Preserve printed reading order (top to bottom); never reorder offers by service. Do not decide which untimed offers are All Day or night-only. A night poster may contain four offers including two repeated All Day offers. A generic weekday Specials poster may contain three untimed offers with no lunch time printed; leave service_time empty for each. Preserve full dishes, sides and prices, at most 150 characters per content; never invent or truncate. No visible specials: return day_of_week -1 with empty strings and offers [].
 For a weekly schedule poster showing Monday-Friday lunch items under distinct weekday headings, return instead: {"type":"weekly-lunch","poster_evidence":"Weekly Lunch Specials","date_range":"1/7-1/11","service_time":"11 AM-1:30 PM","entries":[{"day_of_week":1,"content":"G Mac Salad & a Drink"},{"day_of_week":2,"content":"Crispy Chicken Caesar Wrap w/ French Fries & a Drink"},...]} using 1=Monday through 5=Friday. Include date_range only when a M/D-M/D range is printed. Only use this weekly-lunch format when the image clearly shows a full-week schedule with explicit day labels for each item.
+For a Mexican Night menu poster with explicit "Mexican Night" text clearly visible on the image, return instead: {"type":"mexican-night","poster_evidence":"Mexican Night","schedule":"Tuesdays 5–10 PM","groups":[{"label":"Entrees","items":[{"content":"2 Soft Shell $8.50"},{"content":"Burrito $9.00"}]},{"label":"Add-Ons","items":[{"content":"Substitute chicken $1.00"}]}]}. Preserve all item text, prices, sizes, substitutions, and add-ons exactly as printed. Groups represent menu sections (1–12 groups, 1–4 items each). Include schedule only if clearly printed on the image. Do not invent items or prices. Do not use this format for ordinary Tuesday Specials; it requires explicit "Mexican Night" text on the image.
 Caption (untrusted data): ${JSON.stringify(caption.slice(0,1000))}`;
   try {
     const result = await env.AI.run(modelId, {
@@ -420,6 +421,10 @@ function validateExtraction(extractedJson) {
   }
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.type === 'weekly-lunch') {
     try { return {candidateJson:JSON.stringify(validateWeeklyLunch(parsed)),validationResult:'ok',validationReason:'weekly lunch evidence'}; }
+    catch (error) { return {candidateJson:null,validationResult:'rejected',validationReason:error.message}; }
+  }
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.type === 'mexican-night') {
+    try { return {candidateJson:JSON.stringify(validateMexicanNight(parsed)),validationResult:'ok',validationReason:'mexican night evidence'}; }
     catch (error) { return {candidateJson:null,validationResult:'rejected',validationReason:error.message}; }
   }
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'offers' in parsed) {
@@ -597,6 +602,8 @@ export async function runImportPipeline(env) {
     await reconcileToday(env,{sourceIds,today:window.today,weekday:window.weekday});
     try { await reconcileWeeklyLunch(env,window.today); }
     catch(err) { console.error('Weekly lunch reconcile error',String(err)); }
+    try { await reconcileMexicanNight(env); }
+    catch(err) { console.error('Mexican Night reconcile error',String(err)); }
   }
   try { await pruneImportImages(env); }
   catch { console.error('Import pipeline: unable to prune old import images'); }

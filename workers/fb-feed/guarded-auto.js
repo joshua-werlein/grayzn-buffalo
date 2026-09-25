@@ -1,6 +1,6 @@
 // The Worker owns only automatic writes. Manual saves remain in specials-store.ts.
 // Every write, revision bump and acceptance audit commits in one D1 batch.
-import {reconcilePosters,validateWeeklyLunch} from './reconcile.js';
+import {reconcilePosters,validateWeeklyLunch,validateMexicanNight} from './reconcile.js';
 import {PARSER_VERSION} from './classify.js';
 
 export async function reconcileToday(env,{sourceIds,today,weekday}) {
@@ -194,6 +194,83 @@ export async function reconcileWeeklyLunch(env, today) {
     perSource.push(result);
   }
   return perSource;
+}
+
+async function applyMexicanNight(env, source, evidence) {
+  const stage = reason => ({written: false, reason});
+  const collection = await env.DB.prepare(
+    "SELECT id,revision FROM special_collections WHERE id='mexican-night' AND kind='section'"
+  ).first();
+  if (!collection) return stage('Mexican Night collection not found');
+  const {results: currentGroups} = await env.DB.prepare(
+    "SELECT * FROM special_groups WHERE collection_id='mexican-night' ORDER BY sort,id"
+  ).all();
+  const {results: currentSlots} = await env.DB.prepare(
+    `SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id
+     WHERE g.collection_id='mexican-night' ORDER BY g.sort,g.id,s.position`
+  ).all();
+  const token = crypto.randomUUID();
+  const prepare = (sql, ...args) => env.DB.prepare(sql).bind(...args);
+  const gate = "EXISTS(SELECT 1 FROM special_collections WHERE id='mexican-night' AND mutation_token=?1)";
+  const sourcePrefix = source.id.slice(0, 8);
+  const newGroupRows = evidence.groups.map((g, i) => [`mn:${sourcePrefix}:${i}`, g.label, i]);
+  const newSlotRows = evidence.groups.flatMap((g, i) =>
+    g.items.map((item, j) => [`mn:${sourcePrefix}:${i}`, j + 1, item.content])
+  );
+  const detail = `GUARDED_MEXICAN_NIGHT: fb_created=${source.fb_created_time}; ${evidence.groups.length} group(s); ${newSlotRows.length} item(s)`;
+  const results = await env.DB.batch([
+    prepare(`UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3
+      WHERE id='mexican-night' AND kind='section' AND revision=?4
+      AND EXISTS(SELECT 1 FROM special_migration_checks WHERE version=15 AND mismatches=0)
+      AND (SELECT count(*) FROM special_groups WHERE collection_id='mexican-night')=?5
+      AND NOT EXISTS(SELECT 1 FROM json_each(?6) j WHERE NOT EXISTS(SELECT 1 FROM special_groups g
+        WHERE g.id=json_extract(j.value,'$.id') AND g.collection_id='mexican-night'
+        AND g.label=json_extract(j.value,'$.label') AND g.sort=json_extract(j.value,'$.sort')
+        AND g.enabled=json_extract(j.value,'$.enabled')))
+      AND (SELECT count(*) FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='mexican-night')=?7
+      AND NOT EXISTS(SELECT 1 FROM json_each(?8) j WHERE NOT EXISTS(SELECT 1 FROM special_slots s
+        WHERE s.group_id=json_extract(j.value,'$.group_id') AND s.position=json_extract(j.value,'$.position')
+        AND s.content IS json_extract(j.value,'$.content') AND s.origin=json_extract(j.value,'$.origin')
+        AND s.manual_locked=json_extract(j.value,'$.manual_locked')))
+      AND EXISTS(SELECT 1 FROM special_imports WHERE id=?9 AND candidate_json=?10
+        AND processing_status='staged' AND validation_result='ok' AND image_r2_key IS NOT NULL
+        AND NOT EXISTS(SELECT 1 FROM special_imports newer WHERE newer.fb_post_id=special_imports.fb_post_id
+          AND newer.parser_version=?11 AND newer.rowid>special_imports.rowid))`,
+      token, evidence.poster_evidence, evidence.schedule, collection.revision,
+      currentGroups.length, JSON.stringify(currentGroups),
+      currentSlots.length, JSON.stringify(currentSlots),
+      source.id, source.candidate_json, PARSER_VERSION),
+    prepare(`DELETE FROM special_groups WHERE collection_id='mexican-night' AND ${gate}`, token),
+    prepare(`INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled)
+      SELECT json_extract(value,'$[0]'),'mexican-night',-1,'custom',json_extract(value,'$[1]'),'',json_extract(value,'$[2]'),1
+      FROM json_each(?2) WHERE ${gate}`, token, JSON.stringify(newGroupRows)),
+    prepare(`INSERT INTO special_slots(group_id,position,content,price,section_link,origin,manual_locked,last_auto_value)
+      SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]'),json_extract(value,'$[2]'),'','','automation',0,json_extract(value,'$[2]')
+      FROM json_each(?2) WHERE ${gate}`, token, JSON.stringify(newSlotRows)),
+    prepare(`INSERT INTO special_import_events(import_id,event_type,detail) SELECT ?2,'review',?3 WHERE ${gate}`,
+      token, source.id, detail),
+    prepare(`SELECT id FROM special_collections WHERE id='mexican-night' AND mutation_token=?1`, token),
+  ]);
+  return results.at(-1)?.results?.length ? {written: true, reason: detail} : stage('Concurrent change; nothing written');
+}
+
+export async function reconcileMexicanNight(env) {
+  const {results: sources} = await env.DB.prepare(
+    `SELECT * FROM special_imports WHERE parser_version=?1 AND processing_status='staged' AND validation_result='ok'
+     AND image_r2_key IS NOT NULL AND review_status IN ('pending','accepted')
+     AND target_collection_id='mexican-night'
+     AND candidate_json LIKE ?2
+     AND NOT EXISTS(SELECT 1 FROM special_imports newer WHERE newer.fb_post_id=special_imports.fb_post_id
+       AND newer.parser_version=?1 AND newer.rowid>special_imports.rowid)
+     AND NOT EXISTS(SELECT 1 FROM special_import_events WHERE import_id=special_imports.id AND event_type='review')
+     ORDER BY fb_created_time DESC LIMIT 1`
+  ).bind(PARSER_VERSION, '{"type":"mexican-night"%').all();
+  if (!sources.length) return {written: false, reason: 'No new Mexican Night source'};
+  const source = sources[0];
+  let evidence;
+  try { evidence = validateMexicanNight(JSON.parse(source.candidate_json)); }
+  catch { return {written: false, reason: 'Invalid Mexican Night evidence'}; }
+  return applyMexicanNight(env, source, evidence);
 }
 
 export async function pruneImportHistory(env, now) {
