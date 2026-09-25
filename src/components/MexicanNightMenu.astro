@@ -1,0 +1,44 @@
+---
+import { visibleGroups, visibleSlots, type SpecialGroup } from '../lib/specials-store';
+interface Props { groups: SpecialGroup[] }
+const groups = visibleGroups(Astro.props.groups);
+// Classification affects presentation only; unknown labels remain food sections.
+const accessory = (label: string) => /\b(?:add[\s-]*ons?|substitutions?|substitutes?)\b/i.test(label.normalize('NFKC').replace(/[‐‑–—]/g, '-'));
+const foodGroups = groups.filter(group => !accessory(group.label));
+const accessoryGroups = groups.filter(group => accessory(group.label));
+const itemsFor = (sections: SpecialGroup[]) => sections.flatMap(group => visibleSlots(group).map(slot => {
+  const [first, ...rest] = (slot.content ?? '').split(/\r\n|\n|\r/);
+  return { title: [first, slot.price].filter(Boolean).join(' '), description: rest.join('\n') };
+}));
+const foods = itemsFor(foodGroups);
+const extras = itemsFor(accessoryGroups);
+const times = [...new Set(foodGroups.map(group => group.service_time.trim()).filter(Boolean))];
+// Conflicting group times are not summarized into an invented shared schedule.
+const serviceTime = times.length === 1 ? times[0] : '';
+---
+<div class="mexican-night-menu">
+  {foods.length > 0 && <section aria-labelledby="mexican-favorites-heading">
+    <header class="menu-heading"><h3 id="mexican-favorites-heading">Mexican Night Favorites</h3>{serviceTime && <p>{serviceTime}</p>}</header>
+    <ul class="menu-grid menu-grid--food">{foods.map(item => <li><strong class="menu-item-title">{item.title}</strong>{item.description && <p class="menu-item-description">{item.description}</p>}</li>)}</ul>
+  </section>}
+  {extras.length > 0 && <section class="menu-accessories" aria-labelledby="mexican-extras-heading">
+    <header class="menu-heading"><h3 id="mexican-extras-heading">Substitutions &amp; Add-ons</h3></header>
+    <ul class="menu-grid menu-grid--extras">{extras.map(item => <li><strong class="menu-item-title">{item.title}</strong>{item.description && <p class="menu-item-description">{item.description}</p>}</li>)}</ul>
+  </section>}
+</div>
+<style>
+  .mexican-night-menu{color:var(--cream)}
+  .menu-heading{text-align:center;margin:0 0 18px}
+  .menu-heading h3{margin:0;font:400 clamp(1.1rem,2vw,1.4rem) var(--display);color:var(--cream)}
+  .menu-heading p{margin:5px 0 0;color:var(--ochre);font:600 .85rem var(--label);letter-spacing:.06em}
+  .menu-grid{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr;gap:20px 24px}
+  .menu-grid li{min-width:0;border-top:1px solid var(--rule-light);padding-top:12px;overflow-wrap:anywhere}
+  .menu-item-title{display:block;font-size:1.05rem;line-height:1.4;white-space:pre-wrap}
+  .menu-item-description{margin:7px 0 0;font-size:.94rem;line-height:1.5;font-style:italic;opacity:.85;white-space:pre-wrap}
+  .menu-accessories{margin-top:26px;padding-top:20px;border-top:1px solid var(--ochre)}
+  .menu-grid--extras{gap:12px 24px}
+  .menu-grid--extras li{border-top:0;padding-top:0}
+  .menu-grid--extras .menu-item-title{font-size:.92rem;font-weight:500}
+  @media(min-width:681px){.menu-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(min-width:1100px){.menu-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+</style>

@@ -1,7 +1,7 @@
 // Run npm run build first: exercise the compiled production Astro components.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readdirSync} from 'node:fs';
+import {readdirSync,readFileSync} from 'node:fs';
 import {experimental_AstroContainer as AstroContainer} from 'astro/container';
 import {fixture} from './specials-fixture.mjs';
 import {loadTs} from './load-ts.mjs';
@@ -43,10 +43,62 @@ test('homepage and specials hide empty days/groups, render four items and keep M
     for(let i=1;i<=4;i++) assert.ok(html.includes(`VisibleSpecial${i}`));
     assert.ok(!html.includes('No special posted.'));
     assert.ok(html.includes('/specials#mexican-night'));
-    assert.equal((html.match(/class="special-group"/g)||[]).length,path==='/' ? 1:2);
+    assert.equal((html.match(/class="special-group"/g)||[]).length,1);
     if(path==='/specials') { assert.ok(html.includes('id="mexican-night"'));assert.ok(html.includes('SeparateMexicanItem')); }
     else assert.ok(!html.includes('SeparateMexicanItem'));
   }
+});
+
+test('Mexican menu merges stored food groups, separates accessories and preserves text and order without writes',async t=>{
+  const f=fixture(t);
+  const mexican=await s.readCollection(f.env,'mexican-night');
+  const entries=[
+    ['Mexican Night Favorites',['Burrito - $10.25\nMeat & beans.\n\nExtra salsa.','One line item $9.00']],
+    ['More Mexican Night',['Third item','Fourth item']],
+    ['Entrees',['Fifth item','Sixth item']],
+    ['Unexpected section',['Seventh item']],
+    ['Add-Ons',['Add cheese +$1.50']],
+    ['Substitutions',['Substitute chicken +$1.50']],
+    ['Substitutions & Add-ons',['Substitute queso +$0.50']],
+    ['Addons',['Extra salsa +$1.00']],
+    ['Substitute',['<script>unsafe()</script>']],
+  ];
+  mexican.groups=entries.map(([label,items],sort)=>{
+    const g=s.blankGroup(-1,sort);g.label=label;g.service_time='5–10 PM';
+    g.slots.forEach((slot,i)=>slot.content=items[i]??'');return g;
+  });
+  await s.saveCollection(f.env,mexican);
+  const before=await s.readCollection(f.env,'mexican-night');
+  const html=await container.renderToString(publicPage,{request:new Request('http://localhost/specials'),locals:{runtime:{env:f.env}}});
+  const food=html.match(/<ul class="menu-grid menu-grid--food"[^>]*>([\s\S]*?)<\/ul>/)[1];
+  const extras=html.match(/<ul class="menu-grid menu-grid--extras"[^>]*>([\s\S]*?)<\/ul>/)[1];
+  assert.equal((food.match(/<li[ >]/g)||[]).length,7);
+  assert.equal((extras.match(/<li[ >]/g)||[]).length,5);
+  assert.match(food,/<strong[^>]*>Burrito - \$10.25<\/strong>/);
+  assert.match(food,/<p class="menu-item-description"[^>]*>Meat &amp; beans\.\n\nExtra salsa\.<\/p>/);
+  assert.match(food,/<strong[^>]*>One line item \$9.00<\/strong>/);
+  assert.equal((food.match(/class="menu-item-description"/g)||[]).length,1);
+  const titles=[...food.matchAll(/<strong[^>]*>(.*?)<\/strong>/g)].map(m=>m[1]);
+  assert.deepEqual(titles,entries.slice(0,4).flatMap(([,items])=>items.map(item=>item.split('\n')[0])));
+  assert.ok(extras.indexOf('Add cheese')<extras.indexOf('Substitute chicken'));
+  assert.ok(extras.indexOf('Substitute chicken')<extras.indexOf('Substitute queso'));
+  assert.doesNotMatch(html,/More Mexican Night|Unexpected section|>Entrees</);
+  assert.doesNotMatch(food,/Add cheese|Substitute chicken/);
+  assert.match(extras,/&lt;script&gt;unsafe/);
+  assert.doesNotMatch(extras,/<script>/);
+  assert.ok(html.indexOf('id="mexican-heading"')<html.indexOf('id="mexican-favorites-heading"'));
+  assert.ok(html.indexOf('menu-grid--food')<html.indexOf('id="mexican-extras-heading"'));
+  assert.match(html,/id="mexican-favorites-heading"[^>]*>Mexican Night Favorites<\/h3>.*?<p[^>]*>5–10 PM<\/p>/s);
+  assert.deepEqual(await s.readCollection(f.env,'mexican-night'),before);
+});
+
+test('Mexican menu uses one phone column, two tablet columns and four desktop columns without reordering',()=>{
+  const component=readFileSync('src/components/MexicanNightMenu.astro','utf8');
+  assert.match(component,/\.menu-grid\{[^}]*grid-template-columns:1fr/);
+  assert.match(component,/@media\(min-width:681px\)\{\.menu-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(component,/@media\(min-width:1100px\)\{\.menu-grid\{grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
+  assert.doesNotMatch(component,/grid-auto-flow:.*dense|\border\s*:/);
+  assert.match(component,/white-space:pre-wrap/);
 });
 test('compiled admin preserves drafts on stale POST and rejects wrong origin without writes',async t=>{
   const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};

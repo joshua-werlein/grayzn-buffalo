@@ -1,6 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import SpecialGroup from '../components/SpecialGroup.astro';
+import MexicanNightMenu from '../components/MexicanNightMenu.astro';
 import { getSetting } from '../lib/db';
 import { getWeeklySpecialsForDateRange, getMexicanNight, visibleGroups, DAY_NAMES } from '../lib/specials-store';
 import { chicagoCalendarDate, formatWeeklyDateRange } from '../lib/weekly-specials';
@@ -26,7 +27,7 @@ const recurring=[{name:'Lunch Specials',when:'11 AM – 1:30 PM'},{name:'Nightly
     return <section class="week-block" aria-labelledby={`week-heading-${week.id}`}><h2 class="week-block__heading" id={`week-heading-${week.id}`}>{label ? `${label} · ${range}` : range}</h2><ul class="week" aria-label={`Weekly specials, ${range}`}>{week.days.map(({day,date,groups})=><li class:list={['day-card',{'is-today':date===today}]}><div class="day-header"><span class="day-name">{DAY_NAMES[day]}</span>{date===today && <span class="today-badge">Today</span>}</div><div class="normalized-services">{groups.map(group=><SpecialGroup group={group} mexicanAvailable={mexicanGroups.length>0}/>)}</div></li>)}</ul></section>;
   }) : <div class="weekly-notice" role="status"><strong>No current weekly specials are posted.</strong><p>Please check Facebook or call us for the current specials.</p></div>}
   <div id="mexican-night" class="section-anchor"></div>
-  {mexican && mexicanGroups.length>0 && <section class="mexican-menu" aria-labelledby="mexican-heading"><div class="section-head"><h2 id="mexican-heading">{mexican.title}</h2>{mexican.schedule && <p>{mexican.schedule}</p>}</div><div class="normalized-services">{mexicanGroups.map(group=><SpecialGroup group={group}/>)}</div></section>}
+  {mexican && mexicanGroups.length>0 && <section class="mexican-menu" aria-labelledby="mexican-heading"><div class="section-head"><h2 id="mexican-heading">{mexican.title}</h2>{mexican.schedule && <p>{mexican.schedule}</p>}</div><MexicanNightMenu groups={mexicanGroups}/></section>}
   <div class="recurring-head"><span class="kicker">Every week</span><h3 class="recurring-title">On the regular</h3></div>
   <ul class="recurring" aria-label="Recurring specials">{recurring.map(item=><li class="rec-card"><span class="rec-name">{item.name==='Mexican Night' && mexicanGroups.length>0 ? <a href="#mexican-night">{item.name}</a> : item.name}</span><span class="rec-when">{item.when}</span></li>)}</ul>
   {deliveryDisplay!=='hidden' && <div class:list={['delivery-block',{paused:deliveryDisplay==='unavailable'}]}>{deliveryDisplay==='unavailable' ? <p><strong>Delivery is unavailable at this time</strong> — call us for details.</p> : <p><strong>Delivery</strong> — Monday–Friday, 11 AM – 1:30 PM, within Mondovi city limits.</p>}</div>}
