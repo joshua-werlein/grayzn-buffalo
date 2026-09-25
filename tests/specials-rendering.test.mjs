@@ -12,6 +12,20 @@ const publicPage=(await import('../dist/_worker.js/pages/specials.astro.mjs')).p
 const homePage=(await import('../dist/_worker.js/pages/index.astro.mjs')).page().default;
 const adminPage=(await import('../dist/_worker.js/pages/admin/specials.astro.mjs')).page().default;
 const container=await AstroContainer.create();
+
+test('automated Mexican items reopen as stacked title and description controls',async t=>{
+  const {harness}=await import('../workers/fb-feed/test-fixture.js');
+  const f=harness(t,{caption:'Mexican Night',candidate:{type:'mexican-night',poster_evidence:'Mexican Night',schedule:'Tuesdays 5–10 PM',groups:[{label:'Entrees',items:[{title:'Burrito $10',description:'Beans\nSalsa'}]},{label:'Add-Ons',items:[{title:'Chicken +$1',description:''}]}]}});
+  await f.run();f.env.SESSIONS={get:async()=> '1'};
+  const html=await container.renderToString(adminPage,{request:new Request('http://localhost/admin/specials',{headers:{cookie:'gb_session='+'a'.repeat(32)}}),locals:{runtime:{env:f.env}}});
+  const form=html.match(/<form[^>]*id="mexican-form"[\s\S]*?<\/form>/)[0];
+  assert.match(form,/name="g0_1_title"[^>]*value="Burrito \$10"/);
+  assert.match(form,/name="g0_1_description"[^>]*>Beans\nSalsa<\/textarea>/);
+  assert.match(form,/name="g1_1_title"[^>]*value="Chicken \+\$1"/);
+  assert.match(form,/name="g1_1_description"[^>]*><\/textarea>/);
+  assert.match(form,/Description \(optional\)/);
+  assert.doesNotMatch(form,/name="g\d+_\d+_(?:price|content)"/);
+});
 test('compiled shared renderer emits exactly 0–4 populated items and escapes imported-looking markup',async()=>{
   for(let count=0;count<=4;count++) {
     const group=s.blankGroup(1);group.label='Nightly';group.slots.forEach((slot,i)=>slot.content=i<count ? `Offer-${i}`:'');

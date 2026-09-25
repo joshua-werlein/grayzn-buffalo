@@ -1,3 +1,4 @@
+import {composeMexicanItem} from '../../src/lib/mexican-item.js';
 // Evidence is persisted separately from the website's final group structure.
 // A poster-level night heading does NOT make every offer a night-only offer.
 const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
@@ -70,8 +71,9 @@ export function validateMexicanNight(value) {
     if (!Array.isArray(g.items) || g.items.length < 1 || g.items.length > 4) throw Error(`Invalid Mexican Night: group ${i} items must be array with 1-4 items`);
     const items = g.items.map((item, j) => {
       if (!item || typeof item !== 'object') throw Error(`Invalid Mexican Night: group ${i} item ${j} is not an object`);
-      if (typeof item.content !== 'string' || !item.content.trim() || item.content.length > 150) throw Error(`Invalid Mexican Night: group ${i} item ${j} content must be non-empty string ≤ 150 chars`);
-      return {content: item.content};
+      if (typeof item.title !== 'string' || !item.title.trim()) throw Error(`Invalid Mexican Night: group ${i} item ${j} title must be non-empty text`);
+      composeMexicanItem(item.title, item.description);
+      return {title: item.title, description: item.description};
     });
     return {label: g.label, items};
   });

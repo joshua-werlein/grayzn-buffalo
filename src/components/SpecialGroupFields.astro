@@ -1,5 +1,6 @@
 ---
 import { displayedSpecial, specialInputCount, type SpecialGroup } from '../lib/specials-store';
+import MexicanItemFields from './MexicanItemFields.astro';
 interface Props { group: SpecialGroup; index: number; defaults?: boolean; formPrefix: string }
 const { group, index, defaults = false, formPrefix } = Astro.props;
 const p = `g${index}_`;
@@ -18,9 +19,11 @@ const section = group.day_of_week === -1;
     {group.enabled === 1 && <input type="hidden" name={p+'enabled'} value="on"/>}
   </>}
   {group.slots.map(slot => slot.position <= capacity ? <div class="slot-fields">
+    {formPrefix==='mexican' ? <MexicanItemFields content={displayedSpecial(slot)} prefix={p+slot.position+'_'} fieldId={`${formPrefix}-${index}-${slot.position}`}/> : <>
     <label for={`${formPrefix}-${index}-${slot.position}`}>{capacity === 1 ? 'Special' : `${slot.position === 1 ? 'First' : slot.position === 2 ? 'Second' : slot.position === 3 ? 'Third' : 'Fourth'} special`} <span>(optional)</span></label>
     <textarea id={`${formPrefix}-${index}-${slot.position}`} name={p+slot.position+'_content'} rows="2" maxlength="150" data-content>{displayedSpecial(slot)}</textarea>
     <output class="count" data-count>0 / 150</output>
+    </>}
   </div> : <>
     {/* Retain existing extra content without exposing extra editing slots. */}
     <input type="hidden" name={p+slot.position+'_content'} value={displayedSpecial(slot)}/>

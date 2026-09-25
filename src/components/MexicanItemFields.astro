@@ -1,0 +1,32 @@
+---
+import {splitMexicanItem} from '../lib/mexican-item.js';
+interface Props { content: string; prefix: string; fieldId: string }
+const {content, prefix, fieldId} = Astro.props;
+const {title, description} = splitMexicanItem(content);
+---
+<div class="mexican-item-fields">
+  <label for={fieldId}>Item / price<input id={fieldId} name={prefix+'title'} value={title} maxlength="150" data-mexican-title /></label>
+  <label for={fieldId+'-description'}>Description (optional)<textarea id={fieldId+'-description'} name={prefix+'description'} rows="3" maxlength="150" data-mexican-description>{description}</textarea></label>
+  <output data-mexican-count>{content.length} / 150 total</output>
+</div>
+<style>
+  .mexican-item-fields{display:grid;gap:8px;min-width:0}
+  label{display:grid;gap:4px;font-weight:600}
+  input,textarea{box-sizing:border-box;width:100%;min-width:0;padding:10px;border:2px solid #b8aa98;border-radius:6px;background:var(--cream);font:inherit;font-size:16px}
+  textarea{resize:vertical}output{justify-self:end;font-size:.8rem}
+</style>
+<script>
+  import {composeMexicanItem} from '../lib/mexican-item.js';
+  function updateMexicanCounts() {
+    document.querySelectorAll<HTMLElement>('.mexican-item-fields').forEach(slot => {
+      const title = slot.querySelector<HTMLInputElement>('[data-mexican-title]')!;
+      const description = slot.querySelector<HTMLTextAreaElement>('[data-mexican-description]')!;
+      const length = title.value.length + (description.value ? 1 + description.value.length : 0);
+      slot.querySelector('output')!.textContent = `${length} / 150 total`;
+      try { composeMexicanItem(title.value, description.value); title.setCustomValidity(''); }
+      catch (error) { title.setCustomValidity((error as Error).message); }
+    });
+  }
+  document.addEventListener('input', updateMexicanCounts);
+  updateMexicanCounts();
+</script>

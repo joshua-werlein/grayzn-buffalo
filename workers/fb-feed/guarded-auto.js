@@ -1,3 +1,4 @@
+import {composeMexicanItem} from '../../src/lib/mexican-item.js';
 // The Worker owns only automatic writes. Manual saves remain in specials-store.ts.
 // Every write, revision bump and acceptance audit commits in one D1 batch.
 import {reconcilePosters,validateWeeklyLunch,validateMexicanNight} from './reconcile.js';
@@ -215,7 +216,7 @@ async function applyMexicanNight(env, source, evidence) {
   const sourcePrefix = source.id.slice(0, 8);
   const newGroupRows = evidence.groups.map((g, i) => [`mn:${sourcePrefix}:${i}`, g.label, i]);
   const newSlotRows = evidence.groups.flatMap((g, i) =>
-    g.items.map((item, j) => [`mn:${sourcePrefix}:${i}`, j + 1, item.content])
+    g.items.map((item, j) => [`mn:${sourcePrefix}:${i}`, j + 1, composeMexicanItem(item.title, item.description)])
   );
   const detail = `GUARDED_MEXICAN_NIGHT: fb_created=${source.fb_created_time}; ${evidence.groups.length} group(s); ${newSlotRows.length} item(s)`;
   const results = await env.DB.batch([

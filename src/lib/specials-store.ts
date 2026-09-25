@@ -1,4 +1,5 @@
 import { chicagoCalendarDate, isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from './weekly-specials';
+import {composeMexicanItem} from './mexican-item.js';
 
 export const SPECIAL_LIMIT = 150;
 export const DAY_NUMBERS = [1, 2, 3, 4, 5, 6, 0];
@@ -364,9 +365,11 @@ export function collectionFromForm(form: FormData, baseline: SpecialCollection):
       service_time: value(p+'time'), sort: old?.sort ?? index, enabled: form.has(p+'enabled') ? 1 : 0,
       slots: [1,2,3,4].map(position => {
         const prior = old?.slots.find(s => s.position === position);
-        if (prior && !form.has(p+position+'_content')) return {...prior};
+        const splitFields = baseline.id === 'mexican-night' && form.has(p+position+'_title');
+        if (prior && !form.has(p+position+'_content') && !splitFields) return {...prior};
         // Blank textarea in a defaults collection means "no recurring default".
         let content: string | null = baseline.kind === 'defaults' && !value(p+position+'_content').trim() ? null : value(p+position+'_content');
+        if (splitFields) content = composeMexicanItem(value(p+position+'_title'), value(p+position+'_description'));
         // Browsers normalize textarea line endings. An untouched legacy CRLF
         // value must not become a manual correction merely because of that.
         if (prior?.content != null && content === displayedSpecial(prior).replace(/\r\n?/g,'\n') && !form.has(p+position+'_price')) {

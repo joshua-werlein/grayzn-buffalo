@@ -4,23 +4,24 @@ import {validateMexicanNight} from './reconcile.js';
 import {harness, offer, poster} from './test-fixture.js';
 import {reconcileMexicanNight} from './guarded-auto.js';
 import {PARSER_VERSION} from './classify.js';
+import {composeMexicanItem,splitMexicanItem} from '../../src/lib/mexican-item.js';
 
 const entrees = [
-  {content: '2 Soft Shell $8.50'},
-  {content: 'Burrito $9.00'},
-  {content: 'Chimichanga $9.00'},
-  {content: 'Enchilada $8.50'},
+  {description: '', title: '2 Soft Shell $8.50'},
+  {description: '', title: 'Burrito $9.00'},
+  {description: '', title: 'Chimichanga $9.00'},
+  {description: '', title: 'Enchilada $8.50'},
 ];
 const extras = [
-  {content: 'Nacho Deluxe'},
-  {content: 'Taco Salad — Large $9.50 / Small $7.50 / Mini $5.50'},
-  {content: 'Chips & Salsa or Chips & Cheese'},
+  {description: '', title: 'Nacho Deluxe'},
+  {description: '', title: 'Taco Salad — Large $9.50 / Small $7.50 / Mini $5.50'},
+  {description: '', title: 'Chips & Salsa or Chips & Cheese'},
 ];
 const addons = [
-  {content: 'Substitute chicken $1.00'},
-  {content: 'Add nacho cheese $0.75'},
-  {content: 'Substitute queso $0.75'},
-  {content: 'Substitute shredded cheese for nacho cheese $0.75'},
+  {description: '', title: 'Substitute chicken $1.00'},
+  {description: '', title: 'Add nacho cheese $0.75'},
+  {description: '', title: 'Substitute queso $0.75'},
+  {description: '', title: 'Substitute shredded cheese for nacho cheese $0.75'},
 ];
 
 function mexicanNightCandidate(overrides = {}) {
@@ -52,6 +53,26 @@ const mnGroups = f => f.sql("SELECT * FROM special_groups WHERE collection_id='m
 const mnSlots = f => f.sql("SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='mexican-night' ORDER BY g.sort,g.id,s.position");
 const mnCollection = f => f.sql("SELECT * FROM special_collections WHERE id='mexican-night'")[0];
 
+test('Mexican title/description contract rejects malformed items and enforces composed limit',()=>{
+  const validate=item=>validateMexicanNight(mexicanNightCandidate({groups:[{label:'Entrees',items:[item]}]}));
+  for(const item of [{content:'Old v9 shape'}, {description:''}, {title:'',description:''}, {title:'T'}, {title:'T',description:null}, {title:2,description:''}, {title:'T\nX',description:''}, {title:'T'.repeat(75),description:'D'.repeat(75)}]) assert.throws(()=>validate(item));
+  const item={title:'T'.repeat(75),description:'D'.repeat(74)};
+  assert.deepEqual(validate(item).groups[0].items[0],item);
+  assert.equal(composeMexicanItem(item.title,item.description).length,150);
+});
+
+test('automated descriptions use canonical admin format across seven foods and add-ons',async t=>{
+  const f=mnHarness(t);
+  f.state.candidate.groups[0].items=f.state.candidate.groups[0].items.map(item=>({...item,description:'Beans\nSalsa'}));
+  await f.run();
+  const slots=mnSlots(f);
+  assert.equal(slots.length,11);
+  assert.equal(slots[0].content,composeMexicanItem(entrees[0].title,'Beans\nSalsa'));
+  assert.deepEqual(splitMexicanItem(slots[0].content),{title:entrees[0].title,description:'Beans\nSalsa'});
+  assert.equal(slots[7].content,addons[0].title);
+  assert.equal(PARSER_VERSION,10);
+});
+
 test('validateMexicanNight accepts valid complete poster', () => {
   const result = validateMexicanNight(mexicanNightCandidate());
   assert.equal(result.type, 'mexican-night');
@@ -59,7 +80,7 @@ test('validateMexicanNight accepts valid complete poster', () => {
   assert.equal(result.schedule, 'Tuesdays 5–10 PM');
   assert.equal(result.groups.length, 3);
   assert.equal(result.groups[0].items.length, 4);
-  assert.equal(result.groups[0].items[0].content, '2 Soft Shell $8.50');
+  assert.equal(result.groups[0].items[0].title, '2 Soft Shell $8.50');
 });
 
 test('validateMexicanNight rejects non-object', () => {
@@ -91,7 +112,7 @@ test('validateMexicanNight rejects empty groups array', () => {
 });
 
 test('validateMexicanNight rejects more than 12 groups', () => {
-  const manyGroups = Array.from({length: 13}, (_, i) => ({label: `Group ${i}`, items: [{content: 'Item'}]}));
+  const manyGroups = Array.from({length: 13}, (_, i) => ({label: `Group ${i}`, items: [{description: '', title: 'Item'}]}));
   assert.throws(
     () => validateMexicanNight({...mexicanNightCandidate(), groups: manyGroups}),
     /1-12/
@@ -100,13 +121,13 @@ test('validateMexicanNight rejects more than 12 groups', () => {
 
 test('validateMexicanNight rejects group with empty label', () => {
   assert.throws(
-    () => validateMexicanNight({...mexicanNightCandidate(), groups: [{label: '', items: [{content: 'Item'}]}]}),
+    () => validateMexicanNight({...mexicanNightCandidate(), groups: [{label: '', items: [{description: '', title: 'Item'}]}]}),
     /label/i
   );
 });
 
 test('validateMexicanNight rejects group with more than 4 items', () => {
-  const tooManyItems = Array.from({length: 5}, () => ({content: 'Item'}));
+  const tooManyItems = Array.from({length: 5}, () => ({description: '', title: 'Item'}));
   assert.throws(
     () => validateMexicanNight({...mexicanNightCandidate(), groups: [{label: 'Group', items: tooManyItems}]}),
     /1-4/
@@ -115,15 +136,15 @@ test('validateMexicanNight rejects group with more than 4 items', () => {
 
 test('validateMexicanNight rejects item with whitespace-only content', () => {
   assert.throws(
-    () => validateMexicanNight({...mexicanNightCandidate(), groups: [{label: 'Group', items: [{content: '   '}]}]}),
-    /content/i
+    () => validateMexicanNight({...mexicanNightCandidate(), groups: [{label: 'Group', items: [{description: '', title: '   '}]}]}),
+    /title|150/i
   );
 });
 
 test('validateMexicanNight rejects item content over 150 chars', () => {
   assert.throws(
-    () => validateMexicanNight({...mexicanNightCandidate(), groups: [{label: 'Group', items: [{content: 'A'.repeat(151)}]}]}),
-    /content/i
+    () => validateMexicanNight({...mexicanNightCandidate(), groups: [{label: 'Group', items: [{description: '', title: 'A'.repeat(151)}]}]}),
+    /title|150/i
   );
 });
 
@@ -134,16 +155,16 @@ test('validateMexicanNight accepts null schedule (defaults to empty string)', ()
 
 test('validateMexicanNight preserves prices, sizes, and add-on text exactly', () => {
   const result = validateMexicanNight(mexicanNightCandidate());
-  assert.equal(result.groups[0].items[1].content, entrees[1].content);
+  assert.equal(result.groups[0].items[1].title, entrees[1].title);
 });
 
 test('clear Mexican Night poster replaces all groups and items', async t => {
   const f = mnHarness(t);
   await f.run();
   assert.equal(mnGroups(f).length, 3);
-  assert.ok(mnSlots(f).some(s => s.content === entrees[0].content));
-  assert.ok(mnSlots(f).some(s => s.content === extras[0].content));
-  assert.ok(mnSlots(f).some(s => s.content === addons[0].content));
+  assert.ok(mnSlots(f).some(s => s.content === entrees[0].title));
+  assert.ok(mnSlots(f).some(s => s.content === extras[0].title));
+  assert.ok(mnSlots(f).some(s => s.content === addons[0].title));
   assert.equal(f.imports()[0].validation_result, 'ok');
 });
 
@@ -152,11 +173,11 @@ test('second poster removes items from the first poster and replaces with new me
   await f.run();
   assert.equal(mnGroups(f).length, 3);
   f.state.posts = [{...f.state.posts[0], id: 'p2', created_time: '2030-01-14T14:30:00Z', updated_time: '2030-01-14T14:30:00Z'}];
-  f.state.candidate = mexicanNightCandidate({groups: [{label: 'Limited Menu', items: [{content: 'Special Burrito $10'}]}]});
+  f.state.candidate = mexicanNightCandidate({groups: [{label: 'Limited Menu', items: [{description: '', title: 'Special Burrito $10'}]}]});
   await f.run();
   assert.equal(mnGroups(f).length, 1);
   assert.ok(mnSlots(f).some(s => s.content === 'Special Burrito $10'));
-  assert.ok(!mnSlots(f).some(s => s.content === entrees[0].content));
+  assert.ok(!mnSlots(f).some(s => s.content === entrees[0].title));
 });
 
 test('prices, sizes, and add-ons are preserved verbatim', async t => {
@@ -164,7 +185,7 @@ test('prices, sizes, and add-ons are preserved verbatim', async t => {
   await f.run();
   assert.ok(mnSlots(f).some(s => s.content === 'Taco Salad — Large $9.50 / Small $7.50 / Mini $5.50'));
   for (const addon of addons) {
-    assert.ok(mnSlots(f).some(s => s.content === addon.content), `missing addon: ${addon.content}`);
+    assert.ok(mnSlots(f).some(s => s.content === addon.title), `missing addon: ${addon.title}`);
   }
 });
 
@@ -177,7 +198,7 @@ test('no new Mexican Night post leaves the section unchanged', async t => {
 
 test('failed extraction leaves Mexican Night unchanged', async t => {
   const f = mnHarness(t);
-  f.state.candidate = {type: 'mexican-night', poster_evidence: 'Tuesday Specials', groups: [{label: 'A', items: [{content: 'B'}]}]};
+  f.state.candidate = {type: 'mexican-night', poster_evidence: 'Tuesday Specials', groups: [{label: 'A', items: [{description: '', title: 'B'}]}]};
   await f.run();
   assert.equal(mnGroups(f).length, 0);
   assert.equal(f.imports()[0].validation_result, 'rejected');
@@ -210,7 +231,7 @@ test('concurrent revision bump causes write to fail closed', async t => {
   await f.run();
   assert.equal(mnGroups(f).length, 3);
   f.state.posts = [{...f.state.posts[0], id: 'p2', created_time: '2030-01-14T16:00:00Z', updated_time: '2030-01-14T16:00:00Z'}];
-  f.state.candidate = mexicanNightCandidate({groups: [{label: 'New', items: [{content: 'New item $5'}]}]});
+  f.state.candidate = mexicanNightCandidate({groups: [{label: 'New', items: [{description: '', title: 'New item $5'}]}]});
   const oldMode = f.env.SPECIALS_IMPORT_MODE;
   f.env.SPECIALS_IMPORT_MODE = 'DRY_RUN';
   await f.run();
@@ -227,7 +248,7 @@ test('replacement is atomic: old items absent and new items present after replac
   assert.equal(mnGroups(f).length, 3);
   const oldContents = mnSlots(f).map(s => s.content);
   f.state.posts = [{...f.state.posts[0], id: 'p2', created_time: '2030-01-14T14:30:00Z', updated_time: '2030-01-14T14:30:00Z'}];
-  const newItems = [{content: 'New Taco $7'}, {content: 'New Burrito $8'}];
+  const newItems = [{description: '', title: 'New Taco $7'}, {description: '', title: 'New Burrito $8'}];
   f.state.candidate = mexicanNightCandidate({groups: [{label: 'New Menu', items: newItems}]});
   await f.run();
   const newSlots = mnSlots(f);
@@ -235,7 +256,7 @@ test('replacement is atomic: old items absent and new items present after replac
     assert.ok(!newSlots.some(s => s.content === old), `old item still present: ${old}`);
   }
   for (const item of newItems) {
-    assert.ok(newSlots.some(s => s.content === item.content), `new item missing: ${item.content}`);
+    assert.ok(newSlots.some(s => s.content === item.title), `new item missing: ${item.title}`);
   }
   assert.equal(newSlots.length, newItems.length);
 });

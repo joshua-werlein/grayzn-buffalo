@@ -13,7 +13,7 @@ export function loadTs(path) {
   const module = { exports: {} };
   const require = id => {
     if (id === 'astro:middleware') return { defineMiddleware: handler => handler };
-    const sibling = resolve(dirname(filename), id + '.ts');
+    const sibling = resolve(dirname(filename), id.endsWith('.js') ? id : id + '.ts');
     return id.startsWith('.') && existsSync(sibling) ? loadTs(sibling) : localRequire(id);
   };
   new Function('exports', 'require', 'module', code)(module.exports, require, module);

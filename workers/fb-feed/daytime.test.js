@@ -81,17 +81,17 @@ test('Thursday evening price conflict never replaces established All Day or crea
   f.state.candidate.offers[1].content=f.state.candidate.offers[1].content.replace('10.25','10.50');
   await f.run();assert.deepEqual(f.slots(4,'all-day'),before);assert.ok(f.slots(4,'nightly').every(s=>s.content===''));
 });
-test('parser 9 reprocesses a Thursday source claimed by parser 6 without deleting history',async t=>{
-  assert.equal(PARSER_VERSION,9);
+test('parser 10 reprocesses a Thursday source claimed by parser 9 without deleting history',async t=>{
+  assert.equal(PARSER_VERSION,10);
   const f=makeHarness(t);const raw=f.state.posts[0];
   const digest=(s,n)=>createHash('sha256').update(s).digest('hex').slice(0,n*2);
   const captionHash=digest(raw.message,8), version=`updated:${raw.updated_time}`;
   const model='@cf/meta/llama-3.2-11b-vision-instruct';
-  const oldId=digest(`test:${raw.id}:${captionHash}:${version}:6:${model}`,16);
+  const oldId=digest(`test:${raw.id}:${captionHash}:${version}:9:${model}`,16);
   f.sql(`INSERT INTO special_imports(id,fb_post_id,fb_created_time,caption_hash,image_source_version,parser_version,model_id,processing_status,fetched_at)
-    VALUES(?,?,?,?,?,6,?,'staged',?)`,oldId,raw.id,raw.created_time,captionHash,version,model,raw.created_time);
+    VALUES(?,?,?,?,?,9,?,'staged',?)`,oldId,raw.id,raw.created_time,captionHash,version,model,raw.created_time);
   await f.run();assert.equal(f.state.aiCalls,1);assert.equal(f.slots(4,'lunch')[0].content,dishes[0]);
-  assert.deepEqual(f.imports().map(r=>r.parser_version),[6,9]);
+  assert.deepEqual(f.imports().map(r=>r.parser_version),[9,10]);
   assert.equal(f.imports()[0].id,oldId);await f.run();assert.equal(f.state.aiCalls,1);
 });
 

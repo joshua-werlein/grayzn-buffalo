@@ -1,5 +1,6 @@
 ---
 import { visibleGroups, visibleSlots, type SpecialGroup } from '../lib/specials-store';
+import {splitMexicanItem} from '../lib/mexican-item.js';
 interface Props { groups: SpecialGroup[] }
 const groups = visibleGroups(Astro.props.groups);
 // Classification affects presentation only; unknown labels remain food sections.
@@ -7,8 +8,8 @@ const accessory = (label: string) => /\b(?:add[\s-]*ons?|substitutions?|substitu
 const foodGroups = groups.filter(group => !accessory(group.label));
 const accessoryGroups = groups.filter(group => accessory(group.label));
 const itemsFor = (sections: SpecialGroup[]) => sections.flatMap(group => visibleSlots(group).map(slot => {
-  const [first, ...rest] = (slot.content ?? '').split(/\r\n|\n|\r/);
-  return { title: [first, slot.price].filter(Boolean).join(' '), description: rest.join('\n') };
+  const {title, description} = splitMexicanItem(slot.content);
+  return { title: [title, slot.price].filter(Boolean).join(' '), description };
 }));
 const foods = itemsFor(foodGroups);
 const extras = itemsFor(accessoryGroups);
