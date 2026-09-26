@@ -52,12 +52,40 @@ test('matching partial service evidence supports the same three-offer pattern',(
   assert.deepEqual(reconcilePosters([p],4),expected);
 });
 test('weekends, wrong weekday, non-specials headings, and other offer counts stay outside the rule',()=>{
-  for(const day of [0,6]) assert.deepEqual(reconcilePosters([poster(day,'Specials',dishes.map(s=>offer(s)))],day),[]);
   assert.deepEqual(reconcilePosters([daytime()],3),[]);
   for(const heading of ['Thursday','Thursday Weekly Specials']) {
     const p=daytime();p.poster_evidence=heading;assert.deepEqual(reconcilePosters([p],4),[]);
   }
   for(const offers of [dishes.slice(0,2),[...dishes,'Another offer $5']]) assert.deepEqual(reconcilePosters([poster(4,'Thursday Specials',offers.map(s=>offer(s)))],4),[]);
+});
+test('Saturday 3-offer Specials poster produces Saturday Special + All Day slots',()=>{
+  const p=poster(6,'Saturday Specials',dishes.map(s=>offer(s)));
+  assert.deepEqual(reconcilePosters([p],6),[
+    {day_of_week:6,service:'lunch',items:[{content:dishes[0]}]},
+    {day_of_week:6,service:'all-day',items:dishes.slice(1).map(c=>({content:c}))},
+  ]);
+});
+test('Sunday 3-offer Specials poster produces Sunday Special + All Day slots',()=>{
+  const p=poster(0,'Sunday Specials',dishes.map(s=>offer(s)));
+  assert.deepEqual(reconcilePosters([p],0),[
+    {day_of_week:0,service:'lunch',items:[{content:dishes[0]}]},
+    {day_of_week:0,service:'all-day',items:dishes.slice(1).map(c=>({content:c}))},
+  ]);
+});
+test('Saturday nightly-headed poster fails closed (no nightly on weekends)',()=>{
+  const p=poster(6,'Saturday Night Specials 5-10 PM',[offer(dishes[0],'Night'),offer(dishes[1],'Night')]);
+  assert.deepEqual(reconcilePosters([p],6),[]);
+});
+test('Saturday 2-offer poster fails closed (not exactly 3)',()=>{
+  const p=poster(6,'Saturday Specials',dishes.slice(0,2).map(s=>offer(s)));
+  assert.deepEqual(reconcilePosters([p],6),[]);
+});
+test('Saturday 4-offer poster fails closed (not exactly 3)',()=>{
+  const p=poster(6,'Saturday Specials',[...dishes,'Another offer $5'].map(s=>offer(s)));
+  assert.deepEqual(reconcilePosters([p],6),[]);
+});
+test('weekday 3-offer poster (Thursday) is unchanged by the fix',()=>{
+  assert.deepEqual(reconcilePosters([daytime()],4),expected);
 });
 for(const nightFirst of [false,true]) test(`Thursday pipeline ${nightFirst?'night first':'day first'} resolves without repeated AI and preserves All Day`,async t=>{
   const f=makeHarness(t,nightFirst?evening():daytime());await f.run();

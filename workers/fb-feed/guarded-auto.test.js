@@ -355,3 +355,78 @@ test('today-only pagination processes more than twenty posts without following a
   await f.run();assert.equal(f.imports().length,21);assert.equal(urls.length,2);
   assert.equal(urls[0].searchParams.get('since'),urls[1].searchParams.get('since'));assert.equal(urls[1].hostname,'graph.facebook.com');
 });
+
+// ── Saturday / Sunday weekend integration tests ─────────────────────────────
+test('Saturday 3-offer Specials poster fills Saturday Special + All Day slots',async t=>{
+  const satCandidate=poster(6,'Saturday Specials',[lunch,...pair]);
+  const f=harness(t,{now:'2030-01-12T15:00:00Z',caption:'Saturday Specials',candidate:satCandidate});
+  f.state.posts[0].created_time='2030-01-12T14:00:00Z';f.state.posts[0].updated_time='2030-01-12T14:00:00Z';
+  await f.run();
+  assert.equal(contents(f,6,'lunch')[0],lunch.content);
+  assert.deepEqual(contents(f,6,'all-day'),[...pair.map(o=>o.content),'','']);
+});
+test('Sunday 3-offer Specials poster fills Sunday Special + All Day slots',async t=>{
+  const sunCandidate=poster(0,'Sunday Specials',[lunch,...pair]);
+  const f=harness(t,{now:'2030-01-13T15:00:00Z',caption:'Sunday Specials',candidate:sunCandidate});
+  f.state.posts[0].created_time='2030-01-13T14:00:00Z';f.state.posts[0].updated_time='2030-01-13T14:00:00Z';
+  await f.run();
+  assert.equal(contents(f,0,'lunch')[0],lunch.content);
+  assert.deepEqual(contents(f,0,'all-day'),[...pair.map(o=>o.content),'','']);
+});
+
+// ── Recurring defaults (origin='manual', manual_locked=0) on Saturday ────────
+test('Saturday recurring defaults (origin=manual,manual_locked=0) can be replaced by Facebook evidence',async t=>{
+  const satCandidate=poster(6,'Saturday Specials',[lunch,...pair]);
+  const f=harness(t,{now:'2030-01-12T15:00:00Z',candidate:satCandidate});
+  f.state.posts[0].created_time='2030-01-12T14:00:00Z';f.state.posts[0].updated_time='2030-01-12T14:00:00Z';
+  const lunchGroup=f.sql("SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=6 AND service='lunch'")[0];
+  const allDayGroup=f.sql("SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=6 AND service='all-day'")[0];
+  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=1','Saturday Default Lunch','manual',0,lunchGroup.id);
+  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position IN (1,2)','Saturday Default AD','manual',0,allDayGroup.id);
+  await f.run();
+  assert.equal(contents(f,6,'lunch')[0],lunch.content);
+  assert.equal(contents(f,6,'all-day')[0],pair[0].content);
+});
+test('Saturday manual_locked=1 slots remain protected',async t=>{
+  const satCandidate=poster(6,'Saturday Specials',[lunch,...pair]);
+  const f=harness(t,{now:'2030-01-12T15:00:00Z',candidate:satCandidate});
+  f.state.posts[0].created_time='2030-01-12T14:00:00Z';f.state.posts[0].updated_time='2030-01-12T14:00:00Z';
+  const lunchGroup=f.sql("SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=6 AND service='lunch'")[0];
+  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=1','Staff Saturday Lunch','manual',1,lunchGroup.id);
+  await f.run();
+  assert.equal(contents(f,6,'lunch')[0],'Staff Saturday Lunch');
+});
+
+// ── Retry logic integration tests ────────────────────────────────────────────
+test('retry: first attempt malformed, second valid → aiCalls=2, slot filled',async t=>{
+  const f=harness(t);
+  let callCount=0;
+  f.env.AI.run=async()=>{
+    callCount++;f.state.aiCalls++;
+    if(callCount===1) return {response:'not valid json at all'};
+    return {response:JSON.stringify(f.state.candidate)};
+  };
+  await f.run();
+  assert.equal(f.state.aiCalls,2);
+  assert.equal(f.slots()[0].content,wing);
+});
+test('retry: both attempts malformed → aiCalls=2, slot empty',async t=>{
+  const f=harness(t);
+  f.env.AI.run=async()=>{f.state.aiCalls++;return {response:'still not json'};};
+  await f.run();
+  assert.equal(f.state.aiCalls,2);
+  assert.equal(f.slots()[0].content,'');
+});
+test('retry: first valid → no retry (aiCalls=1)',async t=>{
+  const f=harness(t);
+  await f.run();
+  assert.equal(f.state.aiCalls,1);
+  assert.equal(f.slots()[0].content,wing);
+});
+test('retry: semantic rejection (wrong day) → no retry',async t=>{
+  const f=harness(t);
+  f.state.candidate=poster(4,'Thursday Specials',[offer(wing,'Wing Night','5-10 PM')]);
+  await f.run();
+  assert.equal(f.state.aiCalls,1);
+  assert.equal(f.slots()[0].content,'');
+});

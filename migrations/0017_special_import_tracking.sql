@@ -64,7 +64,7 @@ CREATE TABLE special_import_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   import_id TEXT NOT NULL REFERENCES special_imports(id) ON DELETE CASCADE,
   event_type TEXT NOT NULL
-    CHECK(event_type IN ('fetch','classify','extract','validate','stage','review','retry','error')),
+    CHECK(event_type IN ('fetch','classify','extract','validate','stage','review','retry','error','fail','skip','requeue')),
   detail TEXT NOT NULL DEFAULT '',
   occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

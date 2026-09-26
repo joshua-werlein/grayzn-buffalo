@@ -115,7 +115,7 @@ export function reconcilePosters(candidates,weekday,existingAllDay=[]) {
     // Explicit evidence must agree with those positions; never reinterpret a
     // night poster (including Wing Night) or apply this pattern on weekends.
     const heading=`${p.day_evidence} ${p.poster_evidence}`;
-    const orderedDaytime=weekday>=1 && weekday<=5 && p.offers.length===3 &&
+    const orderedDaytime=p.offers.length===3 &&
       /\bspecials?\b/i.test(heading) && !/\bweekly\b/i.test(heading) && serviceOf(heading)==='unknown' &&
       p.offers.every((o,i)=>['unknown',i===0?'lunch':'all-day'].includes(o.service) &&
         !['nightly','conflict'].includes(serviceOf(o.content)));
