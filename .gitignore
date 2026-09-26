@@ -8,3 +8,4 @@ dist/
 .DS_Store
 grayzn-db-backup-*.sql
 items-only.sql
+.claude/worktrees/

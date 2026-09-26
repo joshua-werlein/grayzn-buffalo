@@ -81,8 +81,8 @@ test('Thursday evening price conflict never replaces established All Day or crea
   f.state.candidate.offers[1].content=f.state.candidate.offers[1].content.replace('10.25','10.50');
   await f.run();assert.deepEqual(f.slots(4,'all-day'),before);assert.ok(f.slots(4,'nightly').every(s=>s.content===''));
 });
-test('parser 11 reprocesses a Thursday source claimed by parser 10 without deleting history',async t=>{
-  assert.equal(PARSER_VERSION,11);
+test('parser 12 reprocesses a Thursday source claimed by parser 11 without deleting history',async t=>{
+  assert.equal(PARSER_VERSION,12);
   const f=makeHarness(t);const raw=f.state.posts[0];
   const digest=(s,n)=>createHash('sha256').update(s).digest('hex').slice(0,n*2);
   const captionHash=digest(raw.message,8), version=`updated:${raw.updated_time}`;
@@ -91,8 +91,93 @@ test('parser 11 reprocesses a Thursday source claimed by parser 10 without delet
   f.sql(`INSERT INTO special_imports(id,fb_post_id,fb_created_time,caption_hash,image_source_version,parser_version,model_id,processing_status,fetched_at)
     VALUES(?,?,?,?,?,10,?,'staged',?)`,oldId,raw.id,raw.created_time,captionHash,version,model,raw.created_time);
   await f.run();assert.equal(f.state.aiCalls,1);assert.equal(f.slots(4,'lunch')[0].content,dishes[0]);
-  assert.deepEqual(f.imports().map(r=>r.parser_version),[10,11]);
+  assert.deepEqual(f.imports().map(r=>r.parser_version),[10,12]);
   assert.equal(f.imports()[0].id,oldId);await f.run();assert.equal(f.state.aiCalls,1);
+});
+
+// ── Monday/Friday four-item night fallback ────────────────────────────────────
+
+const nightlyDish1 = '2 Burgers and 1 Order of Fries $14';
+const nightlyDish2 = 'Half Rack Ribs with Mac & Cheese $18.75';
+const allDayDish1 = 'California Burger w/ Side Salad $10.25';
+const allDayDish2 = 'Chicken Salad Sandwich w/ Coleslaw $7.25';
+const fourOffers = [offer(nightlyDish1), offer(nightlyDish2), offer(allDayDish1), offer(allDayDish2)];
+
+for (const [weekday, label] of [[1,'Monday'],[5,'Friday']]) {
+  test(`${label} Night 4-offer fallback: offers[0,1] → nightly, offers[2,3] → all-day`, () => {
+    const p = poster(weekday, `${label} Night Specials 5-10 PM`, fourOffers);
+    const result = reconcilePosters([p], weekday);
+    assert.equal(result.length, 2);
+    const nightly = result.find(g => g.service === 'nightly');
+    const allDay = result.find(g => g.service === 'all-day');
+    assert.ok(nightly, 'nightly group present');
+    assert.ok(allDay, 'all-day group present');
+    assert.equal(nightly.day_of_week, weekday);
+    assert.equal(allDay.day_of_week, weekday);
+    assert.deepEqual(nightly.items, [{content: nightlyDish1}, {content: nightlyDish2}]);
+    assert.deepEqual(allDay.items, [{content: allDayDish1}, {content: allDayDish2}]);
+  });
+
+  test(`${label}: normal path preferred when existing all-day pair is present`, () => {
+    // A daytime poster with explicit all-day/lunch evidence → normal path
+    const dayP = poster(weekday, `${label} Specials`, [
+      offer('Lunch Item $9', 'Lunch', '11-1:30'),
+      offer(allDayDish1, 'All Day'),
+      offer(allDayDish2, 'All Day'),
+    ]);
+    const result = reconcilePosters([dayP], weekday);
+    // Normal path should produce results, not the fallback
+    assert.ok(result.length > 0, 'normal path produces output');
+    // Fallback must not fire when normal path succeeds
+    const allDay = result.find(g => g.service === 'all-day');
+    assert.ok(allDay, 'all-day produced by normal path');
+  });
+
+  test(`${label} Night 3 offers → fail closed (no fallback)`, () => {
+    const p = poster(weekday, `${label} Night Specials`, fourOffers.slice(0, 3));
+    const result = reconcilePosters([p], weekday);
+    assert.deepEqual(result, []);
+  });
+
+  test(`${label} Night 5 offers → fail closed (no fallback)`, () => {
+    const p = poster(weekday, `${label} Night Specials`, [...fourOffers, offer('Extra Dish $5')]);
+    const result = reconcilePosters([p], weekday);
+    assert.deepEqual(result, []);
+  });
+
+  test(`${label} Specials (no "Night" in heading) with 4 offers → fail closed`, () => {
+    const p = poster(weekday, `${label} Specials`, fourOffers);
+    const result = reconcilePosters([p], weekday);
+    assert.deepEqual(result, []);
+  });
+}
+
+test('non-Monday/Friday weekday (Wednesday=3) with 4 offers → fail closed', () => {
+  const p = poster(3, 'Wednesday Night Specials', fourOffers);
+  const result = reconcilePosters([p], 3);
+  // Wednesday can have nightly, but not via the Monday/Friday fallback
+  // Standard path: 4 offers won't match any Wednesday normal pattern → empty
+  assert.deepEqual(result.filter(g => g.service === 'all-day'), [], 'no all-day from Mon/Fri fallback on Wednesday');
+});
+
+test('non-Monday/Friday weekday (Tuesday=2) with 4 offers → fail closed', () => {
+  const p = poster(2, 'Tuesday Night Specials', fourOffers);
+  const result = reconcilePosters([p], 2);
+  assert.deepEqual(result, []);
+});
+
+test('Monday Night fallback: malformed offers (empty content) → fail closed', () => {
+  const badOffers = [offer(''), offer(nightlyDish2), offer(allDayDish1), offer(allDayDish2)];
+  const p = poster(1, 'Monday Night Specials', badOffers);
+  const result = reconcilePosters([p], 1);
+  assert.deepEqual(result, []);
+});
+
+test('Friday Night fallback: null offer content → fail closed', () => {
+  const badOffers = [offer(nightlyDish1), {content: null, evidence: '', service_time: ''}, offer(allDayDish1), offer(allDayDish2)];
+  const p = poster(5, 'Friday Night Specials', badOffers);
+  const result = reconcilePosters([p], 5);
+  assert.deepEqual(result, []);
 });
 
 test('live parser-6 Thursday candidate: polluted evidence on offers 2-3 must not produce Lunch; no Nightly',()=>{

@@ -48,7 +48,17 @@ export function blankGroup(day: number, sort = 0): SpecialGroup {
 export function newWeekFromDefaults(defaults: SpecialCollection): SpecialCollection {
   return { id: '', kind: 'week', weekly_special_id: null, title: '', schedule: '', revision: 0,
     groups: defaults.groups.map(group => ({ ...group, id: `new:${crypto.randomUUID()}`,
-      slots: group.slots.map(slot => ({ ...slot, content: slot.content ?? '', origin: 'manual', manual_locked: 1, last_auto_value: null })) })) };
+      slots: group.slots.map(slot => {
+        const content = slot.content ?? '';
+        // Blank default slots are immediately eligible for automation.
+        // Populated default slots carry 'default' origin so automation may replace
+        // them with current-date Facebook evidence (manual_locked=0), but are
+        // distinguishable from confirmed manual entries (manual_locked=1,'manual').
+        if (!content.trim()) {
+          return { ...slot, content: '', origin: 'legacy' as const, manual_locked: 0, last_auto_value: null };
+        }
+        return { ...slot, content, origin: 'manual' as const, manual_locked: 0, last_auto_value: null };
+      }) })) };
 }
 
 // These readers intentionally have no legacy fallback. A missing migration is
@@ -456,7 +466,10 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
     for (const slot of group.slots) {
       const old = previous?.slots.find(s=>s.position===slot.position);
       if (old && slotValue(old)===slotValue(slot)) continue;
-      slotRows.push([groupId,slot.position,slot.content,slot.price,slot.section_link,old?.last_auto_value ?? null]);
+      // Non-empty content: staff explicitly entered a value → locked.
+      // Empty content: staff cleared the slot → unlocked and eligible for automation.
+      const isPopulated = (slot.content ?? '').trim().length > 0;
+      slotRows.push([groupId,slot.position,slot.content,slot.price,slot.section_link,old?.last_auto_value ?? null,isPopulated ? 1 : 0,isPopulated ? 'manual' : 'legacy']);
     }
   }
   // JSON rowsets use one SELECT and three bound parameters per statement,
@@ -469,9 +482,9 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
     collectionId,token,JSON.stringify(groupRows)));
   writes.push(prepare(`INSERT INTO special_slots(group_id,position,content,price,section_link,origin,manual_locked,last_auto_value)
     SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]'),json_extract(value,'$[2]'),
-      json_extract(value,'$[3]'),json_extract(value,'$[4]'),'manual',1,json_extract(value,'$[5]')
+      json_extract(value,'$[3]'),json_extract(value,'$[4]'),json_extract(value,'$[7]'),json_extract(value,'$[6]'),json_extract(value,'$[5]')
     FROM json_each(?3) WHERE ${gate}
-    ON CONFLICT(group_id,position) DO UPDATE SET content=excluded.content,price=excluded.price,section_link=excluded.section_link,origin='manual',manual_locked=1`,
+    ON CONFLICT(group_id,position) DO UPDATE SET content=excluded.content,price=excluded.price,section_link=excluded.section_link,origin=excluded.origin,manual_locked=excluded.manual_locked`,
     collectionId,token,JSON.stringify(slotRows)));
   writes.push(prepare('SELECT id FROM special_collections WHERE id=?1 AND mutation_token=?2',collectionId,token));
   const results = await env.DB.batch(writes);

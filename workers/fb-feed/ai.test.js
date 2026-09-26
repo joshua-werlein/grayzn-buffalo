@@ -20,6 +20,41 @@ test('vision binding receives top-level base64 image and persists extraction res
   assert.equal(f.imports()[0].last_error, null);
 });
 
+test('AI call includes response_format json_object to prevent prose responses', async t => {
+  const f = harness(t);
+  t.mock.method(f.env.AI, 'run', async (_model, params) => {
+    assert.deepEqual(params.response_format, { type: 'json_object' });
+    return { response: JSON.stringify(f.state.candidate) };
+  });
+  await f.run();
+  assert.equal(f.env.AI.run.mock.callCount(), 1);
+});
+
+test('image-only post (empty caption) with correct structured JSON produces staged ok', async t => {
+  const {offer, poster, harness: h} = await import('./test-fixture.js');
+  const f = h(t, {caption: ''});
+  // Override AI to return well-formed evidence JSON for a Wednesday night poster
+  t.mock.method(f.env.AI, 'run', async () => ({
+    response: JSON.stringify(f.state.candidate),
+  }));
+  await f.run();
+  const row = f.imports()[0];
+  assert.equal(row.processing_status, 'staged');
+  assert.equal(row.validation_result, 'ok');
+});
+
+test('prose AI response (not JSON) still produces validation_result=rejected', async t => {
+  const f = harness(t);
+  t.mock.method(f.env.AI, 'run', async () => ({
+    response: 'Here are the Wednesday Night Specials: Wing Night featuring bone-in and boneless options.',
+  }));
+  await f.run();
+  const row = f.imports()[0];
+  assert.equal(row.processing_status, 'failed');
+  assert.equal(row.validation_result, 'rejected');
+  assert.match(row.validation_reason, /not valid JSON/);
+});
+
 test('AI thrown error is retained in the import, audit and logs with credentials redacted', async t => {
   const f = harness(t);
   f.env.FB_SYSTEM_TOKEN = 'private-facebook-credential';

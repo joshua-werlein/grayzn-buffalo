@@ -26,8 +26,11 @@ test('manual changes and manual blanks lock only changed slots and preserve auto
   const week=f.sql('SELECT * FROM weekly_specials WHERE id=?',next.weekly_special_id)[0];
   await s.saveCollection(f.env,next,{start:week.week_start_date,end:week.week_end_date});
   const slots=f.sql('SELECT * FROM special_slots WHERE group_id=? ORDER BY position',g.id);
-  for(const slot of slots.slice(0,2)) { assert.equal(slot.origin,'manual'); assert.equal(slot.manual_locked,1); assert.equal(slot.last_auto_value,'baseline'); }
-  assert.equal(slots[1].content,''); assert.equal(slots[2].origin,'automation'); assert.equal(slots[2].manual_locked,0);
+  // Slot 0: non-empty ('Corrected') → locked manual entry
+  assert.equal(slots[0].origin,'manual'); assert.equal(slots[0].manual_locked,1); assert.equal(slots[0].last_auto_value,'baseline');
+  // Slot 1: empty (cleared) → unlocked and eligible for automation; last_auto_value preserved
+  assert.equal(slots[1].content,''); assert.equal(slots[1].origin,'legacy'); assert.equal(slots[1].manual_locked,0); assert.equal(slots[1].last_auto_value,'baseline');
+  assert.equal(slots[2].origin,'automation'); assert.equal(slots[2].manual_locked,0);
 });
 test('stale saves and races between read and transactional batch cannot partially change data',async t=>{
   const f=fixture(t); const first=await s.readCollection(f.env,'defaults'); const second=structuredClone(first);
@@ -137,7 +140,10 @@ test('applyCandidate for section candidate applies to mexican-night collection',
   await s.applyCandidate(f.env,importId,null,before.revision);
   const after=await s.readCollection(f.env,'mexican-night');
   assert.ok(after.groups.some(g=>g.slots.some(slot=>slot.content==='Tacos al Pastor $13')));
-  assert.ok(after.groups.every(g=>g.slots.every(slot=>slot.origin==='manual'&&slot.manual_locked===1)));
+  // Populated slots must be manually locked; blank slots are eligible for future automation
+  assert.ok(after.groups.every(g=>g.slots.every(slot=>
+    (slot.content&&slot.content.trim()) ? (slot.origin==='manual'&&slot.manual_locked===1) : (slot.origin==='legacy'&&slot.manual_locked===0)
+  )));
 });
 
 test('applyCandidate for section throws SpecialConflict when revision changed since page load', async t=>{

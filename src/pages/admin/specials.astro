@@ -3,7 +3,7 @@ import Base from '../../layouts/Base.astro';
 import GroupFields from '../../components/SpecialGroupFields.astro';
 import { isAuthed } from '../../lib/auth';
 import { isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from '../../lib/weekly-specials';
-import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, readCollection, readWeek, currentSavedWeekId, collectionFromForm, saveCollection, unlockBlankSlots, lockBlankSlots, readFbFillState, SpecialConflict, type SpecialCollection } from '../../lib/specials-store';
+import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, readCollection, readWeek, currentSavedWeekId, collectionFromForm, saveCollection, SpecialConflict, type SpecialCollection } from '../../lib/specials-store';
 const env = (Astro.locals as any).runtime?.env ?? {};
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 const empty = (kind: SpecialCollection['kind'], id=''): SpecialCollection => ({ id,kind,weekly_special_id:null,title:'',schedule:'',revision:0,groups:[] });
@@ -53,18 +53,6 @@ if (Astro.request.method==='POST') {
       const saved=await saveCollection(env,next);
       if (json) return Response.json({ok:true,message:'Saved.',revision:saved.revision,groupIds:saved.groupIds});
       return Astro.redirect('/admin/specials?saved=1',303);
-    } else if (action === 'allow-fb-unlock' || action === 'lock-blank-slots') {
-      const weekIdRaw = String(form.get('week_id') ?? '');
-      const weekId = Number(weekIdRaw);
-      if (!Number.isSafeInteger(weekId) || weekId < 1) throw new Error('Invalid saved week.');
-      const expectedRevision = Number(form.get('collection_revision') ?? 0);
-      if (action === 'allow-fb-unlock') {
-        await unlockBlankSlots(env, weekId, expectedRevision);
-        return Astro.redirect(`/admin/specials?week=${weekId}&fb=on`, 303);
-      } else {
-        await lockBlankSlots(env, weekId, expectedRevision);
-        return Astro.redirect(`/admin/specials?week=${weekId}&fb=off`, 303);
-      }
     } else throw new Error('Invalid form action.');
   } catch (caught) {
     const message=caught instanceof Error ? caught.message : 'Could not save specials.';
@@ -73,12 +61,6 @@ if (Astro.request.method==='POST') {
   }
 }
 if (Astro.url.searchParams.get('saved')) notice='Specials saved.';
-if (Astro.url.searchParams.get('fb')==='on') notice='Facebook auto-fill turned on — empty specials may be filled automatically. Anything entered or changed by staff is protected.';
-if (Astro.url.searchParams.get('fb')==='off') notice='Facebook auto-fill turned off — staff can still enter and save specials manually.';
-let fbFillState: 'on'|'off'|'mixed'|'no-blanks'|null = null;
-if (editingId && weekly.id && ready) {
-  try { fbFillState = await readFbFillState(env, weekly.id); } catch { /* non-fatal; control hidden */ }
-}
 const savedWeeks: any[] = [];
 try {
   const weeksResult = await env.DB.prepare('SELECT ws.id,ws.week_start_date,ws.week_end_date,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id ORDER BY ws.week_start_date DESC').all();
@@ -96,23 +78,6 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
   {mexican && <form method="post" id="mexican-form" class="recurring-defaults-form"><input type="hidden" name="action" value="save-mexican-night"/><input type="hidden" name="revision" value={mexican.revision}/><input type="hidden" name="group_count" value={mexican.groups.length}/><details class="recurring-defaults"><summary>Mexican Night menu</summary><div class="recurring-defaults__content"><p>Published separately at <a href="/specials#mexican-night">Mexican Night</a>. Add only confirmed menu items. This does not change saved Tuesday specials.</p><label>Title<input name="title" maxlength="80" value={mexican.title}/></label><label>Schedule<input name="schedule" maxlength="80" value={mexican.schedule}/></label><div class="section-groups">{mexican.groups.map((group,index)=><GroupFields group={group} index={index} formPrefix="mexican"/>)}<button type="button" class="btn btn-ghost" data-add-group="-1">Add menu group</button></div><p id="mexican-status" role="status"/><button class="btn btn-primary" type="submit">Save Mexican Night</button></div></details></form>}
   <div class="weekly-section-head"><h3>Weekly Specials</h3></div>
   <div class="week-picker"><label for="saved-week">Saved week to edit</label><select id="saved-week"><option value="">Select a saved week...</option>{savedWeeks.map((week,index)=><option value={week.id} data-older-week={index>=4 ? 'true' : undefined} hidden={index>=4 && !savedWeeksExpanded} selected={String(week.id)===editingId}>{week.week_start_date} – {week.week_end_date}</option>)}</select>{savedWeeks.length>4 && <button id="saved-weeks-toggle" type="button" class="btn btn-ghost week-picker__action" aria-expanded={savedWeeksExpanded}>View {savedWeeksExpanded ? 'fewer' : 'more'} weeks</button>}<a class="btn btn-ghost week-picker__action" href="/admin/specials?new=1">Create new week</a>
-    {editingId && fbFillState !== null && <div class="week-picker__fb-row">
-      <p class="fb-fill-status">
-        <span>Facebook auto-fill:</span>
-        {fbFillState==='on' && <strong class="fb-fill-badge fb-fill-badge--on"> ON</strong>}
-        {(fbFillState==='off'||fbFillState==='no-blanks') && <strong class="fb-fill-badge fb-fill-badge--off"> OFF</strong>}
-        {fbFillState==='mixed' && <strong class="fb-fill-badge fb-fill-badge--mixed"> PARTIAL</strong>}
-      </p>
-      {fbFillState==='on' && <p class="fb-fill-help">Facebook can automatically fill empty specials for this week. Anything entered or changed by staff is protected and will not be overwritten.</p>}
-      {(fbFillState==='off'||fbFillState==='no-blanks') && <p class="fb-fill-help">Facebook will not fill empty specials for this week. Staff can still enter and save specials manually.</p>}
-      {fbFillState==='mixed' && <p class="fb-fill-help">Some empty specials can be filled automatically, while others are protected from Facebook changes.</p>}
-      {(fbFillState==='off') && <form method="post" class="fb-fill-form"><input type="hidden" name="action" value="allow-fb-unlock"/><input type="hidden" name="week_id" value={editingId}/><input type="hidden" name="collection_revision" value={weekly.revision}/><button type="submit" class="fb-fill-btn fb-fill-btn--allow">Allow Facebook to fill blank spots</button></form>}
-      {(fbFillState==='on') && <form method="post" class="fb-fill-form"><input type="hidden" name="action" value="lock-blank-slots"/><input type="hidden" name="week_id" value={editingId}/><input type="hidden" name="collection_revision" value={weekly.revision}/><button type="submit" class="fb-fill-btn fb-fill-btn--deny">Don't allow Facebook to fill blank spots</button></form>}
-      {fbFillState==='mixed' && <>
-        <form method="post" class="fb-fill-form"><input type="hidden" name="action" value="allow-fb-unlock"/><input type="hidden" name="week_id" value={editingId}/><input type="hidden" name="collection_revision" value={weekly.revision}/><button type="submit" class="fb-fill-btn fb-fill-btn--allow">Allow Facebook to fill blank spots</button></form>
-        <form method="post" class="fb-fill-form"><input type="hidden" name="action" value="lock-blank-slots"/><input type="hidden" name="week_id" value={editingId}/><input type="hidden" name="collection_revision" value={weekly.revision}/><button type="submit" class="fb-fill-btn fb-fill-btn--deny">Don't allow Facebook to fill blank spots</button></form>
-      </>}
-    </div>}
   </div>
   {ready && <form method="post" id="weekly-form" class="weekly-form" data-dirty={String(weeklyDirty)} data-active-day={activeDay} data-save-attempted={String(weeklySaveAttempted)} data-scroll-y={weeklyScrollY}>
     <input type="hidden" name="weekly_id" value={editingId}/><input type="hidden" name="revision" value={weekly.revision}/><input type="hidden" name="group_count" value={weekly.groups.length}/>
@@ -521,14 +486,5 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
 
 <style>
 .weekly-section-head{width:100%;max-width:1440px;margin:24px auto 0}.weekly-section-head h3{font-family:var(--label);font-size:1rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin:0 0 14px}
-.week-picker__fb-row{flex-basis:100%;width:100%;display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding-top:12px;border-top:1px solid rgba(36,22,16,.14);margin-top:4px}
-.fb-fill-status{margin:0;font-family:var(--label);font-size:.82rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:5px;flex:1 0 auto}
-.fb-fill-badge--on{color:var(--ink)}.fb-fill-badge--off{color:var(--ink-2)}.fb-fill-badge--mixed{color:var(--crimson)}
-.fb-fill-note{font-weight:400;font-size:.8rem;text-transform:none;letter-spacing:0;color:var(--ink-2)}
-.fb-fill-form{display:contents}
-.fb-fill-btn{margin:0;padding:9px 18px;font-size:.85rem;font-family:var(--label);font-weight:700;letter-spacing:.04em;border-radius:var(--control-radius);cursor:pointer;white-space:nowrap;line-height:1.3}
-.fb-fill-btn--allow{background:var(--ink);color:var(--cream);border:2px solid var(--ink)}
-.fb-fill-btn--deny{background:var(--cream);color:var(--ink);border:2px solid var(--crimson)}
-@media(max-width:680px){.week-picker__fb-row{flex-direction:column;align-items:stretch}.fb-fill-btn{width:100%;text-align:center;white-space:normal}}
 .day-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))}.day-fields{align-content:start}.default-day{margin:12px 0;border:1px solid #b8aa98;padding:8px}.default-day summary{cursor:pointer;font-weight:700;padding:10px}.default-day :global(.group-fields){margin:10px 0}.section-groups{display:grid;gap:14px;margin:16px 0}.recurring-defaults-form{margin-top:24px}.recurring-defaults__content>label{display:grid;gap:6px;margin:10px 0}.recurring-defaults__content>label input{width:100%;box-sizing:border-box}@media(max-width:680px){.day-grid{grid-template-columns:1fr}}
 </style>

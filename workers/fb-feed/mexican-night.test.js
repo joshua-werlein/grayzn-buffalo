@@ -127,7 +127,7 @@ test('automated descriptions use canonical admin format across seven foods and a
   assert.equal(slots[0].content,composeMexicanItem(entrees[0].title,'Beans\nSalsa'));
   assert.deepEqual(splitMexicanItem(slots[0].content),{title:entrees[0].title,description:'Beans\nSalsa'});
   assert.equal(slots[7].content,addons[0].title);
-  assert.equal(PARSER_VERSION,11);
+  assert.equal(PARSER_VERSION,12);
 });
 
 test('validateMexicanNight accepts valid complete poster', () => {

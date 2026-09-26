@@ -19,9 +19,15 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
   const {results:groups}=await env.DB.prepare('SELECT * FROM special_groups WHERE collection_id=?1 AND day_of_week=?2').bind(week.collection_id,weekday).all();
   const {results:slots}=await env.DB.prepare(`SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id
     WHERE g.collection_id=?1 AND g.day_of_week=?2 ORDER BY s.position`).bind(week.collection_id,weekday).all();
-  const safe=s=>s && s.manual_locked===0 && s.origin!=='manual' && s.price==='' && s.section_link==='' && (
+  const safe=s=>s && s.price==='' && s.section_link==='' && (
+    // Arm 1 — Blank slot: always eligible regardless of origin or manual_locked
     ((s.content==='' || s.content===null) && (s.last_auto_value===null || s.last_auto_value===s.content)) ||
-    (s.origin==='automation' && typeof s.last_auto_value==='string' && s.content===s.last_auto_value));
+    // Arm 2 — Prior automation value, unchanged and not staff-locked: eligible for update
+    (s.origin==='automation' && typeof s.last_auto_value==='string' && s.content===s.last_auto_value && s.manual_locked===0) ||
+    // Arm 3 — Recurring default (populated by newWeekFromDefaults, not yet touched by staff or automation)
+    // saveCollection() always sets manual_locked=1 for non-empty manually-submitted content, so the
+    // ONLY source of origin='manual',manual_locked=0 in a live week is newWeekFromDefaults().
+    (s.origin==='manual' && s.manual_locked===0));
   const allDayGroups=groups.filter(g=>g.service==='all-day' && g.enabled===1);
   const existing=allDayGroups.length===1 ? slots.filter(s=>s.group_id===allDayGroups[0].id && s.content && safe(s) && s.origin==='automation') : [];
   const targets=reconcilePosters(sources.map(s=>JSON.parse(s.candidate_json)),weekday,existing);
@@ -31,10 +37,11 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
     if (destinations.length!==1 || destinations[0].enabled!==1) continue;
     const dest=destinations[0];
     const proposed=target.items.map((item,i)=>({group_id:dest.id,position:i+1,content:item.content,old:slots.find(s=>s.group_id===dest.id && s.position===i+1)}));
-    if (proposed.some(r=>!safe(r.old))) continue;
+    const eligible=proposed.filter(r=>safe(r.old));
+    if (!eligible.length) continue;
     // Never leave a third/fourth existing value alongside a complete new group.
     if (slots.some(s=>s.group_id===dest.id && s.position>proposed.length && s.content)) continue;
-    rows.push(...proposed.filter(r=>r.old.content!==r.content || r.old.origin!=='automation' || r.old.last_auto_value!==r.content));
+    rows.push(...eligible.filter(r=>r.old.content!==r.content || r.old.origin!=='automation' || r.old.last_auto_value!==r.content));
   }
   if (!rows.length) return stage('No unambiguous eligible changes');
   const token=crypto.randomUUID();
@@ -118,9 +125,15 @@ async function applyWeeklyLunch(env, source, evidence, week) {
      WHERE g.collection_id=?1 AND g.day_of_week IN (1,2,3,4,5) ORDER BY s.position`
   ).bind(week.collection_id).all();
 
-  const safe = s => s && s.manual_locked === 0 && s.origin !== 'manual' && s.price === '' && s.section_link === '' && (
+  const safe = s => s && s.price === '' && s.section_link === '' && (
+    // Arm 1 — Blank slot: always eligible regardless of origin or manual_locked
     ((s.content === '' || s.content === null) && (s.last_auto_value === null || s.last_auto_value === s.content)) ||
-    (s.origin === 'automation' && typeof s.last_auto_value === 'string' && s.content === s.last_auto_value)
+    // Arm 2 — Prior automation value, unchanged and not staff-locked: eligible for update
+    (s.origin === 'automation' && typeof s.last_auto_value === 'string' && s.content === s.last_auto_value && s.manual_locked === 0) ||
+    // Arm 3 — Recurring default (populated by newWeekFromDefaults, not yet touched by staff or automation)
+    // saveCollection() always sets manual_locked=1 for non-empty manually-submitted content, so the
+    // ONLY source of origin='manual',manual_locked=0 in a live week is newWeekFromDefaults().
+    (s.origin === 'manual' && s.manual_locked === 0)
   );
 
   const rows = [];

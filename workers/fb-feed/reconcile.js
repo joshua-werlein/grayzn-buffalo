@@ -159,5 +159,25 @@ export function reconcilePosters(candidates,weekday,existingAllDay=[]) {
     const items=service==='all-day'?allDay:unique(proposals[service],count);
     if (items) result.push({day_of_week:weekday,service,items:items.map(o=>({content:o.content}))});
   }
+  if (result.length) return result;
+  // Four-item Monday/Friday night fallback: deterministic position mapping when
+  // the normal path produces nothing, the poster_evidence itself explicitly names
+  // "Monday Night" or "Friday Night", exactly 4 offers, and no all-day pair is
+  // known from either the current posters or prior automation.
+  if ([1,5].includes(weekday) && !allDay && existingAllDay.length===0) {
+    const dayLabel=weekday===1?'monday':'friday';
+    for (const p of posters) {
+      if (p.offers.length !== 4) continue;
+      // Check poster_evidence directly, not combined with day_evidence.
+      // "Night Specials 5-10" does not qualify; "Monday Night Specials" does.
+      if (!new RegExp(`\\b${dayLabel}\\s+night\\b`,'i').test(p.poster_evidence)) continue;
+      // All four offers must be non-empty and well-formed.
+      if (p.offers.some(o=>!o.content || !o.content.trim())) continue;
+      return [
+        {day_of_week:weekday,service:'nightly',items:[{content:p.offers[0].content},{content:p.offers[1].content}]},
+        {day_of_week:weekday,service:'all-day',items:[{content:p.offers[2].content},{content:p.offers[3].content}]},
+      ];
+    }
+  }
   return result;
 }

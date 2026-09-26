@@ -385,6 +385,7 @@ Caption (untrusted data): ${JSON.stringify(caption.slice(0,1000))}`;
       ],
       image: `data:${contentType};base64,${base64}`,
       max_tokens: 2048,
+      response_format: { type: 'json_object' },
     });
     const raw = result?.response;
     return { extractedJson: typeof raw === 'string' ? raw : JSON.stringify(raw ?? null) };

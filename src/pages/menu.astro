@@ -121,7 +121,7 @@ const lateNightColumns = [lateNight.filter((group) => !lateNightRight.includes(g
                       </button>
                     )}
                       <div class="item-copy">
-                      <strong>{it.name}</strong>
+                      <strong>{g.cat.name === 'Burgers' ? `*${it.name}` : it.name}</strong>
                       {it.description && <span>{it.description}</span>}
                     </div>
                   </li>
@@ -157,7 +157,7 @@ const lateNightColumns = [lateNight.filter((group) => !lateNightRight.includes(g
                         </button>
                       )}
                       <div class="item-copy">
-                      <strong>{it.name}</strong>
+                      <strong>{g.cat.name === 'Burgers' ? `*${it.name}` : it.name}</strong>
                       {it.description && <span>{it.description}</span>}
                       </div>
                     </li>
@@ -170,10 +170,11 @@ const lateNightColumns = [lateNight.filter((group) => !lateNightRight.includes(g
       </div>
     )}
   </div>
+  <p class="consumer-advisory">* Consuming raw or undercooked meat, eggs, and seafood may cause foodborne illness.</p>
   </div>
 </section>
 </Base>
- 
+
 <style>
   .category-subtitle{margin:8px 0;font-family:var(--label);font-size:1.1rem;font-weight:700;color:var(--brick)}
   .category-note{margin:8px 0 14px;line-height:1.45;color:#583e30}
@@ -377,6 +378,7 @@ const lateNightColumns = [lateNight.filter((group) => !lateNightRight.includes(g
 
   .late-note{max-width:720px;margin:0 auto 12px;padding:0 10px 14px;border-bottom:1px solid rgba(41,25,18,.28);color:#583e30;text-align:center;font-family:var(--label);font-size:.95rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
   .empty{max-width:720px;margin:26px auto;text-align:center;color:#583e30}
+  .consumer-advisory{margin:clamp(22px,3vw,36px) 0 0;padding-top:12px;border-top:1px solid rgba(41,25,18,.18);color:#7a5c46;font-size:.78rem;line-height:1.5}
 
   @media (max-width:760px){
     .menu-top{--footer-blend-height:clamp(32px,10vw,44px);padding:18px 10px calc(var(--footer-blend-height) + 14px)}
