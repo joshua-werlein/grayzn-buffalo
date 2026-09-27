@@ -32,8 +32,7 @@ export async function ensureAutomaticWeek(env,{today,weekday,hour}) {
       FROM special_groups WHERE collection_id='defaults' AND ${gate}`,collectionId,token),
     prepare(`INSERT INTO special_slots(group_id,position,content,price,section_link,origin,manual_locked,last_auto_value)
       SELECT ?1||':'||s.group_id,s.position,COALESCE(s.content,''),s.price,s.section_link,
-        CASE WHEN COALESCE(s.content,'')='' AND s.price='' AND s.section_link='' THEN 'legacy' ELSE 'manual' END,
-        CASE WHEN COALESCE(s.content,'')='' AND s.price='' AND s.section_link='' THEN 0 ELSE 1 END,NULL
+        'manual',0,NULL
       FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='defaults' AND ${gate}`,collectionId,token),
   ]);
 }

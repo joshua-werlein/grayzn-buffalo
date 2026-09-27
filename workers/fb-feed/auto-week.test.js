@@ -29,7 +29,7 @@ for(const [now,start] of [
   assert.equal(f.sql('SELECT * FROM weekly_specials WHERE week_start_date=?',start).length,1);
   if (start==='2030-01-07') assert.equal(f.sql("SELECT * FROM weekly_specials WHERE week_start_date='2030-01-14'").length,0);
 });
-test('atomic creation copies exact recurring structure; populated defaults lock and blanks become eligible',async t=>{
+test('atomic creation copies exact recurring structure; all live-week slots are unlocked recurring fallbacks',async t=>{
   const f=fixture(t);f.env.SPECIALS_IMPORT_MODE='GUARDED_AUTO';
   f.sql("UPDATE special_slots SET content=NULL,price='',section_link='' WHERE group_id IN (SELECT id FROM special_groups WHERE collection_id='defaults')");
   const id=f.sql("SELECT id FROM special_groups WHERE collection_id='defaults' ORDER BY id")[0].id;
@@ -44,8 +44,29 @@ test('atomic creation copies exact recurring structure; populated defaults lock 
     for(const s of g.slots) {
       const c=copy.slots.find(c=>c.position===s.position);
       assert.equal(c.content,s.content??'');assert.equal(c.price,s.price);assert.equal(c.section_link,s.section_link);
-      assert.equal(c.manual_locked,s.content?1:0);assert.equal(c.origin,s.content?'manual':'legacy');assert.equal(c.last_auto_value,null);
+      assert.equal(c.manual_locked,0,`${c.group_id} pos ${c.position} should be unlocked`);
+      assert.equal(c.origin,'manual',`${c.group_id} pos ${c.position} origin should be manual`);
+      assert.equal(c.last_auto_value,null);
     }
+  }
+});
+const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+for(const [day,name] of DAYS.entries()) test(`${name} new-week defaults: non-empty recurring specials are unlocked fallbacks`,async t=>{
+  const f=fixture(t);f.env.SPECIALS_IMPORT_MODE='GUARDED_AUTO';
+  await ensureAutomaticWeek(f.env,{today:'2030-01-14',weekday:1,hour:7});
+  const week=f.sql("SELECT id FROM weekly_specials WHERE week_start_date='2030-01-14'")[0];
+  const slots=f.sql(`SELECT ss.*,sg.service FROM special_slots ss JOIN special_groups sg ON sg.id=ss.group_id JOIN special_collections sc ON sc.id=sg.collection_id WHERE sc.weekly_special_id=? AND sg.day_of_week=?`,week.id,day);
+  const defSlots=f.sql(`SELECT ss.*,sg.service FROM special_slots ss JOIN special_groups sg ON sg.id=ss.group_id WHERE sg.collection_id='defaults' AND sg.day_of_week=?`,day);
+  assert.ok(slots.length>0,`${name} should have slots`);
+  for(const s of slots) {
+    assert.equal(s.origin,'manual',`${name} ${s.service} pos ${s.position}`);
+    assert.equal(s.manual_locked,0,`${name} ${s.service} pos ${s.position}`);
+    assert.equal(s.last_auto_value,null);
+  }
+  for(const ds of defSlots) {
+    const s=slots.find(s=>s.service===ds.service && s.position===ds.position);
+    assert.ok(s,`${name} missing ${ds.service} pos ${ds.position}`);
+    assert.equal(s.content,ds.content??'',`${name} ${ds.service} pos ${ds.position} content`);
   }
 });
 test('overlapping week fails closed; existing exact week is never changed',async t=>{
