@@ -9,3 +9,4 @@ dist/
 grayzn-db-backup-*.sql
 items-only.sql
 .claude/worktrees/
+tmp-screenshots/
