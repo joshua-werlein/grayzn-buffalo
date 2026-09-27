@@ -15,65 +15,58 @@ const weeks=weeklySpecials.flatMap(week=>{
   return days.length ? [{...week,days}] : [];
 });
 const mexicanGroups=mexican ? visibleGroups(mexican.groups) : [];
+
+// Show the detailed Mexican Night section Sun–Tue all day and Wed before 2 AM Chicago time.
+// The recurring "Mexican Night" card stays visible all week regardless.
+const mexicanNightVisible = (() => {
+  if (!mexican || mexicanGroups.length === 0) return false;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    weekday: 'short',
+    hour: 'numeric',
+    hour12: false,
+  }).formatToParts(new Date());
+  const dayStr = parts.find(p => p.type === 'weekday')?.value ?? '';
+  const hourStr = parts.find(p => p.type === 'hour')?.value ?? '0';
+  const hour = parseInt(hourStr, 10) % 24;
+  const day = ({Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6} as Record<string,number>)[dayStr] ?? 0;
+  // Visible: Sun(0) Mon(1) Tue(2) all day; Wed(3) before 2 AM
+  return day <= 2 || (day === 3 && hour < 2);
+})();
+
 const recurring=[{name:'Lunch Specials',when:'11 AM – 1:30 PM'},{name:'Nightly Specials',when:'5 – 10 PM'},{name:'Friday Fish',when:'Fridays · 5 – 10 PM'},{name:'Happy Hour',when:'Mon–Fri · 5 – 6:30 PM'},{name:'Mexican Night',when:mexican?.schedule || 'Tuesdays · 5 – 10 PM'}];
 ---
 <Base title="Specials — Grayz'n Buffalo Bar & Grill, Mondovi WI" description="This week's and upcoming specials at Grayz'n Buffalo Bar & Grill in Mondovi, WI.">
-<section class="specials-page section-parchment">
-  <div class="specials-sheet">
-  <svg class="corner-flourish corner-flourish--top-left" viewBox="0 0 72 72" aria-hidden="true"><path d="M6 61c17-1 22-11 20-23-2-11 3-22 15-28 10-5 21-1 23 8 2 7-3 13-9 13-5 0-8-4-7-8 1-4 5-6 9-3"/><path d="M11 53c8-3 11-10 10-18M31 14c4 5 9 7 15 7"/></svg>
-  <svg class="corner-flourish corner-flourish--top-right" viewBox="0 0 72 72" aria-hidden="true"><path d="M6 61c17-1 22-11 20-23-2-11 3-22 15-28 10-5 21-1 23 8 2 7-3 13-9 13-5 0-8-4-7-8 1-4 5-6 9-3"/><path d="M11 53c8-3 11-10 10-18M31 14c4 5 9 7 15 7"/></svg>
-  <svg class="corner-flourish corner-flourish--bottom-left" viewBox="0 0 72 72" aria-hidden="true"><path d="M6 61c17-1 22-11 20-23-2-11 3-22 15-28 10-5 21-1 23 8 2 7-3 13-9 13-5 0-8-4-7-8 1-4 5-6 9-3"/><path d="M11 53c8-3 11-10 10-18M31 14c4 5 9 7 15 7"/></svg>
-  <svg class="corner-flourish corner-flourish--bottom-right" viewBox="0 0 72 72" aria-hidden="true"><path d="M6 61c17-1 22-11 20-23-2-11 3-22 15-28 10-5 21-1 23 8 2 7-3 13-9 13-5 0-8-4-7-8 1-4 5-6 9-3"/><path d="M11 53c8-3 11-10 10-18M31 14c4 5 9 7 15 7"/></svg>
+<section class="specials-page">
   <div class="section-head interior-heading"><span class="kicker">Fresh from the kitchen</span><h1>Weekly Specials</h1><span class="vintage-rule" aria-hidden="true"/></div>
   {weeks.length ? weeks.map((week,index)=>{
     const range=formatWeeklyDateRange(week.week_start_date,week.week_end_date);
     const current=week.week_start_date.localeCompare(today)!==1 && week.week_end_date.localeCompare(today)!==-1;
     const label=current ? 'This Week' : index===0 || (index===1 && weeks[0].week_start_date.localeCompare(today)!==1) ? 'Next Week' : '';
-    return <section class="week-block" aria-labelledby={`week-heading-${week.id}`}><h2 class="week-block__heading" id={`week-heading-${week.id}`}>{label ? `${label} · ${range}` : range}</h2><ul class="week" aria-label={`Weekly specials, ${range}`}>{week.days.map(({day,date,groups})=><li class:list={['day-card',{'is-today':date===today}]}><div class="day-header"><span class="day-name">{DAY_NAMES[day]}</span>{date===today && <span class="today-badge">Today</span>}</div><div class="normalized-services">{groups.map(group=><SpecialGroup group={group} mexicanAvailable={mexicanGroups.length>0}/>)}</div></li>)}</ul></section>;
+    return <section class="week-block" aria-labelledby={`week-heading-${week.id}`}><h2 class="week-block__heading" id={`week-heading-${week.id}`}>{label ? `${label} · ${range}` : range}</h2><ul class="week" aria-label={`Weekly specials, ${range}`}>{week.days.map(({day,date,groups})=><li class:list={['day-card',{'is-today':date===today}]}><div class="day-header"><span class="day-name">{DAY_NAMES[day]}</span>{date===today && <span class="today-badge">Today</span>}</div><div class="normalized-services">{groups.map(group=><SpecialGroup group={group} mexicanAvailable={mexicanNightVisible}/>)}</div></li>)}</ul></section>;
   }) : <div class="weekly-notice" role="status"><strong>No current weekly specials are posted.</strong><p>Please check Facebook or call us for the current specials.</p></div>}
-  <div id="mexican-night" class="section-anchor"></div>
-  {mexican && mexicanGroups.length>0 && <section class="mexican-menu" aria-labelledby="mexican-heading"><div class="section-head"><h2 id="mexican-heading">{mexican.title}</h2>{mexican.schedule && <p>{mexican.schedule}</p>}</div><MexicanNightMenu groups={mexicanGroups}/></section>}
+  {mexicanNightVisible && <div id="mexican-night" class="section-anchor"></div>}
+  {mexicanNightVisible && <section class="mexican-menu" aria-labelledby="mexican-heading"><div class="section-head"><h2 id="mexican-heading">{mexican!.title}</h2>{mexican!.schedule && <p>{mexican!.schedule}</p>}</div><MexicanNightMenu groups={mexicanGroups}/></section>}
   <div class="recurring-head"><span class="kicker">Every week</span><h3 class="recurring-title">On the regular</h3></div>
-  <ul class="recurring" aria-label="Recurring specials">{recurring.map(item=><li class="rec-card"><span class="rec-name">{item.name==='Mexican Night' && mexicanGroups.length>0 ? <a href="#mexican-night">{item.name}</a> : item.name}</span><span class="rec-when">{item.when}</span></li>)}</ul>
+  <ul class="recurring" aria-label="Recurring specials">{recurring.map(item=><li class="rec-card"><span class="rec-name">{item.name==='Mexican Night' && mexicanNightVisible ? <a href="#mexican-night">{item.name}</a> : item.name}</span><span class="rec-when">{item.when}</span></li>)}</ul>
   {deliveryDisplay!=='hidden' && <div class:list={['delivery-block',{paused:deliveryDisplay==='unavailable'}]}>{deliveryDisplay==='unavailable' ? <p><strong>Delivery is unavailable at this time</strong> — call us for details.</p> : <p><strong>Delivery</strong> — Monday–Friday, 11 AM – 1:30 PM, within Mondovi city limits.</p>}</div>}
   <div class="specials-cta"><a class="btn btn-primary" href="tel:+17159264431">Call (715) 926-4431</a><a class="btn btn-ghost" href="https://www.facebook.com/grayznbuffalo/" target="_blank" rel="noopener">See it on Facebook</a></div>
-  </div>
 </section>
 </Base>
 <style>
-  /* ── Outer section ─────────────────────────────────────────────────────── */
+  /* ── Page background: matches menu-top exactly ─────────────────────────── */
   .specials-page{
+    --footer-blend-height:clamp(40px,3vw,56px);
     position:relative;color:var(--text);min-height:70vh;
-    padding:clamp(28px,5vw,56px) clamp(14px,4vw,48px) clamp(38px,6vw,72px);
+    padding:clamp(28px,5vw,68px) clamp(14px,4vw,56px) calc(var(--footer-blend-height) + clamp(12px,1.5vw,20px));
+    background-color:var(--surface-parchment);
+    background-image:linear-gradient(to bottom,rgba(91,50,24,.08) 0,rgba(91,50,24,.08) calc(100% - var(--footer-blend-height)),rgba(91,50,24,0) 100%),url('/parchment-texture.webp');
+    background-position:center top,left bottom;
+    background-size:auto,512px 512px;
+    background-repeat:no-repeat,repeat;
   }
 
-  /* ── Sheet container (matches menu-sheet pattern) ──────────────────────── */
-  .specials-sheet{
-    position:relative;isolation:isolate;
-    width:min(100%,1360px);margin:0 auto;
-    padding:clamp(28px,4vw,56px) clamp(20px,4vw,64px) clamp(38px,5vw,64px);
-    color:#291912;
-    background-color:#f8ecd3;
-    background-image:radial-gradient(rgba(74,40,19,.055) .65px,transparent .8px),linear-gradient(105deg,rgba(143,91,37,.055),transparent 30%,rgba(143,91,37,.035) 78%,transparent);
-    background-size:5px 5px,100% 100%;
-    border:7px double #291912;
-    box-shadow:0 12px 30px rgba(53,29,14,.24);
-  }
-  .specials-sheet > :not(.corner-flourish){position:relative;z-index:1}
-
-  /* ── Corner flourishes (same as menu.astro) ────────────────────────────── */
-  .corner-flourish{
-    position:absolute;z-index:0;width:clamp(48px,5vw,70px);height:auto;
-    color:var(--brick);fill:none;stroke:currentColor;
-    stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;
-    opacity:.68;pointer-events:none;
-  }
-  .corner-flourish--top-left{top:11px;left:11px}
-  .corner-flourish--top-right{top:11px;right:11px;transform:scaleX(-1)}
-  .corner-flourish--bottom-left{bottom:11px;left:11px;transform:scaleY(-1)}
-  .corner-flourish--bottom-right{right:11px;bottom:11px;transform:scale(-1)}
-
-  /* ── Interior heading (matches menu.astro interior-heading) ────────────── */
+  /* ── Interior heading ──────────────────────────────────────────────────── */
   .interior-heading{margin-bottom:clamp(18px,3vw,30px)}
   .interior-heading .kicker{display:block;color:var(--brick);font-size:.82rem}
   .interior-heading h1{
@@ -87,20 +80,20 @@ const recurring=[{name:'Lunch Specials',when:'11 AM – 1:30 PM'},{name:'Nightly
   }
 
   /* ── Week blocks ───────────────────────────────────────────────────────── */
-  .week-block{margin:0 auto 28px;padding:0}
+  .week-block{max-width:1320px;margin:0 auto 28px;padding:0}
   .week-block:last-of-type{margin-bottom:0}
   .week-block__heading{
     margin:0 0 14px;
     font:400 clamp(1.15rem,2.4vw,1.5rem) var(--display);
     color:var(--denim);text-align:center;
   }
-  .week{list-style:none;margin:0 auto;padding:0;max-width:100%;display:grid;grid-template-columns:1fr;gap:10px}
+  .week{list-style:none;margin:0 auto;padding:0;display:grid;grid-template-columns:1fr;gap:10px}
 
   /* ── Day cards ─────────────────────────────────────────────────────────── */
   .day-card{
     position:relative;display:flex;flex-direction:column;gap:8px;
-    border:1px solid rgba(41,25,18,.2);border-left:7px solid var(--ochre);
-    background:var(--surface-parchment);
+    border:1px solid rgba(41,25,18,.18);border-left:7px solid var(--ochre);
+    background:#f8ecd3;
     box-shadow:var(--panel-shadow);
     padding:8px 14px 10px;
   }
@@ -132,9 +125,9 @@ const recurring=[{name:'Lunch Specials',when:'11 AM – 1:30 PM'},{name:'Nightly
   }
   .weekly-notice p{margin:6px 0 0}
 
-  /* ── Mexican night section ─────────────────────────────────────────────── */
+  /* ── Mexican night detail section ──────────────────────────────────────── */
   .section-anchor{scroll-margin-top:100px}
-  .mexican-menu{max-width:100%;margin:32px auto;padding:20px;border:2px solid var(--ochre);background:rgba(178,138,79,.06)}
+  .mexican-menu{max-width:1320px;margin:32px auto;padding:20px;border:2px solid var(--ochre);background:rgba(178,138,79,.06)}
   .mexican-menu .section-head h2{color:#291912}
 
   /* ── Recurring ─────────────────────────────────────────────────────────── */
@@ -147,7 +140,7 @@ const recurring=[{name:'Lunch Specials',when:'11 AM – 1:30 PM'},{name:'Nightly
     display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;
   }
   .rec-card{
-    border:1px solid rgba(41,25,18,.22);background:var(--surface-parchment);
+    border:1px solid rgba(41,25,18,.22);background:#f8ecd3;
     padding:14px;text-align:center;display:flex;flex-direction:column;gap:5px;
   }
   .rec-name{font:400 1.15rem var(--display);color:#291912}
