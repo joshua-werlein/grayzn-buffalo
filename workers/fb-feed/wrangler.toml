@@ -14,7 +14,7 @@ crons = ["*/30 * * * *"]
 # OFF = disabled; DRY_RUN = fetch/classify/extract/stage only, no auto-publish;
 # GUARDED_AUTO = today-only image evidence, same-day reconciliation, safe slots.
 SPECIALS_IMPORT_MODE = "GUARDED_AUTO"
-SPECIALS_AI_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct"
+SPECIALS_AI_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 # Maximum Workers AI vision calls per Chicago calendar day.
 SPECIALS_AI_DAILY_LIMIT = "50"
 

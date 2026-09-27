@@ -7,9 +7,11 @@ import {PARSER_VERSION} from './classify.js';
 export async function reconcileToday(env,{sourceIds,today,weekday}) {
   const stage=reason=>({written:false,reason});
   if (!sourceIds.length) return stage('No current sources');
-  const {results:sources}=await env.DB.prepare(`SELECT * FROM special_imports WHERE id IN (SELECT value FROM json_each(?1))
+  const {results:storedSources}=await env.DB.prepare(`SELECT * FROM special_imports WHERE id IN (SELECT value FROM json_each(?1))
     AND parser_version=?2 AND processing_status='staged' AND validation_result='ok'
     AND image_r2_key IS NOT NULL AND review_status IN ('pending','accepted')`).bind(JSON.stringify(sourceIds),PARSER_VERSION).all();
+  const dateOf = value => new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
+  const sources=storedSources.filter(s=>Number.isFinite(Date.parse(s.fb_created_time)) && dateOf(s.fb_created_time)===today);
   if (!sources.length) return stage('No extracted evidence');
   const {results:weeks}=await env.DB.prepare(`SELECT w.id,c.id collection_id,c.revision FROM weekly_specials w
     LEFT JOIN special_collections c ON c.weekly_special_id=w.id AND c.kind='week'
@@ -100,7 +102,7 @@ async function resolveWeeklyLunchTargetWeek(env, evidence, fbCreatedTime, today)
     if (!baseYear) return null;
     for (const year of [baseYear, baseYear + 1]) {
       const weekStart = `${year}-${startMonth}-${startDay}`;
-      const {results} = await env.DB.prepare(`SELECT w.id,c.id collection_id,c.revision FROM weekly_specials w
+      const {results} = await env.DB.prepare(`SELECT w.id,w.week_start_date,c.id collection_id,c.revision FROM weekly_specials w
         LEFT JOIN special_collections c ON c.weekly_special_id=w.id AND c.kind='week'
         WHERE w.week_start_date=?1`).bind(weekStart).all();
       if (results.length === 1 && results[0].collection_id != null) return results[0];
@@ -108,14 +110,14 @@ async function resolveWeeklyLunchTargetWeek(env, evidence, fbCreatedTime, today)
     return null;
   }
   // Fall back to current week
-  const {results} = await env.DB.prepare(`SELECT w.id,c.id collection_id,c.revision FROM weekly_specials w
+  const {results} = await env.DB.prepare(`SELECT w.id,w.week_start_date,c.id collection_id,c.revision FROM weekly_specials w
     LEFT JOIN special_collections c ON c.weekly_special_id=w.id AND c.kind='week'
     WHERE w.week_start_date<=?1 AND w.week_end_date>=?1`).bind(today).all();
   if (results.length !== 1 || !results[0].collection_id) return null;
   return results[0];
 }
 
-async function applyWeeklyLunch(env, source, evidence, week) {
+async function applyWeeklyLunch(env, source, evidence, week, today) {
   const stage = reason => ({written: false, reason});
   const {results: groups} = await env.DB.prepare(
     'SELECT * FROM special_groups WHERE collection_id=?1 AND day_of_week IN (1,2,3,4,5)'
@@ -138,6 +140,9 @@ async function applyWeeklyLunch(env, source, evidence, week) {
 
   const rows = [];
   for (const entry of evidence.entries) {
+    const date = new Date(`${week.week_start_date}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate()+entry.day_of_week-1);
+    if (date.toISOString().slice(0,10)<today) continue;
     const lunchGroups = groups.filter(g => g.service === 'lunch' && g.day_of_week === entry.day_of_week && g.enabled === 1);
     if (lunchGroups.length !== 1) continue;
     const dest = lunchGroups[0];
@@ -204,7 +209,7 @@ export async function reconcileWeeklyLunch(env, today) {
     catch { perSource.push({written: false, reason: 'Invalid evidence'}); continue; }
     const week = await resolveWeeklyLunchTargetWeek(env, evidence, source.fb_created_time, today);
     if (!week) { perSource.push({written: false, reason: 'No matching saved week'}); continue; }
-    const result = await applyWeeklyLunch(env, source, evidence, week);
+    const result = await applyWeeklyLunch(env, source, evidence, week, today);
     perSource.push(result);
   }
   return perSource;

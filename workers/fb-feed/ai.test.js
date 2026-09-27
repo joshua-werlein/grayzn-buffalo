@@ -1,17 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {harness} from './test-fixture.js';
+import {EXTRACTION_JSON_SCHEMA} from './extraction.js';
 
 test('vision binding receives top-level base64 image and persists extraction response', async t => {
   const f = harness(t);
   const raw = JSON.stringify(f.state.candidate);
   t.mock.method(f.env.AI, 'run', async (model, params) => {
-    assert.equal(model, '@cf/meta/llama-3.2-11b-vision-instruct');
-    assert.equal(params.image, 'data:image/jpeg;base64,/9j/');
-    assert.equal(params.max_tokens, 2048);
+    assert.equal(model, '@cf/google/gemma-4-26b-a4b-it');
+    assert.equal(params.messages[1].content[1].image_url.url, 'data:image/jpeg;base64,/9j/');
+    assert.equal(params.max_completion_tokens, 4096);
     assert.deepEqual(params.messages.map(m => m.role), ['system', 'user']);
-    assert.ok(params.messages.every(m => typeof m.content === 'string'));
-    assert.match(params.messages[1].content, /Extract ALL offers once each/);
+    assert.equal(typeof params.messages[0].content,'string');
+    assert.match(params.messages[1].content[0].text, /Extract ALL offers once each/);
     return {response: raw};
   });
   await f.run();
@@ -20,10 +21,10 @@ test('vision binding receives top-level base64 image and persists extraction res
   assert.equal(f.imports()[0].last_error, null);
 });
 
-test('AI call includes response_format json_object to prevent prose responses', async t => {
+test('AI call includes response_format json_schema with the vision model contract', async t => {
   const f = harness(t);
   t.mock.method(f.env.AI, 'run', async (_model, params) => {
-    assert.deepEqual(params.response_format, { type: 'json_object' });
+    assert.deepEqual(params.response_format, {type:'json_schema',json_schema:{name:'specials_extraction',schema:EXTRACTION_JSON_SCHEMA}});
     return { response: JSON.stringify(f.state.candidate) };
   });
   await f.run();

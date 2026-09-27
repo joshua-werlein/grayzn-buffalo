@@ -1,0 +1,79 @@
+{
+  "status": 200,
+  "result": {
+    "result": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "{\"day_evidence\": \"SUNDAY\", \"day_of_week\": 0, \"offers\": [{\"content\": \"16 inch 3-Topping Pizza & 12 Wings ONLY $30\", \"evidence\": \"16 inch 3-Topping Pizza & 12 Wings ONLY $30\", \"service_time\": \"\"}, {\"content\": \"2) Crispy Hawaiian - Crispy chicken with ham, swiss cheese and pineapple Plus Side Salad, Chili or Coleslaw ONLY $10.25\", \"evidence\": \"2) Crispy Hawaiian - Crispy chicken with ham, swiss cheese and pineapple Plus Side Salad, Chili or Coleslaw ONLY $10.25\", \"service_time\": \"\"}, {\"content\": \"3) Chicken Salad Sandwich with cup of Chili or Coleslaw ONLY $7.25\", \"evidence\": \"3) Chicken Salad Sandwich with cup of Chili or Coleslaw ONLY $7.25\", \"service_time\": \"\"}], \"poster_evidence\": \"SUNDAY SPECIALS\"}",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 1790522479,
+      "id": "f47db4cc82bc4f80bb5b45b32fc5cf62",
+      "model": "@cf/google/gemma-4-26b-a4b-it-external",
+      "object": "chat.completion",
+      "usage": {
+        "prompt_tokens": 1265,
+        "completion_tokens": 223,
+        "total_tokens": 1488,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "neurons": 17.581817626953125
+      }
+    },
+    "success": true,
+    "errors": [],
+    "messages": []
+  },
+  "validation": {
+    "day_of_week": 0,
+    "day_evidence": "SUNDAY",
+    "poster_evidence": "SUNDAY SPECIALS",
+    "offers": [
+      {
+        "content": "16 inch 3-Topping Pizza & 12 Wings ONLY $30",
+        "service_time": "",
+        "evidence": "16 inch 3-Topping Pizza & 12 Wings ONLY $30"
+      },
+      {
+        "content": "2) Crispy Hawaiian - Crispy chicken with ham, swiss cheese and pineapple Plus Side Salad, Chili or Coleslaw ONLY $10.25",
+        "service_time": "",
+        "evidence": "2) Crispy Hawaiian - Crispy chicken with ham, swiss cheese and pineapple Plus Side Salad, Chili or Coleslaw ONLY $10.25"
+      },
+      {
+        "content": "3) Chicken Salad Sandwich with cup of Chili or Coleslaw ONLY $7.25",
+        "service_time": "",
+        "evidence": "3) Chicken Salad Sandwich with cup of Chili or Coleslaw ONLY $7.25"
+      }
+    ]
+  },
+  "mapped": [
+    {
+      "day_of_week": 0,
+      "service": "lunch",
+      "items": [
+        {
+          "content": "16 inch 3-Topping Pizza & 12 Wings ONLY $30"
+        }
+      ]
+    },
+    {
+      "day_of_week": 0,
+      "service": "all-day",
+      "items": [
+        {
+          "content": "2) Crispy Hawaiian - Crispy chicken with ham, swiss cheese and pineapple Plus Side Salad, Chili or Coleslaw ONLY $10.25"
+        },
+        {
+          "content": "3) Chicken Salad Sandwich with cup of Chili or Coleslaw ONLY $7.25"
+        }
+      ]
+    }
+  ]
+}

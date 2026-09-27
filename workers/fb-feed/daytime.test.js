@@ -110,7 +110,7 @@ test('Thursday evening price conflict never replaces established All Day or crea
   await f.run();assert.deepEqual(f.slots(4,'all-day'),before);assert.ok(f.slots(4,'nightly').every(s=>s.content===''));
 });
 test('parser 12 reprocesses a Thursday source claimed by parser 11 without deleting history',async t=>{
-  assert.equal(PARSER_VERSION,12);
+  assert.equal(PARSER_VERSION,13);
   const f=makeHarness(t);const raw=f.state.posts[0];
   const digest=(s,n)=>createHash('sha256').update(s).digest('hex').slice(0,n*2);
   const captionHash=digest(raw.message,8), version=`updated:${raw.updated_time}`;
@@ -119,7 +119,7 @@ test('parser 12 reprocesses a Thursday source claimed by parser 11 without delet
   f.sql(`INSERT INTO special_imports(id,fb_post_id,fb_created_time,caption_hash,image_source_version,parser_version,model_id,processing_status,fetched_at)
     VALUES(?,?,?,?,?,10,?,'staged',?)`,oldId,raw.id,raw.created_time,captionHash,version,model,raw.created_time);
   await f.run();assert.equal(f.state.aiCalls,1);assert.equal(f.slots(4,'lunch')[0].content,dishes[0]);
-  assert.deepEqual(f.imports().map(r=>r.parser_version),[10,12]);
+  assert.deepEqual(f.imports().map(r=>r.parser_version),[10,13]);
   assert.equal(f.imports()[0].id,oldId);await f.run();assert.equal(f.state.aiCalls,1);
 });
 

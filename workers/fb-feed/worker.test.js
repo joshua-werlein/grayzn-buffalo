@@ -209,6 +209,8 @@ test('malformed Graph JSON or a missing data array cannot replace the last good 
 const IMPORT_FIELDS = ['id','fb_post_id','fb_created_time','fb_updated_time','caption','permalink_url',
   'caption_hash','image_source_version','parser_version','model_id','target_kind','target_day','target_service','target_collection_id','classification_reason','fetched_at'];
 function makeFakeDb(state) {
+  const countCalls = () => state.events.filter(e=>e.event_type==='extract').length +
+    state.imports.filter(r=>r.processed_at!==null && !state.events.some(e=>e.import_id===r.id && e.event_type==='extract')).length;
   return {
     async batch() { return []; },
     prepare(sql) { return {bind(...args) {return {
@@ -219,12 +221,17 @@ function makeFakeDb(state) {
           state.imports.push({...Object.fromEntries(IMPORT_FIELDS.map((f,i)=>[f,args[i]])),processing_status:'processing',processed_at:null});
           return {meta:{changes:1}};
         }
+        if (/SELECT \?3,'extract'/.test(sql)) {
+          if (countCalls()>=args[5]) return {meta:{changes:0}};
+          state.events.push({import_id:args[2],event_type:'extract',detail:args[3],occurred_at:args[4]});
+          return {meta:{changes:1}};
+        }
         if (/SET processed_at=/.test(sql)) state.imports.find(r=>r.id===args[1]).processed_at=args[0];
         else if (/SET image_r2_key=/.test(sql)) Object.assign(state.imports.find(r=>r.id===args[9]),Object.fromEntries(['image_r2_key','image_hash','extracted_json','candidate_json','validation_result','validation_reason','processing_status','processed_at','last_error'].map((f,i)=>[f,args[i]])));
         else if (/INSERT INTO special_import_events/.test(sql)) state.events.push({import_id:args[0],event_type:args[1],detail:args[2]});
         return {meta:{changes:1}};
       },
-      async all() {return {results:/count\(\*\)/.test(sql)?[{n:state.imports.filter(r=>r.processed_at!==null).length}]:[]};},
+      async all() {return {results:/count\(\*\)/.test(sql)?[{n:countCalls()}]:[]};},
     }}};},
   };
 }
@@ -304,7 +311,7 @@ function importFixture(t, { mode = 'DRY_RUN', aiResponse = '[]', graphPosts = nu
   const env = {
     FB_PAGE_ID: 'test', FB_SYSTEM_TOKEN: 'test',
     SPECIALS_IMPORT_MODE: mode,
-    SPECIALS_AI_MODEL: '@cf/meta/llama-3.2-11b-vision-instruct',
+    SPECIALS_AI_MODEL: '@cf/google/gemma-4-26b-a4b-it',
     SPECIALS_AI_DAILY_LIMIT: String(aiLimit),
     DB, AI,
     FB_KV: {
@@ -520,7 +527,7 @@ test('import contract combines prices and removes Monday/Friday All Day repetiti
     const candidate=JSON.parse(f.state.imports[0].candidate_json);
     assert.deepEqual(candidate.map(g=>g.items.length),[1,2,2]);
     assert.deepEqual(candidate[0].items[0],{content:'Lunch $9.75'});
-    assert.match(f.state.aiCalls[0].params.messages[1].content,/Extract ALL offers once each/);
+    assert.match(f.state.aiCalls[0].params.messages[1].content[0].text,/Extract ALL offers once each/);
   }
 });
 
