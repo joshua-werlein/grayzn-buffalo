@@ -16,13 +16,16 @@ function serviceOf(text) {
   if (/\ball[ -]+day\b/.test(t)) services.push('all-day');
   return services.length === 1 ? services[0] : services.length ? 'conflict' : 'unknown';
 }
+export function normalizeOfferContent(content) {
+  return content.replace(/\b(?:only|special)!?\s+(?=\$\.?\d)/gi, '').trim();
+}
 export function validateEvidence(value) {
   const str = (v,n) => typeof v === 'string' && v.length <= n;
   if (!value || Array.isArray(value) || !Number.isInteger(value.day_of_week) || value.day_of_week < -1 || value.day_of_week > 6 ||
       !str(value.day_evidence,160) || !str(value.poster_evidence,160) || !Array.isArray(value.offers) || value.offers.length > 12) throw Error('Invalid poster evidence');
   const offers = value.offers.map(o => {
     if (!o || !str(o.content,150) || !o.content.trim() || !str(o.service_time,80) || !str(o.evidence,160)) throw Error('Invalid offer evidence');
-    return {content:o.content,service_time:o.service_time,evidence:o.evidence};
+    return {content:normalizeOfferContent(o.content),service_time:o.service_time,evidence:o.evidence};
   });
   if (new Set(offers.map(o=>offerKey(o.content))).size !== offers.length) throw Error('Duplicate extracted offer');
   return {day_of_week:value.day_of_week,day_evidence:value.day_evidence,poster_evidence:value.poster_evidence,offers};
