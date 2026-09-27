@@ -14,7 +14,7 @@ export type SpecialGroup = {
 };
 export type SpecialCollection = {
   id: string; kind: 'week' | 'defaults' | 'section'; weekly_special_id: number | null;
-  title: string; schedule: string; revision: number; groups: SpecialGroup[];
+  title: string; schedule: string; revision: number; updated_at?: string | null; groups: SpecialGroup[];
 };
 export type WeeklySpecial = {
   id: number; week_start_date: string; week_end_date: string; created_at: string; updated_at: string;
@@ -64,7 +64,7 @@ export function newWeekFromDefaults(defaults: SpecialCollection): SpecialCollect
 // These readers intentionally have no legacy fallback. A missing migration is
 // an unavailable editor, never permission to write to a second content model.
 export async function readCollection(env: any, id: string): Promise<SpecialCollection> {
-  const row = await env.DB.prepare('SELECT id,kind,weekly_special_id,title,schedule,revision FROM special_collections WHERE id=?1 AND EXISTS(SELECT 1 FROM special_migration_checks WHERE version=15 AND mismatches=0)').bind(id).first();
+  const row = await env.DB.prepare('SELECT id,kind,weekly_special_id,title,schedule,revision,updated_at FROM special_collections WHERE id=?1 AND EXISTS(SELECT 1 FROM special_migration_checks WHERE version=15 AND mismatches=0)').bind(id).first();
   if (!row) throw new Error('Specials are unavailable. The normalized schema must be installed before using this editor.');
   const { results: groups } = await env.DB.prepare('SELECT id,day_of_week,service,label,service_time,sort,enabled FROM special_groups WHERE collection_id=?1 ORDER BY day_of_week,sort,id').bind(id).all();
   const { results: slots } = await env.DB.prepare('SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id=?1 ORDER BY s.position').bind(id).all();
@@ -451,7 +451,8 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
     writes.push(prepare("INSERT INTO special_collections(id,kind,weekly_special_id,revision,mutation_token) SELECT ?1,'week',?2,1,?3 WHERE EXISTS(SELECT 1 FROM weekly_specials WHERE id=?2)",collectionId,weekId,token));
   } else {
     const overlap = next.kind==='week' ? ' AND NOT EXISTS(SELECT 1 FROM weekly_specials WHERE id<>?6 AND week_start_date<=?8 AND week_end_date>=?7)' : '';
-    writes.push(prepare('UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3 WHERE id=?4 AND revision=?5'+overlap,
+    const sectionFields = next.kind === 'section' ? ',updated_at=CURRENT_TIMESTAMP' : '';
+    writes.push(prepare('UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3'+sectionFields+' WHERE id=?4 AND revision=?5'+overlap,
       ...[token,next.title,next.schedule,collectionId,next.revision,...(next.kind==='week' ? [weekId,dates!.start,dates!.end] : [])]));
   }
   const gate = 'EXISTS(SELECT 1 FROM special_collections WHERE id=?1 AND mutation_token=?2)';

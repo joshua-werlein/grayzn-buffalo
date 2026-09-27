@@ -5,6 +5,7 @@ import MexicanNightMenu from '../components/MexicanNightMenu.astro';
 import { getSetting } from '../lib/db';
 import { getWeeklySpecialsForDateRange, getMexicanNight, visibleGroups, DAY_NAMES } from '../lib/specials-store';
 import { chicagoCalendarDate, formatWeeklyDateRange } from '../lib/weekly-specials';
+import { mexicanNightDetailVisible } from '../lib/mexican-night-visibility.js';
 const env = (Astro.locals as any).runtime?.env ?? {};
 const today=chicagoCalendarDate();
 const [weeklySpecials,deliveryDisplay,mexican]=await Promise.all([getWeeklySpecialsForDateRange(env,today,'9999-12-31'),getSetting(env,'delivery_display','available'),getMexicanNight(env)]);
@@ -16,23 +17,11 @@ const weeks=weeklySpecials.flatMap(week=>{
 });
 const mexicanGroups=mexican ? visibleGroups(mexican.groups) : [];
 
-// Show the detailed Mexican Night section Sun–Tue all day and Wed before 2 AM Chicago time.
+// Show the detailed Mexican Night section only when this week's menu has been
+// published (updated_at falls in the current Sun–Sat week) and it is still
+// within the visible window: Sun–Tue all day, Wed before 2 AM Chicago time.
 // The recurring "Mexican Night" card stays visible all week regardless.
-const mexicanNightVisible = (() => {
-  if (!mexican || mexicanGroups.length === 0) return false;
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Chicago',
-    weekday: 'short',
-    hour: 'numeric',
-    hour12: false,
-  }).formatToParts(new Date());
-  const dayStr = parts.find(p => p.type === 'weekday')?.value ?? '';
-  const hourStr = parts.find(p => p.type === 'hour')?.value ?? '0';
-  const hour = parseInt(hourStr, 10) % 24;
-  const day = ({Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6} as Record<string,number>)[dayStr] ?? 0;
-  // Visible: Sun(0) Mon(1) Tue(2) all day; Wed(3) before 2 AM
-  return day <= 2 || (day === 3 && hour < 2);
-})();
+const mexicanNightVisible = mexicanGroups.length > 0 && mexicanNightDetailVisible(mexican?.updated_at);
 
 const recurring=[{name:'Lunch Specials',when:'11 AM – 1:30 PM'},{name:'Nightly Specials',when:'5 – 10 PM'},{name:'Friday Fish',when:'Fridays · 5 – 10 PM'},{name:'Happy Hour',when:'Mon–Fri · 5 – 6:30 PM'},{name:'Mexican Night',when:mexican?.schedule || 'Tuesdays · 5 – 10 PM'}];
 ---

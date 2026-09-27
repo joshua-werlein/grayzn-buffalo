@@ -233,7 +233,7 @@ async function applyMexicanNight(env, source, evidence) {
   );
   const detail = `GUARDED_MEXICAN_NIGHT: fb_created=${source.fb_created_time}; ${evidence.groups.length} group(s); ${newSlotRows.length} item(s)`;
   const results = await env.DB.batch([
-    prepare(`UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3
+    prepare(`UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3,updated_at=CURRENT_TIMESTAMP
       WHERE id='mexican-night' AND kind='section' AND revision=?4
       AND EXISTS(SELECT 1 FROM special_migration_checks WHERE version=15 AND mismatches=0)
       AND (SELECT count(*) FROM special_groups WHERE collection_id='mexican-night')=?5
