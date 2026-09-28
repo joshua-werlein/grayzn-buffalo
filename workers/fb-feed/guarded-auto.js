@@ -239,6 +239,14 @@ async function applyMexicanNight(env, source, evidence, weekStart) {
     g.items.map((item, j) => [`mn:${sourcePrefix}:${i}`, j + 1, composeMexicanItem(item.title, item.description)])
   );
   const detail = `GUARDED_MEXICAN_NIGHT: fb_created=${source.fb_created_time}; ${evidence.groups.length} group(s); ${newSlotRows.length} item(s)`;
+  // Accessory groups (Substitutions, Add-ons) are standing rules, not weekly menu items.
+  // Preserve them when Facebook omits them; let Facebook replace them when explicitly provided.
+  const normalizeLabel = s => s.normalize('NFKC').replace(/[‐‑–—]/g, '-');
+  const isAccessory = label => /\b(?:add[\s-]*ons?|substitutions?|substitutes?)\b/i.test(normalizeLabel(label));
+  const evidenceNormLabels = new Set(evidence.groups.map(g => normalizeLabel(g.label).toLowerCase()));
+  const accessoryGroupIds = currentGroups
+    .filter(g => isAccessory(g.label) && !evidenceNormLabels.has(normalizeLabel(g.label).toLowerCase()))
+    .map(g => g.id);
   const results = await env.DB.batch([
     prepare(`UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3,updated_at=?13,
       section_week_start=?12,section_service_date=date(?12,'+1 day'),section_source='facebook'
@@ -267,7 +275,7 @@ async function applyMexicanNight(env, source, evidence, weekStart) {
       currentGroups.length, JSON.stringify(currentGroups),
       currentSlots.length, JSON.stringify(currentSlots),
       source.id, source.candidate_json, PARSER_VERSION, weekStart, new Date(Date.now()).toISOString()),
-    prepare(`DELETE FROM special_groups WHERE collection_id='mexican-night' AND ${gate}`, token),
+    prepare(`DELETE FROM special_groups WHERE collection_id='mexican-night' AND id NOT IN (SELECT value FROM json_each(?2)) AND ${gate}`, token, JSON.stringify(accessoryGroupIds)),
     prepare(`INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled)
       SELECT json_extract(value,'$[0]'),'mexican-night',-1,'custom',json_extract(value,'$[1]'),'',json_extract(value,'$[2]'),1
       FROM json_each(?2) WHERE ${gate}`, token, JSON.stringify(newGroupRows)),

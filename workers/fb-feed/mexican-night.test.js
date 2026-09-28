@@ -225,16 +225,22 @@ test('clear Mexican Night poster replaces all groups and items', async t => {
   assert.equal(f.imports()[0].validation_result, 'ok');
 });
 
-test('second poster removes items from the first poster and replaces with new menu', async t => {
+test('second poster replaces food groups; accessory groups are preserved', async t => {
   const f = mnHarness(t);
   await f.run();
   assert.equal(mnGroups(f).length, 3);
   f.state.posts = [{...f.state.posts[0], id: 'p2', created_time: '2030-01-14T14:30:00Z', updated_time: '2030-01-14T14:30:00Z'}];
   f.state.candidate = mexicanNightCandidate({groups: [{label: 'Limited Menu', items: [{description: '', title: 'Special Burrito $10'}]}]});
   await f.run();
-  assert.equal(mnGroups(f).length, 1);
+  // Non-accessory groups replaced; Add-Ons group from first poster persists
+  const groups = mnGroups(f);
+  assert.equal(groups.length, 2);
+  assert.ok(groups.some(g => g.label === 'Limited Menu'));
+  assert.ok(groups.some(g => g.label === 'Add-Ons'));
   assert.ok(mnSlots(f).some(s => s.content === 'Special Burrito $10'));
   assert.ok(!mnSlots(f).some(s => s.content === entrees[0].title));
+  // Add-Ons slots from first poster remain
+  for (const addon of addons) assert.ok(mnSlots(f).some(s => s.content === addon.title), `missing: ${addon.title}`);
 });
 
 test('prices, sizes, and add-ons are preserved verbatim', async t => {
@@ -259,6 +265,63 @@ test('failed extraction leaves Mexican Night unchanged', async t => {
   await f.run();
   assert.equal(mnGroups(f).length, 0);
   assert.equal(f.imports()[0].validation_result, 'rejected');
+});
+
+test('accessory groups survive a Facebook update that omits them', async t => {
+  const f = mnHarness(t);
+  // First run seeds the collection with Entrees + Extras + Add-Ons
+  await f.run();
+  assert.equal(mnGroups(f).length, 3);
+  assert.ok(mnGroups(f).some(g => g.label === 'Add-Ons'));
+  // Second post mentions only food items — no Substitutions or Add-Ons section
+  f.state.posts = [{...f.state.posts[0], id: 'p2', created_time: '2030-01-14T14:30:00Z', updated_time: '2030-01-14T14:30:00Z'}];
+  f.state.candidate = mexicanNightCandidate({groups: [{label: 'Entrees', items: entrees}]});
+  await f.run();
+  const groups = mnGroups(f);
+  // Food group replaced; Add-Ons preserved because Facebook did not mention them
+  assert.ok(groups.some(g => g.label === 'Entrees'));
+  assert.ok(groups.some(g => g.label === 'Add-Ons'), 'Add-Ons group should survive update that omits it');
+  for (const addon of addons) assert.ok(mnSlots(f).some(s => s.content === addon.title), `missing: ${addon.title}`);
+  // Extras group from first poster removed (it is not an accessory group)
+  assert.ok(!groups.some(g => g.label === 'Extras'));
+});
+
+test('Facebook with explicit accessory group replaces recurring accessory, no duplicates', async t => {
+  const f = mnHarness(t);
+  // First run: seeds Entrees + Extras + Add-Ons from defaults
+  await f.run();
+  assert.equal(mnGroups(f).length, 3);
+  const oldAddonSlots = mnSlots(f).filter(s => addons.some(a => a.title === s.content));
+  assert.ok(oldAddonSlots.length > 0, 'should have existing Add-Ons slots');
+
+  // Second post explicitly provides an updated "Add-Ons" group with changed values
+  const newAddons = [
+    {description: '', title: 'Substitute chicken +$2.00'},
+    {description: '', title: 'Add queso +$1.00'},
+  ];
+  f.state.posts = [{...f.state.posts[0], id: 'p2', created_time: '2030-01-14T14:30:00Z', updated_time: '2030-01-14T14:30:00Z'}];
+  f.state.candidate = mexicanNightCandidate({groups: [
+    {label: 'Entrees', items: entrees},
+    {label: 'Add-Ons', items: newAddons},
+  ]});
+  await f.run();
+
+  const groups = mnGroups(f);
+  const slots = mnSlots(f);
+
+  // Exactly one Add-Ons group — no duplicate
+  const addonGroups = groups.filter(g => g.label === 'Add-Ons');
+  assert.equal(addonGroups.length, 1, 'must have exactly one Add-Ons group after FB explicit replacement');
+
+  // Facebook's new values are present
+  for (const item of newAddons) assert.ok(slots.some(s => s.content === item.title), `missing new addon: ${item.title}`);
+
+  // Old recurring values are gone
+  for (const old of addons) assert.ok(!slots.some(s => s.content === old.title), `stale old addon still present: ${old.title}`);
+
+  // Entrees group present; no stale Extras group
+  assert.ok(groups.some(g => g.label === 'Entrees'));
+  assert.ok(!groups.some(g => g.label === 'Extras'), 'Extras from first poster should be gone');
 });
 
 test('ordinary Tuesday Specials poster does not touch Mexican Night', async t => {
@@ -299,21 +362,23 @@ test('concurrent revision bump causes write to fail closed', async t => {
   assert.ok(!mnSlots(f).some(s => s.content === 'New item $5'));
 });
 
-test('replacement is atomic: old items absent and new items present after replacement', async t => {
+test('replacement is atomic: old food items absent, new food items present, accessory slots preserved', async t => {
   const f = mnHarness(t);
   await f.run();
   assert.equal(mnGroups(f).length, 3);
-  const oldContents = mnSlots(f).map(s => s.content);
+  const oldFoodContents = mnSlots(f).filter(s => !addons.some(a => a.title === s.content)).map(s => s.content);
   f.state.posts = [{...f.state.posts[0], id: 'p2', created_time: '2030-01-14T14:30:00Z', updated_time: '2030-01-14T14:30:00Z'}];
   const newItems = [{description: '', title: 'New Taco $7'}, {description: '', title: 'New Burrito $8'}];
   f.state.candidate = mexicanNightCandidate({groups: [{label: 'New Menu', items: newItems}]});
   await f.run();
   const newSlots = mnSlots(f);
-  for (const old of oldContents) {
-    assert.ok(!newSlots.some(s => s.content === old), `old item still present: ${old}`);
+  for (const old of oldFoodContents) {
+    assert.ok(!newSlots.some(s => s.content === old), `old food item still present: ${old}`);
   }
   for (const item of newItems) {
     assert.ok(newSlots.some(s => s.content === item.title), `new item missing: ${item.title}`);
   }
-  assert.equal(newSlots.length, newItems.length);
+  // Accessory (Add-Ons) slots from the first poster are preserved
+  for (const addon of addons) assert.ok(newSlots.some(s => s.content === addon.title), `missing addon: ${addon.title}`);
+  assert.equal(newSlots.length, newItems.length + addons.length);
 });
