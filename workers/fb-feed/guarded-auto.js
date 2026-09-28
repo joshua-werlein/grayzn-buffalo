@@ -1,3 +1,5 @@
+import {protectedMexicanSlots} from './mexican-night-defaults.js';
+import {automaticWeekRange} from './auto-week.js';
 import {composeMexicanItem} from '../../src/lib/mexican-item.js';
 // The Worker owns only automatic writes. Manual saves remain in specials-store.ts.
 // Every write, revision bump and acceptance audit commits in one D1 batch.
@@ -215,7 +217,7 @@ export async function reconcileWeeklyLunch(env, today) {
   return perSource;
 }
 
-async function applyMexicanNight(env, source, evidence) {
+async function applyMexicanNight(env, source, evidence, weekStart) {
   const stage = reason => ({written: false, reason});
   const collection = await env.DB.prepare(
     "SELECT id,revision FROM special_collections WHERE id='mexican-night' AND kind='section'"
@@ -238,8 +240,11 @@ async function applyMexicanNight(env, source, evidence) {
   );
   const detail = `GUARDED_MEXICAN_NIGHT: fb_created=${source.fb_created_time}; ${evidence.groups.length} group(s); ${newSlotRows.length} item(s)`;
   const results = await env.DB.batch([
-    prepare(`UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3,updated_at=CURRENT_TIMESTAMP
+    prepare(`UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3,updated_at=?13,
+      section_week_start=?12,section_service_date=date(?12,'+1 day'),section_source='facebook'
       WHERE id='mexican-night' AND kind='section' AND revision=?4
+      AND COALESCE(section_source,'')<>'manual' AND NOT ${protectedMexicanSlots}
+      AND (section_week_start IS NULL OR section_week_start<=?12)
       AND EXISTS(SELECT 1 FROM special_migration_checks WHERE version=15 AND mismatches=0)
       AND (SELECT count(*) FROM special_groups WHERE collection_id='mexican-night')=?5
       AND NOT EXISTS(SELECT 1 FROM json_each(?6) j WHERE NOT EXISTS(SELECT 1 FROM special_groups g
@@ -250,15 +255,18 @@ async function applyMexicanNight(env, source, evidence) {
       AND NOT EXISTS(SELECT 1 FROM json_each(?8) j WHERE NOT EXISTS(SELECT 1 FROM special_slots s
         WHERE s.group_id=json_extract(j.value,'$.group_id') AND s.position=json_extract(j.value,'$.position')
         AND s.content IS json_extract(j.value,'$.content') AND s.origin=json_extract(j.value,'$.origin')
-        AND s.manual_locked=json_extract(j.value,'$.manual_locked')))
+        AND s.manual_locked=json_extract(j.value,'$.manual_locked')
+        AND s.price=json_extract(j.value,'$.price') AND s.section_link=json_extract(j.value,'$.section_link')
+        AND s.last_auto_value IS json_extract(j.value,'$.last_auto_value')))
       AND EXISTS(SELECT 1 FROM special_imports WHERE id=?9 AND candidate_json=?10
         AND processing_status='staged' AND validation_result='ok' AND image_r2_key IS NOT NULL
+        AND review_status IN ('pending','accepted')
         AND NOT EXISTS(SELECT 1 FROM special_imports newer WHERE newer.fb_post_id=special_imports.fb_post_id
           AND newer.parser_version=?11 AND newer.rowid>special_imports.rowid))`,
       token, evidence.poster_evidence, evidence.schedule, collection.revision,
       currentGroups.length, JSON.stringify(currentGroups),
       currentSlots.length, JSON.stringify(currentSlots),
-      source.id, source.candidate_json, PARSER_VERSION),
+      source.id, source.candidate_json, PARSER_VERSION, weekStart, new Date(Date.now()).toISOString()),
     prepare(`DELETE FROM special_groups WHERE collection_id='mexican-night' AND ${gate}`, token),
     prepare(`INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled)
       SELECT json_extract(value,'$[0]'),'mexican-night',-1,'custom',json_extract(value,'$[1]'),'',json_extract(value,'$[2]'),1
@@ -282,14 +290,19 @@ export async function reconcileMexicanNight(env) {
      AND NOT EXISTS(SELECT 1 FROM special_imports newer WHERE newer.fb_post_id=special_imports.fb_post_id
        AND newer.parser_version=?1 AND newer.rowid>special_imports.rowid)
      AND NOT EXISTS(SELECT 1 FROM special_import_events WHERE import_id=special_imports.id AND event_type='review')
-     ORDER BY fb_created_time DESC LIMIT 1`
+     ORDER BY fb_created_time DESC`
   ).bind(PARSER_VERSION, '{"type":"mexican-night"%').all();
   if (!sources.length) return {written: false, reason: 'No new Mexican Night source'};
-  const source = sources[0];
+  const dateOf=value=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
+  const today=dateOf(Date.now());
+  const source=sources.find(s=>Number.isFinite(Date.parse(s.fb_created_time)) && dateOf(s.fb_created_time)===today);
+  if (!source) return {written:false,reason:'No current-day Mexican Night source'};
+  const weekday=new Date(`${today}T12:00:00Z`).getUTCDay();
+  const {start}=automaticWeekRange(today,weekday,weekday===0 ? 19 : 0);
   let evidence;
   try { evidence = validateMexicanNight(JSON.parse(source.candidate_json)); }
   catch { return {written: false, reason: 'Invalid Mexican Night evidence'}; }
-  return applyMexicanNight(env, source, evidence);
+  return applyMexicanNight(env, source, evidence, start);
 }
 
 export async function pruneImportHistory(env, now) {

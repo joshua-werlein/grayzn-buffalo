@@ -451,7 +451,7 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
     writes.push(prepare("INSERT INTO special_collections(id,kind,weekly_special_id,revision,mutation_token) SELECT ?1,'week',?2,1,?3 WHERE EXISTS(SELECT 1 FROM weekly_specials WHERE id=?2)",collectionId,weekId,token));
   } else {
     const overlap = next.kind==='week' ? ' AND NOT EXISTS(SELECT 1 FROM weekly_specials WHERE id<>?6 AND week_start_date<=?8 AND week_end_date>=?7)' : '';
-    const sectionFields = next.kind === 'section' ? ',updated_at=CURRENT_TIMESTAMP' : '';
+    const sectionFields = next.kind === 'section' ? ",updated_at=CURRENT_TIMESTAMP,section_source='manual'" : '';
     writes.push(prepare('UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3'+sectionFields+' WHERE id=?4 AND revision=?5'+overlap,
       ...[token,next.title,next.schedule,collectionId,next.revision,...(next.kind==='week' ? [weekId,dates!.start,dates!.end] : [])]));
   }

@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-export function fixture(t) {
+export function fixture(t, {beforeMexicanMigration=false}={}) {
   const dir=mkdtempSync(join(tmpdir(),'grayzn-specials-'));
   const path=join(dir,'test.sqlite');
   t.after(()=>rmSync(dir,{recursive:true,force:true}));
@@ -11,7 +11,7 @@ export function fixture(t) {
     if(result.status!==0) throw new Error(result.stdout || result.stderr);
     return JSON.parse(result.stdout);
   }
-  execute({initialize:true});
+  execute({initialize:true,beforeMexicanMigration});
   const sql=(query,...args)=>execute({statements:[{sql:query,args}]})[0].results;
   const env={ DB:{prepare(query) {
     const statement={sql:query,args:[]};

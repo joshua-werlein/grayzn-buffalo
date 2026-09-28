@@ -1,3 +1,5 @@
+import {mexicanNightSeedStatements} from './mexican-night-defaults.js';
+
 export function automaticWeekRange(today,weekday,hour) {
   const offset=weekday===0 && hour>=19 ? 1 : -((weekday+6)%7);
   const date=new Date(`${today}T12:00:00Z`);
@@ -34,5 +36,7 @@ export async function ensureAutomaticWeek(env,{today,weekday,hour}) {
       SELECT ?1||':'||s.group_id,s.position,COALESCE(s.content,''),s.price,s.section_link,
         'manual',0,NULL
       FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='defaults' AND ${gate}`,collectionId,token),
+    ...(weekday!==0 || hour>=19
+      ? mexicanNightSeedStatements(env,{start,end,now:new Date(Date.now()).toISOString()}) : []),
   ]);
 }
