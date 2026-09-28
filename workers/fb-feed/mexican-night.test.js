@@ -286,6 +286,44 @@ test('accessory groups survive a Facebook update that omits them', async t => {
   assert.ok(!groups.some(g => g.label === 'Extras'));
 });
 
+test('Facebook with explicit accessory group replaces recurring accessory, no duplicates', async t => {
+  const f = mnHarness(t);
+  // First run: seeds Entrees + Extras + Add-Ons from defaults
+  await f.run();
+  assert.equal(mnGroups(f).length, 3);
+  const oldAddonSlots = mnSlots(f).filter(s => addons.some(a => a.title === s.content));
+  assert.ok(oldAddonSlots.length > 0, 'should have existing Add-Ons slots');
+
+  // Second post explicitly provides an updated "Add-Ons" group with changed values
+  const newAddons = [
+    {description: '', title: 'Substitute chicken +$2.00'},
+    {description: '', title: 'Add queso +$1.00'},
+  ];
+  f.state.posts = [{...f.state.posts[0], id: 'p2', created_time: '2030-01-14T14:30:00Z', updated_time: '2030-01-14T14:30:00Z'}];
+  f.state.candidate = mexicanNightCandidate({groups: [
+    {label: 'Entrees', items: entrees},
+    {label: 'Add-Ons', items: newAddons},
+  ]});
+  await f.run();
+
+  const groups = mnGroups(f);
+  const slots = mnSlots(f);
+
+  // Exactly one Add-Ons group — no duplicate
+  const addonGroups = groups.filter(g => g.label === 'Add-Ons');
+  assert.equal(addonGroups.length, 1, 'must have exactly one Add-Ons group after FB explicit replacement');
+
+  // Facebook's new values are present
+  for (const item of newAddons) assert.ok(slots.some(s => s.content === item.title), `missing new addon: ${item.title}`);
+
+  // Old recurring values are gone
+  for (const old of addons) assert.ok(!slots.some(s => s.content === old.title), `stale old addon still present: ${old.title}`);
+
+  // Entrees group present; no stale Extras group
+  assert.ok(groups.some(g => g.label === 'Entrees'));
+  assert.ok(!groups.some(g => g.label === 'Extras'), 'Extras from first poster should be gone');
+});
+
 test('ordinary Tuesday Specials poster does not touch Mexican Night', async t => {
   const f = harness(t, {
     now: '2030-01-14T15:00:00Z',

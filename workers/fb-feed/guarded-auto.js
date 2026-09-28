@@ -240,10 +240,13 @@ async function applyMexicanNight(env, source, evidence, weekStart) {
   );
   const detail = `GUARDED_MEXICAN_NIGHT: fb_created=${source.fb_created_time}; ${evidence.groups.length} group(s); ${newSlotRows.length} item(s)`;
   // Accessory groups (Substitutions, Add-ons) are standing rules, not weekly menu items.
-  // Facebook posts omit them; preserve them so they survive every weekly update.
+  // Preserve them when Facebook omits them; let Facebook replace them when explicitly provided.
   const normalizeLabel = s => s.normalize('NFKC').replace(/[‐‑–—]/g, '-');
   const isAccessory = label => /\b(?:add[\s-]*ons?|substitutions?|substitutes?)\b/i.test(normalizeLabel(label));
-  const accessoryGroupIds = currentGroups.filter(g => isAccessory(g.label)).map(g => g.id);
+  const evidenceNormLabels = new Set(evidence.groups.map(g => normalizeLabel(g.label).toLowerCase()));
+  const accessoryGroupIds = currentGroups
+    .filter(g => isAccessory(g.label) && !evidenceNormLabels.has(normalizeLabel(g.label).toLowerCase()))
+    .map(g => g.id);
   const results = await env.DB.batch([
     prepare(`UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3,updated_at=?13,
       section_week_start=?12,section_service_date=date(?12,'+1 day'),section_source='facebook'
