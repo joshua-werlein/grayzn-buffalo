@@ -19,10 +19,21 @@ function serviceOf(text) {
 export function normalizeOfferContent(content) {
   return content.replace(/\b(?:only|special)!?\s+(?=\$\.?\d)/gi, '').trim();
 }
+export const WEEKLY_LUNCH_SHAPE_ERROR = 'Weekly lunch evidence requires weekday entries, not daily offers';
+function hasWeeklyLunchEvidence(text) {
+  const normalized = text.toLowerCase().replace(/[–—]/g, '-');
+  const schedule = /\bweekly\b/.test(normalized)
+    || /\b\d{1,2}\/\d{1,2}\s*-\s*\d{1,2}\/\d{1,2}\b/.test(normalized)
+    || ['mon(?:day)?','tue(?:sday)?','wed(?:nesday)?','thu(?:rsday)?','fri(?:day)?']
+      .filter(day => new RegExp(`\\b${day}\\b`).test(normalized)).length >= 2;
+  return schedule && serviceOf(normalized) === 'lunch';
+}
 export function validateEvidence(value) {
   const str = (v,n) => typeof v === 'string' && v.length <= n;
   if (!value || Array.isArray(value) || !Number.isInteger(value.day_of_week) || value.day_of_week < -1 || value.day_of_week > 6 ||
       !str(value.day_evidence,160) || !str(value.poster_evidence,160) || !Array.isArray(value.offers) || value.offers.length > 12) throw Error('Invalid poster evidence');
+  // Reject the wrong response shape; never infer meals from a weekly heading.
+  if (hasWeeklyLunchEvidence(`${value.poster_evidence} ${value.day_evidence}`)) throw Error(WEEKLY_LUNCH_SHAPE_ERROR);
   const offers = value.offers.map(o => {
     if (!o || !str(o.content,150) || !o.content.trim() || !str(o.service_time,80) || !str(o.evidence,160)) throw Error('Invalid offer evidence');
     return {content:normalizeOfferContent(o.content),service_time:o.service_time,evidence:o.evidence};

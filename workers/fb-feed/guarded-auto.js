@@ -150,7 +150,9 @@ async function applyWeeklyLunch(env, source, evidence, week, today) {
     const dest = lunchGroups[0];
     const slot = slots.find(s => s.group_id === dest.id && s.position === 1);
     if (!slot) continue;
-    if (slot.content !== '' && slot.content !== null) continue;
+    // Fill blanks or replace untouched recurring defaults. Preserve existing
+    // Facebook evidence (including the more specific daily poster) and staff edits.
+    if (slot.content !== '' && slot.content !== null && !(slot.origin === 'manual' && slot.manual_locked === 0)) continue;
     if (!safe(slot)) continue;
     if (slot.origin === 'automation' && slot.content === entry.content && slot.last_auto_value === entry.content) continue;
     rows.push({group_id: dest.id, position: 1, content: entry.content, old: slot});

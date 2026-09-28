@@ -2,7 +2,7 @@ import {buildExtractionRequest} from './extraction.js';
 import { classifyCaption, PARSER_VERSION } from './classify.js';
 import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexicanNight } from './guarded-auto.js';
 import {ensureAutomaticWeek} from './auto-week.js';
-import {validateEvidence, validateWeeklyLunch, validateMexicanNight} from './reconcile.js';
+import {validateEvidence, validateWeeklyLunch, validateMexicanNight, WEEKLY_LUNCH_SHAPE_ERROR} from './reconcile.js';
 
 const TIME_ZONE = 'America/Chicago';
 const GRAPH_API_VERSION = 'v26.0';
@@ -398,8 +398,9 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
       continue;
     }
     const validation = validateExtraction(outcome.extractedJson);
-    // Retry format failures only; never turn ambiguous semantic evidence into a guess.
-    if (!['response is not valid JSON','no AI response'].includes(validation.validationReason)) return outcome;
+    // Retry unusable response shapes once with the same image, instructions and budget.
+    // Ambiguous meals, dates and prices still fail closed without semantic guessing.
+    if (!['response is not valid JSON','no AI response',WEEKLY_LUNCH_SHAPE_ERROR].includes(validation.validationReason)) return outcome;
   }
   return outcome;
 }
