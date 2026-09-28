@@ -12,24 +12,25 @@ const slots = group.enabled ? visibleSlots(group) : [];
 .special-group{min-width:0;align-self:start}
 .special-group__label{
   margin:0 0 8px;padding-bottom:6px;
-  border-bottom:1px solid rgba(41,25,18,.15);
+  border-bottom:1px solid var(--sg-rule,rgba(41,25,18,.15));
   display:flex;align-items:baseline;flex-wrap:wrap;gap:0 8px;
-  font:700 .73rem/1 var(--label);letter-spacing:.16em;text-transform:uppercase;
-  color:var(--brick);
+  font:700 .76rem/1 var(--label);letter-spacing:.15em;text-transform:uppercase;
+  color:var(--sg-label,var(--brick));
 }
 .special-group__label span{
   display:inline;font-size:.9em;font-weight:600;letter-spacing:.07em;
-  color:var(--denim);opacity:.82;
+  color:var(--sg-time,var(--denim));opacity:1;
 }
-.special-group__items{display:grid;gap:9px;list-style:none;padding:0;margin:0}
+.special-group__items{display:grid;gap:10px;list-style:none;padding:0;margin:0}
 .special-group__items li{
   margin:0;white-space:pre-line;overflow-wrap:anywhere;
-  line-height:1.45;font-size:.96rem;color:#291912;
+  line-height:1.5;font-size:1rem;
+  color:var(--sg-text,#291912);
 }
-.special-group__items li+li{border-top:1px dashed rgba(41,25,18,.16);padding-top:9px}
+.special-group__items li+li{border-top:1px dashed var(--sg-rule,rgba(41,25,18,.16));padding-top:10px}
 .special-group__items a{
   display:inline-block;margin-top:5px;
   font:600 .78rem var(--label);letter-spacing:.07em;text-transform:uppercase;
-  color:var(--brick);text-underline-offset:3px;
+  color:var(--sg-link,var(--brick));text-underline-offset:3px;
 }
 </style>
