@@ -13,6 +13,8 @@ export function mexicanNightSeedStatements(env,{start,end,now}) {
   const gate="EXISTS(SELECT 1 FROM special_collections WHERE id='mexican-night' AND mutation_token=?1)";
   // All reads and writes run inside ensureAutomaticWeek's D1 transaction.
   // Existing exact weeks can repair a missing publication, but never reset it.
+  // Live locks protect their associated week only. An expired week always starts
+  // fresh from the current recurring template, regardless of its former source.
   return [
     prepare(`UPDATE special_collections SET
       title=(SELECT title FROM special_collections WHERE id='mexican-night-defaults'),
@@ -21,7 +23,6 @@ export function mexicanNightSeedStatements(env,{start,end,now}) {
       updated_at=?4,revision=revision+1,mutation_token=?1
       WHERE id='mexican-night' AND kind='section'
       AND (section_week_start IS NULL OR section_week_start<?2)
-      AND COALESCE(section_source,'')<>'manual'
       AND EXISTS(SELECT 1 FROM special_migration_checks WHERE version=15 AND mismatches=0)
       AND (SELECT count(*) FROM weekly_specials WHERE week_start_date<=?3 AND week_end_date>=?2)=1
       AND EXISTS(SELECT 1 FROM weekly_specials w JOIN special_collections c ON c.weekly_special_id=w.id
@@ -31,7 +32,8 @@ export function mexicanNightSeedStatements(env,{start,end,now}) {
         WHERE g.collection_id='mexican-night-defaults' AND g.enabled=1 AND trim(COALESCE(s.content,''))<>'')
       AND NOT EXISTS(SELECT 1 FROM special_groups g WHERE g.collection_id='mexican-night-defaults'
         AND (g.day_of_week<>-1 OR (SELECT count(*) FROM special_slots WHERE group_id=g.id)<>4))
-      AND (NOT ${protectedMexicanSlots} OR (
+      AND (section_week_start<?2 OR (
+        COALESCE(section_source,'')<>'manual' AND (NOT ${protectedMexicanSlots} OR (
         section_source='recurring' AND updated_at IS NULL AND section_week_start IS NULL
         AND revision=(SELECT revision FROM special_collections WHERE id='mexican-night-defaults')
         AND (SELECT count(*) FROM special_groups WHERE collection_id='mexican-night')=
@@ -47,7 +49,7 @@ export function mexicanNightSeedStatements(env,{start,end,now}) {
             WHERE d.group_id='mn-default:'||s.group_id AND d.position=s.position
             AND d.content IS s.content AND d.price=s.price AND d.section_link=s.section_link
             AND d.origin=s.origin AND d.manual_locked=s.manual_locked AND d.last_auto_value IS s.last_auto_value))
-      ))`,token,start,end,now),
+      ))))`,token,start,end,now),
     prepare(`DELETE FROM special_groups WHERE collection_id='mexican-night' AND ${gate}`,token),
     prepare(`INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled)
       SELECT 'mn-live:'||id,'mexican-night',day_of_week,service,label,service_time,sort,enabled

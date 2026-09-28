@@ -34,7 +34,7 @@ matching regular weekly fallback semantics. Facebook publication uses
 `section_source=facebook`, `origin=automation`, `manual_locked=0`, and sets
 `last_auto_value` to the published text. Staff saves mark `section_source=manual`
 and retain the existing per-slot locking behavior. One protected item or a manual
-collection blocks a whole-menu replacement, including on the next rollover.
+collection blocks Facebook replacement during its associated week.
 Title/schedule/group-only staff corrections are also protected.
 
 Facebook reconciliation accepts only current-Chicago-day evidence and records the
@@ -48,8 +48,11 @@ An already-associated current/future week is not reseeded. Existing exact weekly
 records can receive missing details without changing their weekly slots. Missing,
 empty or malformed templates and overlapping weeks fail closed. The transaction
 copies the template atomically; failures roll back both weekly and section writes.
-The next Sunday copies the template anew over eligible prior-week content.
-Manual/protected content remains untouched until explicitly released by staff.
+The next Sunday copies the current template anew over expired prior-week content,
+including manual or Facebook content. Live manual locks apply only to their
+associated week; persistent corrections belong in the recurring defaults.
+Same-week reruns never reset manual or Facebook content. Unassociated manual
+content remains protected until its intended week is explicitly resolved.
 
 `mexicanNightDetailVisible()` is unchanged: Sunday publication is visible Sunday,
 Monday, Tuesday, and Wednesday until 01:59:59 Chicago; 02:00 hides it without
@@ -90,15 +93,26 @@ normalization and visibility implementation are unchanged from the branch base.
 
 ## Validation
 
-- Entire Worker suite: **333 tests, 333 passed, 0 failed, 0 skipped**.
-- Application specials suite: **55 tests, 55 passed, 0 failed, 0 skipped**.
+- Entire Worker suite: **335 tests, 335 passed, 0 failed, 0 skipped**.
+- Entire application suite: **93 tests, 93 passed, 0 failed, 0 skipped**.
 - `astro check`: **0 errors, 0 warnings, 7 hints**.
 - `npm run build`: passed.
 - `git diff --check`: passed.
 - Primary checkout remained untouched (its pre-existing specials page edit remains).
 
-The 23 new lifecycle tests include the requested thirteen cases plus migration
+The 25 new lifecycle tests include the requested thirteen cases plus migration
 safety, stale evidence, missing templates, manual-edit races, and real local D1
 transaction rollback/idempotency. The application suite's existing atomic-write
 fixture used a midnight UTC date that was the prior Chicago day; its timestamp was
 corrected to 14:00 UTC so that it exercises the intended same-day transaction.
+
+## Week-scoped manual protection follow-up
+
+The rollover guard now bypasses expired live manual/Facebook ownership only when
+`section_week_start` is strictly older than the target week. Same-week and future
+menus still cannot be reseeded. Facebook manual-lock guards are unchanged.
+Tests cover prior-week manual and Facebook menus, edits to recurring content,
+prices/title/schedule, current-week manual protection, and same-week reruns.
+Full suites after this change: Worker 335/335; application 93/93; zero failures.
+This follow-up changes only the seeding guard, lifecycle tests, and this report;
+no additional migration, merge, or deployment was performed.

@@ -101,20 +101,30 @@ test('valid Facebook menu replaces unlocked defaults; repeats preserve Facebook 
   f.state.now=Date.parse('2030-01-21T01:00:00Z');await ensureAutomaticWeek(f.env,following);
   assert.equal(collection(f).section_source,'recurring');assert.equal(slots(f)[0].content,template[0].content);
 });
-test('real staff save protects menu against a new Facebook poster and later Sunday defaults',async t=>{
+test('real staff save protects this week but does not block next Sunday defaults',async t=>{
   const f=facebookHarness(t);await ensureAutomaticWeek(f.env,sunday);
   const edit=await store.readCollection(f.env,'mexican-night');edit.groups[0].slots[0].content='Staff corrected recipe';
   await store.saveCollection(f.env,edit);
   assert.equal(slots(f)[0].manual_locked,1);assert.equal(collection(f).section_source,'manual');
   const before=snapshot(f);setMondayPoster(f);await f.run();assert.equal(snapshot(f),before);
-  f.state.now=Date.parse('2030-01-21T01:00:00Z');await ensureAutomaticWeek(f.env,following);assert.equal(snapshot(f),before);
+  await ensureAutomaticWeek(f.env,sunday);assert.equal(snapshot(f),before);
+  f.state.now=Date.parse('2030-01-21T01:00:00Z');await ensureAutomaticWeek(f.env,following);
+  assert.equal(collection(f).section_week_start,'2030-01-21');
+  assert.equal(collection(f).section_source,'recurring');
+  assert.equal(slots(f)[0].content,slots(f,'mexican-night-defaults')[0].content);
+  assert.ok(slots(f).every(s=>s.manual_locked===0));
 });
 for(const alteration of ["manual_locked=1","content='Untracked manual edit',origin='automation',last_auto_value='Old automation'"])
-test(`Facebook and next-week seeding fail closed for ${alteration}`,async t=>{
+test(`current-week protection expires at next-week rollover for ${alteration}`,async t=>{
   const f=facebookHarness(t);await ensureAutomaticWeek(f.env,sunday);
   f.sql(`UPDATE special_slots SET ${alteration} WHERE group_id=? AND position=1`,slots(f)[0].group_id);
   const before=snapshot(f);setMondayPoster(f);await f.run();assert.equal(snapshot(f),before);
-  f.state.now=Date.parse('2030-01-21T01:00:00Z');await ensureAutomaticWeek(f.env,following);assert.equal(snapshot(f),before);
+  await ensureAutomaticWeek(f.env,sunday);assert.equal(snapshot(f),before);
+  f.state.now=Date.parse('2030-01-21T01:00:00Z');await ensureAutomaticWeek(f.env,following);
+  assert.equal(collection(f).section_week_start,'2030-01-21');
+  assert.equal(collection(f).section_source,'recurring');
+  assert.equal(slots(f)[0].content,slots(f,'mexican-night-defaults')[0].content);
+  assert.ok(slots(f).every(s=>s.manual_locked===0));
 });
 test('staff edit between migration and first seed protects the unpublished original menu',async t=>{
   const f=seededFixture(t);const edit=await store.readCollection(f.env,'mexican-night');edit.groups[0].slots[0].content='Staff before first publication';
@@ -187,4 +197,34 @@ test('real D1 publishes weekly and Mexican defaults atomically and retries witho
   assert.deepEqual(await DB.prepare("SELECT * FROM special_collections WHERE id='mexican-night'").first(),before);
   const live=(await DB.prepare("SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='mexican-night'").all()).results;
   assert.equal(live.length,4);assert.ok(live.every(s=>s.manual_locked===0));
+});
+
+for(const source of ['manual','facebook']) test(`next Sunday replaces expired ${source} menu with edited recurring defaults`,async t=>{
+  const f=facebookHarness(t);await ensureAutomaticWeek(f.env,sunday);
+  setMondayPoster(f);await f.run();
+  if(source==='manual') {
+    const edit=await store.readCollection(f.env,'mexican-night');
+    edit.groups[0].slots[0].content='Current-week staff correction';
+    // The editor submits four positions even when a poster supplied fewer items.
+    for(let position=2;position<=4;position++) edit.groups[0].slots.push({
+      position,content:'',price:'',section_link:'',origin:'legacy',manual_locked:0,last_auto_value:null,
+    });
+    await store.saveCollection(f.env,edit);
+  }
+  assert.equal(collection(f).section_source,source);
+  const before=snapshot(f);
+  const defaults=await store.readCollection(f.env,'mexican-night-defaults');
+  defaults.title='Updated recurring title';defaults.schedule='Tuesday 6-10 PM';
+  defaults.groups[0].slots[0].content='Canonical recipe for future weeks';
+  defaults.groups[0].slots[0].price='$12.50';
+  await store.saveCollection(f.env,defaults);
+  await ensureAutomaticWeek(f.env,sunday);assert.equal(snapshot(f),before);
+  f.state.now=Date.parse('2030-01-21T01:00:00Z');await ensureAutomaticWeek(f.env,following);
+  const c=collection(f);
+  assert.equal(c.section_source,'recurring');assert.equal(c.section_week_start,'2030-01-21');
+  assert.equal(c.section_service_date,'2030-01-22');assert.equal(c.updated_at,'2030-01-21T01:00:00.000Z');
+  assert.equal(c.title,defaults.title);assert.equal(c.schedule,defaults.schedule);
+  assert.equal(slots(f)[0].content,'Canonical recipe for future weeks');assert.equal(slots(f)[0].price,'$12.50');
+  assert.ok(slots(f).every(s=>s.origin==='manual' && s.manual_locked===0 && s.last_auto_value===null));
+  const after=snapshot(f);await ensureAutomaticWeek(f.env,following);assert.equal(snapshot(f),after);
 });
