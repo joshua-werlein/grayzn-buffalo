@@ -181,7 +181,7 @@ const PC = ['denim','brick','saddle'] as const;
 .corner-flourish--bottom-right{right:11px;bottom:11px;transform:scale(-1)}
 
 /* ── Interior heading — matches Menu page ── */
-.interior-heading{margin-bottom:clamp(22px,3vw,34px)}
+.interior-heading{margin-bottom:clamp(22px,3vw,34px);max-width:none}
 .interior-heading .kicker{display:block;color:var(--brick);font-size:.82rem}
 .interior-heading h1{
   margin:8px 0 5px;color:#291912;
@@ -194,7 +194,7 @@ const PC = ['denim','brick','saddle'] as const;
 }
 
 /* ── Week section ── */
-.week-section{margin-bottom:clamp(18px,3vw,32px)}
+.week-section{margin-bottom:clamp(18px,3vw,32px);padding:0}
 .week-section+.week-section{padding-top:clamp(18px,3vw,32px);border-top:1px solid rgba(41,25,18,.15)}
 .week-section__heading{
   display:flex;align-items:center;gap:12px;margin:0 0 14px;
@@ -208,7 +208,7 @@ const PC = ['denim','brick','saddle'] as const;
 /* ── Shared placard ── */
 .placard{display:flex;flex-direction:column;overflow:hidden}
 .placard-day{
-  font:400 clamp(1.5rem,2.8vw,2.4rem)/1 var(--display);
+  font:400 clamp(1.1rem,2vw,1.65rem)/1 var(--display);
   text-transform:uppercase;letter-spacing:.04em;
 }
 .placard-date{
@@ -230,7 +230,7 @@ const PC = ['denim','brick','saddle'] as const;
   border-bottom:1px solid rgba(244,229,197,.12);
 }
 .today-hd__meta{flex:1;min-width:0}
-.placard--today .placard-day{font-size:clamp(2.2rem,5vw,3.8rem);color:#f0ddb8;line-height:.92}
+.placard--today .placard-day{font-size:clamp(1.4rem,3vw,2.4rem);color:#f0ddb8;line-height:.92}
 .placard--today .placard-date{font-size:.88rem;color:var(--ochre);opacity:1;margin-top:5px}
 .today-stamp{
   display:inline-flex;align-items:center;
@@ -245,6 +245,10 @@ const PC = ['denim','brick','saddle'] as const;
   display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));
   gap:16px 28px;align-items:start;align-content:start;
 }
+
+/* Zero out global section{padding} that bleeds into SpecialGroup.astro's <section> */
+.today-body :global(.special-group),
+.card-body :global(.special-group){padding:0}
 
 /* ── Full-width day card header/body ── */
 .card-hd{
@@ -332,7 +336,7 @@ const PC = ['denim','brick','saddle'] as const;
 .mex-body{padding:clamp(18px,3vw,36px) clamp(16px,3.5vw,48px) clamp(22px,4vw,44px)}
 
 /* ── On the Regular ── */
-.recurring-section{margin-top:clamp(22px,3.5vw,38px)}
+.recurring-section{margin-top:clamp(22px,3.5vw,38px);padding:0}
 .recurring-hd{text-align:center;margin-bottom:18px}
 .recurring-hd .kicker{display:block;color:var(--brick);font-size:.82rem}
 .recurring-title{
