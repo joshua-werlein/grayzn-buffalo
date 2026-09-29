@@ -87,7 +87,7 @@ const PC = ['denim','brick','saddle'] as const;
             <ul class="week-grid" aria-label={`${todayCard ? 'Rest of week' : 'Weekly specials'}, ${range}`}>
               {gridDays.map(({day,date,groups},i)=>(
                 <li>
-                  <article class:list={['placard',`placard--${PC[i%3]}`]} aria-label={`${DAY_NAMES[day]}, ${cardDate(date)}`}>
+                  <article class:list={['placard',`placard--${PC[(i+(todayCard?1:0))%3]}`]} aria-label={`${DAY_NAMES[day]}, ${cardDate(date)}`}>
                     <div class="card-hd">
                       <span class="placard-day">{DAY_NAMES[day]}</span>
                       <time class="placard-date" datetime={date}>{cardDate(date)}</time>
