@@ -2,11 +2,15 @@
 import { displayedSpecial, visibleSlots, type SpecialGroup } from '../lib/specials-store';
 interface Props { group: SpecialGroup; showTime?: boolean; mexicanAvailable?: boolean }
 const { group, showTime = true, mexicanAvailable = false } = Astro.props;
-const slots = group.enabled ? visibleSlots(group) : [];
+const tuesdayNightly = group.day_of_week === 2 && group.service === 'nightly';
+const slots = (group.enabled ? visibleSlots(group) : []).map(slot =>
+  tuesdayNightly && mexicanAvailable && /^Mexican Night!\s*Ask to see our Menu!$/i.test((slot.content ?? '').trim())
+    ? {...slot, content: 'Mexican Night!', section_link: slot.section_link || 'mexican-night'}
+    : slot);
 ---
 {slots.length > 0 && <section class="special-group">
   <p class="special-group__label">{group.label}{showTime && group.service_time && <span>{group.service_time}</span>}</p>
-  <ul class="special-group__items">{slots.map(slot => <li><span>{displayedSpecial(slot)}</span>{slot.section_link === 'mexican-night' && mexicanAvailable && <a href="/specials#mexican-night">View Mexican Night menu →</a>}</li>)}</ul>
+  <ul class="special-group__items">{slots.map(slot => <li><span>{displayedSpecial(slot)}</span>{slot.section_link === 'mexican-night' && mexicanAvailable && <a class:list={{'special-group__menu-cta': tuesdayNightly}} href="/specials#mexican-night">{tuesdayNightly ? 'View the Menu →' : 'View Mexican Night menu →'}</a>}</li>)}</ul>
 </section>}
 <style>
 .special-group{min-width:0;align-self:start}
@@ -33,4 +37,9 @@ const slots = group.enabled ? visibleSlots(group) : [];
   font:600 .78rem var(--label);letter-spacing:.07em;text-transform:uppercase;
   color:var(--sg-link,var(--brick));text-underline-offset:3px;
 }
+.special-group__items a.special-group__menu-cta{
+  display:inline;margin:0 0 0 .35em;font:inherit;letter-spacing:inherit;
+  text-transform:none;text-decoration:underline;text-decoration-thickness:1.5px;
+}
+.special-group__menu-cta:focus-visible{outline:3px solid currentColor;outline-offset:3px}
 </style>
