@@ -10,3 +10,4 @@ grayzn-db-backup-*.sql
 items-only.sql
 .claude/worktrees/
 tmp-screenshots/
+CLAUDE.md
