@@ -185,7 +185,7 @@ const PC = ['denim','brick','saddle'] as const;
 .interior-heading .kicker{display:block;color:var(--brick);font-size:.82rem}
 .interior-heading h1{
   margin:8px 0 5px;color:#291912;
-  font:400 clamp(3rem,8vw,6.4rem)/.98 var(--display);
+  font:400 clamp(2.5rem,5.5vw,4.8rem)/.98 var(--display);
   letter-spacing:.025em;text-transform:uppercase;
 }
 .interior-heading .vintage-rule{
@@ -208,7 +208,7 @@ const PC = ['denim','brick','saddle'] as const;
 /* ── Shared placard ── */
 .placard{display:flex;flex-direction:column;overflow:hidden}
 .placard-day{
-  font:400 clamp(1.4rem,2.2vw,2rem)/1 var(--display);
+  font:400 clamp(1.5rem,2.8vw,2.4rem)/1 var(--display);
   text-transform:uppercase;letter-spacing:.04em;
 }
 .placard-date{
@@ -246,15 +246,15 @@ const PC = ['denim','brick','saddle'] as const;
   gap:16px 28px;align-items:start;align-content:start;
 }
 
-/* ── Grid card header/body ── */
+/* ── Full-width day card header/body ── */
 .card-hd{
-  padding:10px 16px;background:rgba(0,0,0,.2);
+  padding:10px 20px 12px;background:rgba(0,0,0,.2);
   border-bottom:1px solid rgba(244,229,197,.1);
 }
 .card-body{
-  padding:12px 16px 16px;
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));
-  gap:12px 20px;align-items:start;align-content:start;
+  padding:14px 20px 18px;
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));
+  gap:16px 28px;align-items:start;align-content:start;
 }
 
 /* ── DENIM ── */
@@ -286,14 +286,13 @@ const PC = ['denim','brick','saddle'] as const;
 .placard--saddle .placard-day{color:#1a0e06}
 .placard--saddle .placard-date{color:rgba(41,25,18,.62)}
 
-/* ── Week grid — compact responsive columns ── */
+/* ── Week list — one full-width row per day ── */
 .week-grid{
   list-style:none;margin:0;padding:0;
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));
-  gap:12px;
+  display:flex;flex-direction:column;gap:10px;
 }
-.week-grid>li{min-width:0}
+.week-grid>li{display:block;min-width:0}
+.week-grid .placard{width:100%}
 
 /* ── No specials ── */
 .no-specials{
@@ -382,14 +381,12 @@ const PC = ['denim','brick','saddle'] as const;
   .corner-flourish--top-right{top:8px;right:8px}
   .corner-flourish--bottom-left{bottom:8px;left:8px}
   .corner-flourish--bottom-right{right:8px;bottom:8px}
-  .interior-heading h1{font-size:clamp(2.75rem,17vw,4.8rem)}
 }
-@media(max-width:560px){
-  .week-grid{grid-template-columns:1fr}
+@media(max-width:640px){
   .today-hd{padding:9px 14px 10px}
   .today-body{padding:12px 14px 16px;gap:12px;grid-template-columns:1fr}
-  .card-hd{padding:8px 12px}
-  .card-body{padding:10px 12px 14px;gap:10px;grid-template-columns:1fr}
+  .card-hd{padding:8px 14px 10px}
+  .card-body{padding:12px 14px 16px;gap:12px;grid-template-columns:1fr}
   .mex-body{padding:14px 14px 20px}
   .recurring-grid{grid-template-columns:repeat(2,1fr)}
 }
