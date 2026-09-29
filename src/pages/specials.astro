@@ -189,7 +189,7 @@ const PC = ['denim','brick','saddle'] as const;
   letter-spacing:.025em;text-transform:uppercase;
 }
 .interior-heading .vintage-rule{
-  width:min(100%,28rem);height:5px;margin:18px auto 0;
+  width:min(100%,40rem);height:5px;margin:18px auto 0;
   background:linear-gradient(to bottom,#291912 0 1px,transparent 1px 3px,#291912 3px 4px,transparent 4px);
 }
 
@@ -349,14 +349,15 @@ const PC = ['denim','brick','saddle'] as const;
   display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;
 }
 .rec-placard{
+  --rec-tint:var(--denim);
   padding:16px 18px;
-  background:rgba(248,236,211,.7);
+  background:color-mix(in srgb,var(--rec-tint) 6%,rgba(248,236,211,.7));
   border:1px solid rgba(41,25,18,.18);border-top:3px solid var(--denim);
   text-align:center;display:flex;flex-direction:column;gap:6px;
   box-shadow:2px 2px 0 rgba(41,25,18,.08);
 }
-.rec-placard:nth-child(2n){border-top-color:var(--brick)}
-.rec-placard:nth-child(3n){border-top-color:#b07a2e}
+.rec-placard:nth-child(2n){--rec-tint:var(--brick);border-top-color:var(--brick)}
+.rec-placard:nth-child(3n){--rec-tint:var(--ochre);border-top-color:#b07a2e}
 .rec-name{font:400 1.2rem/1.2 var(--display);color:#291912}
 .rec-name a{color:inherit;text-underline-offset:3px}
 .rec-when{font:600 .88rem/1.3 var(--label);letter-spacing:.06em;text-transform:uppercase;color:var(--denim)}
