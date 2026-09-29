@@ -34,7 +34,7 @@ for (const label of [heading, 'Weekly Lunch Specials', 'Weekly Specials • 11-1
   });
 }
 
-test('overall date range with explicit dates beside weekday labels retries into weekly entries', async t => {
+test('overall date range with explicit dates beside weekday labels retries with weekly-specific request', async t => {
   const days = 'Monday 9/28 Tuesday 9/29 Wednesday 9/30 Thursday 10/1 Friday 10/2';
   const f = currentWeek(t);
   const requests = [];
@@ -45,11 +45,21 @@ test('overall date range with explicit dates beside weekday labels retries into 
   await f.run();
   allMeals(f);
   assert.equal(requests.length,2);
-  assert.deepEqual(requests[0],requests[1]);
+  // First attempt uses the generic anyOf schema with full daily/weekly/mexican-night guidance.
+  assert.ok(Array.isArray(requests[0].response_format.json_schema.schema.anyOf),'attempt 0 must use anyOf schema');
   assert.match(requests[0].messages[1].content[0].text,/individual dates beside each weekday are not required/);
   assert.match(requests[0].messages[1].content[0].text,/If individual dates are also printed/);
+  // Second attempt uses the weekly-lunch-only schema — no anyOf, type is forced to weekly-lunch.
+  assert.ok(!requests[1].response_format.json_schema.schema.anyOf,'attempt 1 must not use anyOf schema');
+  assert.equal(requests[1].response_format.json_schema.schema.properties?.type?.const,'weekly-lunch');
+  assert.doesNotMatch(requests[1].messages[1].content[0].text,/individual dates beside each weekday are not required/);
+  assert.match(requests[1].messages[1].content[0].text,/weekly lunch/i);
+  // The two requests must differ.
+  assert.notDeepEqual(requests[0],requests[1]);
   assert.equal(f.sql("SELECT count(*) n FROM special_import_events WHERE event_type='retry'")[0].n,1);
   assert.equal(f.sql("SELECT count(*) n FROM special_import_events WHERE event_type='extract'")[0].n,2);
+  // Retry audit detail indicates the weekly-specific nature.
+  assert.match(f.sql("SELECT detail FROM special_import_events WHERE event_type='retry'")[0].detail,/weekly/i);
 });
 
 for (const label of [heading,'Weekly Lunch Specials','Weekly Specials 11-1:30','9/28–10/2 Lunch Specials','Mon–Fri 11 a.m.–1:30 p.m.']) {
@@ -68,10 +78,22 @@ test('non-special image and ordinary single-day evidence retain their existing v
   }
 });
 
-test('exact production empty result fails after one retry, publishes nothing and stays idempotent', async t => {
+test('exact production empty result fails after one weekly-specific retry, publishes nothing and stays idempotent', async t => {
   const f = currentWeek(t,emptyDaily());
+  // Spy on AI requests to verify the retry uses the weekly-specific schema.
+  const requests = [];
+  const originalRun = f.env.AI.run;
+  f.env.AI.run = async (model, request) => { requests.push(structuredClone(request)); return originalRun(model,request); };
   await f.run();
   assert.equal(f.state.aiCalls,2);
+  // Attempt 0: generic anyOf schema; attempt 1: weekly-lunch-only schema.
+  assert.equal(requests.length,2);
+  assert.ok(Array.isArray(requests[0].response_format.json_schema.schema.anyOf),'attempt 0 must use anyOf schema');
+  assert.ok(!requests[1].response_format.json_schema.schema.anyOf,'attempt 1 must not use anyOf schema');
+  assert.equal(requests[1].response_format.json_schema.schema.properties?.type?.const,'weekly-lunch');
+  // Retry audit detail indicates the weekly-specific nature.
+  assert.match(f.sql("SELECT detail FROM special_import_events WHERE event_type='retry'")[0].detail,/weekly/i);
+  // Daily shape is not accepted even on the specialized retry — fails closed.
   assert.equal(f.imports()[0].processing_status,'failed');
   assert.equal(f.imports()[0].validation_result,'rejected');
   assert.equal(f.imports()[0].validation_reason,WEEKLY_LUNCH_SHAPE_ERROR);
@@ -136,27 +158,50 @@ test('staff edit during weekly publication invalidates the guarded transaction',
 });
 
 const digest = (value,bytes) => createHash('sha256').update(value).digest('hex').slice(0,bytes*2);
-function seedParser13(f) {
+function seedImport(f, parserVersion, status, validationResult, extractedJson, candidateJson) {
   const post = f.state.posts[0];
   const captionHash = digest(post.message,8);
   const imageVersion = `updated:${post.updated_time}`;
   const model = '@cf/google/gemma-4-26b-a4b-it';
   const idFor = version => digest(`test:${post.id}:${captionHash}:${imageVersion}:${version}:${model}`,16);
   f.sql(`INSERT INTO special_imports(id,fb_post_id,fb_created_time,caption,caption_hash,image_source_version,parser_version,model_id,processing_status,validation_result,extracted_json,candidate_json)
-    VALUES(?,?,?,?,?,?,13,?,'staged','ok',?,?)`,idFor(13),post.id,post.created_time,post.message,captionHash,imageVersion,model,JSON.stringify(emptyDaily()),JSON.stringify(emptyDaily()));
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,idFor(parserVersion),post.id,post.created_time,post.message,captionHash,imageVersion,parserVersion,model,status,validationResult,extractedJson,candidateJson);
   return idFor;
 }
+function seedParser13(f) {
+  return seedImport(f,13,'staged','ok',JSON.stringify(emptyDaily()),JSON.stringify(emptyDaily()));
+}
+function seedParser14(f) {
+  return seedImport(f,14,'failed','rejected',JSON.stringify(emptyDaily()),null);
+}
 
-test('parser 14 re-extracts the same current-day source with a new deterministic identity; parser 13 is untouched', async t => {
+test('parser 15 re-extracts the same current-day source with a new deterministic identity; parser 13 is untouched', async t => {
   const f = currentWeek(t);
   const idFor = seedParser13(f);
   const old = f.imports()[0];
-  assert.equal(PARSER_VERSION,14);
+  assert.equal(PARSER_VERSION,15);
   await f.run();
   assert.equal(f.state.aiCalls,1);
   assert.deepEqual(f.imports()[0],old);
-  assert.equal(f.imports()[1].id,idFor(14));
-  assert.notEqual(idFor(13),idFor(14));
+  assert.equal(f.imports()[1].id,idFor(15));
+  assert.notEqual(idFor(13),idFor(15));
+  allMeals(f);
+  await f.run();
+  assert.equal(f.imports().length,2);
+  assert.equal(f.state.aiCalls,1);
+});
+
+test('parser 15 creates a different deterministic import identity from parser 14', async t => {
+  const f = currentWeek(t);
+  const idFor = seedParser14(f);
+  const old = f.imports()[0];
+  assert.equal(PARSER_VERSION,15);
+  await f.run();
+  // Parser-14 import (failed) is untouched.
+  assert.deepEqual(f.imports()[0],old);
+  // Parser-15 creates a new import with a distinct id.
+  assert.equal(f.imports()[1].id,idFor(15));
+  assert.notEqual(idFor(14),idFor(15));
   allMeals(f);
   await f.run();
   assert.equal(f.imports().length,2);

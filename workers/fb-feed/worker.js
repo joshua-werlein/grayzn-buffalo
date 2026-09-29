@@ -1,4 +1,4 @@
-import {buildExtractionRequest} from './extraction.js';
+import {buildExtractionRequest, buildWeeklyLunchExtractionRequest} from './extraction.js';
 import { classifyCaption, PARSER_VERSION } from './classify.js';
 import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexicanNight } from './guarded-auto.js';
 import {ensureAutomaticWeek} from './auto-week.js';
@@ -375,8 +375,8 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
   const r2Object = await env.PHOTOS.get(imageR2Key);
   if (!r2Object) return {extractedJson:null};
   const image = `data:${r2Object.httpMetadata?.contentType ?? 'image/jpeg'};base64,${await arrayBufferToBase64(await r2Object.arrayBuffer())}`;
-  const request = buildExtractionRequest(caption,image);
   let outcome = {extractedJson:null};
+  let lastValidationReason = null;
   for (let attempt=0;attempt<2;attempt++) {
     const now = new Date(Date.now());
     if (!isWithinProcessingHours(now) || chicagoDate(now)!==budget.window.today) return outcome;
@@ -385,8 +385,19 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
       new Date(budget.window.since*1000).toISOString(),new Date(budget.window.until*1000).toISOString(),
       budget.importId,modelId,now.toISOString(),budget.dailyLimit).run();
     if (reservation.meta?.changes!==1) return attempt ? outcome : {extractedJson:null,budgetExceeded:true};
-    if (attempt) await env.DB.prepare("INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?1,'retry',?2)")
-      .bind(budget.importId,'One retry with identical extraction instructions and schema').run();
+    if (attempt) {
+      // Weekly-lunch evidence that produced a daily-shaped response gets a focused
+      // retry that forces the weekly-lunch schema; other shape failures retry with
+      // the same generic request (identical instructions, same budget slot).
+      const retryDetail = lastValidationReason === WEEKLY_LUNCH_SHAPE_ERROR
+        ? 'Weekly-lunch-specific retry: forcing weekly-lunch shape and schema'
+        : 'One retry with identical extraction instructions and schema';
+      await env.DB.prepare("INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?1,'retry',?2)")
+        .bind(budget.importId,retryDetail).run();
+    }
+    const request = lastValidationReason === WEEKLY_LUNCH_SHAPE_ERROR
+      ? buildWeeklyLunchExtractionRequest(caption,image)
+      : buildExtractionRequest(caption,image);
     try {
       const result = await env.AI.run(modelId,request);
       const raw = result?.choices?.[0]?.message?.content ?? result?.response;
@@ -398,8 +409,8 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
       continue;
     }
     const validation = validateExtraction(outcome.extractedJson);
-    // Retry unusable response shapes once with the same image, instructions and budget.
-    // Ambiguous meals, dates and prices still fail closed without semantic guessing.
+    lastValidationReason = validation.validationReason;
+    // Retry unusable response shapes once; ambiguous meals/dates fail closed without guessing.
     if (!['response is not valid JSON','no AI response',WEEKLY_LUNCH_SHAPE_ERROR].includes(validation.validationReason)) return outcome;
   }
   return outcome;
