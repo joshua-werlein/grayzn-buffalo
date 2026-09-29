@@ -7,6 +7,7 @@ import {loadTs} from '../../tests/load-ts.mjs';
 import {pruneImportHistory} from './guarded-auto.js';
 const store=loadTs('src/lib/specials-store.ts');
 const wing='Wing Night — Bone-In $.89 each / Boneless $.99 each';
+const wingCanonical='Wing Night!\n$.89 Boneless Wings\n$.99 Bone In Wings\nAdd Fries';
 const pair=[offer('Jalapeno Burger w/ Side Salad, Chili or Coleslaw $10.25'),offer('Chicken Salad Sandwich w/ Cup of Chili or Coleslaw $7.25')];
 const lunch=offer('Chicken Bacon Ranch Quesadilla & a Drink $9.75','11-1:30');
 const dayPoster=day=>poster(day,'Specials',[lunch,...pair]);
@@ -26,13 +27,13 @@ for (const [day,date] of [[1,'2030-01-07'],[3,'2030-01-09'],[5,'2030-01-11']]) {
     const f=harness(t,{now:date+'T23:00:00Z',caption:'Specials',candidate:nightFirst?nightPoster(day):dayPoster(day)});
     f.state.posts[0].created_time=date+'T14:00:00Z';f.state.posts[0].updated_time=date+'T14:00:00Z';
     await f.run();
-    if (nightFirst) {assert.ok(contents(f,day,'all-day').every(s=>s===''));assert.equal(contents(f,day,'nightly')[0],day===3?wing:'');}
+    if (nightFirst) {assert.ok(contents(f,day,'all-day').every(s=>s===''));assert.equal(contents(f,day,'nightly')[0],day===3?wingCanonical:'');}
     const established=contents(f,day,'all-day');
     f.state.posts.push({...f.state.posts[0],id:'p2',created_time:date+'T20:00:00Z',updated_time:date+'T20:00:00Z'});
     f.state.candidate=nightFirst?dayPoster(day):nightPoster(day);await f.run();
     assert.equal(f.state.aiCalls,2);assert.equal(contents(f,day,'lunch')[0],lunch.content);
     assert.deepEqual(contents(f,day,'all-day'),[...pair.map(o=>o.content),'','']);
-    assert.deepEqual(contents(f,day,'nightly'),day===3?[wing,'','','']:['2 Burgers and 1 Order of Fries $14','Half Rack Ribs with Mac & Cheese & Coleslaw $18.75','','']);
+    assert.deepEqual(contents(f,day,'nightly'),day===3?[wingCanonical,'','','']:['2 Burgers and 1 Order of Fries $14','Half Rack Ribs with Mac & Cheese & Coleslaw $18.75','','']);
     if (!nightFirst) assert.deepEqual(contents(f,day,'all-day'),established);
     const rev=f.sql("SELECT revision FROM special_collections WHERE id='auto-week'")[0].revision;
     await f.run();assert.equal(f.state.aiCalls,2);assert.equal(f.sql("SELECT revision FROM special_collections WHERE id='auto-week'")[0].revision,rev);
@@ -52,12 +53,12 @@ test('night poster with changed prices cannot replace All Day or publish unresol
   assert.deepEqual(contents(f,1,'all-day'),before);assert.ok(contents(f,1,'nightly').every(s=>s===''));
 });
 for(const [name,content,origin,lock,baseline,expected] of [
-  ['eligible blank','','legacy',0,null,wing],
+  ['eligible blank','','legacy',0,null,wingCanonical],
   // populated origin='manual',manual_locked=0 is a recurring default → NOW eligible (Arm 3)
-  ['manual value','Manual','manual',0,null,wing],
+  ['manual value','Manual','manual',0,null,wingCanonical],
   // blank slot with manual origin and locked=1 is eligible under Arm 1 (content is blank)
-  ['manual blank','','manual',0,null,wing],['locked blank','','automation',1,null,wing],
-  ['locked value','Old','automation',1,'Old','Old'],['owned baseline','Old','automation',0,'Old',wing],
+  ['manual blank','','manual',0,null,wingCanonical],['locked blank','','automation',1,null,wingCanonical],
+  ['locked value','Old','automation',1,'Old','Old'],['owned baseline','Old','automation',0,'Old',wingCanonical],
   ['missing baseline','Old','automation',0,null,'Old'],['manual edit','Corrected','automation',0,'Old','Corrected'],
   ['manual clear','','automation',0,'Old',''],['legacy value','Legacy','legacy',0,'Legacy','Legacy'],
   // confirmed manual entry: origin='manual',manual_locked=1,content populated → PROTECTED (not eligible)
@@ -78,7 +79,7 @@ test('concurrent unchanged claims extract once; changed source replaces only its
 });
 test('parser 3 source claim cannot block parser 4 extraction',async t=>{
   const f=harness(t);f.sql("INSERT INTO special_imports(id,fb_post_id,fb_created_time,parser_version) VALUES('old','p1','2030-01-09T14:00:00Z',3)");
-  await f.run();assert.equal(f.state.aiCalls,1);assert.equal(f.slots()[0].content,wing);
+  await f.run();assert.equal(f.state.aiCalls,1);assert.equal(f.slots()[0].content,wingCanonical);
 });
 for(const mode of ['OFF','DRY_RUN','UNKNOWN']) test(`${mode} never writes specials or creates weeks`,async t=>{
   const f=harness(t,{mode,week:false});const before=f.sql('SELECT * FROM weekly_specials');await f.run();assert.deepEqual(f.sql('SELECT * FROM weekly_specials'),before);assert.equal(f.state.aiCalls,mode==='DRY_RUN'?1:0);
@@ -156,12 +157,12 @@ test('concurrent scans reserve the daily AI limit atomically',async t=>{
 test('new safe(): blank slot with origin=legacy,manual_locked=0 is eligible',async t=>{
   const f=harness(t);
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1','','legacy',0,null,f.slots()[0].group_id);
-  await f.run();assert.equal(f.slots()[0].content,wing);
+  await f.run();assert.equal(f.slots()[0].content,wingCanonical);
 });
 test('new safe(): blank slot with origin=manual,manual_locked=1 is NOW eligible',async t=>{
   const f=harness(t);
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1','','manual',1,null,f.slots()[0].group_id);
-  await f.run();assert.equal(f.slots()[0].content,wing);
+  await f.run();assert.equal(f.slots()[0].content,wingCanonical);
 });
 test('new safe(): populated slot with origin=manual,manual_locked=1 is NOT eligible (protected)',async t=>{
   const f=harness(t);
@@ -170,8 +171,9 @@ test('new safe(): populated slot with origin=manual,manual_locked=1 is NOT eligi
 });
 test('new safe(): prior automation value unchanged with manual_locked=0 is eligible',async t=>{
   const f=harness(t);
+  // Slot holds an old raw extraction; automation now proposes canonical form → eligible and updates
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1',wing,'automation',0,wing,f.slots()[0].group_id);
-  await f.run();assert.equal(f.slots()[0].content,wing);
+  await f.run();assert.equal(f.slots()[0].content,wingCanonical);
 });
 test('new safe(): prior automation value with manual_locked=1 (staff locked) is NOT eligible',async t=>{
   const f=harness(t);
@@ -239,7 +241,7 @@ test('arm 3: recurring default slot (origin=manual,manual_locked=0,non-empty) is
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1',
     'Chicken Salad Sandwich $7.25','manual',0,null,f.slots()[0].group_id);
   await f.run();
-  assert.equal(f.slots()[0].content,wing);
+  assert.equal(f.slots()[0].content,wingCanonical);
 });
 test('arm 3: confirmed manual entry (origin=manual,manual_locked=1,non-empty) is fully protected',async t=>{
   // saveCollection() sets manual_locked=1 for any non-empty staff submission.
@@ -408,7 +410,7 @@ test('retry: first attempt malformed, second valid → aiCalls=2, slot filled',a
   };
   await f.run();
   assert.equal(f.state.aiCalls,2);
-  assert.equal(f.slots()[0].content,wing);
+  assert.equal(f.slots()[0].content,wingCanonical);
 });
 test('retry: both attempts malformed → aiCalls=2, slot empty',async t=>{
   const f=harness(t);
@@ -421,7 +423,7 @@ test('retry: first valid → no retry (aiCalls=1)',async t=>{
   const f=harness(t);
   await f.run();
   assert.equal(f.state.aiCalls,1);
-  assert.equal(f.slots()[0].content,wing);
+  assert.equal(f.slots()[0].content,wingCanonical);
 });
 test('retry: semantic rejection (wrong day) → no retry',async t=>{
   const f=harness(t);

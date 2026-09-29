@@ -2,6 +2,27 @@ import {composeMexicanItem} from '../../src/lib/mexican-item.js';
 // Evidence is persisted separately from the website's final group structure.
 // A poster-level night heading does NOT make every offer a night-only offer.
 const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+
+// Canonical display strings for recurring specials that are intentionally multiline.
+// These are deterministic — we replace whatever the AI extracted with the known
+// authoritative text rather than inheriting arbitrary whitespace from vision output.
+const WING_NIGHT_CANONICAL = 'Wing Night!\n$.89 Boneless Wings\n$.99 Bone In Wings\nAdd Fries';
+const PIZZA_NIGHT_CANONICAL = '12" 3-Topping Pizza $13.50\n16" 3-Topping Pizza $16';
+const STIR_FRY_CANONICAL = 'Chicken Stir Fry $12.99\nSteak Stir Fry $13.99';
+
+export function canonicalizeSlotContent(content, weekday, service) {
+  // Wednesday nightly Wing Night → fixed multiline canonical
+  if (weekday === 3 && service === 'nightly' && /\bwing\s+night\b/i.test(content))
+    return WING_NIGHT_CANONICAL;
+  // Thursday nightly Pizza Night → fixed multiline canonical
+  if (weekday === 4 && service === 'nightly' && /\bpizza\b/i.test(content))
+    return PIZZA_NIGHT_CANONICAL;
+  // Friday all-day Stir Fry → fixed multiline canonical
+  if (weekday === 5 && service === 'all-day' && /\bstir\s*fry\b/i.test(content))
+    return STIR_FRY_CANONICAL;
+  // Default: collapse all internal whitespace runs (newlines, tabs, multiple spaces) to one space
+  return content.replace(/[\t\r\n]+/g, ' ').replace(/ {2,}/g, ' ').trim();
+}
 export function offerKey(text) {
   return text.normalize('NFKC').toLowerCase()
     .replace(/\bw\s*\//g, ' with ')
@@ -171,7 +192,7 @@ export function reconcilePosters(candidates,weekday,existingAllDay=[]) {
   const result=[];
   for (const [service,count] of [['lunch',1],['all-day',2],['nightly',[1,5].includes(weekday)?2:1]]) {
     const items=service==='all-day'?allDay:unique(proposals[service],count);
-    if (items) result.push({day_of_week:weekday,service,items:items.map(o=>({content:o.content}))});
+    if (items) result.push({day_of_week:weekday,service,items:items.map(o=>({content:canonicalizeSlotContent(o.content,weekday,service)}))});
   }
   if (result.length) return result;
   // Four-item Monday/Friday night fallback: deterministic position mapping when
@@ -188,8 +209,8 @@ export function reconcilePosters(candidates,weekday,existingAllDay=[]) {
       // All four offers must be non-empty and well-formed.
       if (p.offers.some(o=>!o.content || !o.content.trim())) continue;
       return [
-        {day_of_week:weekday,service:'nightly',items:[{content:p.offers[0].content},{content:p.offers[1].content}]},
-        {day_of_week:weekday,service:'all-day',items:[{content:p.offers[2].content},{content:p.offers[3].content}]},
+        {day_of_week:weekday,service:'nightly',items:[{content:canonicalizeSlotContent(p.offers[0].content,weekday,'nightly')},{content:canonicalizeSlotContent(p.offers[1].content,weekday,'nightly')}]},
+        {day_of_week:weekday,service:'all-day',items:[{content:canonicalizeSlotContent(p.offers[2].content,weekday,'all-day')},{content:canonicalizeSlotContent(p.offers[3].content,weekday,'all-day')}]},
       ];
     }
   }

@@ -3,7 +3,7 @@ import {automaticWeekRange} from './auto-week.js';
 import {composeMexicanItem} from '../../src/lib/mexican-item.js';
 // The Worker owns only automatic writes. Manual saves remain in specials-store.ts.
 // Every write, revision bump and acceptance audit commits in one D1 batch.
-import {reconcilePosters,validateWeeklyLunch,validateMexicanNight} from './reconcile.js';
+import {reconcilePosters,validateWeeklyLunch,validateMexicanNight,canonicalizeSlotContent} from './reconcile.js';
 import {PARSER_VERSION} from './classify.js';
 
 export async function reconcileToday(env,{sourceIds,today,weekday}) {
@@ -150,12 +150,13 @@ async function applyWeeklyLunch(env, source, evidence, week, today) {
     const dest = lunchGroups[0];
     const slot = slots.find(s => s.group_id === dest.id && s.position === 1);
     if (!slot) continue;
+    const canonicalContent = canonicalizeSlotContent(entry.content, entry.day_of_week, 'lunch');
     // Fill blanks or replace untouched recurring defaults. Preserve existing
     // Facebook evidence (including the more specific daily poster) and staff edits.
     if (slot.content !== '' && slot.content !== null && !(slot.origin === 'manual' && slot.manual_locked === 0)) continue;
     if (!safe(slot)) continue;
-    if (slot.origin === 'automation' && slot.content === entry.content && slot.last_auto_value === entry.content) continue;
-    rows.push({group_id: dest.id, position: 1, content: entry.content, old: slot});
+    if (slot.origin === 'automation' && slot.content === canonicalContent && slot.last_auto_value === canonicalContent) continue;
+    rows.push({group_id: dest.id, position: 1, content: canonicalContent, old: slot});
   }
   if (!rows.length) return stage('No unambiguous eligible weekly lunch changes');
 
