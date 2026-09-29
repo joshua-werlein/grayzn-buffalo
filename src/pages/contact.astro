@@ -57,10 +57,21 @@ const sitekey = env.TURNSTILE_SITEKEY;
     margin: 0 auto clamp(24px, 4vw, 38px);
   }
 
-  .contact-page .section-head .kicker { color: var(--denim); }
+  .contact-page .section-head .kicker { display: block; color: var(--brick); font-size: .82rem; }
+  .contact-page .section-head h1 {
+    margin: 8px 0 5px;
+    color: #291912;
+    font-size: clamp(3rem, 8vw, 6.4rem);
+    line-height: .98;
+    letter-spacing: .025em;
+    text-transform: uppercase;
+  }
   .contact-page .section-head .vintage-rule {
-    width: min(15rem, 70%);
-    background: linear-gradient(90deg, transparent, var(--brick), transparent);
+    display: block;
+    width: min(100%, 28rem);
+    height: 5px;
+    margin: 18px auto 0;
+    background: linear-gradient(to bottom, #291912 0 1px, transparent 1px 3px, #291912 3px 4px, transparent 4px);
   }
 
   .contact-grid {
