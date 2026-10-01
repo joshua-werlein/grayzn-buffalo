@@ -21,7 +21,7 @@ const mexicanGroups=mexican ? visibleGroups(mexican.groups) : [];
 // published (updated_at falls in the current Sun–Sat week) and it is still
 // within the visible window: Sun–Tue all day, Wed before 2 AM Chicago time.
 // The recurring "Mexican Night" card stays visible all week regardless.
-const mexicanNightVisible = mexicanGroups.length > 0 && mexicanNightDetailVisible(mexican?.updated_at);
+const mexicanNightVisible = mexicanGroups.length > 0 && mexicanNightDetailVisible(mexican?.updated_at, (Astro.locals as any).runtime?.now ?? new Date());
 
 const recurring=[{name:'Lunch Specials',when:'11 AM – 1:30 PM'},{name:'Nightly Specials',when:'5 – 10 PM'},{name:'Friday Fish',when:'Fridays · 5 – 10 PM'},{name:'Happy Hour',when:'Mon–Fri · 5 – 6:30 PM'},{name:'Mexican Night',when:mexican?.schedule || 'Tuesdays · 5 – 10 PM'}];
 

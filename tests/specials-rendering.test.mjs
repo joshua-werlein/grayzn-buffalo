@@ -13,6 +13,14 @@ const homePage=(await import('../dist/_worker.js/pages/index.astro.mjs')).page()
 const adminPage=(await import('../dist/_worker.js/pages/admin/specials.astro.mjs')).page().default;
 const container=await AstroContainer.create();
 
+// Returns a Tuesday Date within the same Sun–Sat week as now, at 15:00 UTC (9 AM Chicago).
+// Keeps mexicanNightDetailVisible() returning true regardless of what day the test runs.
+function mexicanTestNow() {
+  const d=new Date(); const dow=d.getUTCDay();
+  d.setUTCDate(d.getUTCDate()+(dow<=2 ? 2-dow : -(dow-2)));
+  d.setUTCHours(15,0,0,0); return d;
+}
+
 test('automated Mexican items reopen as stacked title and description controls',async t=>{
   const {harness}=await import('../workers/fb-feed/test-fixture.js');
   const f=harness(t,{caption:'Mexican Night',candidate:{type:'mexican-night',poster_evidence:'Mexican Night',schedule:'Tuesdays 5–10 PM',groups:[{label:'Entrees',items:[{title:'Burrito $10',description:'Beans\nSalsa'}]},{label:'Add-Ons',items:[{title:'Chicken +$1',description:''}]}]}});
@@ -53,7 +61,7 @@ test('homepage and specials hide empty days/groups, render four items and keep M
   await s.saveCollection(f.env,week.collection,{start:week.week_start_date,end:week.week_end_date});
   const mexican=await s.readCollection(f.env,'mexican-night');const menu=s.blankGroup(-1);menu.label='Test menu';menu.slots[0].content='SeparateMexicanItem';mexican.groups=[menu];await s.saveCollection(f.env,mexican);
   for(const [component,path] of [[publicPage,'/specials'],[homePage,'/']]) {
-    const html=await container.renderToString(component,{request:new Request('http://localhost'+path),locals:{runtime:{env:f.env}}});
+    const html=await container.renderToString(component,{request:new Request('http://localhost'+path),locals:{runtime:{env:f.env,now:mexicanTestNow()}}});
     for(let i=1;i<=4;i++) assert.ok(html.includes(`VisibleSpecial${i}`));
     assert.ok(!html.includes('No special posted.'));
     assert.ok(html.includes('/specials#mexican-night'));
@@ -83,7 +91,7 @@ test('Mexican menu merges stored food groups, separates accessories and preserve
   });
   await s.saveCollection(f.env,mexican);
   const before=await s.readCollection(f.env,'mexican-night');
-  const html=await container.renderToString(publicPage,{request:new Request('http://localhost/specials'),locals:{runtime:{env:f.env}}});
+  const html=await container.renderToString(publicPage,{request:new Request('http://localhost/specials'),locals:{runtime:{env:f.env,now:mexicanTestNow()}}});
   const food=html.match(/<ul class="menu-grid menu-grid--food"[^>]*>([\s\S]*?)<\/ul>/)[1];
   const extras=html.match(/<ul class="menu-grid menu-grid--extras"[^>]*>([\s\S]*?)<\/ul>/)[1];
   assert.equal((food.match(/<li[ >]/g)||[]).length,7);
