@@ -608,8 +608,6 @@ The screenshots below show representative public views captured before productio
 
 ![Grayz'n Buffalo weekly specials](docs/screenshots/specials.webp)
 
-> Screenshots were captured from the staging deployment at `grazynbuffalo.com` prior to final production cutover. No credentials, customer submissions, API tokens, or other private operational information are shown.
-
 ---
 
 ## Copyright and Usage
