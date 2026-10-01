@@ -1,5 +1,7 @@
 Mexican Night automatic weekly publication
-Branch base: c0b5ab2 (latest main when work began). No production changes made.
+Historical rollout notes — accurate at time of initial audit. Current production
+state is summarized at the bottom of this file.
+Branch base: c0b5ab2 (latest main when work began).
 Root cause
 ensureAutomaticWeek() copied only defaults groups into a week collection.
 The separate mexican-night section was not copied, associated with a Tuesday,
@@ -58,7 +60,8 @@ Production steps after review
 4. Let the next scheduled run seed the eligible week's details; verify metadata,
    Tuesday summary, live details, and the next visibility cutoff. No AI reprocessing
    or prior-day import backfill is required.
-No merge, production migration, Worker deployment, or Pages deployment was performed.
+Migration 0019, Worker deployment, and Pages deployment have since been completed
+in production. See "Current production state" at the bottom of this file.
 Exact changed files
 - migrations/0019_mexican_night_recurring.sql: stored template snapshot and publication metadata.
 - workers/fb-feed/auto-week.js: include detailed publication in the existing weekly transaction.
@@ -70,10 +73,14 @@ Exact changed files
 - tests/sqlite-specials.py: apply migration 0019 in test databases.
 - tests/specials-auto-d1.test.mjs: correct the existing current-day test timestamp to a Chicago daytime instant.
 - MEXICAN_NIGHT_AUTOMATION.md: audit, behavior, validation and rollout notes.
-The Gemma configuration, parser version 13, structured extraction, retry/accounting,
-normalization and visibility implementation are unchanged from the branch base.
+The Gemma configuration, structured extraction, and visibility implementation are
+unchanged from the branch base. Since this rollout, the parser advanced to version 16
+and the retry/accounting logic was extended: WEEKLY_LUNCH_SHAPE_ERROR retries with a
+weekly-lunch-only schema; MEXICAN_NIGHT_SHAPE_ERROR retries with a mexican-night-only
+schema; a Tuesday empty-offers path triggers a targeted Mexican Night retry regardless
+of caption text. See facebook-specials-auto.md for the current pipeline description.
 Validation
-- Entire Worker suite: 335 tests, 335 passed, 0 failed, 0 skipped.
+- Entire Worker suite: 335 tests, 335 passed, 0 failed, 0 skipped. (Now 406/406; see current state below.)
 - Entire application suite: 93 tests, 93 passed, 0 failed, 0 skipped.
 - astro check: 0 errors, 0 warnings, 7 hints.
 - npm run build: passed.
@@ -91,5 +98,14 @@ menus still cannot be reseeded. Facebook manual-lock guards are unchanged.
 Tests cover prior-week manual and Facebook menus, edits to recurring content,
 prices/title/schedule, current-week manual protection, and same-week reruns.
 Full suites after this change: Worker 335/335; application 93/93; zero failures.
+(Current counts: Worker 406/406; application 93/93; zero failures.)
 This follow-up changes only the seeding guard, lifecycle tests, and this report;
 no additional migration, merge, or deployment was performed.
+Current production state
+Migration 0019 applied. Worker version 344d5be3-5203-4165-81f3-5a0d0fbc7949 deployed.
+SPECIALS_IMPORT_MODE=GUARDED_AUTO. Parser version 16. The retry pipeline was
+subsequently extended: WEEKLY_LUNCH_SHAPE_ERROR retries with weekly-lunch-only schema;
+MEXICAN_NIGHT_SHAPE_ERROR retries with mexican-night-only schema; Tuesday empty-offers
+path triggers targeted Mexican Night retry regardless of caption. Parser 16 bumped to
+force fresh claims for the new extraction paths. Worker suite 406/406 passing;
+application suite 93/93 passing.

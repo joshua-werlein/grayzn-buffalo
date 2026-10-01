@@ -11,7 +11,7 @@
 ![Status](https://img.shields.io/badge/Status-Production-2ea44f)
 ![License](https://img.shields.io/badge/License-Proprietary-red)
 
-**[Live Site](https://grayznbuffalo.com)** · **[Portfolio](https://joshuawerlein.com)**
+**[Live Site](https://grayznbuffalo.com)** · **[Case Study](https://joshuawerlein.com)**
 
 </div>
 
@@ -39,6 +39,7 @@ A separate scheduled Cloudflare Worker integrates the restaurant's Facebook Page
 - KV-backed administrative sessions
 - Separate scheduled Facebook Graph API integration
 - Failure-tolerant Facebook feed caching
+- AI-powered daily specials extraction and publication via Workers AI (Gemma 4)
 - Turnstile-protected contact delivery through Resend
 - Responsive desktop and mobile interfaces
 - Keyboard-accessible dialogs and lightboxes
@@ -132,6 +133,8 @@ Features include:
 
 Recurring defaults populate new unsaved weeks while previously saved weeks remain unchanged.
 
+In `GUARDED_AUTO` mode the Worker also scans today's Facebook image posts and publishes eligible specials automatically using Gemma 4 (Workers AI). Three extraction paths are supported: daily offers for a single day, a multi-day weekly lunch set, and the Tuesday Mexican Night section. Manual values and staff-locked fields are never overwritten. See [Facebook Specials Automation](docs/facebook-specials-auto.md).
+
 ### Welcome Photos
 
 Staff can manage homepage photography through the administration interface.
@@ -151,6 +154,9 @@ Cloudflare D1 stores structured application data including:
 - Weekly-special records
 - Weekly-special day records
 - Recurring special defaults
+- Specials collection, group, and slot records
+- Facebook specials import records and extraction audit events
+- Mexican Night section and recurring template data
 - Site settings
 - Welcome-photo metadata
 
@@ -206,6 +212,50 @@ The public page therefore does not depend on a live Facebook browser embed.
 No Facebook SDK or third-party Facebook script is required in the visitor's browser.
 The site's own script fetches the feed; server-rendered fallback content is present
 before it loads. Feeds older than four days produce the Facebook-link fallback.
+
+### Specials Automation
+
+In `GUARDED_AUTO` mode, each cron run also scans today's image posts for specials
+content. Posts are processed through a three-path extraction pipeline using Gemma 4
+(`@cf/google/gemma-4-26b-a4b-it`) via Workers AI:
+
+- **Daily offers** — individual lunch, nightly, and all-day specials for a single day
+- **Weekly lunch** — a multi-day Monday–Friday lunch set extracted from one post
+- **Mexican Night** — the Tuesday evening section with food groups and menu items
+
+Each post/caption/image/parser/model version has a durable deterministic claim so
+vision runs at most once (parser version 16, 50-call Chicago-day budget). Reconciliation
+uses stored evidence only; failed or budget-limited extractions are never blindly retried.
+
+All eligible slot writes commit in a single guarded D1 transaction that verifies
+revision, slot state, and source evidence have not changed since the plan was formed.
+Manual values, staff-locked fields, and values that differ from `last_auto_value` are
+never overwritten. Conflicting or incomplete evidence fails closed.
+
+Two shape-error retry paths handle misidentified AI responses: `WEEKLY_LUNCH_SHAPE_ERROR`
+retries with a weekly-lunch-only schema; `MEXICAN_NIGHT_SHAPE_ERROR` retries with a
+Mexican Night-only schema. A Tuesday-specific path also fires a targeted Mexican Night
+retry when the first attempt returns valid poster evidence with empty offers.
+
+### fb-feed Worker Configuration
+
+| Binding | Service | Purpose |
+|---|---|---|
+| `DB` | D1 | Specials import records, audit events, weekly specials, Mexican Night section |
+| `FB_KV` | KV | Cached public feed and retired-post retention data |
+| `PHOTOS` | R2 | Cached Facebook media and import image storage |
+| `AI` | Workers AI | Gemma 4 vision extraction |
+
+Environment variables:
+
+| Variable | Production value | Purpose |
+|---|---|---|
+| `SPECIALS_IMPORT_MODE` | `GUARDED_AUTO` | Pipeline mode: OFF / DRY_RUN / GUARDED_AUTO |
+| `SPECIALS_AI_MODEL` | `@cf/google/gemma-4-26b-a4b-it` | Workers AI model ID |
+| `SPECIALS_AI_DAILY_LIMIT` | `50` | Maximum AI vision calls per Chicago calendar day |
+
+See [Facebook Specials Automation](docs/facebook-specials-auto.md) and
+[Mexican Night Automation](docs/MEXICAN_NIGHT_AUTOMATION.md) for full details.
 
 ---
 
@@ -291,6 +341,7 @@ grayzn-buffalo/
 │   └── pages/
 │       ├── admin/
 │       │   ├── index.astro
+│       │   ├── analytics.astro
 │       │   ├── menu.astro
 │       │   ├── specials.astro
 │       │   └── welcome-photos.astro
@@ -298,7 +349,14 @@ grayzn-buffalo/
 │
 ├── workers/
 │   └── fb-feed/
-│       ├── worker.js
+│       ├── worker.js               # cron handler, feed refresh, import pipeline
+│       ├── extraction.js           # AI request builders and JSON schemas
+│       ├── classify.js             # caption classification, PARSER_VERSION
+│       ├── reconcile.js            # evidence validation and offer reconciliation
+│       ├── guarded-auto.js         # guarded writes, Mexican Night reconciliation
+│       ├── auto-week.js            # automatic week provisioning
+│       ├── mexican-night-defaults.js  # MN recurring template and slot guards
+│       ├── *.test.js               # 15 test files, 406 tests
 │       └── wrangler.toml
 │
 ├── astro.config.mjs
@@ -464,6 +522,8 @@ The workflow below does not apply D1 migrations automatically. Local tests can u
 an isolated Wrangler persistence directory to avoid touching production or other
 local data. Run `node --test tests/analytics.test.mjs tests/client-workflows.test.mjs
 tests/post-launch.test.mjs`, the existing Facebook worker tests, and `npm run build`.
+
+For a complete post-launch readiness reference, see [POST_LAUNCH_CHECKLIST.md](POST_LAUNCH_CHECKLIST.md).
 
 Reference: [Cloudflare dataset settings](https://developers.cloudflare.com/analytics/graphql-api/features/discovery/settings/),
 [Web Analytics retention and sampling](https://developers.cloudflare.com/web-analytics/faq/).
