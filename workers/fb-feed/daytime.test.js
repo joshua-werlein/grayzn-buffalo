@@ -109,8 +109,8 @@ test('Thursday evening price conflict never replaces established All Day or crea
   f.state.candidate.offers[1].content=f.state.candidate.offers[1].content.replace('10.25','10.50');
   await f.run();assert.deepEqual(f.slots(4,'all-day'),before);assert.ok(f.slots(4,'nightly').every(s=>s.content===''));
 });
-test('parser 15 reprocesses a Thursday source claimed by parser 10 without deleting history',async t=>{
-  assert.equal(PARSER_VERSION,15);
+test('parser 16 reprocesses a Thursday source claimed by parser 10 without deleting history',async t=>{
+  assert.equal(PARSER_VERSION,16);
   const f=makeHarness(t);const raw=f.state.posts[0];
   const digest=(s,n)=>createHash('sha256').update(s).digest('hex').slice(0,n*2);
   const captionHash=digest(raw.message,8), version=`updated:${raw.updated_time}`;
@@ -119,7 +119,7 @@ test('parser 15 reprocesses a Thursday source claimed by parser 10 without delet
   f.sql(`INSERT INTO special_imports(id,fb_post_id,fb_created_time,caption_hash,image_source_version,parser_version,model_id,processing_status,fetched_at)
     VALUES(?,?,?,?,?,10,?,'staged',?)`,oldId,raw.id,raw.created_time,captionHash,version,model,raw.created_time);
   await f.run();assert.equal(f.state.aiCalls,1);assert.equal(f.slots(4,'lunch')[0].content,dishes[0]);
-  assert.deepEqual(f.imports().map(r=>r.parser_version),[10,15]);
+  assert.deepEqual(f.imports().map(r=>r.parser_version),[10,16]);
   assert.equal(f.imports()[0].id,oldId);await f.run();assert.equal(f.state.aiCalls,1);
 });
 
@@ -225,4 +225,87 @@ test('live parser-6 Thursday candidate: polluted evidence on offers 2-3 must not
   assert.equal(result[1].items[0].content,'California Burger w/ Side Salad, Chili or Coleslaw - $10.25');
   assert.equal(result[1].items[1].content,'Chicken Salad Sandwich w/ Cup of Chili or Coleslaw - $7.25');
   assert.ok(!result.some(g=>g.service==='nightly'),'no Nightly from a daytime poster');
+});
+
+// ── day_of_week=-1 / isDayUnknown path ─────────────────────────────────────────
+
+const unknownDayPoster=(heading,offers)=>({day_of_week:-1,day_evidence:'',poster_evidence:heading,offers});
+
+// Mirrors the Wednesday 30 Sept production failure: poster had no weekday heading,
+// AI returned day_of_week=-1.  The three offers carry prices in content.
+const sept30Offers=[
+  {content:'Bacon Cheese Curd Burger w/ Beer Fries & a Drink $9.75',service_time:'11-1:30',evidence:''},
+  {content:'Grilled Chipotle Chicken Bacon Ranch Wrap w/ Fries & Coleslaw $10.25',service_time:'',evidence:''},
+  {content:'Chicken Salad Sandwich w/ Cup of Chili or Coleslaw $7.25',service_time:'',evidence:''},
+];
+
+test('Sept-30-style: day_of_week=-1 three-offer Specials poster produces Lunch + All Day',()=>{
+  const result=reconcilePosters([unknownDayPoster('Specials',sept30Offers)],3);
+  assert.equal(result.length,2,'expected lunch and all-day groups');
+  const lunch=result.find(g=>g.service==='lunch');
+  const allDay=result.find(g=>g.service==='all-day');
+  assert.ok(lunch,'lunch group produced');
+  assert.ok(allDay,'all-day group produced');
+  assert.equal(lunch.items[0].content,'Bacon Cheese Curd Burger w/ Beer Fries & a Drink $9.75','$9.75 preserved');
+  assert.deepEqual(allDay.items.map(i=>i.content),[
+    'Grilled Chipotle Chicken Bacon Ranch Wrap w/ Fries & Coleslaw $10.25',
+    'Chicken Salad Sandwich w/ Cup of Chili or Coleslaw $7.25',
+  ],'wrap $10.25 and chicken salad both assigned to all-day');
+});
+
+test('day_of_week=-1 generic Specials heading accepted for every weekday',()=>{
+  for(const weekday of [1,2,3,4,5]){
+    const result=reconcilePosters([unknownDayPoster('Specials',dishes.map(s=>offer(s)))],weekday);
+    assert.ok(result.length>0,`weekday ${weekday}: day-unknown poster should produce output`);
+  }
+});
+
+test('explicit wrong weekday still rejected after isDayUnknown fix',()=>{
+  const p=poster(2,'Tuesday Specials',dishes.map(s=>offer(s)));
+  assert.deepEqual(reconcilePosters([p],3),[],'wrong explicit weekday must be rejected');
+});
+
+test('day_of_week=-1 with a weekday name in day_evidence rejected (conflicting evidence)',()=>{
+  const p={day_of_week:-1,day_evidence:'Monday',poster_evidence:'Specials',offers:dishes.map(s=>offer(s))};
+  assert.deepEqual(reconcilePosters([p],3),[],'weekday name in day_evidence is conflicting; must reject');
+});
+
+for(const heading of [
+  "Tomorrow's Lunch Special",
+  'tomorrow specials',
+  "Tomorrow's Special: Grilled Salmon $12.99",
+  'This Weekend Fish Fry',
+  'this weekend specials',
+  'Next Friday Night Specials',
+  'next monday special',
+  'Next week specials',
+  'later this week: prime rib night',
+  'Later This Week Specials',
+]){
+  test(`forward-looking heading rejected: "${heading}"`,()=>{
+    const p=unknownDayPoster(heading,dishes.map(s=>offer(s)));
+    assert.deepEqual(reconcilePosters([p],3),[],'future-ref heading must be rejected');
+  });
+}
+
+test('"tomorrow" appearing in day_evidence also rejected',()=>{
+  const p={day_of_week:-1,day_evidence:'tomorrow',poster_evidence:'Specials',offers:dishes.map(s=>offer(s))};
+  assert.deepEqual(reconcilePosters([p],3),[],'tomorrow in day_evidence must be rejected');
+});
+
+test('"tonight" heading not blocked by hasFutureRef (same-day nightly)',()=>{
+  // serviceOf("Tonight's Special") → 'unknown': \bnight\b has no word boundary inside "tonight",
+  // so orderedDaytime fires normally and produces lunch + all-day for the three-offer pattern.
+  const p=unknownDayPoster("Tonight's Special",dishes.map(s=>offer(s)));
+  const result=reconcilePosters([p],3);
+  assert.ok(result.length>0,'"tonight" must not be blocked by the future-ref guard');
+});
+
+test('prices embedded in content survive canonicalization end-to-end',()=>{
+  const result=reconcilePosters([unknownDayPoster('Specials',sept30Offers)],3);
+  const lunch=result.find(g=>g.service==='lunch');
+  const allDay=result.find(g=>g.service==='all-day');
+  assert.ok(lunch.items[0].content.includes('$9.75'),'$9.75 not stripped from lunch');
+  assert.ok(allDay.items[0].content.includes('$10.25'),'$10.25 not stripped from all-day');
+  assert.ok(allDay.items[1].content.includes('$7.25'),'$7.25 not stripped from all-day');
 });

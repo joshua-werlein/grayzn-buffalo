@@ -41,6 +41,7 @@ export function normalizeOfferContent(content) {
   return content.replace(/\b(?:only|special)!?\s+(?=\$\.?\d)/gi, '').trim();
 }
 export const WEEKLY_LUNCH_SHAPE_ERROR = 'Weekly lunch evidence requires weekday entries, not daily offers';
+export const MEXICAN_NIGHT_SHAPE_ERROR = 'Mexican Night evidence requires the mexican-night shape, not daily offers';
 function hasWeeklyLunchEvidence(text) {
   const normalized = text.toLowerCase().replace(/[–—]/g, '-');
   const schedule = /\bweekly\b/.test(normalized)
@@ -55,6 +56,8 @@ export function validateEvidence(value) {
       !str(value.day_evidence,160) || !str(value.poster_evidence,160) || !Array.isArray(value.offers) || value.offers.length > 12) throw Error('Invalid poster evidence');
   // Reject the wrong response shape; never infer meals from a weekly heading.
   if (hasWeeklyLunchEvidence(`${value.poster_evidence} ${value.day_evidence}`)) throw Error(WEEKLY_LUNCH_SHAPE_ERROR);
+  // Reject daily-offers shape when the poster clearly says "Mexican Night"; require the dedicated shape.
+  if (/\bmexican\s+night\b/i.test(`${value.poster_evidence} ${value.day_evidence}`)) throw Error(MEXICAN_NIGHT_SHAPE_ERROR);
   const offers = value.offers.map(o => {
     if (!o || !str(o.content,150) || !o.content.trim() || !str(o.service_time,80) || !str(o.evidence,160)) throw Error('Invalid offer evidence');
     return {content:normalizeOfferContent(o.content),service_time:o.service_time,evidence:o.evidence};
@@ -130,7 +133,17 @@ function forToday(value,weekday) {
   try {
     const p=validateEvidence(value);
     const days=DAYS.flatMap((d,i)=>new RegExp(`\\b${d}\\b`,'i').test(p.day_evidence)?[i]:[]);
-    if (p.day_of_week!==weekday || days.length!==1 || days[0]!==weekday) return null;
+    const isExplicitToday=p.day_of_week===weekday && days.length===1 && days[0]===weekday;
+    // Accept posters where the AI found no printed weekday (day=-1, empty evidence).
+    // Guard against "tomorrow", "this weekend", "next Friday", and similar forward-looking
+    // headings that describe a future day's special posted the day before.
+    const headingText=`${p.day_evidence} ${p.poster_evidence}`.toLowerCase().replace(/[–—]/g,'-');
+    const hasFutureRef=/\btomorrow\b/.test(headingText)
+      || /\bthis\s+weekend\b/.test(headingText)
+      || /\bnext\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday|week)\b/.test(headingText)
+      || /\blater\s+this\s+week\b/.test(headingText);
+    const isDayUnknown=p.day_of_week===-1 && days.length===0 && !hasFutureRef;
+    if (!isExplicitToday && !isDayUnknown) return null;
     const offers=p.offers.map(o=>({...o,service:serviceOf(o.service_time)}));
     if (offers.some(o=>o.service==='conflict')) return null;
     return {...p,offers,service:serviceOf(p.poster_evidence)};

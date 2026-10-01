@@ -1,8 +1,8 @@
-import {buildExtractionRequest, buildWeeklyLunchExtractionRequest} from './extraction.js';
+import {buildExtractionRequest, buildWeeklyLunchExtractionRequest, buildMexicanNightExtractionRequest} from './extraction.js';
 import { classifyCaption, PARSER_VERSION } from './classify.js';
 import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexicanNight } from './guarded-auto.js';
 import {ensureAutomaticWeek} from './auto-week.js';
-import {validateEvidence, validateWeeklyLunch, validateMexicanNight, WEEKLY_LUNCH_SHAPE_ERROR} from './reconcile.js';
+import {validateEvidence, validateWeeklyLunch, validateMexicanNight, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR} from './reconcile.js';
 
 const TIME_ZONE = 'America/Chicago';
 const GRAPH_API_VERSION = 'v26.0';
@@ -377,6 +377,8 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
   const image = `data:${r2Object.httpMetadata?.contentType ?? 'image/jpeg'};base64,${await arrayBufferToBase64(await r2Object.arrayBuffer())}`;
   let outcome = {extractedJson:null};
   let lastValidationReason = null;
+  // Tracks whether a Tuesday empty-offers result has armed the Mexican Night targeted retry.
+  let needsMexicanNightRetry = false;
   for (let attempt=0;attempt<2;attempt++) {
     const now = new Date(Date.now());
     if (!isWithinProcessingHours(now) || chicagoDate(now)!==budget.window.today) return outcome;
@@ -386,18 +388,20 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
       budget.importId,modelId,now.toISOString(),budget.dailyLimit).run();
     if (reservation.meta?.changes!==1) return attempt ? outcome : {extractedJson:null,budgetExceeded:true};
     if (attempt) {
-      // Weekly-lunch evidence that produced a daily-shaped response gets a focused
-      // retry that forces the weekly-lunch schema; other shape failures retry with
-      // the same generic request (identical instructions, same budget slot).
+      // Select the most informative retry description and the focused schema.
       const retryDetail = lastValidationReason === WEEKLY_LUNCH_SHAPE_ERROR
         ? 'Weekly-lunch-specific retry: forcing weekly-lunch shape and schema'
-        : 'One retry with identical extraction instructions and schema';
+        : (needsMexicanNightRetry || lastValidationReason === MEXICAN_NIGHT_SHAPE_ERROR)
+          ? 'Mexican Night targeted retry: determining from image whether poster is Mexican Night'
+          : 'One retry with identical extraction instructions and schema';
       await env.DB.prepare("INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?1,'retry',?2)")
         .bind(budget.importId,retryDetail).run();
     }
     const request = lastValidationReason === WEEKLY_LUNCH_SHAPE_ERROR
       ? buildWeeklyLunchExtractionRequest(caption,image)
-      : buildExtractionRequest(caption,image);
+      : (needsMexicanNightRetry || lastValidationReason === MEXICAN_NIGHT_SHAPE_ERROR)
+        ? buildMexicanNightExtractionRequest(caption,image)
+        : buildExtractionRequest(caption,image);
     try {
       const result = await env.AI.run(modelId,request);
       const raw = result?.choices?.[0]?.message?.content ?? result?.response;
@@ -410,8 +414,17 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
     }
     const validation = validateExtraction(outcome.extractedJson);
     lastValidationReason = validation.validationReason;
+    // Tuesday empty-offers: generic validation passed but offers are empty → retry once
+    // with the targeted Mexican Night extraction to check whether the image is Mexican Night.
+    // Only fires on attempt 0; never infers Mexican Night from Tuesday or time alone.
+    if (attempt === 0 && budget.window.weekday === 2 && validation.validationReason === 'poster evidence') {
+      try {
+        const parsedOffers = JSON.parse(outcome.extractedJson)?.offers;
+        if (Array.isArray(parsedOffers) && parsedOffers.length === 0) needsMexicanNightRetry = true;
+      } catch { /* ignore; leave needsMexicanNightRetry false */ }
+    }
     // Retry unusable response shapes once; ambiguous meals/dates fail closed without guessing.
-    if (!['response is not valid JSON','no AI response',WEEKLY_LUNCH_SHAPE_ERROR].includes(validation.validationReason)) return outcome;
+    if (!needsMexicanNightRetry && !['response is not valid JSON','no AI response',WEEKLY_LUNCH_SHAPE_ERROR,MEXICAN_NIGHT_SHAPE_ERROR].includes(validation.validationReason)) return outcome;
   }
   return outcome;
 }
@@ -595,8 +608,12 @@ export async function runImportPipeline(env) {
         validationReason=imageR2Key ? 'daily AI limit reached' : 'no image';
       }
       await env.DB.prepare(`UPDATE special_imports SET image_r2_key=?1,image_hash=?2,extracted_json=?3,candidate_json=?4,
-        validation_result=?5,validation_reason=?6,processing_status=?7,processed_at=?8,last_error=?9 WHERE id=?10`).bind(
-        imageR2Key,imageHash,extractedJson,candidateJson,validationResult,validationReason,processingStatus,processedAt,lastError,importId).run();
+        validation_result=?5,validation_reason=?6,processing_status=?7,processed_at=?8,last_error=?9,
+        target_kind=COALESCE(?11,target_kind),target_collection_id=COALESCE(?12,target_collection_id)
+        WHERE id=?10`).bind(
+        imageR2Key,imageHash,extractedJson,candidateJson,validationResult,validationReason,processingStatus,processedAt,lastError,importId,
+        validationReason==='mexican night evidence' ? 'section' : null,
+        validationReason==='mexican night evidence' ? 'mexican-night' : null).run();
       if (processingStatus === 'staged') {
         await event('stage', mode === 'DRY_RUN' ? 'DRY_RUN; no automatic writes' : 'Saved for same-day reconciliation');
       } else if (processingStatus === 'failed') {
@@ -651,8 +668,12 @@ export async function runImportPipeline(env) {
       if (aiResult.budgetExceeded) { reStatus='skipped'; reValidationReason='daily AI limit reached'; }
       await reEvent('validate', reValidationReason);
       await env.DB.prepare(`UPDATE special_imports SET extracted_json=?1,candidate_json=?2,validation_result=?3,
-        validation_reason=?4,processing_status=?5,processed_at=?6,last_error=?7 WHERE id=?8`).bind(
-        reExtractedJson, reCandidateJson, reValidationResult, reValidationReason, reStatus, processedAt, reLastError, record.id).run();
+        validation_reason=?4,processing_status=?5,processed_at=?6,last_error=?7,
+        target_kind=COALESCE(?9,target_kind),target_collection_id=COALESCE(?10,target_collection_id)
+        WHERE id=?8`).bind(
+        reExtractedJson, reCandidateJson, reValidationResult, reValidationReason, reStatus, processedAt, reLastError, record.id,
+        reValidationReason==='mexican night evidence' ? 'section' : null,
+        reValidationReason==='mexican night evidence' ? 'mexican-night' : null).run();
       if (reStatus === 'staged') {
         await reEvent('stage', mode === 'DRY_RUN' ? 'DRY_RUN; no automatic writes' : 'Saved for same-day reconciliation');
       } else if (reStatus === 'failed') {

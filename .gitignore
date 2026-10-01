@@ -11,3 +11,4 @@ items-only.sql
 .claude/worktrees/
 tmp-screenshots/
 CLAUDE.md
+.claude/settings.json

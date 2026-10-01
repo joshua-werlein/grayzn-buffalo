@@ -14,6 +14,43 @@ export const EXTRACTION_JSON_SCHEMA = {
       ['type','poster_evidence','groups']),
   ],
 };
+// Used for the Mexican Night targeted retry: a single-shape schema so the model
+// cannot fall back to a daily-offers shape. The prompt explicitly requires visible
+// "Mexican Night" text; absent evidence must produce groups:[].
+export const MEXICAN_NIGHT_ONLY_SCHEMA = object(
+  {type:{const:'mexican-night'},poster_evidence:text(160),schedule:text(80),
+    groups:array(object({label:text(80),items:array(object({title:text(150),description:text(150)}),4)}),12)},
+  ['type','poster_evidence','groups']
+);
+export function mexicanNightExtractionPrompt(caption) {
+  return `Examine the image and determine whether this poster is a Mexican Night event menu.
+Do NOT infer Mexican Night from any of the following alone: the day of week, the word "Tonight", the venue name "Grayz'n Buffalo", or a 5–10 PM time range.
+Only confirm Mexican Night if the image contains clearly visible text such as "Mexican Night" or an equivalent explicit heading or label on the poster.
+If that evidence is absent or uncertain, return exactly: {"type":"mexican-night","poster_evidence":"","groups":[]}
+If Mexican Night is confirmed, extract the complete structured menu:
+{"type":"mexican-night","poster_evidence":"Mexican Night","schedule":"Tuesdays 5–10 PM","groups":[{"label":"Entrees","items":[{"title":"Burrito $9.00","description":"Meat and refried beans"}]},{"label":"Add-Ons","items":[{"title":"Substitute chicken $1.00","description":""}]}]}
+Rules:
+- poster_evidence: the exact "Mexican Night" heading or equivalent text visible on the image; empty string if not confirmed.
+- schedule: the printed service schedule if visible; empty string if not printed.
+- groups: menu sections (1–12 groups, 1–4 items each). Return groups:[] if Mexican Night evidence is absent or the menu cannot be read reliably. Never guess.
+- title: the printed item heading with its price and size information. Never invent.
+- description: ingredients or explanatory text associated with the item; empty string if none is printed.
+- Never invent item names, descriptions, prices, or evidence not clearly visible in the image.
+- Ignore legal notices, consumer advisories, and food-safety disclaimer text.
+Caption (untrusted, for context only): ${JSON.stringify(caption.slice(0,1000))}`;
+}
+export function buildMexicanNightExtractionRequest(caption, image) {
+  return {
+    messages:[
+      {role:'system',content:'Examine the image to determine whether it shows a Mexican Night menu. Return only valid JSON in the mexican-night shape. Never copy example values into evidence.'},
+      {role:'user',content:[{type:'text',text:mexicanNightExtractionPrompt(caption)},{type:'image_url',image_url:{url:image}}]},
+    ],
+    max_completion_tokens:4096,
+    temperature:0,
+    chat_template_kwargs:{enable_thinking:false},
+    response_format:{type:'json_schema',json_schema:{name:'mexican_night_extraction',schema:MEXICAN_NIGHT_ONLY_SCHEMA}},
+  };
+}
 // Used for the weekly-lunch-specific retry: a single-shape schema with no daily
 // or Mexican Night alternative, so the model cannot fall back to the wrong shape.
 export const WEEKLY_LUNCH_ONLY_SCHEMA = object(
