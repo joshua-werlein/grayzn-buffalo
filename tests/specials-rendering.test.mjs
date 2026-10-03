@@ -140,6 +140,29 @@ test('compiled admin preserves drafts on stale POST and rejects wrong origin wit
   assert.ok(html.includes('data-active-day="6"'));assert.deepEqual(f.sql('SELECT * FROM special_slots ORDER BY group_id,position'),before);
 });
 
+test('compiled Admin new-week POST saves recurring prefills unlocked and staff changes locked',async t=>{
+  const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};
+  const defaults=await s.readCollection(f.env,'defaults');
+  const group=defaults.groups.find(g=>g.day_of_week===6 && g.service==='all-day');
+  f.sql("UPDATE special_slots SET content='Recurring sandwich $10.25',price='',section_link='' WHERE group_id=? AND position=1",group.id);
+  const draft=s.newWeekFromDefaults(await s.readCollection(f.env,'defaults'));
+  const body=new FormData();
+  for(const [key,value] of Object.entries({action:'save-weekly-specials',weekly_id:'',revision:'0',week_start_date:'2030-01-07',group_count:String(draft.groups.length)})) body.set(key,value);
+  draft.groups.forEach((g,i)=>{
+    for(const [key,value] of Object.entries({id:g.id,day:g.day_of_week,service:g.service,label:g.label,time:g.service_time})) body.set(`g${i}_${key}`,String(value));
+    if(g.enabled) body.set(`g${i}_enabled`,'on');
+    for(const slot of g.slots) if(slot.position<=s.specialInputCount(g)) body.set(`g${i}_${slot.position}_content`,s.displayedSpecial(slot));
+    if(g.day_of_week===6 && g.service==='all-day') body.set(`g${i}_2_content`,'Staff correction $12');
+  });
+  const response=await container.renderToResponse(adminPage,{request:new Request('http://localhost/admin/specials?new=1',{
+    method:'POST',headers:{origin:'http://localhost',cookie:'gb_session='+'a'.repeat(32)},body}),locals:{runtime:{env:f.env}}});
+  assert.equal(response.status,303);
+  const weekId=Number(new URL(response.headers.get('location'),'http://localhost').searchParams.get('week'));
+  const slots=(await s.readWeek(f.env,weekId)).collection.groups.find(g=>g.day_of_week===6 && g.service==='all-day').slots;
+  assert.deepEqual(slots.slice(0,2).map(x=>[x.content,x.origin,x.manual_locked]),
+    [['Recurring sandwich $10.25','manual',0],['Staff correction $12','manual',1]]);
+});
+
 test('compiled simple editor has service-specific inputs, inline prices and no database controls',async t=>{
   const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};
   const week=f.sql('SELECT id FROM weekly_specials LIMIT 1')[0];

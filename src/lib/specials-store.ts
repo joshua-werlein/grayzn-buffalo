@@ -51,7 +51,7 @@ export function newWeekFromDefaults(defaults: SpecialCollection): SpecialCollect
       slots: group.slots.map(slot => {
         const content = slot.content ?? '';
         // Blank default slots are immediately eligible for automation.
-        // Populated default slots carry 'default' origin so automation may replace
+        // Populated default slots carry unlocked 'manual' origin so automation may replace
         // them with current-date Facebook evidence (manual_locked=0), but are
         // distinguishable from confirmed manual entries (manual_locked=1,'manual').
         if (!content.trim()) {
@@ -167,8 +167,8 @@ function applyCandidateGroupsToCollection(collection: SpecialCollection, candida
       content: cg.items[pos - 1]?.content ?? '',
       price: '',
       section_link: '',
-      origin: 'manual' as const,
-      manual_locked: 1,
+      origin: cg.items[pos - 1]?.content.trim() ? 'manual' as const : 'legacy' as const,
+      manual_locked: cg.items[pos - 1]?.content.trim() ? 1 : 0,
       last_auto_value: null as string | null,
     }));
     if (existingIdx >= 0) {
@@ -365,12 +365,19 @@ export async function readFbFillState(
 /** Parse only editable values. Ownership/automatic baselines never come from a form. */
 export function collectionFromForm(form: FormData, baseline: SpecialCollection): SpecialCollection {
   const value = (key: string) => String(form.get(key) ?? '').replace(/\r\n?/g,'\n');
+  const newWeek = baseline.kind === 'week' && !baseline.id;
   const count = Number(value('group_count'));
   if (!Number.isInteger(count) || count < 0 || count > 84) throw new Error('Invalid group count.');
   const groups = Array.from({ length: count }, (_, index): SpecialGroup => {
     const p = `g${index}_`, id = value(p+'id');
-    const old = baseline.groups.find(g => g.id === id);
+    let old = baseline.groups.find(g => g.id === id);
     if (!old && !/^new:[0-9a-f-]{36}$/.test(id)) throw new Error('Unknown special group.');
+    // New-week UUIDs differ between GET and POST. Match only an unambiguous
+    // server-side default group; never accept ownership from submitted fields.
+    if (!old && newWeek) {
+      const matches = baseline.groups.filter(g => g.day_of_week === Number(value(p+'day')) && g.service === value(p+'service'));
+      if (matches.length === 1) old = matches[0];
+    }
     return { id, day_of_week: Number(value(p+'day')), service: old?.service ?? value(p+'service'), label: value(p+'label'),
       service_time: value(p+'time'), sort: old?.sort ?? index, enabled: form.has(p+'enabled') ? 1 : 0,
       slots: [1,2,3,4].map(position => {
@@ -383,13 +390,15 @@ export function collectionFromForm(form: FormData, baseline: SpecialCollection):
         // Browsers normalize textarea line endings. An untouched legacy CRLF
         // value must not become a manual correction merely because of that.
         if (prior?.content != null && content === displayedSpecial(prior).replace(/\r\n?/g,'\n') && !form.has(p+position+'_price')) {
-          return {...prior, section_link: form.has(p+position+'_link') ? value(p+position+'_link') : prior.section_link};
+          const section_link = form.has(p+position+'_link') ? value(p+position+'_link') : prior.section_link;
+          return {...prior, section_link, ...(newWeek && section_link !== prior.section_link ? {origin: 'manual' as const, manual_locked: 1} : {})};
         }
         if (prior?.content != null && content === prior.content.replace(/\r\n?/g,'\n')) content = prior.content;
         const price = value(p+position+'_price');
         if (content?.trim() && price) content = displayedSpecial({content,price});
         return { position, content, price: '', section_link: content?.trim() ? (form.has(p+position+'_link') ? value(p+position+'_link') : prior?.section_link ?? '') : '',
-          origin: prior?.origin ?? 'manual', manual_locked: prior?.manual_locked ?? 1, last_auto_value: prior?.last_auto_value ?? null };
+          origin: newWeek || !prior ? (content?.trim() ? 'manual' : 'legacy') : prior.origin,
+          manual_locked: newWeek || !prior ? (content?.trim() ? 1 : 0) : prior.manual_locked, last_auto_value: prior?.last_auto_value ?? null };
       }) };
   });
   return { ...baseline, revision: Number(value('revision')), title: baseline.kind==='section' ? value('title') : baseline.title,
@@ -467,10 +476,12 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
     for (const slot of group.slots) {
       const old = previous?.slots.find(s=>s.position===slot.position);
       if (old && slotValue(old)===slotValue(slot)) continue;
-      // Non-empty content: staff explicitly entered a value → locked.
-      // Empty content: staff cleared the slot → unlocked and eligible for automation.
+      // New slots retain their server-prepared ownership (including defaults).
+      // Existing changed slots are staff edits: populated locks, cleared unlocks.
       const isPopulated = (slot.content ?? '').trim().length > 0;
-      slotRows.push([groupId,slot.position,slot.content,slot.price,slot.section_link,old?.last_auto_value ?? null,isPopulated ? 1 : 0,isPopulated ? 'manual' : 'legacy']);
+      slotRows.push([groupId,slot.position,slot.content,slot.price,slot.section_link,old?.last_auto_value ?? null,
+        old === undefined ? slot.manual_locked : isPopulated ? 1 : 0,
+        old === undefined ? slot.origin : isPopulated ? 'manual' : 'legacy']);
     }
   }
   // JSON rowsets use one SELECT and three bound parameters per statement,

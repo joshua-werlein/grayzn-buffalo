@@ -36,8 +36,7 @@ if (Astro.request.method==='POST') {
       if (editingId && (!Number.isSafeInteger(Number(editingId)) || Number(editingId)<1)) throw new Error('Invalid saved week.');
       const baseline=editingId ? (await readWeek(env,Number(editingId))).collection : defaults ? newWeekFromDefaults(defaults) : null;
       if (!baseline) throw new Error(recurringError);
-      // New draft IDs are client-local, not the IDs of the recurring templates.
-      if (!editingId) baseline.groups=[];
+      // Keep server defaults so parsing can distinguish prefills from staff edits.
       weekly=collectionFromForm(form,baseline);
       weekStart=String(form.get('week_start_date') ?? '');
       if (isIsoCalendarDate(weekStart)) { weekStart=mondayForIsoDate(weekStart); weekEnd=standardWeekEndDate(weekStart); }
