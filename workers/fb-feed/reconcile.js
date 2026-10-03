@@ -40,6 +40,43 @@ function serviceOf(text) {
 export function normalizeOfferContent(content) {
   return content.replace(/\b(?:only|special)!?\s+(?=\$\.?\d)/gi, '').trim();
 }
+function normalizeOfferPrice(offer) {
+  let content=normalizeOfferContent(offer.content), service_time=offer.service_time;
+  if (!service_time.includes('$')) return {content,service_time,evidence:offer.evidence};
+  // Recover one unambiguously associated price, never partial malformed tokens
+  // or multiple prices whose size/item associations would require guessing.
+  const pricePattern=/(?<![\w$.,–—−+-])\$\s*(?:\d+(?:\.\d{2})?|\.\d{2})(?![\w.,])/g;
+  const prices=text=>[...text.matchAll(pricePattern)];
+  const found=prices(service_time);
+  if (found.length!==1 || service_time.replace(found[0][0],'').includes('$')) throw Error('Ambiguous service_time price');
+  const price=found[0][0], cents=value=>Math.round(Number(value.replace(/[$\s]/g,''))*100);
+  service_time=service_time.replace(price,'').trim();
+  // Parse the entire remainder, rather than deleting numeric punctuation that
+  // could conceal a price range, negative amount or unexplained numeric suffix.
+  const heading='(?:lunch|night(?:ly)?|all[ -]day)(?: specials?)?';
+  const clock='(?:1[0-2]|[1-9])(?::[0-5]\\d)?\\s*(?:[ap]\\.?m\\.?)?';
+  const time=`${clock}\\s*[-–—]\\s*${clock}`;
+  const servicePattern=new RegExp(`^(?:${heading}|(?:${heading}\\s+)?(?:${time}|\\(${time}\\)))$`,'i');
+  if ((service_time && (!servicePattern.test(service_time) || ['unknown','conflict'].includes(serviceOf(service_time))))
+    || !Number.isSafeInteger(cents(price))) throw Error('Ambiguous service_time price');
+  const existing=prices(content);
+  if (content.includes('$') && (existing.length!==1 || cents(existing[0][0])!==cents(price)
+    || content.replace(pricePattern,'').includes('$')
+    || /^\s*[-–—/]\s*(?:\$|\d)/.test(content.slice(existing[0].index+existing[0][0].length)))) throw Error('Conflicting offer price');
+  if (!existing.length) {
+    // Recovery requires corroboration of the whole offer, not a detached
+    // add-on/size/discount amount. Unknown associations remain for review.
+    const evidence=normalizeOfferContent(offer.evidence);
+    const modifier=/\b(?:add(?:[ -]?ons?)?|extra|upcharge|surcharge|substitut\w*|discount|save|off|upgrade|modifier|small|medium|large|size|optional)\b|^\s*(?:\d+[).]\s*)?side\b/i;
+    const evidencePrices=prices(evidence);
+    if (modifier.test(evidence) || /[-–—−+]\s*\$/.test(evidence)
+      || (evidence.includes('$') && (evidencePrices.length!==1 || cents(evidencePrices[0][0])!==cents(price) || evidence.replace(pricePattern,'').includes('$')))
+      || ![offerKey(content),offerKey(`${content} ${price}`)].includes(offerKey(evidence))) throw Error('Ambiguous offer price evidence');
+    content=`${content} ${price.replace(/\s/g,'')}`;
+  }
+  if (content.length>150) throw Error('Offer with recovered price exceeds 150 characters');
+  return {content,service_time,evidence:offer.evidence};
+}
 export const WEEKLY_LUNCH_SHAPE_ERROR = 'Weekly lunch evidence requires weekday entries, not daily offers';
 export const MEXICAN_NIGHT_SHAPE_ERROR = 'Mexican Night evidence requires the mexican-night shape, not daily offers';
 function hasWeeklyLunchEvidence(text) {
@@ -60,7 +97,7 @@ export function validateEvidence(value) {
   if (/\bmexican\s+night\b/i.test(`${value.poster_evidence} ${value.day_evidence}`)) throw Error(MEXICAN_NIGHT_SHAPE_ERROR);
   const offers = value.offers.map(o => {
     if (!o || !str(o.content,150) || !o.content.trim() || !str(o.service_time,80) || !str(o.evidence,160)) throw Error('Invalid offer evidence');
-    return {content:normalizeOfferContent(o.content),service_time:o.service_time,evidence:o.evidence};
+    return normalizeOfferPrice(o);
   });
   if (new Set(offers.map(o=>offerKey(o.content))).size !== offers.length) throw Error('Duplicate extracted offer');
   return {day_of_week:value.day_of_week,day_evidence:value.day_evidence,poster_evidence:value.poster_evidence,offers};
@@ -130,7 +167,8 @@ export function validateMexicanNight(value) {
   return {type: 'mexican-night', poster_evidence: posterEvidence, schedule, groups};
 }
 function forToday(value,weekday) {
-  try {
+    // Dedicated weekly/section evidence belongs to its own reconciliation path.
+    if (['weekly-lunch','mexican-night'].includes(value?.type) && !('offers' in value)) return null;
     const p=validateEvidence(value);
     const days=DAYS.flatMap((d,i)=>new RegExp(`\\b${d}\\b`,'i').test(p.day_evidence)?[i]:[]);
     const isExplicitToday=p.day_of_week===weekday && days.length===1 && days[0]===weekday;
@@ -145,9 +183,8 @@ function forToday(value,weekday) {
     const isDayUnknown=p.day_of_week===-1 && days.length===0 && !hasFutureRef;
     if (!isExplicitToday && !isDayUnknown) return null;
     const offers=p.offers.map(o=>({...o,service:serviceOf(o.service_time)}));
-    if (offers.some(o=>o.service==='conflict')) return null;
+    if (offers.some(o=>o.service==='conflict')) throw Error('Conflicting offer service evidence');
     return {...p,offers,service:serviceOf(p.poster_evidence)};
-  } catch { return null; }
 }
 const setKey = items => items.map(o=>offerKey(o.content)).sort().join('|');
 const unique = (sets,count) => {
@@ -155,7 +192,24 @@ const unique = (sets,count) => {
   return full.length && full.length===sets.length && new Set(full.map(setKey)).size===1 ? full[0] : null;
 };
 export function reconcilePosters(candidates,weekday,existingAllDay=[]) {
-  const posters=candidates.map(c=>forToday(c,weekday)).filter(Boolean);
+  return reconcilePosterEvidence(candidates,weekday,existingAllDay).targets;
+}
+export function reconcilePosterEvidence(candidates,weekday,existingAllDay=[]) {
+  const rejectedSources=[],validIndices=[];
+  const posters=candidates.map((c,index)=>{
+    try { const p=forToday(c,weekday); if (p) validIndices.push(index); return p; }
+    catch(error) { rejectedSources.push({index,reason:error.message}); return null; }
+  }).filter(Boolean);
+  // An invalid source cannot disappear and manufacture agreement, even if its
+  // visible content happens to match. We cannot establish agreement with it.
+  if (rejectedSources.length) return {targets:[],rejectedSources};
+  const targets=mapPosters(posters,weekday,existingAllDay);
+  if (!targets.length && posters.length>1) {
+    validIndices.forEach(index=>rejectedSources.push({index,reason:'Conflicting or unresolved daily source agreement'}));
+  }
+  return {targets,rejectedSources};
+}
+function mapPosters(posters,weekday,existingAllDay) {
   const proposals={'lunch':[],'all-day':[],'nightly':[]};
   for (const p of posters) {
     // Restaurant weekday pattern: generic three-offer posters list Lunch first,
