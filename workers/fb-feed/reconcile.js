@@ -2,6 +2,7 @@ import {composeMexicanItem} from '../../src/lib/mexican-item.js';
 // Evidence is persisted separately from the website's final group structure.
 // A poster-level night heading does NOT make every offer a night-only offer.
 const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+export const WEEKDAY_ENCODING_MISMATCH = 'numeric day does not match explicit weekday evidence';
 
 // Canonical display strings for recurring specials that are intentionally multiline.
 // These are deterministic — we replace whatever the AI extracted with the known
@@ -108,6 +109,9 @@ export function validateEvidence(value) {
   if (hasWeeklyLunchEvidence(`${value.poster_evidence} ${value.day_evidence}`)) throw Error(WEEKLY_LUNCH_SHAPE_ERROR);
   // Reject daily-offers shape when the poster clearly says "Mexican Night"; require the dedicated shape.
   if (/\bmexican\s+night\b/i.test(`${value.poster_evidence} ${value.day_evidence}`)) throw Error(MEXICAN_NIGHT_SHAPE_ERROR);
+  // Internal encoding only: current-day eligibility remains authoritative in forToday().
+  const days=DAYS.flatMap((d,i)=>new RegExp(`\\b${d}\\b`,'i').test(value.day_evidence)?[i]:[]);
+  if (days.length===1 && value.day_of_week!==days[0]) throw Error(WEEKDAY_ENCODING_MISMATCH);
   const offers = value.offers.map(o => {
     if (!o || !str(o.content,150) || !o.content.trim() || !str(o.service_time,80) || !str(o.evidence,160)) throw Error('Invalid offer evidence');
     return normalizeOfferPrice(o);

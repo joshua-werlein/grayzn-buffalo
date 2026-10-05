@@ -2,7 +2,7 @@ import {buildExtractionRequest, buildWeeklyLunchExtractionRequest, buildMexicanN
 import { classifyCaption, PARSER_VERSION } from './classify.js';
 import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexicanNight } from './guarded-auto.js';
 import {ensureAutomaticWeek} from './auto-week.js';
-import {validateEvidence, validateWeeklyLunch, validateMexicanNight, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR} from './reconcile.js';
+import {validateEvidence, validateWeeklyLunch, validateMexicanNight, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR, WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
 
 const TIME_ZONE = 'America/Chicago';
 const GRAPH_API_VERSION = 'v26.0';
@@ -393,7 +393,9 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
         ? 'Weekly-lunch-specific retry: forcing weekly-lunch shape and schema'
         : (needsMexicanNightRetry || lastValidationReason === MEXICAN_NIGHT_SHAPE_ERROR)
           ? 'Mexican Night targeted retry: determining from image whether poster is Mexican Night'
-          : 'One retry with identical extraction instructions and schema';
+          : lastValidationReason === WEEKDAY_ENCODING_MISMATCH
+            ? `Weekday encoding mismatch retry: ${WEEKDAY_ENCODING_MISMATCH}`
+            : 'One retry with identical extraction instructions and schema';
       await env.DB.prepare("INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?1,'retry',?2)")
         .bind(budget.importId,retryDetail).run();
     }
@@ -423,8 +425,8 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
         if (Array.isArray(parsedOffers) && parsedOffers.length === 0) needsMexicanNightRetry = true;
       } catch { /* ignore; leave needsMexicanNightRetry false */ }
     }
-    // Retry unusable response shapes once; ambiguous meals/dates fail closed without guessing.
-    if (!needsMexicanNightRetry && !['response is not valid JSON','no AI response',WEEKLY_LUNCH_SHAPE_ERROR,MEXICAN_NIGHT_SHAPE_ERROR].includes(validation.validationReason)) return outcome;
+    // Retry unusable response shapes or inconsistent weekday encoding once; never coerce a day.
+    if (!needsMexicanNightRetry && !['response is not valid JSON','no AI response',WEEKLY_LUNCH_SHAPE_ERROR,MEXICAN_NIGHT_SHAPE_ERROR,WEEKDAY_ENCODING_MISMATCH].includes(validation.validationReason)) return outcome;
   }
   return outcome;
 }
