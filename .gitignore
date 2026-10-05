@@ -12,3 +12,5 @@ items-only.sql
 tmp-screenshots/
 CLAUDE.md
 .claude/settings.json
+workers/fb-feed/capitalization-context.txt
+audit/current-week-*/
