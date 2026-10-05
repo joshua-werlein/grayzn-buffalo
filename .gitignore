@@ -14,3 +14,5 @@ CLAUDE.md
 .claude/settings.json
 workers/fb-feed/capitalization-context.txt
 audit/current-week-*/
+capitalization-diff-final.txt
+capitalization-diff.txt

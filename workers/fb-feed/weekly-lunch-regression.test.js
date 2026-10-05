@@ -217,3 +217,53 @@ test('parser bump does not rediscover a previous-day source, even for the curren
   assert.equal(f.imports().length,1);
   entries.forEach(e=>assert.equal(lunch(f,e.day_of_week).content,''));
 });
+
+// ── ALL CAPS normalization through the weekly lunch publication path ───────────
+
+const allCapsEntries = [
+  {day_of_week:1, content:'CHICKEN STRIPS W/ FRENCH FRIES & DRINK — $9.75'},
+  {day_of_week:2, content:'MAC N CHEESE BURGER W/ SWEET POTATO FRIES'},
+  {day_of_week:3, content:'HOAGIE BURGER W/ BEER FRIES'},
+  {day_of_week:4, content:'BEEF STEW W/ BISCUITS'},
+  {day_of_week:5, content:'FISH SANDWICH W/ FRENCH FRIES'},
+];
+const expectedTitleCase = [
+  'Chicken Strips w/ French Fries & Drink — $9.75',
+  'Mac N Cheese Burger w/ Sweet Potato Fries',
+  'Hoagie Burger w/ Beer Fries',
+  'Beef Stew w/ Biscuits',
+  'Fish Sandwich w/ French Fries',
+];
+
+test('ALL CAPS weekly lunch entries are title-cased when published; raw evidence unchanged', async t => {
+  const candidate = weekly();
+  candidate.entries = allCapsEntries;
+  const f = currentWeek(t, candidate);
+  await f.run();
+  allCapsEntries.forEach((e, i) => {
+    assert.equal(lunch(f, e.day_of_week).content, expectedTitleCase[i],
+      `day ${e.day_of_week} should be title-cased`);
+  });
+  // Both candidate_json and extracted_json in the import record must be untouched
+  const imp = f.imports()[0];
+  const storedCandidate = JSON.parse(imp.candidate_json);
+  storedCandidate.entries.forEach((e, i) => {
+    assert.equal(e.content, allCapsEntries[i].content,
+      `candidate_json entry day ${e.day_of_week} must be preserved unchanged`);
+  });
+  // extracted_json is the raw AI response and must also be unmodified
+  const storedExtracted = JSON.parse(imp.extracted_json);
+  storedExtracted.entries.forEach((e, i) => {
+    assert.equal(e.content, allCapsEntries[i].content,
+      `extracted_json entry day ${e.day_of_week} must be preserved unchanged`);
+  });
+});
+
+test('ALL CAPS normalization does not affect already title-cased weekly lunch entries', async t => {
+  const f = currentWeek(t, weekly());
+  await f.run();
+  entries.forEach(e => {
+    assert.equal(lunch(f, e.day_of_week).content, e.content,
+      `day ${e.day_of_week} should be unchanged`);
+  });
+});

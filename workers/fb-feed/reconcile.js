@@ -20,6 +20,19 @@ export function canonicalizeSlotContent(content, weekday, service) {
   // Friday all-day Stir Fry → fixed multiline canonical
   if (weekday === 5 && service === 'all-day' && /\bstir\s*fry\b/i.test(content))
     return STIR_FRY_CANONICAL;
+  // ALL CAPS Facebook poster text → title case before publication.
+  // Only fires when every Unicode letter in the string is uppercase; prices
+  // ($9.75, $.89), punctuation (—, &), and non-letter characters are untouched.
+  // Explicit allowlist — only known specials abbreviations stay ALL-CAPS.
+  const ABBREVS = new Set(['BLT', 'BBQ', 'FF']);
+  const letters = content.replace(/\P{L}/gu, '');
+  if (letters.length > 0 && letters === letters.toUpperCase()) {
+    content = content.replace(/\p{L}+/gu, (word, offset, str) => {
+      if (word.toUpperCase() === 'W' && str[offset + word.length] === '/') return 'w';
+      if (ABBREVS.has(word.toUpperCase())) return word.toUpperCase();
+      return word[0].toUpperCase() + word.slice(1).toLowerCase();
+    });
+  }
   // Default: collapse all internal whitespace runs (newlines, tabs, multiple spaces) to one space
   return content.replace(/[\t\r\n]+/g, ' ').replace(/ {2,}/g, ' ').trim();
 }

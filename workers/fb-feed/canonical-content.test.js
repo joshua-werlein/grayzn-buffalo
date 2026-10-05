@@ -181,3 +181,145 @@ test('manual-locked Thursday nightly slot is protected from canonical Pizza Nigh
   assert.equal(f.slots(4, 'nightly')[0].content, 'Thursday staff entry');
   assert.equal(f.slots(4, 'nightly')[0].manual_locked, 1);
 });
+
+// ── 8. ALL CAPS normalization ─────────────────────────────────────────────────
+
+// Required weekly-lunch regression cases (this week's uppercase Facebook poster)
+test('ALL CAPS: CHICKEN STRIPS W/ FRENCH FRIES & DRINK — $9.75 → title case, W/ lowercase, price preserved', () => {
+  assert.equal(
+    canonicalizeSlotContent('CHICKEN STRIPS W/ FRENCH FRIES & DRINK — $9.75', 1, 'lunch'),
+    'Chicken Strips w/ French Fries & Drink — $9.75'
+  );
+});
+
+test('ALL CAPS: MAC N CHEESE BURGER W/ SWEET POTATO FRIES → title case, W/ lowercase', () => {
+  assert.equal(
+    canonicalizeSlotContent('MAC N CHEESE BURGER W/ SWEET POTATO FRIES', 3, 'lunch'),
+    'Mac N Cheese Burger w/ Sweet Potato Fries'
+  );
+});
+
+test('ALL CAPS: HOAGIE BURGER W/ BEER FRIES → title case, W/ lowercase', () => {
+  assert.equal(
+    canonicalizeSlotContent('HOAGIE BURGER W/ BEER FRIES', 2, 'lunch'),
+    'Hoagie Burger w/ Beer Fries'
+  );
+});
+
+test('ALL CAPS: BEEF STEW W/ BISCUITS → title case, W/ lowercase', () => {
+  assert.equal(
+    canonicalizeSlotContent('BEEF STEW W/ BISCUITS', 4, 'lunch'),
+    'Beef Stew w/ Biscuits'
+  );
+});
+
+test('ALL CAPS: FISH SANDWICH W/ FRENCH FRIES → title case, W/ lowercase', () => {
+  assert.equal(
+    canonicalizeSlotContent('FISH SANDWICH W/ FRENCH FRIES', 5, 'lunch'),
+    'Fish Sandwich w/ French Fries'
+  );
+});
+
+// Normal words that look like consonant-clusters must NOT stay upper-case
+test('ALL CAPS: FRY is a normal word and title-cases to Fry (FISH FRY W/ FF)', () => {
+  assert.equal(
+    canonicalizeSlotContent('FISH FRY W/ FF', 1, 'lunch'),
+    'Fish Fry w/ FF'
+  );
+});
+
+test('ALL CAPS: DRY is a normal word and title-cases to Dry (DRY RUB RIBS)', () => {
+  assert.equal(
+    canonicalizeSlotContent('DRY RUB RIBS', 2, 'all-day'),
+    'Dry Rub Ribs'
+  );
+});
+
+// Unicode letter handling — accented characters must not produce malformed output
+test('ALL CAPS: JALAPEÑO BURGER W/ FRIES → Jalapeño Burger w/ Fries', () => {
+  assert.equal(
+    canonicalizeSlotContent('JALAPEÑO BURGER W/ FRIES', 2, 'all-day'),
+    'Jalapeño Burger w/ Fries'
+  );
+});
+
+// Already normally capitalized content must not be damaged
+test('already title-cased content is not modified', () => {
+  assert.equal(
+    canonicalizeSlotContent('Chicken Strips w/ French Fries & Drink $9.75', 1, 'lunch'),
+    'Chicken Strips w/ French Fries & Drink $9.75'
+  );
+});
+
+test('mixed-case content (not all-caps) passes through whitespace-collapsing only', () => {
+  assert.equal(
+    canonicalizeSlotContent('Grilled Chicken Caesar Wrap  w/ Waffle Fries', 2, 'lunch'),
+    'Grilled Chicken Caesar Wrap w/ Waffle Fries'
+  );
+});
+
+// Price and punctuation preservation
+test('ALL CAPS with $10.25 price preserved exactly', () => {
+  assert.equal(
+    canonicalizeSlotContent('JALAPENO BURGER W/ SIDE SALAD $10.25', 2, 'all-day'),
+    'Jalapeno Burger w/ Side Salad $10.25'
+  );
+});
+
+test('ALL CAPS with $.89 price preserved exactly', () => {
+  assert.equal(
+    canonicalizeSlotContent('WING SPECIAL $.89 EACH', 1, 'all-day'),
+    'Wing Special $.89 Each'
+  );
+});
+
+test('ALL CAPS em-dash and & preserved exactly', () => {
+  assert.equal(
+    canonicalizeSlotContent('CHICKEN STRIPS & DRINK — $9.75', 1, 'lunch'),
+    'Chicken Strips & Drink — $9.75'
+  );
+});
+
+// Explicit allowlist abbreviations (BLT, BBQ, FF) stay ALL-CAPS
+test('ALL CAPS: BLT stays BLT (explicit allowlist)', () => {
+  assert.equal(
+    canonicalizeSlotContent('BLT SANDWICH W/ FRIES', 2, 'lunch'),
+    'BLT Sandwich w/ Fries'
+  );
+});
+
+test('ALL CAPS: BBQ stays BBQ (explicit allowlist)', () => {
+  assert.equal(
+    canonicalizeSlotContent('BBQ PULLED PORK SANDWICH', 3, 'all-day'),
+    'BBQ Pulled Pork Sandwich'
+  );
+});
+
+test('ALL CAPS: FF stays FF (explicit allowlist)', () => {
+  assert.equal(
+    canonicalizeSlotContent('FISH SANDWICH W/ FF & DRINK', 5, 'lunch'),
+    'Fish Sandwich w/ FF & Drink'
+  );
+});
+
+// Existing multiline canonicals are not damaged by the new path
+test('Wing Night ALL CAPS still produces canonical multiline (not title-cased)', () => {
+  assert.equal(
+    canonicalizeSlotContent('WING NIGHT $.89 BONELESS', 3, 'nightly'),
+    'Wing Night!\n$.89 Boneless Wings\n$.99 Bone In Wings\nAdd Fries'
+  );
+});
+
+test('Pizza Night ALL CAPS still produces canonical multiline (not title-cased)', () => {
+  assert.equal(
+    canonicalizeSlotContent('3-TOPPING PIZZA $13.50', 4, 'nightly'),
+    '12" 3-Topping Pizza $13.50\n16" 3-Topping Pizza $16'
+  );
+});
+
+test('Stir Fry ALL CAPS still produces canonical multiline on Friday all-day (not title-cased)', () => {
+  assert.equal(
+    canonicalizeSlotContent('CHICKEN STIR FRY $12.99 / STEAK STIR FRY $13.99', 5, 'all-day'),
+    'Chicken Stir Fry $12.99\nSteak Stir Fry $13.99'
+  );
+});

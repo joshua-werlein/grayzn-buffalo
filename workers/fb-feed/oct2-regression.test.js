@@ -8,7 +8,14 @@ const oct2=()=>({day_evidence:'Friday',day_of_week:5,poster_evidence:'Friday Lun
   {content:'2) CHEESEBURGER OR FISH SANDWICH W/ SIDE SALAD OR COLESLAW',evidence:'2) CHEESEBURGER OR FISH SANDWICH W/ SIDE SALAD OR COLESLAW',service_time:'$10.25'},
   {content:'3) CHICKEN SALAD SANDWICH W/ CUP OF COLESLAW',evidence:'3) CHICKEN SALAD SANDWICH W/ CUP OF COLESLAW',service_time:'$7.25'},
 ]});
+// Raw content as recovered by validateEvidence (ALL CAPS preserved — evidence is never title-cased)
 const expected=oct2().offers.map((o,i)=>`${o.content} ${['$9.75','$10.25','$7.25'][i]}`);
+// Publication-layer output: canonicalizeSlotContent title-cases ALL CAPS content before writing to slots
+const titleCased=[
+  '1) Fish Sandwich w/ Fries + Drink $9.75',
+  '2) Cheeseburger Or Fish Sandwich w/ Side Salad Or Coleslaw $10.25',
+  '3) Chicken Salad Sandwich w/ Cup Of Coleslaw $7.25',
+];
 const setup=t=>{
   const f=harness(t,{now:'2026-10-02T15:00:00Z',caption:'Friday Lunch Specials',candidate:oct2()});
   f.sql("UPDATE weekly_specials SET week_start_date='2026-09-28',week_end_date='2026-10-04' WHERE id=9000");
@@ -24,8 +31,8 @@ test('Oct 2 exact extraction recovers all prices and retains lunch time without 
   assert.deepEqual(p.offers.map(o=>o.service_time),['(11 AM - 1:30 PM)','','']);
   assert.deepEqual(validateEvidence(p),p);
   assert.deepEqual(reconcilePosters([oct2()],5),[
-    {day_of_week:5,service:'lunch',items:[{content:expected[0]}]},
-    {day_of_week:5,service:'all-day',items:expected.slice(1).map(content=>({content}))},
+    {day_of_week:5,service:'lunch',items:[{content:titleCased[0]}]},
+    {day_of_week:5,service:'all-day',items:titleCased.slice(1).map(content=>({content}))},
   ]);
 });
 for (const [content,time,result] of [
@@ -53,15 +60,15 @@ test('Oct 2 protected All Day 1 preserves staff value, writes other two offers, 
   f.sql("UPDATE special_slots SET content='Staff correction',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",id);
   const staff=f.slots(5,'all-day')[0];
   await f.run();
-  assert.equal(f.slots(5,'lunch')[0].content,expected[0]);
+  assert.equal(f.slots(5,'lunch')[0].content,titleCased[0]);
   assert.deepEqual(f.slots(5,'all-day')[0],staff);
-  assert.equal(f.slots(5,'all-day')[1].content,expected[2]);
+  assert.equal(f.slots(5,'all-day')[1].content,titleCased[2]);
   assert.equal(f.imports()[0].review_status,'pending');
   assert.equal(f.imports()[0].processing_status,'staged');
   assert.equal(f.imports()[0].extracted_json,JSON.stringify(oct2()));
   assert.match(audit(f)[0].detail,/2 slot\(s\); CONFLICT: 1/);
   const blocked=JSON.parse(audit(f).at(-1).detail.split('blocked proposals: ')[1]);
-  assert.deepEqual(blocked,[{day_of_week:5,service:'all-day',group_id:id,position:1,content:expected[1],reason:'Protected or ineligible destination slot'}]);
+  assert.deepEqual(blocked,[{day_of_week:5,service:'all-day',group_id:id,position:1,content:titleCased[1],reason:'Protected or ineligible destination slot'}]);
   const events=audit(f),rev=revision(f);
   await f.run();assert.deepEqual(audit(f),events);assert.equal(revision(f),rev);assert.equal(f.state.aiCalls,1);
 });
@@ -69,8 +76,8 @@ for (const defaults of [false,true]) test(`Oct 2 all three offers reconcile norm
   const f=setup(t);
   if (defaults) f.sql("UPDATE special_slots SET content='Recurring',origin='manual',manual_locked=0 WHERE position<=2 AND group_id=?",f.slots(5,'all-day')[0].group_id);
   await f.run();
-  assert.equal(f.slots(5,'lunch')[0].content,expected[0]);
-  assert.deepEqual(f.slots(5,'all-day').slice(0,2).map(s=>s.content),expected.slice(1));
+  assert.equal(f.slots(5,'lunch')[0].content,titleCased[0]);
+  assert.deepEqual(f.slots(5,'all-day').slice(0,2).map(s=>s.content),titleCased.slice(1));
   assert.match(audit(f)[0].detail,/3 slot\(s\)$/);assert.equal(audit(f).length,1);
   const rev=revision(f);await f.run();assert.equal(revision(f),rev);assert.equal(audit(f).length,1);
 });
@@ -100,8 +107,8 @@ test('existing parser 16 staged evidence recovers prices without another AI extr
     f.sql('UPDATE special_slots SET content=?,last_auto_value=? WHERE group_id=? AND position=?',oct2().offers[index].content,oct2().offers[index].content,f.slots(5,service)[0].group_id,position);
   }
   await f.run();assert.equal(f.state.aiCalls,1);
-  assert.equal(f.slots(5,'lunch')[0].content,expected[0]);
-  assert.deepEqual(f.slots(5,'all-day').slice(0,2).map(s=>s.content),expected.slice(1));
+  assert.equal(f.slots(5,'lunch')[0].content,titleCased[0]);
+  assert.deepEqual(f.slots(5,'all-day').slice(0,2).map(s=>s.content),titleCased.slice(1));
 });
 test('failed partial-conflict transaction rolls back writes, revision and audit',async t=>{
   const f=setup(t);
