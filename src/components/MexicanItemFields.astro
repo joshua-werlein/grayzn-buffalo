@@ -1,11 +1,11 @@
 ---
 import {splitMexicanItem} from '../lib/mexican-item.js';
-interface Props { content: string; prefix: string; fieldId: string }
-const {content, prefix, fieldId} = Astro.props;
+interface Props { content: string; prefix: string; fieldId: string; priceFree?: boolean }
+const {content, prefix, fieldId, priceFree=false} = Astro.props;
 const {title, description} = splitMexicanItem(content);
 ---
-<div class="mexican-item-fields">
-  <label for={fieldId}>Item / price<input id={fieldId} name={prefix+'title'} value={title} maxlength="150" data-mexican-title /></label>
+<div class="mexican-item-fields" data-price-free={priceFree ? 'true' : undefined}>
+  <label for={fieldId}>{priceFree ? 'Item name / sizes (no prices)' : 'Item / price'}<input id={fieldId} name={prefix+'title'} value={title} maxlength="150" data-mexican-title /></label>
   <label for={fieldId+'-description'}>Description (optional)<textarea id={fieldId+'-description'} name={prefix+'description'} rows="3" maxlength="150" data-mexican-description>{description}</textarea></label>
   <output data-mexican-count>{content.length} / 150 total</output>
 </div>
@@ -16,14 +16,18 @@ const {title, description} = splitMexicanItem(content);
   textarea{resize:vertical}output{justify-self:end;font-size:.8rem}
 </style>
 <script>
-  import {composeMexicanItem} from '../lib/mexican-item.js';
+  import {composeMexicanItem,assertPriceFreeMexicanDefault} from '../lib/mexican-item.js';
   function updateMexicanCounts() {
     document.querySelectorAll<HTMLElement>('.mexican-item-fields').forEach(slot => {
       const title = slot.querySelector<HTMLInputElement>('[data-mexican-title]')!;
       const description = slot.querySelector<HTMLTextAreaElement>('[data-mexican-description]')!;
       const length = title.value.length + (description.value ? 1 + description.value.length : 0);
       slot.querySelector('output')!.textContent = `${length} / 150 total`;
-      try { composeMexicanItem(title.value, description.value); title.setCustomValidity(''); }
+      try {
+        const content=composeMexicanItem(title.value, description.value);
+        if (slot.dataset.priceFree === 'true') assertPriceFreeMexicanDefault(content);
+        title.setCustomValidity('');
+      }
       catch (error) { title.setCustomValidity((error as Error).message); }
     });
   }

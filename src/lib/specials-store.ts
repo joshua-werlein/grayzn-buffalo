@@ -1,5 +1,5 @@
 import { chicagoCalendarDate, isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from './weekly-specials';
-import {composeMexicanItem} from './mexican-item.js';
+import {composeMexicanItem,assertPriceFreeMexicanDefault} from './mexican-item.js';
 
 export const SPECIAL_LIMIT = 150;
 export const DAY_NUMBERS = [1, 2, 3, 4, 5, 6, 0];
@@ -382,7 +382,7 @@ export function collectionFromForm(form: FormData, baseline: SpecialCollection):
       service_time: value(p+'time'), sort: old?.sort ?? index, enabled: form.has(p+'enabled') ? 1 : 0,
       slots: [1,2,3,4].map(position => {
         const prior = old?.slots.find(s => s.position === position);
-        const splitFields = baseline.id === 'mexican-night' && form.has(p+position+'_title');
+        const splitFields = ['mexican-night','mexican-night-defaults'].includes(baseline.id) && form.has(p+position+'_title');
         if (prior && !form.has(p+position+'_content') && !splitFields) return {...prior};
         // Blank textarea in a defaults collection means "no recurring default".
         let content: string | null = baseline.kind === 'defaults' && !value(p+position+'_content').trim() ? null : value(p+position+'_content');
@@ -405,6 +405,10 @@ export function collectionFromForm(form: FormData, baseline: SpecialCollection):
     schedule: baseline.kind==='section' ? value('schedule') : baseline.schedule, groups };
 }
 export function validateCollection(next: SpecialCollection, previous?: SpecialCollection): void {
+  if (next.id === 'mexican-night-defaults') {
+    for (const text of [next.title,next.schedule,...next.groups.flatMap(g => [g.label,g.service_time,...g.slots.map(s => s.content ?? '')])]) assertPriceFreeMexicanDefault(text);
+    if (next.groups.some(g => g.slots.some(s => s.price.trim()))) throw new Error('Recurring Mexican Night defaults cannot include prices. Clear the recurring price.');
+  }
   if (!Number.isSafeInteger(next.revision) || next.revision < 0) throw new Error('Invalid saved revision.');
   if (next.title.length > 80 || next.schedule.length > 80) throw new Error('Title and schedule allow 80 characters each.');
   if (next.kind === 'section' && !next.title.trim()) throw new Error('Enter a section title.');
@@ -460,7 +464,7 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
     writes.push(prepare("INSERT INTO special_collections(id,kind,weekly_special_id,revision,mutation_token) SELECT ?1,'week',?2,1,?3 WHERE EXISTS(SELECT 1 FROM weekly_specials WHERE id=?2)",collectionId,weekId,token));
   } else {
     const overlap = next.kind==='week' ? ' AND NOT EXISTS(SELECT 1 FROM weekly_specials WHERE id<>?6 AND week_start_date<=?8 AND week_end_date>=?7)' : '';
-    const sectionFields = next.kind === 'section' ? ",updated_at=CURRENT_TIMESTAMP,section_source='manual'" : '';
+    const sectionFields = next.kind === 'section' ? ",updated_at=CURRENT_TIMESTAMP" + (next.id === 'mexican-night' ? ",section_source='manual'" : '') : '';
     writes.push(prepare('UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3'+sectionFields+' WHERE id=?4 AND revision=?5'+overlap,
       ...[token,next.title,next.schedule,collectionId,next.revision,...(next.kind==='week' ? [weekId,dates!.start,dates!.end] : [])]));
   }

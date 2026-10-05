@@ -23,6 +23,11 @@ function script(path) {
 }
 function specialsClient() {
   const weekly = element(), recurring = element(), picker = element(), save = element();
+  const mexican = element(), mexicanDefaults = element();
+  for(const [form,label,action] of [[mexican,'This Week’s Mexican Night','save-mexican-night'],[mexicanDefaults,'Recurring Mexican Night Defaults','save-mexican-night-defaults']]) {
+    form.dataset.editorName=label;form.fields.set('action',action);form.fields.set('g0_1_title','Original');
+    form.querySelector=()=>element();
+  }
   weekly.fields.set('weekly_id', '1');
   weekly.fields.set('week_start_date', '2026-09-07');
   recurring.fields.set('g0_2_content', 'Original');
@@ -35,7 +40,7 @@ function specialsClient() {
   let accept = false, fetchHandler = async () => Response.json({ ok: true });
   const ids = { 'weekly-form': weekly, 'recurring-defaults-form': recurring, 'saved-week': picker };
   doc.getElementById = (id) => ids[id] ?? null;
-  doc.querySelectorAll = (selector) => selector === '.day-fields' ? cards : selector === '[data-day-select]' ? buttons : [];
+  doc.querySelectorAll = (selector) => selector === '.day-fields' ? cards : selector === '[data-day-select]' ? buttons : selector === '[data-mexican-editor]' ? [mexicanDefaults,mexican] : [];
   win.matchMedia = () => ({ matches: true, addEventListener() {} });
   win.confirm = (message) => { prompts.push(message); return accept; };
   const location = new URL('https://example.com/admin/specials');
@@ -43,10 +48,34 @@ function specialsClient() {
     document: doc, window: win, location, FormData: FormDataDouble, URL, Event,
     requestAnimationFrame: () => {}, fetch: (...args) => fetchHandler(...args),
   });
-  return { weekly, recurring, picker, save, cards, buttons, win, doc, prompts, location,
+  return { weekly, recurring, mexican, mexicanDefaults, picker, save, cards, buttons, win, doc, prompts, location,
     accept: (value) => { accept = value; }, fetch: (fn) => { fetchHandler = fn; } };
 }
 function event(extra = {}) { return { prevented: false, preventDefault() { this.prevented = true; }, ...extra }; }
+
+test('Mexican editors submit independent actions and saving one preserves the other unsaved draft',async()=>{
+  const f=specialsClient();const actions=[];
+  f.fetch(async(_url,request)=>{actions.push(request.body.get('action'));return Response.json({ok:true,revision:2});});
+  for(const form of [f.mexicanDefaults,f.mexican]) {form.fields.set('g0_1_title','Draft');await form.emit('input');}
+  await f.mexicanDefaults.emit('submit',event());
+  const unload=event();await f.win.emit('beforeunload',unload);assert.equal(unload.prevented,true);
+  assert.equal(f.mexican.fields.get('g0_1_title'),'Draft');
+  await f.mexican.emit('submit',event());
+  const clean=event();await f.win.emit('beforeunload',clean);assert.equal(clean.prevented,false);
+  assert.deepEqual(actions,['save-mexican-night-defaults','save-mexican-night']);
+});
+
+test('Mexican recurring failed save and edits during a save retain unsaved protection',async()=>{
+  const f=specialsClient();f.mexicanDefaults.fields.set('g0_1_title','Draft');await f.mexicanDefaults.emit('input');
+  f.fetch(async()=>Response.json({ok:false,error:'Invalid prices'},{status:400}));
+  await f.mexicanDefaults.emit('submit',event());
+  const failed=event();await f.win.emit('beforeunload',failed);assert.equal(failed.prevented,true);
+  let finish;f.fetch(()=>new Promise(resolve=>finish=resolve));
+  const saving=f.mexicanDefaults.emit('submit',event());
+  f.mexicanDefaults.fields.set('g0_1_title','Later edit');await f.mexicanDefaults.emit('input');
+  finish(Response.json({ok:true,revision:2}));await saving;
+  const changed=event();await f.win.emit('beforeunload',changed);assert.equal(changed.prevented,true);
+});
 
 test('recurring-only edits warn on week change, links, and unload; successful save clears only recurring dirtiness', async () => {
   const f = specialsClient();

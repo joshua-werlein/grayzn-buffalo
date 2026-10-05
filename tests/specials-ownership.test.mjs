@@ -7,6 +7,7 @@ const s=loadTs('src/lib/specials-store.ts');
 const dates={start:'2030-01-07',end:'2030-01-13'};
 const recurring="Crispy Grayz'n Chicken Sandwich w/Side Salad, Chili or Coleslaw $10.25";
 const facebook='GRILLED CHICKEN SANDWICH W/ SIDE SALAD OR COLESLAW $10.25';
+const publishedFacebook='Grilled Chicken Sandwich w/ Side Salad Or Coleslaw $10.25';
 const saturday=c=>c.groups.find(g=>g.day_of_week===6 && g.service==='all-day');
 function formFor(collection) {
   const form=new FormData();
@@ -65,7 +66,7 @@ for(const staffEdited of [false,true]) test(`Saturday Worker ${staffEdited?'prot
   const slots=saturday((await s.readWeek(f.env,saved.id)).collection).slots;
   assert.equal(f.state.aiCalls,1);
   assert.deepEqual([slots[0].content,slots[0].origin,slots[0].manual_locked,slots[0].last_auto_value],
-    staffEdited ? ['Staff correction $12','manual',1,null] : [facebook,'automation',0,facebook]);
+    staffEdited ? ['Staff correction $12','manual',1,null] : [publishedFacebook,'automation',0,publishedFacebook]);
   assert.equal(slots[1].content,'Ham Sandwich $7.25');
 });
 

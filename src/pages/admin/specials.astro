@@ -7,12 +7,14 @@ import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, readCollection
 const env = (Astro.locals as any).runtime?.env ?? {};
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 const empty = (kind: SpecialCollection['kind'], id=''): SpecialCollection => ({ id,kind,weekly_special_id:null,title:'',schedule:'',revision:0,groups:[] });
-let defaults: SpecialCollection | null = null, mexican: SpecialCollection | null = null;
+let defaults: SpecialCollection | null = null, mexican: SpecialCollection | null = null, mexicanDefaults: SpecialCollection | null = null;
+let mexicanDefaultsError='';
 let weekly = empty('week'), weekStart='', weekEnd='', editingId='', notice='', error='', recurringError='';
 let activeDay=0, weeklyDirty=false, weeklySaveAttempted=false, weeklyScrollY=0, weeklySaveError='';
 let ready=true;
 try { defaults=await readCollection(env,'defaults'); } catch { recurringError='Recurring defaults are unavailable. New weeks cannot be initialized.'; }
 try { mexican=await readCollection(env,'mexican-night'); } catch { /* Weekly editing does not depend on section availability. */ }
+try { mexicanDefaults=await readCollection(env,'mexican-night-defaults'); } catch { mexicanDefaultsError='Recurring Mexican Night Defaults are unavailable. Reload or contact support before changing future menus.'; }
 let requestedId = Number(Astro.url.searchParams.get('week') ?? '');
 if (!Astro.url.searchParams.has('week') && !Astro.url.searchParams.has('new')) {
   try { requestedId = (await currentSavedWeekId(env)) ?? 0; } catch { /* Preserve existing fallback. */ }
@@ -44,11 +46,13 @@ if (Astro.request.method==='POST') {
       weeklyScrollY=Math.max(0,Math.min(100000,Number(form.get('weekly_scroll_y')) || 0));
       const saved=await saveCollection(env,weekly,{start:weekStart,end:weekEnd});
       return Astro.redirect(`/admin/specials?week=${saved.id}&saved=1`,303);
-    } else if (action==='save-recurring-defaults' || action==='save-mexican-night') {
-      const baseline=action==='save-recurring-defaults' ? defaults : mexican;
+    } else if (['save-recurring-defaults','save-mexican-night','save-mexican-night-defaults'].includes(action)) {
+      const baseline=action==='save-recurring-defaults' ? defaults : action==='save-mexican-night-defaults' ? mexicanDefaults : mexican;
       if (!baseline) throw new Error('This editor is unavailable. Reload before saving.');
       const next=collectionFromForm(form,baseline);
-      if (action==='save-recurring-defaults') defaults=next; else mexican=next;
+      if (action==='save-recurring-defaults') defaults=next;
+      else if (action==='save-mexican-night-defaults') mexicanDefaults=next;
+      else mexican=next;
       const saved=await saveCollection(env,next);
       if (json) return Response.json({ok:true,message:'Saved.',revision:saved.revision,groupIds:saved.groupIds});
       return Astro.redirect('/admin/specials?saved=1',303);
@@ -68,13 +72,29 @@ try {
 const DAYS=DAY_NUMBERS.map(day=>DAY_NAMES[day]);
 const savedWeeksExpanded=savedWeeks.findIndex(week=>String(week.id)===editingId)>=4;
 if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
+if (mexicanDefaults && !mexicanDefaults.groups.length) mexicanDefaults.groups=[blankGroup(-1)];
+const mexicanEditors=[
+  {collection:mexicanDefaults,prefix:'mexican-defaults',action:'save-mexican-night-defaults',heading:'Recurring Mexican Night Defaults',
+    copy:'These values prefill future Mexican Night weeks only. Changing them does not change the currently published Mexican Night. Keep item names, descriptions, sizes, schedule, substitutions and add-ons without prices. Current prices come from Facebook.',save:'Save Recurring Mexican Night Defaults'},
+  {collection:mexican,prefix:'mexican',action:'save-mexican-night',heading:'This Week’s Mexican Night',
+    copy:'This is the current-week menu shown during the Mexican Night publishing window. Facebook normally updates it with current poster prices. Saving a manual change here protects this week from Facebook replacement. It does not change recurring defaults for future weeks.',save:'Save This Week’s Mexican Night'},
+];
 ---
 <Base title="Admin · Specials — Grayz'n Buffalo">
 <section class="specials-admin">
   <div class="section-head"><h2>Specials</h2>{notice && <p class="specials-notice" role="status">{notice}</p>}{error && <p class="error" role="alert">{error}</p>}</div>
   {recurringError && <p class="error">{recurringError}</p>}
   {defaults && <form method="post" id="recurring-defaults-form" class="recurring-defaults-form"><input type="hidden" name="action" value="save-recurring-defaults"/><input type="hidden" name="revision" value={defaults.revision}/><input type="hidden" name="group_count" value={defaults.groups.length}/><details class="recurring-defaults"><summary>Recurring Defaults</summary><div class="recurring-defaults__content"><p>These values prefill new weeks only. Saved weeks and intentional blanks are never changed. Leave a field empty to remove its default.</p><label>Daily sandwich preset<select id="sandwich-preset"><option value="">Choose a preset…</option><option value="Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25">Chicken Salad Sandwich</option><option value="Grilled Ham &amp; Cheese with cup of Chili or Coleslaw $7.25">Grilled Ham &amp; Cheese</option></select></label>{DAY_NUMBERS.map(day=><details class="default-day"><summary>{DAY_NAMES[day]}</summary>{defaults!.groups.map((group,index)=>group.day_of_week===day && <><GroupFields group={group} index={index} defaults formPrefix="defaults"/>{group.service==='all-day' && <span hidden data-sandwich-index={index}/>}</>)}</details>)}<p class="rd-flash" id="rd-flash" role="status" hidden/><button class="btn btn-primary recurring-defaults__save" type="submit" name="action" value="save-recurring-defaults">Save Recurring Defaults</button></div></details></form>}
-  {mexican && <form method="post" id="mexican-form" class="recurring-defaults-form"><input type="hidden" name="action" value="save-mexican-night"/><input type="hidden" name="revision" value={mexican.revision}/><input type="hidden" name="group_count" value={mexican.groups.length}/><details class="recurring-defaults"><summary>Mexican Night menu</summary><div class="recurring-defaults__content"><p>Published separately at <a href="/specials#mexican-night">Mexican Night</a>. Add only confirmed menu items. This does not change saved Tuesday specials.</p><label>Title<input name="title" maxlength="80" value={mexican.title}/></label><label>Schedule<input name="schedule" maxlength="80" value={mexican.schedule}/></label><div class="section-groups">{mexican.groups.map((group,index)=><GroupFields group={group} index={index} formPrefix="mexican"/>)}<button type="button" class="btn btn-ghost" data-add-group="-1">Add menu group</button></div><p id="mexican-status" role="status"/><button class="btn btn-primary" type="submit">Save Mexican Night</button></div></details></form>}
+  {mexicanDefaultsError && <p class="error" role="alert">{mexicanDefaultsError}</p>}
+  {mexicanEditors.map(({collection,prefix,action,heading,copy,save})=>collection && <form method="post" id={`${prefix}-form`} class="recurring-defaults-form" data-mexican-editor data-editor-name={heading}>
+    <input type="hidden" name="action" value={action}/><input type="hidden" name="revision" value={collection.revision}/><input type="hidden" name="group_count" value={collection.groups.length}/>
+    <details class="recurring-defaults"><summary>{heading}</summary><div class="recurring-defaults__content">
+      <p>{copy}</p>{prefix==='mexican' && <p><a href="/specials#mexican-night">View published Mexican Night</a></p>}
+      <label>Title<input name="title" maxlength="80" value={collection.title}/></label><label>Schedule<input name="schedule" maxlength="80" value={collection.schedule}/></label>
+      <div class="section-groups">{collection.groups.map((group,index)=><GroupFields group={group} index={index} formPrefix={prefix}/>)}<button type="button" class="btn btn-ghost" data-add-group="-1" data-group-template={`${prefix}-group-template`}>Add menu group</button></div>
+      <p id={`${prefix}-status`} data-editor-status role="status"/><button class="btn btn-primary" type="submit">{save}</button>
+    </div></details>
+  </form>)}
   <div class="weekly-section-head"><h3>Weekly Specials</h3></div>
   <div class="week-picker"><label for="saved-week">Saved week to edit</label><select id="saved-week"><option value="">Select a saved week...</option>{savedWeeks.map((week,index)=><option value={week.id} data-older-week={index>=4 ? 'true' : undefined} hidden={index>=4 && !savedWeeksExpanded} selected={String(week.id)===editingId}>{week.week_start_date} – {week.week_end_date}</option>)}</select>{savedWeeks.length>4 && <button id="saved-weeks-toggle" type="button" class="btn btn-ghost week-picker__action" aria-expanded={savedWeeksExpanded}>View {savedWeeksExpanded ? 'fewer' : 'more'} weeks</button>}<a class="btn btn-ghost week-picker__action" href="/admin/specials?new=1">Create new week</a>
   </div>
@@ -87,7 +107,7 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
     <div class="week-actions"><div class="week-save-row"><div><p>All seven days save together</p><p id="weekly-save-status" role="status">No unsaved changes.</p></div><button class="btn btn-primary" type="submit" name="action" value="save-weekly-specials">Save Week</button></div><p id="weekly-save-error" class="error" role="alert" tabindex="-1" hidden={!weeklySaveError}>{weeklySaveError}</p><div class="day-stepper" hidden><button type="button" id="previous-day">← Previous</button><button type="button" id="next-day">Next →</button></div></div>
     <div class="day-grid">{DAY_NUMBERS.map((day,index)=><fieldset class="day-fields" id={`weekly-day-${index}`} data-day-name={DAYS[index]} tabindex="-1"><legend>{DAYS[index]}</legend>{weekly.groups.map((group,i)=>group.day_of_week===day && <GroupFields group={group} index={i} formPrefix="weekly"/>)}</fieldset>)}</div>
   </form>}
-  <template id="group-template"><GroupFields group={blankGroup(-1)} index={0} formPrefix="mexican"/></template>
+  {mexicanEditors.map(({prefix})=><template id={`${prefix}-group-template`}><GroupFields group={blankGroup(-1)} index={84} formPrefix={prefix}/></template>)}
 </section>
 </Base>
 <script>
@@ -177,24 +197,25 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
     : []);
   let recurringBaseline = recurringSnapshot();
   let recurringDirty = false;
-  let sectionDirty = false;
+  const dirtySections = new Set<HTMLFormElement>();
+  const sectionsDirty = () => dirtySections.size > 0;
   const updateRecurringDirty = () => { recurringDirty = recurringSnapshot() !== recurringBaseline; };
   recurringDefaultsForm?.addEventListener('input', updateRecurringDirty);
   recurringDefaultsForm?.addEventListener('change', updateRecurringDirty);
   const confirmLeave = () => {
     updateRecurringDirty();
-    if (!dirty && !recurringDirty && !sectionDirty) return true;
+    if (!dirty && !recurringDirty && !sectionsDirty()) return true;
     const message = recurringDirty
       ? dirty ? 'This week and Recurring Defaults contain unsaved changes. Leave without saving?'
         : 'Recurring Defaults contain unsaved changes. Leave without saving them?'
-      : sectionDirty ? 'Mexican Night contains unsaved changes. Leave without saving?' : 'This week contains unsaved changes. Leave without saving the week?';
+      : sectionsDirty() ? `${[...dirtySections].map(form=>form.dataset.editorName).join(' and ')} contains unsaved changes. Leave without saving?` : 'This week contains unsaved changes. Leave without saving the week?';
     return window.confirm(message);
   };
   weeklyForm?.addEventListener('input', updateDirty);
   weeklyForm?.addEventListener('change', updateDirty);
   window.addEventListener('beforeunload', (event) => {
     updateRecurringDirty();
-    if ((!dirty && !recurringDirty && !sectionDirty) || leaving) return;
+    if ((!dirty && !recurringDirty && !sectionsDirty()) || leaving) return;
     event.preventDefault();
     event.returnValue = ''; // Legacy browser support alongside preventDefault().
   });
@@ -277,7 +298,7 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
     }
     // Saving the week navigates away too; it does not save recurring edits.
     updateRecurringDirty();
-    if ((recurringDirty || sectionDirty) && !window.confirm('Recurring Defaults or Mexican Night contain unsaved changes. Save the week and leave without saving those changes?')) {
+    if ((recurringDirty || sectionsDirty()) && !window.confirm('Recurring Defaults or Mexican Night editors contain unsaved changes. Save the week and leave without saving those changes?')) {
       event.preventDefault();
       return;
     }
@@ -368,21 +389,23 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
     }, 4000);
   }
 
-  const sectionForm = document.getElementById('mexican-form') as HTMLFormElement | null;
-  sectionForm?.addEventListener('input', () => sectionDirty = true);
-  sectionForm?.addEventListener('change', () => sectionDirty = true);
+  const sectionForms = document.querySelectorAll<HTMLFormElement>('[data-mexican-editor]');
+  sectionForms.forEach(form => {
+    form.addEventListener('input', () => dirtySections.add(form));
+    form.addEventListener('change', () => dirtySections.add(form));
+  });
   document.querySelectorAll<HTMLButtonElement>('[data-add-group]').forEach(button => button.addEventListener('click', () => {
     const form = button.closest('form')!;
     const count = form.querySelector<HTMLInputElement>('[name="group_count"]')!;
     const index = Number(count.value);
     if (index >= 84) return;
-    const template = document.getElementById('group-template') as HTMLTemplateElement;
+    const template = document.getElementById(button.dataset.groupTemplate!) as HTMLTemplateElement;
     const fragment = template.content.cloneNode(true) as DocumentFragment;
     const group = fragment.querySelector<HTMLElement>('.group-fields')!;
     group.dataset.groupIndex = String(index);
     group.dataset.groupDay = button.dataset.addGroup!;
     group.querySelectorAll<HTMLInputElement>('[name]').forEach(input => {
-      input.name = input.name.replace(/^g0_/, `g${index}_`);
+      input.name = input.name.replace(/^g84_/, `g${index}_`);
       if (input.name.endsWith('_id')) input.value = `new:${crypto.randomUUID()}`;
       if (input.name.endsWith('_day')) input.value = button.dataset.addGroup!;
     });
@@ -404,9 +427,9 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
     recurringDefaultsForm.dispatchEvent(new Event('input', { bubbles: true }));
     updateCounts();
   });
-  sectionForm?.addEventListener('submit', async event => {
+  sectionForms.forEach(sectionForm => sectionForm.addEventListener('submit', async event => {
     event.preventDefault();
-    const message = document.getElementById('mexican-status')!;
+    const message = sectionForm.querySelector<HTMLElement>('[data-editor-status]')!;
     const button = sectionForm.querySelector<HTMLButtonElement>('[type="submit"]')!;
     const body = new FormData(sectionForm);
     const submitted = JSON.stringify([...body]);
@@ -416,15 +439,15 @@ if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || 'Could not save Mexican Night.');
       // Newly created group IDs are returned so a second save edits the same rows.
-      sectionDirty = JSON.stringify([...new FormData(sectionForm)]) !== submitted;
+      if (JSON.stringify([...new FormData(sectionForm)]) === submitted) dirtySections.delete(sectionForm);
       for (const [temporary, saved] of Object.entries(result.groupIds || {})) {
         sectionForm.querySelectorAll<HTMLInputElement>('input[name$="_id"]').forEach(input => { if (input.value===temporary) input.value=String(saved); });
       }
       sectionForm.querySelector<HTMLInputElement>('[name="revision"]')!.value = String(result.revision);
-      message.textContent = 'Mexican Night saved.';
+      message.textContent = `${sectionForm.dataset.editorName} saved.`;
     } catch (error) { message.textContent = (error as Error).message; }
     finally { button.disabled = false; }
-  });
+  }));
 
 </script>
 <style>

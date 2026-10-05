@@ -1,4 +1,11 @@
 // One display/storage contract shared by Astro, the editor and the Facebook Worker.
+// Applies only to the recurring template. Live menu/Facebook prices are allowed.
+export function assertPriceFreeMexicanDefault(text) {
+  if (/[$¢€£]|\bUSD\b|\b\d+[.,]\d{2}\b|\b\d+(?:\s+|\s*[-–]\s*)(?:dollars?|cents?)\b/i.test(text)) {
+    throw new Error('Recurring Mexican Night defaults cannot include prices. Keep names, descriptions and sizes only; Facebook supplies current prices.');
+  }
+}
+
 export function splitMexicanItem(content) {
   const text = content ?? '';
   const newline = /\r\n|\r|\n/.exec(text);
