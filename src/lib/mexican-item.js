@@ -14,11 +14,14 @@ export function splitMexicanItem(content) {
     : {title: text, description: ''};
 }
 
+// Mexican Night posters print full descriptions. Ordinary specials keep SPECIAL_LIMIT (150).
+export const MEXICAN_ITEM_LIMIT = 300;
+
 export function composeMexicanItem(title, description) {
   if (typeof title !== 'string' || typeof description !== 'string') throw new Error('Item title and description must be text.');
   if (/[\r\n]/.test(title)) throw new Error('Item / price must be one line.');
   if (!title.trim() && description) throw new Error('A description requires an item title.');
   const content = title + (description ? '\n' + description : '');
-  if (content.length > 150) throw new Error('Item title and description together must be 150 characters or fewer.');
+  if (content.length > MEXICAN_ITEM_LIMIT) throw new Error(`Item title and description together must be ${MEXICAN_ITEM_LIMIT} characters or fewer.`);
   return content;
 }

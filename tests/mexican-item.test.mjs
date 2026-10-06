@@ -21,9 +21,11 @@ test('admin split fields enforce combined limit server-side and preserve four sl
   assert.equal(read().groups[0].slots[0].content,'Burrito\nBeans\nSalsa');
   assert.equal(read().groups[0].slots.length,4);
   form.set('g0_1_description','');assert.equal(read().groups[0].slots[0].content,'Burrito');
-  form.set('g0_1_title','T'.repeat(75));form.set('g0_1_description','D'.repeat(74));
-  assert.equal(read().groups[0].slots[0].content.length,150);
-  form.set('g0_1_description','D'.repeat(75));assert.throws(read,/150/);
+  form.set('g0_1_title','T'.repeat(75));form.set('g0_1_description','D'.repeat(75));
+  assert.equal(read().groups[0].slots[0].content.length,151);
+  form.set('g0_1_title','T'.repeat(150));form.set('g0_1_description','D'.repeat(149));
+  assert.equal(read().groups[0].slots[0].content.length,300);
+  form.set('g0_1_description','D'.repeat(150));assert.throws(read,/300/);
   form.set('g0_1_title','');assert.throws(read,/title/);
   form.set('g0_1_description','');assert.equal(read().groups[0].slots[0].content,'');
   form.set('g0_1_title','Title\nnot a title');assert.throws(read,/one line/);

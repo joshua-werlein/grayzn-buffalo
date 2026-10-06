@@ -437,6 +437,13 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
         if (Array.isArray(parsedOffers) && parsedOffers.length === 0) needsMexicanNightRetry = true;
       } catch { /* ignore; leave needsMexicanNightRetry false */ }
     }
+    // Tuesday misread: a weekly-lunch response that fails weekly-lunch validation
+    // gets the same targeted check. A real Mexican Night heading is still required.
+    if (attempt === 0 && budget.window.weekday === 2 && validation.validationResult === 'rejected') {
+      try {
+        if (JSON.parse(outcome.extractedJson.replace(/^```(?:json)?\n?|\n?```$/gm, '').trim())?.type === 'weekly-lunch') needsMexicanNightRetry = true;
+      } catch { /* ignore; leave needsMexicanNightRetry false */ }
+    }
     // Retry unusable response shapes or inconsistent weekday encoding once; never coerce a day.
     if (!needsMexicanNightRetry && !['response is not valid JSON','no AI response',WEEKLY_LUNCH_SHAPE_ERROR,MEXICAN_NIGHT_SHAPE_ERROR,WEEKDAY_ENCODING_MISMATCH].includes(validation.validationReason)) return outcome;
   }

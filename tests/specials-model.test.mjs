@@ -40,3 +40,13 @@ test('deduplicateCandidatesByPost keeps newest fetched_at per fb_post_id and sor
   const single=s.deduplicateCandidatesByPost([v6]);
   assert.equal(single[0].id,'id-v6','single candidate with no newer version is kept');
 });
+test('Mexican Night saves allow 300 characters while weekly specials keep 150',()=>{
+  const section=(id,content)=>{const g=s.blankGroup(1);g.day_of_week=-1;g.service='custom';g.label='Entrees';g.slots[0].content=content;
+    return {id,kind:'section',weekly_special_id:null,title:'Mexican Night',schedule:'',revision:0,groups:[g]};};
+  for(const id of ['mexican-night','mexican-night-defaults']) {
+    s.validateCollection(section(id,'B'.repeat(151)));s.validateCollection(section(id,'B'.repeat(300)));
+    assert.throws(()=>s.validateCollection(section(id,'B'.repeat(301))),/300/);
+  }
+  const g=s.blankGroup(2);g.label='Nightly';g.slots[0].content='a'.repeat(151);
+  assert.throws(()=>s.validateCollection(collection([g])),/150/);
+});

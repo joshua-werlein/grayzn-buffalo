@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateMexicanNight,containsConsumerAdvisory} from './reconcile.js';
+import {validateMexicanNight,containsConsumerAdvisory,validateEvidence} from './reconcile.js';
 import {harness, offer, poster} from './test-fixture.js';
 import {reconcileMexicanNight} from './guarded-auto.js';
 import {PARSER_VERSION} from './classify.js';
-import {composeMexicanItem,splitMexicanItem} from '../../src/lib/mexican-item.js';
+import {composeMexicanItem,splitMexicanItem,MEXICAN_ITEM_LIMIT} from '../../src/lib/mexican-item.js';
 
 const entrees = [
   {description: '', title: '2 Soft Shell $8.50'},
@@ -22,6 +22,27 @@ const addons = [
   {description: '', title: 'Add nacho cheese $0.75'},
   {description: '', title: 'Substitute queso $0.75'},
   {description: '', title: 'Substitute shredded cheese for nacho cheese $0.75'},
+];
+
+// Verbatim text from the October 6, 2026 production poster.
+const octoberPosterGroups = () => [
+  {label: 'Entrees', items: [
+    {title: '2 Soft Shell $7.75', description: 'Meat, shredded cheese, lettuce, onion, tomato, and black olives'},
+    {title: 'Burrito $10.25', description: 'Meat, refried beans, shredded cheese, lettuce, onion, and tomato rolled up in a tortilla. Topped with shredded cheese, black olives, and enchilada sauce'},
+    {title: 'Chimichanga $12.25', description: 'Meat, refried beans, shredded cheese, and onion rolled up in a tortilla and fried. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side'},
+    {title: 'Enchilada $9.25', description: 'Meat, refried beans, shredded cheese, and onion rolled up in a tortilla. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side'},
+  ]},
+  {label: 'More', items: [
+    {title: 'Nacho Deluxe $9.75', description: 'Meat, lettuce, onion, tomato, black olives, and nacho cheese served on top of chips'},
+    {title: 'Taco Salad | Large $9.00 · Small $8.50 · Mini $6.00', description: 'Meat, shredded cheese, lettuce, onion, tomato, and black olives served in a shell bowl'},
+    {title: 'Chips & Salsa or Chips & Cheese $4.00', description: 'Add nacho cheese or salsa +$1.50'},
+  ]},
+  {label: 'Substitutions & Add-ons', items: [
+    {title: 'Substitute chicken $1.50', description: ''},
+    {title: 'Add Nacho Cheese $1.50', description: ''},
+    {title: 'Substitute queso 50c', description: ''},
+    {title: 'Substitute Shredded Cheese for Nacho Cheese 50c', description: ''},
+  ]},
 ];
 
 function mexicanNightCandidate(overrides = {}) {
@@ -112,10 +133,42 @@ test('advisory rejection makes zero live menu writes and preserves the complete 
 
 test('Mexican title/description contract rejects malformed items and enforces composed limit',()=>{
   const validate=item=>validateMexicanNight(mexicanNightCandidate({groups:[{label:'Entrees',items:[item]}]}));
-  for(const item of [{content:'Old v9 shape'}, {description:''}, {title:'',description:''}, {title:'T'}, {title:'T',description:null}, {title:2,description:''}, {title:'T\nX',description:''}, {title:'T'.repeat(75),description:'D'.repeat(75)}]) assert.throws(()=>validate(item));
-  const item={title:'T'.repeat(75),description:'D'.repeat(74)};
+  for(const item of [{content:'Old v9 shape'}, {description:''}, {title:'',description:''}, {title:'T'}, {title:'T',description:null}, {title:2,description:''}, {title:'T\nX',description:''}, {title:'T'.repeat(150),description:'D'.repeat(150)}]) assert.throws(()=>validate(item));
+  const item={title:'T'.repeat(150),description:'D'.repeat(149)};
   assert.deepEqual(validate(item).groups[0].items[0],item);
-  assert.equal(composeMexicanItem(item.title,item.description).length,150);
+  assert.equal(composeMexicanItem(item.title,item.description).length,MEXICAN_ITEM_LIMIT);
+});
+
+test('Mexican Night items between 151 and 300 characters validate; over 300 is rejected',()=>{
+  const validate=item=>validateMexicanNight(mexicanNightCandidate({groups:[{label:'Entrees',items:[item]}]}));
+  assert.equal(MEXICAN_ITEM_LIMIT,300);
+  for(const length of [151,200,300]) {
+    const item={title:'Burrito $10.25',description:'D'.repeat(length-'Burrito $10.25'.length-1)};
+    assert.equal(composeMexicanItem(item.title,item.description).length,length);
+    assert.deepEqual(validate(item).groups[0].items[0],item);
+  }
+  assert.throws(()=>validate({title:'Burrito $10.25',description:'D'.repeat(300-'Burrito $10.25'.length)}),/300 characters/);
+  assert.throws(()=>composeMexicanItem('A'.repeat(301),''),/300 characters/);
+});
+
+test('ordinary daily offers still reject content over 150 characters',()=>{
+  const daily=content=>validateEvidence({day_of_week:3,day_evidence:'Wednesday',poster_evidence:'Wednesday Specials',offers:[{content,service_time:'',evidence:''}]});
+  assert.equal(daily('A'.repeat(150)).offers.length,1);
+  assert.throws(()=>daily('A'.repeat(151)),/Invalid offer evidence/);
+});
+
+test('full-length October 6 poster descriptions validate verbatim with prices',async t=>{
+  const f=mnHarness(t,{candidate:mexicanNightCandidate({groups:octoberPosterGroups()})});
+  const validated=validateMexicanNight(mexicanNightCandidate({groups:octoberPosterGroups()}));
+  assert.deepEqual(validated.groups,octoberPosterGroups());
+  const lengths=validated.groups.flatMap(g=>g.items.map(i=>composeMexicanItem(i.title,i.description).length));
+  assert.ok(lengths.filter(n=>n>150).length===3 && Math.max(...lengths)<=300,`lengths ${lengths}`);
+  await f.run();
+  assert.equal(mnCollection(f).section_source,'facebook');
+  const contents=mnSlots(f).map(s=>s.content);
+  for(const item of octoberPosterGroups().flatMap(g=>g.items)) assert.ok(contents.includes(composeMexicanItem(item.title,item.description)),`missing ${item.title}`);
+  assert.ok(contents.includes('Substitute queso 50c'));
+  assert.ok(mnSlots(f).every(s=>s.price===''));
 });
 
 test('automated descriptions use canonical admin format across seven foods and add-ons',async t=>{
@@ -198,10 +251,10 @@ test('validateMexicanNight rejects item with whitespace-only content', () => {
   );
 });
 
-test('validateMexicanNight rejects item content over 150 chars', () => {
+test('validateMexicanNight rejects item content over 300 chars', () => {
   assert.throws(
-    () => validateMexicanNight({...mexicanNightCandidate(), groups: [{label: 'Group', items: [{description: '', title: 'A'.repeat(151)}]}]}),
-    /title|150/i
+    () => validateMexicanNight({...mexicanNightCandidate(), groups: [{label: 'Group', items: [{description: '', title: 'A'.repeat(301)}]}]}),
+    /title|300/i
   );
 });
 

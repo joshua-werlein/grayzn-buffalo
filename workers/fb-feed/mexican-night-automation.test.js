@@ -226,3 +226,76 @@ test('Successful Tuesday retry reaches reconcileMexicanNight and sets section_so
   const slots = f.sql("SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='mexican-night'");
   assert.ok(slots.some(s => s.content.includes('Burrito')), 'menu item persisted');
 });
+
+// Tuesday misclassification: the October 6, 2026 poster came back in the weekly-lunch
+// shape with a malformed date_range. The targeted Mexican Night request gets one retry.
+const malformedWeeklyLunch = () => ({
+  type: 'weekly-lunch', poster_evidence: "TONIGHT @ GRAYZ'N BUFFALO 5-10PM!", date_range: '5-10PM',
+  service_time: '5-10 PM', entries: [{day_of_week: 2, content: 'Mexican Night'}],
+});
+const validWeeklyLunch = () => ({
+  type: 'weekly-lunch', poster_evidence: 'Weekly Lunch Specials', date_range: '1/7-1/11', service_time: '11 AM-1:30 PM',
+  entries: [{day_of_week: 1, content: 'G Mac Salad & a Drink'}, {day_of_week: 2, content: 'Chicken Caesar Wrap & a Drink'}],
+});
+const schemaName = request => request?.response_format?.json_schema?.name ?? null;
+
+test('Tuesday weekly-lunch misread with malformed date_range recovers through one Mexican Night retry', async t => {
+  const f = tuesdayHarness(t, {caption: "Tonight at Grayz'n Buffalo from 5-10"});
+  const requests = [];
+  t.mock.method(f.env.AI, 'run', async (_model, request) => {
+    requests.push(request);
+    return {response: JSON.stringify(requests.length === 1 ? malformedWeeklyLunch() : validMexicanNight())};
+  });
+  await f.run();
+  const row = f.imports()[0];
+  assert.equal(requests.length, 2, 'exactly one retry');
+  assert.equal(schemaName(requests[1]), 'mexican_night_extraction', 'retry uses the Mexican-Night-only request');
+  assert.equal(row.processing_status, 'staged');
+  assert.equal(row.validation_reason, 'mexican night evidence');
+  assert.equal(row.target_collection_id, 'mexican-night');
+  const retries = f.sql("SELECT detail FROM special_import_events WHERE import_id=? AND event_type='retry'", row.id);
+  assert.equal(retries.length, 1);
+  assert.match(retries[0].detail, /Mexican Night targeted retry/);
+  assert.equal(f.sql("SELECT section_source FROM special_collections WHERE id='mexican-night'")[0].section_source, 'facebook');
+});
+
+test('Tuesday weekly-lunch misread fails closed when the targeted retry finds no Mexican Night heading', async t => {
+  const f = tuesdayHarness(t);
+  let callCount = 0;
+  t.mock.method(f.env.AI, 'run', async () => {
+    callCount++;
+    return {response: JSON.stringify(callCount === 1 ? malformedWeeklyLunch() : {type: 'mexican-night', poster_evidence: '', groups: []})};
+  });
+  const before = f.sql("SELECT * FROM special_collections WHERE id='mexican-night'");
+  await f.run();
+  const row = f.imports()[0];
+  assert.equal(callCount, 2);
+  assert.equal(row.processing_status, 'failed');
+  assert.equal(row.validation_result, 'rejected');
+  assert.notEqual(row.target_collection_id, 'mexican-night', 'a weekly-lunch reading is never converted without Mexican Night evidence');
+  assert.deepEqual(f.sql("SELECT * FROM special_collections WHERE id='mexican-night'"), before);
+});
+
+test('Non-Tuesday malformed weekly-lunch response gets no Mexican Night retry', async t => {
+  const f = harness(t, {caption: 'Specials'});
+  let callCount = 0;
+  t.mock.method(f.env.AI, 'run', async () => { callCount++; return {response: JSON.stringify(malformedWeeklyLunch())}; });
+  await f.run();
+  const row = f.imports()[0];
+  assert.equal(callCount, 1, 'no retry outside Tuesday');
+  assert.equal(row.processing_status, 'failed');
+  assert.equal(row.validation_reason, 'Malformed date_range: expected M/D-M/D format');
+  assert.notEqual(row.target_collection_id, 'mexican-night');
+});
+
+test('Valid Tuesday weekly-lunch poster stays weekly lunch with no Mexican Night retry', async t => {
+  const f = tuesdayHarness(t, {caption: 'Weekly Lunch Specials'});
+  let callCount = 0;
+  t.mock.method(f.env.AI, 'run', async () => { callCount++; return {response: JSON.stringify(validWeeklyLunch())}; });
+  await f.run();
+  const row = f.imports()[0];
+  assert.equal(callCount, 1);
+  assert.equal(row.processing_status, 'staged');
+  assert.equal(row.validation_reason, 'weekly lunch evidence');
+  assert.notEqual(row.target_collection_id, 'mexican-night');
+});

@@ -1,5 +1,5 @@
 import { chicagoCalendarDate, isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from './weekly-specials';
-import {composeMexicanItem,assertPriceFreeMexicanDefault} from './mexican-item.js';
+import {composeMexicanItem,assertPriceFreeMexicanDefault,MEXICAN_ITEM_LIMIT} from './mexican-item.js';
 
 export const SPECIAL_LIMIT = 150;
 export const DAY_NUMBERS = [1, 2, 3, 4, 5, 6, 0];
@@ -413,6 +413,8 @@ export function validateCollection(next: SpecialCollection, previous?: SpecialCo
   if (next.title.length > 80 || next.schedule.length > 80) throw new Error('Title and schedule allow 80 characters each.');
   if (next.kind === 'section' && !next.title.trim()) throw new Error('Enter a section title.');
   const ids = new Set<string>();
+  // Mexican Night items carry full poster descriptions; every other special keeps SPECIAL_LIMIT.
+  const itemLimit = ['mexican-night','mexican-night-defaults'].includes(next.id) ? MEXICAN_ITEM_LIMIT : SPECIAL_LIMIT;
   for (const group of next.groups) {
     if (ids.has(group.id)) throw new Error('Duplicate group.');
     ids.add(group.id);
@@ -423,7 +425,7 @@ export function validateCollection(next: SpecialCollection, previous?: SpecialCo
     if (group.slots.length !== 4 || new Set(group.slots.map(s => s.position)).size !== 4 || group.slots.some(s => ![1,2,3,4].includes(s.position))) throw new Error('Each group must have four ordered slots.');
     for (const slot of group.slots) {
       if (slot.content === null && next.kind !== 'defaults') throw new Error('Saved slots must use an explicit blank.');
-      if (displayedSpecial(slot).length > SPECIAL_LIMIT) throw new Error('Each special, including its price, must be 150 characters or fewer.');
+      if (displayedSpecial(slot).length > itemLimit) throw new Error(`Each special, including its price, must be ${itemLimit} characters or fewer.`);
       if (!(slot.content ?? '').trim() && (slot.price || slot.section_link)) throw new Error('A price or link requires special text.');
       if (!['','mexican-night'].includes(slot.section_link)) throw new Error('Invalid section link.');
     }
