@@ -2,6 +2,7 @@ import {buildExtractionRequest, buildWeeklyLunchExtractionRequest, buildMexicanN
 import { classifyCaption, PARSER_VERSION } from './classify.js';
 import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexicanNight } from './guarded-auto.js';
 import {ensureAutomaticWeek} from './auto-week.js';
+import {MAX_IMPORT_ATTEMPTS,OWNS_ATTEMPT_SQL,isTransientFailure,claimImportAttempt,attemptEvent,saveAttemptImage,finishImportAttempt,retireImportAttempts} from './recovery.js';
 import {validateEvidence, validateWeeklyLunch, validateMexicanNight, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR, WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
 
 const TIME_ZONE = 'America/Chicago';
@@ -327,11 +328,12 @@ async function fetchScanPosts(env, now, window) {
   return [];
 }
 
-async function storeImportImage(env, post, imageSrcVer) {
+async function storeImportImage(env, post, imageSrcVer, attemptToken) {
   if (!post.full_picture) return { imageR2Key: null, imageHash: null };
   try {
     const response = await fetch(post.full_picture);
-    if (!response.ok) return { imageR2Key: null, imageHash: null };
+    if (!response.ok) return {imageR2Key:null,imageHash:null,
+      transient:isTransientFailure({status:response.status}),reason:`Image HTTP ${response.status}`};
     const format = imageFormat(response.headers.get('content-type'));
     const bytes = await response.arrayBuffer();
     const data = new Uint8Array(bytes);
@@ -340,17 +342,18 @@ async function storeImportImage(env, post, imageSrcVer) {
       format.contentType === 'image/png' ? starts([137,80,78,71,13,10,26,10]) :
       format.contentType === 'image/gif' ? /^GIF8[79]a/.test(new TextDecoder().decode(data.slice(0,6))) :
       format.contentType === 'image/webp' ? starts([82,73,70,70]) && new TextDecoder().decode(data.slice(8,12)) === 'WEBP' : false;
-    if (!valid || bytes.byteLength > 10*1024*1024) return {imageR2Key:null,imageHash:null};
+    if (!valid || bytes.byteLength > 10*1024*1024) return {imageR2Key:null,imageHash:null,reason:'invalid or oversized image'};
     const imgDigest = await crypto.subtle.digest('SHA-256', bytes);
     const imageHash = Array.from(new Uint8Array(imgDigest))
       .slice(0, 8)
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
-    const key = `special-imports/${safePostId(post.id)}-${await versionToken(imageSrcVer)}.${format.extension}`;
+    // Attempt-specific keys fence delayed R2 writes as well as D1 pointers.
+    const key = `special-imports/${safePostId(post.id)}-${await versionToken(imageSrcVer)}-${attemptToken}.${format.extension}`;
     await env.PHOTOS.put(key, bytes, { httpMetadata: { contentType: format.contentType } });
     return { imageR2Key: key, imageHash };
-  } catch {
-    return { imageR2Key: null, imageHash: null };
+  } catch (error) {
+    return {imageR2Key:null,imageHash:null,transient:isTransientFailure(error),reason:safeAiError(error,env)};
   }
 }
 
@@ -373,7 +376,7 @@ const AI_COUNT_SQL = `(SELECT count(*) FROM special_import_events WHERE event_ty
 
 async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
   const r2Object = await env.PHOTOS.get(imageR2Key);
-  if (!r2Object) return {extractedJson:null};
+  if (!r2Object) return {extractedJson:null,imageMissing:true};
   const image = `data:${r2Object.httpMetadata?.contentType ?? 'image/jpeg'};base64,${await arrayBufferToBase64(await r2Object.arrayBuffer())}`;
   let outcome = {extractedJson:null};
   let lastValidationReason = null;
@@ -383,9 +386,13 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
     const now = new Date(Date.now());
     if (!isWithinProcessingHours(now) || chicagoDate(now)!==budget.window.today) return outcome;
     const reservation = await env.DB.prepare(`INSERT INTO special_import_events(import_id,event_type,detail,occurred_at)
-      SELECT ?3,'extract',?4,?5 WHERE (${AI_COUNT_SQL})<?6`).bind(
+      SELECT ?3,'extract',?4,?5 WHERE (${AI_COUNT_SQL})<?6
+      AND EXISTS(SELECT 1 FROM special_imports i WHERE i.id=?3 AND i.attempt_token=?7
+        AND i.processing_status='processing' AND i.review_status='pending' AND julianday(i.lease_expires_at)>julianday(?5)
+        AND NOT EXISTS(SELECT 1 FROM special_imports newer WHERE newer.fb_post_id=i.fb_post_id
+          AND newer.parser_version=i.parser_version AND newer.rowid>i.rowid))`).bind(
       new Date(budget.window.since*1000).toISOString(),new Date(budget.window.until*1000).toISOString(),
-      budget.importId,modelId,now.toISOString(),budget.dailyLimit).run();
+      budget.importId,modelId,now.toISOString(),budget.dailyLimit,budget.record.attempt_token).run();
     if (reservation.meta?.changes!==1) return attempt ? outcome : {extractedJson:null,budgetExceeded:true};
     if (attempt) {
       // Select the most informative retry description and the focused schema.
@@ -396,21 +403,26 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
           : lastValidationReason === WEEKDAY_ENCODING_MISMATCH
             ? `Weekday encoding mismatch retry: ${WEEKDAY_ENCODING_MISMATCH}`
             : 'One retry with identical extraction instructions and schema';
-      await env.DB.prepare("INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?1,'retry',?2)")
-        .bind(budget.importId,retryDetail).run();
+      await attemptEvent(env,budget.record,'retry',retryDetail);
     }
     const request = lastValidationReason === WEEKLY_LUNCH_SHAPE_ERROR
       ? buildWeeklyLunchExtractionRequest(caption,image)
       : (needsMexicanNightRetry || lastValidationReason === MEXICAN_NIGHT_SHAPE_ERROR)
         ? buildMexicanNightExtractionRequest(caption,image)
         : buildExtractionRequest(caption,image);
+    // A reservation may outlive a review change or lease while waiting on D1.
+    // Keep it charged conservatively, but do not invoke AI without ownership.
+    const callNow=new Date(Date.now());
+    if (!isWithinProcessingHours(callNow) || chicagoDate(callNow)!==budget.window.today ||
+      !await env.DB.prepare(`SELECT 1 WHERE ${OWNS_ATTEMPT_SQL}`)
+        .bind(budget.importId,budget.record.attempt_token,callNow.toISOString()).first()) return {cancelled:true};
     try {
       const result = await env.AI.run(modelId,request);
       const raw = result?.choices?.[0]?.message?.content ?? result?.response;
       outcome = {extractedJson:typeof raw==='string' ? raw : JSON.stringify(raw ?? null),processedAt:now.toISOString()};
     } catch(error) {
       const aiError = safeAiError(error,env);
-      outcome = {extractedJson:null,aiError,processedAt:now.toISOString()};
+      outcome = {extractedJson:null,aiError,transient:isTransientFailure(error),processedAt:now.toISOString()};
       if (!/json[ _]mode|json[ _]schema/i.test(aiError)) return outcome;
       continue;
     }
@@ -520,14 +532,6 @@ function validateExtraction(extractedJson) {
   };
 }
 
-async function countTodayAiCalls(env, modelId, window) {
-  try {
-    const {results} = await env.DB.prepare(`SELECT ${AI_COUNT_SQL} AS n`).bind(
-      new Date(window.since*1000).toISOString(),new Date(window.until*1000).toISOString()).all();
-    return Number(results?.[0]?.n ?? 0);
-  } catch { return Infinity; }
-}
-
 async function pruneImportImages(env) {
   const cutoff = Date.now() - IMPORT_IMAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
   let cursor;
@@ -542,154 +546,98 @@ async function pruneImportImages(env) {
   } while (cursor);
 }
 
+async function processImportAttempt(env, record, raw, {window,modelId,dailyLimit}) {
+  const retry = async (reason,kind,extra={}) => finishImportAttempt(env,record,{
+    ...extra,status:record.retry_count<MAX_IMPORT_ATTEMPTS ? 'pending' : 'failed',
+    failureKind:record.retry_count<MAX_IMPORT_ATTEMPTS ? kind : 'exhausted',reason,lastError:reason,
+  });
+  try {
+    if (!record.image_r2_key) {
+      const image = await storeImportImage(env,raw,record.image_source_version,record.attempt_token);
+      if (!image.imageR2Key) {
+        if (image.transient) return await retry(image.reason,'transient_image');
+        return await finishImportAttempt(env,record,{status:'skipped',failureKind:'permanent',reason:image.reason ?? 'no image'});
+      }
+      if (!await saveAttemptImage(env,record,image)) return;
+      record.image_r2_key=image.imageR2Key;
+      record.image_hash=image.imageHash;
+    }
+    const result = await runAiExtraction(env,record.image_r2_key,record.caption,modelId,
+      {importId:record.id,record,window,dailyLimit});
+    if (result.cancelled) return; // Lease/cutoff guards or next cron handle unfinished work.
+    if (result.imageMissing) return await retry('Stored image unavailable','transient_image',{clearImage:true});
+    if (result.budgetExceeded) return await finishImportAttempt(env,record,{
+      status:'skipped',failureKind:'budget',reason:'daily AI limit reached',
+    });
+    if (result.aiError) {
+      const reason=`Workers AI extraction failed: ${result.aiError}`;
+      console.error('Import pipeline: Workers AI extraction failed',{importId:record.id,modelId,error:result.aiError});
+      if (result.transient) return await retry(reason,'transient_ai',{processedAt:result.processedAt});
+      return await finishImportAttempt(env,record,{
+        status:'failed',failureKind:'permanent',reason,lastError:reason,
+        validationResult:'rejected',processedAt:result.processedAt,
+      });
+    }
+    const validation=validateExtraction(result.extractedJson);
+    await finishImportAttempt(env,record,{
+      status:validation.validationResult==='ok' ? 'staged' : 'failed',
+      failureKind:validation.validationResult==='ok' ? null : 'permanent',
+      reason:validation.validationReason,validationResult:validation.validationResult,
+      candidateJson:validation.candidateJson,extractedJson:result.extractedJson,processedAt:result.processedAt,
+    });
+  } catch (error) {
+    // Infrastructure failure only: validation produces explicit permanent outcomes.
+    // If D1 is unavailable too, keep the lease; cron can reclaim it after expiry.
+    const reason=safeAiError(error,env);
+    console.error('Import pipeline: attempt storage error',{importId:record.id,error:reason});
+    try { await retry(reason,'transient_storage'); } catch { /* Durable lease remains. */ }
+  }
+}
+
 export async function runImportPipeline(env) {
   const mode = env.SPECIALS_IMPORT_MODE ?? 'OFF';
   if (!['DRY_RUN','GUARDED_AUTO'].includes(mode) || !env.DB) return;
   const now = new Date(Date.now());
   const window = chicagoDayWindow(now);
-  // Sunday provisioning can retry throughout the evening; extraction and
-  // publication remain strictly inside the 7 AM–8 PM processing window.
+  const modelId = env.SPECIALS_AI_MODEL ?? SPECIALS_AI_MODEL_DEFAULT;
+  const dailyLimit = Number(env.SPECIALS_AI_DAILY_LIMIT ?? 50);
+  // Retire work without inference, including after closing or on the following day.
+  await retireImportAttempts(env,{window,modelId,parserVersion:PARSER_VERSION,closed:chicagoHour(now)>=IMPORT_HOUR_END});
+  // Sunday provisioning retains its separate evening lifecycle.
   if (mode === 'GUARDED_AUTO' && window.weekday===0 && chicagoHour(now)>=19) {
     await ensureAutomaticWeek(env,{...window,hour:chicagoHour(now)});
   }
   if (!isWithinProcessingHours(now)) return;
   if (mode === 'GUARDED_AUTO' && !(window.weekday===0 && chicagoHour(now)>=19)) await ensureAutomaticWeek(env,{...window,hour:chicagoHour(now)});
-  const sourceIds=[];
-  const modelId = env.SPECIALS_AI_MODEL ?? SPECIALS_AI_MODEL_DEFAULT;
-  const dailyLimit = Number(env.SPECIALS_AI_DAILY_LIMIT ?? 50);
-  let aiCallsToday = await countTodayAiCalls(env, modelId, window);
+  const sourceIds=[], work=[];
   const rawPosts = await fetchScanPosts(env, now, window);
+  // Register the COMPLETE scan before processing, so recovery never publishes a
+  // single new poster while another known current source is still pending.
   for (const raw of rawPosts) {
+    const caption = cleanMessage(raw.message ?? '');
+    const classification = classifyCaption(caption);
+    if (classification.kind === 'ignored' && !raw.full_picture) continue;
+    const captionDigest = await hexDigest(caption, 8);
+    const imgSrcVer = imageSourceVersion(raw);
+    const importId = await importSourceId(`${env.FB_PAGE_ID}:${raw.id}`, captionDigest, imgSrcVer, PARSER_VERSION, modelId);
+    sourceIds.push(importId);
+    await env.DB.prepare(`INSERT OR IGNORE INTO special_imports(
+      id,fb_post_id,fb_created_time,fb_updated_time,caption,permalink_url,
+      caption_hash,image_source_version,parser_version,model_id,
+      target_kind,target_day,target_service,target_collection_id,classification_reason,processing_status,fetched_at)
+      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'pending',?16)`).bind(
+      importId,raw.id,raw.created_time,raw.updated_time ?? null,caption,raw.permalink_url ?? '',
+      captionDigest,imgSrcVer,PARSER_VERSION,modelId,classification.kind,classification.day,
+      classification.service,classification.collectionId,classification.reason,new Date(Date.now()).toISOString()).run();
+    work.push({importId,raw});
+  }
+  for (const {importId,raw} of work) {
     const processingNow = new Date(Date.now());
     if (!isWithinProcessingHours(processingNow) || chicagoDate(processingNow) !== window.today) break;
-    let importId, claimed = false;
-    try {
-      const caption = cleanMessage(raw.message ?? '');
-      const classification = classifyCaption(caption);
-      if (classification.kind === 'ignored' && !raw.full_picture) continue;
-      const captionDigest = await hexDigest(caption, 8);
-      const imgSrcVer = imageSourceVersion(raw);
-      importId = await importSourceId(`${env.FB_PAGE_ID}:${raw.id}`, captionDigest, imgSrcVer, PARSER_VERSION, modelId);
-      sourceIds.push(importId);
-      // Claim BEFORE image/AI work. Concurrent crons cannot extract the same version.
-      const claim = await env.DB.prepare(`INSERT OR IGNORE INTO special_imports(
-        id,fb_post_id,fb_created_time,fb_updated_time,caption,permalink_url,
-        caption_hash,image_source_version,parser_version,model_id,
-        target_kind,target_day,target_service,target_collection_id,classification_reason,processing_status,fetched_at)
-        VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'processing',?16)`).bind(
-        importId,raw.id,raw.created_time,raw.updated_time ?? null,caption,raw.permalink_url ?? '',
-        captionDigest,imgSrcVer,PARSER_VERSION,modelId,classification.kind,classification.day,
-        classification.service,classification.collectionId,classification.reason,new Date(Date.now()).toISOString()).run();
-      if (claim.meta?.changes !== 1) continue;
-      claimed = true;
-      const event = (type,detail) => env.DB.prepare('INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?1,?2,?3)').bind(importId,type,detail).run();
-      await event('fetch',`mode:${mode}`);
-      await event('classify',classification.reason);
-      const {imageR2Key,imageHash} = await storeImportImage(env,raw,imgSrcVer);
-      let extractedJson=null, candidateJson=null, validationResult=null, validationReason='', processedAt=null, processingStatus='staged', lastError=null;
-      if (imageR2Key && aiCallsToday < dailyLimit) {
-        processedAt = new Date(Date.now()).toISOString();
-        const aiResult = await runAiExtraction(env,imageR2Key,caption,modelId,{importId,window,dailyLimit});
-        aiCallsToday = await countTodayAiCalls(env,modelId,window);
-        processedAt = aiResult.processedAt ?? null;
-        extractedJson = aiResult.extractedJson;
-        if (aiResult.aiError) {
-          lastError = `Workers AI extraction failed: ${aiResult.aiError}`;
-          validationResult = 'rejected';
-          validationReason = lastError;
-          console.error('Import pipeline: Workers AI extraction failed', {importId, modelId, error: aiResult.aiError});
-          await event('error', lastError);
-        } else {
-          ({candidateJson,validationResult,validationReason} = validateExtraction(extractedJson));
-        }
-        if (validationResult === 'rejected') processingStatus='failed';
-        if (aiResult.budgetExceeded) { processingStatus='skipped'; validationReason='daily AI limit reached'; processedAt=null; }
-        await event('validate',validationReason);
-      } else {
-        processingStatus='skipped';
-        validationReason=imageR2Key ? 'daily AI limit reached' : 'no image';
-      }
-      await env.DB.prepare(`UPDATE special_imports SET image_r2_key=?1,image_hash=?2,extracted_json=?3,candidate_json=?4,
-        validation_result=?5,validation_reason=?6,processing_status=?7,processed_at=?8,last_error=?9,
-        target_kind=COALESCE(?11,target_kind),target_collection_id=COALESCE(?12,target_collection_id)
-        WHERE id=?10`).bind(
-        imageR2Key,imageHash,extractedJson,candidateJson,validationResult,validationReason,processingStatus,processedAt,lastError,importId,
-        validationReason==='mexican night evidence' ? 'section' : null,
-        validationReason==='mexican night evidence' ? 'mexican-night' : null).run();
-      if (processingStatus === 'staged') {
-        await event('stage', mode === 'DRY_RUN' ? 'DRY_RUN; no automatic writes' : 'Saved for same-day reconciliation');
-      } else if (processingStatus === 'failed') {
-        await event('fail', validationReason ?? lastError ?? 'extraction failed');
-      } else if (processingStatus === 'skipped') {
-        await event('skip', validationReason);
-      }
-    } catch (error) {
-      console.error('Import pipeline: error processing post', {postId:raw.id,error:String(error)});
-      if (claimed) {
-        try {
-          await env.DB.prepare("UPDATE special_imports SET processing_status='failed',last_error=?1 WHERE id=?2 AND review_status='pending'").bind(String(error),importId).run();
-          await env.DB.prepare("INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?1,'error',?2)").bind(importId,String(error)).run();
-        } catch { /* Keep the durable source claim; never blindly rerun AI. */ }
-      }
-    }
-  }
-  // Re-process any pending records from this parser version that have stored images.
-  const {results: pendingRecords} = await env.DB.prepare(
-    `SELECT * FROM special_imports WHERE processing_status='pending' AND review_status='pending'
-      AND image_r2_key IS NOT NULL AND parser_version=?1 AND model_id=?2
-      AND julianday(fb_created_time)>=julianday(?3) AND julianday(fb_created_time)<julianday(?4)
-      ORDER BY fb_created_time LIMIT 5`
-  ).bind(PARSER_VERSION,modelId,new Date(window.since*1000).toISOString(),new Date(window.until*1000).toISOString()).all();
-  for (const record of pendingRecords) {
-    if (aiCallsToday >= dailyLimit || !isWithinProcessingHours(new Date(Date.now())) || chicagoDate(new Date(Date.now())) !== window.today) break;
-    // Claim the pending record atomically
-    const pendingClaim = await env.DB.prepare(
-      `UPDATE special_imports SET processing_status='processing' WHERE id=?1 AND processing_status='pending'`
-    ).bind(record.id).run();
-    if (pendingClaim.meta?.changes !== 1) continue;
-    sourceIds.push(record.id);
-    const reEvent = (type, detail) => env.DB.prepare('INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?1,?2,?3)').bind(record.id, type, detail).run();
-    await reEvent('fetch', `mode:${mode} reprocess`);
-    try {
-      const caption = record.caption ?? '';
-      const aiResult = await runAiExtraction(env,record.image_r2_key,caption,modelId,{importId:record.id,window,dailyLimit});
-      aiCallsToday = await countTodayAiCalls(env,modelId,window);
-      const processedAt = aiResult.processedAt ?? null;
-      let reExtractedJson = aiResult.extractedJson;
-      let reCandidateJson = null, reValidationResult = null, reValidationReason = '', reLastError = null, reStatus = 'staged';
-      if (aiResult.aiError) {
-        reLastError = `Workers AI extraction failed: ${aiResult.aiError}`;
-        reValidationResult = 'rejected';
-        reValidationReason = reLastError;
-        console.error('Import pipeline reprocess: Workers AI extraction failed', {importId: record.id, modelId, error: aiResult.aiError});
-        await reEvent('error', reLastError);
-      } else {
-        ({candidateJson: reCandidateJson, validationResult: reValidationResult, validationReason: reValidationReason} = validateExtraction(reExtractedJson));
-      }
-      if (reValidationResult === 'rejected') reStatus = 'failed';
-      if (aiResult.budgetExceeded) { reStatus='skipped'; reValidationReason='daily AI limit reached'; }
-      await reEvent('validate', reValidationReason);
-      await env.DB.prepare(`UPDATE special_imports SET extracted_json=?1,candidate_json=?2,validation_result=?3,
-        validation_reason=?4,processing_status=?5,processed_at=?6,last_error=?7,
-        target_kind=COALESCE(?9,target_kind),target_collection_id=COALESCE(?10,target_collection_id)
-        WHERE id=?8`).bind(
-        reExtractedJson, reCandidateJson, reValidationResult, reValidationReason, reStatus, processedAt, reLastError, record.id,
-        reValidationReason==='mexican night evidence' ? 'section' : null,
-        reValidationReason==='mexican night evidence' ? 'mexican-night' : null).run();
-      if (reStatus === 'staged') {
-        await reEvent('stage', mode === 'DRY_RUN' ? 'DRY_RUN; no automatic writes' : 'Saved for same-day reconciliation');
-      } else if (reStatus === 'failed') {
-        await reEvent('fail', reValidationReason ?? reLastError ?? 'extraction failed');
-      } else if (reStatus === 'skipped') {
-        await reEvent('skip', reValidationReason);
-      }
-    } catch (error) {
-      console.error('Import pipeline: error reprocessing pending record', {importId: record.id, error: String(error)});
-      try {
-        await env.DB.prepare("UPDATE special_imports SET processing_status='failed',last_error=?1 WHERE id=?2").bind(String(error), record.id).run();
-        await env.DB.prepare("INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?1,'error',?2)").bind(record.id, String(error)).run();
-      } catch { /* best effort */ }
-    }
+    // A fresh matching Graph source supplies current image URLs. No retry of a
+    // removed/edited source, incomplete Graph scan, or yesterday's pending row.
+    const record=await claimImportAttempt(env,importId,{window,modelId,parserVersion:PARSER_VERSION,mode});
+    if (record) await processImportAttempt(env,record,raw,{window,modelId,dailyLimit});
   }
   // Reuse durable evidence even when every source claim was already present.
   // A complete today-only Graph scan supplies the current versions for this Page.
@@ -711,11 +659,17 @@ export async function requeueFailedImport(env, importId) {
   const record = await env.DB.prepare('SELECT id, processing_status FROM special_imports WHERE id=?1').bind(importId).first();
   if (!record) throw new Error(`Import not found: ${importId}`);
   if (record.processing_status !== 'failed') throw new Error(`Import is not in failed state: ${record.processing_status}`);
-  const result = await env.DB.prepare(
-    `UPDATE special_imports SET processing_status='pending', extracted_json=NULL, candidate_json=NULL, validation_result=NULL, validation_reason='', processed_at=NULL, last_error=NULL WHERE id=?1 AND processing_status='failed'`
-  ).bind(importId).run();
-  if (result.meta?.changes !== 1) throw new Error('Failed to requeue import');
-  await env.DB.prepare('INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?1,?2,?3)').bind(importId,'requeue','manually requeued for reprocessing').run();
+  const token=crypto.randomUUID();
+  const result = await env.DB.batch([
+    env.DB.prepare(`UPDATE special_imports SET processing_status='pending',extracted_json=NULL,candidate_json=NULL,
+      validation_result=NULL,validation_reason='',processed_at=NULL,last_error=NULL,failure_kind=NULL,
+      retry_count=0,attempt_token=?2,lease_expires_at=NULL,next_attempt_at=NULL
+      WHERE id=?1 AND processing_status='failed' AND review_status='pending'`).bind(importId,token),
+    env.DB.prepare(`INSERT INTO special_import_events(import_id,event_type,detail)
+      SELECT ?1,'requeue','manually requeued for reprocessing' WHERE EXISTS(
+        SELECT 1 FROM special_imports WHERE id=?1 AND attempt_token=?2 AND processing_status='pending')`).bind(importId,token),
+  ]);
+  if (result[0].meta?.changes !== 1) throw new Error('Failed to requeue import');
   return {requeued: true, id: importId};
 }
 

@@ -64,8 +64,9 @@ test('AI thrown error is retained in the import, audit and logs with credentials
   });
   await f.run();
   const row = f.imports()[0];
-  assert.equal(row.processing_status, 'failed');
-  assert.equal(row.validation_result, 'rejected');
+  assert.equal(row.processing_status, 'pending');
+  assert.equal(row.failure_kind, 'transient_ai');
+  assert.equal(row.validation_result, null);
   assert.equal(row.extracted_json, null);
   assert.match(row.last_error, /503 upstream unavailable/);
   assert.equal(row.validation_reason, row.last_error);

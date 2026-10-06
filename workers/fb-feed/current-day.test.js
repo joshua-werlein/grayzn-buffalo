@@ -152,7 +152,8 @@ test('prior-day pending row is ignored with no inference or publication',async t
   const f=sunday(t);await f.run();const id=f.imports()[0].id;
   f.sql("UPDATE special_imports SET processing_status='pending',processed_at=NULL,fb_created_time='2026-09-26T15:00:00Z' WHERE id=?",id);
   f.state.posts=[];const before=f.state.aiCalls;await f.run();
-  assert.equal(f.state.aiCalls,before);assert.equal(f.imports()[0].processing_status,'pending');
+  assert.equal(f.state.aiCalls,before);assert.equal(f.imports()[0].processing_status,'failed');
+  assert.equal(f.imports()[0].failure_kind,'expired');
 });
 test('reconciler independently rejects stale evidence even when handed its id',async t=>{
   const f=sunday(t);await f.run();const id=f.imports()[0].id;

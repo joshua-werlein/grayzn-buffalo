@@ -9,6 +9,11 @@ import {PARSER_VERSION} from './classify.js';
 export async function reconcileToday(env,{sourceIds,today,weekday}) {
   const stage=reason=>({written:false,reason});
   if (!sourceIds.length) return stage('No current sources');
+  const unresolved=`EXISTS(SELECT 1 FROM special_imports WHERE id IN (SELECT value FROM json_each(?1))
+    AND review_status='pending' AND processing_status IN ('pending','processing'))`;
+  if (await env.DB.prepare(`SELECT 1 WHERE ${unresolved}`).bind(JSON.stringify(sourceIds)).first()) {
+    return stage('Current sources awaiting recovery');
+  }
   const {results:storedSources}=await env.DB.prepare(`SELECT * FROM special_imports WHERE id IN (SELECT value FROM json_each(?1))
     AND parser_version=?2 AND ((processing_status='staged' AND validation_result='ok')
       OR (processing_status='failed' AND validation_result='rejected' AND extracted_json IS NOT NULL))
@@ -89,6 +94,8 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
   // used to remove repeats. A manual edit to that pair invalidates the plan too.
   const claim=prepare(`UPDATE special_collections SET revision=revision+1,mutation_token=?1
     WHERE id=?2 AND revision=?3 AND kind='week' AND weekly_special_id=?4
+    AND NOT EXISTS(SELECT 1 FROM special_imports WHERE id IN (SELECT value FROM json_each(?10))
+      AND review_status='pending' AND processing_status IN ('pending','processing'))
     AND EXISTS(SELECT 1 FROM special_migration_checks WHERE version=15 AND mismatches=0)
     AND (SELECT count(*) FROM weekly_specials WHERE week_start_date<=?5 AND week_end_date>=?5)=1
     AND EXISTS(SELECT 1 FROM weekly_specials WHERE id=?4 AND week_start_date<=?5 AND week_end_date>=?5)
@@ -109,7 +116,7 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
       AND i.review_status=json_extract(j.value,'$.review_status')
       AND i.image_r2_key IS NOT NULL AND NOT EXISTS(SELECT 1 FROM special_imports newer
         WHERE newer.fb_post_id=i.fb_post_id AND newer.parser_version=i.parser_version AND newer.rowid>i.rowid)))`,
-    token,week.collection_id,week.revision,week.id,today,weekday,JSON.stringify(groups),JSON.stringify(slots),JSON.stringify(sources));
+    token,week.collection_id,week.revision,week.id,today,weekday,JSON.stringify(groups),JSON.stringify(slots),JSON.stringify(sources),JSON.stringify(sourceIds));
   const gate='EXISTS(SELECT 1 FROM special_collections WHERE id=?1 AND mutation_token=?2)';
   const detail=rejectedSources.length
     ? `GUARDED_AUTO: ${today}; no publication; CONFLICT: ${rejectedSources.length} rejected source(s), review required`

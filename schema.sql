@@ -267,7 +267,12 @@ CREATE TABLE IF NOT EXISTS special_imports (
   review_status TEXT NOT NULL DEFAULT 'pending'
     CHECK(review_status IN ('pending','accepted','edited','kept','dismissed')),
   review_reason TEXT NOT NULL DEFAULT '',
+  -- Started processing attempts, including the initial attempt (migration 0021).
   retry_count INTEGER NOT NULL DEFAULT 0,
+  attempt_token TEXT,
+  lease_expires_at TEXT,
+  next_attempt_at TEXT,
+  failure_kind TEXT CHECK(failure_kind IN ('transient_ai','transient_image','transient_storage','permanent','budget','exhausted','expired')),
   last_error TEXT,
   fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   processed_at TEXT,
@@ -275,6 +280,7 @@ CREATE TABLE IF NOT EXISTS special_imports (
 );
 CREATE INDEX IF NOT EXISTS special_imports_review ON special_imports(review_status, processing_status, fetched_at);
 CREATE INDEX IF NOT EXISTS special_imports_post ON special_imports(fb_post_id, fb_created_time);
+CREATE INDEX IF NOT EXISTS special_imports_recovery ON special_imports(processing_status,review_status,next_attempt_at);
 CREATE TABLE IF NOT EXISTS special_import_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   import_id TEXT NOT NULL REFERENCES special_imports(id) ON DELETE CASCADE,

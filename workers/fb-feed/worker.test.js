@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {fixture} from '../../tests/specials-fixture.mjs';
 import worker, { imageFormat, imageKey, imageSourceVersion, shouldRefreshImage } from './worker.js';
 
 test('maps supported Facebook image content types to matching extensions', () => {
@@ -205,37 +206,6 @@ test('malformed Graph JSON or a missing data array cannot replace the last good 
 
 // ── Import pipeline tests ─────────────────────────────────────────────────────
 
-// Named field positions for the INSERT OR IGNORE INTO special_imports bind args.
-const IMPORT_FIELDS = ['id','fb_post_id','fb_created_time','fb_updated_time','caption','permalink_url',
-  'caption_hash','image_source_version','parser_version','model_id','target_kind','target_day','target_service','target_collection_id','classification_reason','fetched_at'];
-function makeFakeDb(state) {
-  const countCalls = () => state.events.filter(e=>e.event_type==='extract').length +
-    state.imports.filter(r=>r.processed_at!==null && !state.events.some(e=>e.import_id===r.id && e.event_type==='extract')).length;
-  return {
-    async batch() { return []; },
-    prepare(sql) { return {bind(...args) {return {
-      async first() {return state.imports.find(r=>r.id===args[0]) ?? null;},
-      async run() {
-        if (/INSERT OR IGNORE INTO special_imports/.test(sql)) {
-          if (state.imports.some(r=>r.id===args[0])) return {meta:{changes:0}};
-          state.imports.push({...Object.fromEntries(IMPORT_FIELDS.map((f,i)=>[f,args[i]])),processing_status:'processing',processed_at:null});
-          return {meta:{changes:1}};
-        }
-        if (/SELECT \?3,'extract'/.test(sql)) {
-          if (countCalls()>=args[5]) return {meta:{changes:0}};
-          state.events.push({import_id:args[2],event_type:'extract',detail:args[3],occurred_at:args[4]});
-          return {meta:{changes:1}};
-        }
-        if (/SET processed_at=/.test(sql)) state.imports.find(r=>r.id===args[1]).processed_at=args[0];
-        else if (/SET image_r2_key=/.test(sql)) Object.assign(state.imports.find(r=>r.id===args[9]),Object.fromEntries(['image_r2_key','image_hash','extracted_json','candidate_json','validation_result','validation_reason','processing_status','processed_at','last_error'].map((f,i)=>[f,args[i]])));
-        else if (/INSERT INTO special_import_events/.test(sql)) state.events.push({import_id:args[0],event_type:args[1],detail:args[2]});
-        return {meta:{changes:1}};
-      },
-      async all() {return {results:/count\(\*\)/.test(sql)?[{n:countCalls()}]:[]};},
-    }}};},
-  };
-}
-
 // 9 AM CDT on a Monday (within processing hours).
 const WITHIN_HOURS_MS = new Date('2026-09-21T14:00:00Z').getTime();
 // 2 AM CDT (outside processing hours).
@@ -279,7 +249,10 @@ function importFixture(t, { mode = 'DRY_RUN', aiResponse = '[]', graphPosts = nu
     return Response.json({ data: [] });
   });
 
-  const DB = makeFakeDb(state);
+  const f=fixture(t);
+  const DB=f.env.DB;
+  Object.defineProperty(state,'imports',{get:()=>f.sql('SELECT * FROM special_imports ORDER BY rowid')});
+  Object.defineProperty(state,'events',{get:()=>f.sql('SELECT * FROM special_import_events ORDER BY id')});
 
   const AI = {
     run: async (modelId, params) => {
