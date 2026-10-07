@@ -4,7 +4,8 @@ compatibility_date = "2026-01-01"
 account_id = "a79e3b4a2bb8dad70c75bceac4b1d3f9"
 workers_dev = false
 routes = [
-  { pattern = "grayznbuffalo.com/api/facebook-feed", zone_name = "grayznbuffalo.com" }
+  { pattern = "grayznbuffalo.com/api/facebook-feed", zone_name = "grayznbuffalo.com" },
+  { pattern = "grayznbuffalo.com/api/facebook-webhook", zone_name = "grayznbuffalo.com" }
 ]
 
 [triggers]
@@ -17,6 +18,24 @@ SPECIALS_IMPORT_MODE = "GUARDED_AUTO"
 SPECIALS_AI_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 # Maximum Workers AI vision calls per Chicago calendar day.
 SPECIALS_AI_DAILY_LIMIT = "50"
+# Meta Page feed webhook: OFF = verify only; LOG = authenticate and log, no queue;
+# RUN = enqueue a complete current-day refresh/import. The cron stays the fallback.
+# FB_APP_SECRET and FB_WEBHOOK_VERIFY_TOKEN are Worker secrets, never set here.
+WEBHOOK_TRIGGER_MODE = "LOG"
+
+# Webhook trigger queue. One consumer at a time; failed batches retry, then dead-letter.
+[[queues.producers]]
+binding = "IMPORT_TRIGGER"
+queue = "grayzn-fb-import-trigger"
+
+[[queues.consumers]]
+queue = "grayzn-fb-import-trigger"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 3
+retry_delay = 120
+max_concurrency = 1
+dead_letter_queue = "grayzn-fb-import-trigger-dlq"
 
 [[kv_namespaces]]
 binding = "FB_KV"

@@ -4,6 +4,7 @@ import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexi
 import {ensureAutomaticWeek} from './auto-week.js';
 import {MAX_IMPORT_ATTEMPTS,OWNS_ATTEMPT_SQL,isTransientFailure,claimImportAttempt,attemptEvent,saveAttemptImage,finishImportAttempt,retireImportAttempts} from './recovery.js';
 import {validateEvidence, validateWeeklyLunch, validateMexicanNight, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR, WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
+import {WEBHOOK_PATH, handleFacebookWebhook} from './webhook.js';
 
 const TIME_ZONE = 'America/Chicago';
 const GRAPH_API_VERSION = 'v26.0';
@@ -685,7 +686,19 @@ export default {
     ctx.waitUntil(refreshFeed(env));
     ctx.waitUntil(runImportPipeline(env).catch((err) => console.error('Import pipeline fatal error', String(err))));
   },
+  // Webhook triggers run the same complete-day work as the cron, once per batch:
+  // redundant deliveries in a burst collapse, and repeats are idempotent claims.
+  // A pipeline error is rethrown so Queues retries the batch, then dead-letters it.
+  async queue(batch, env) {
+    console.log('Facebook webhook trigger batch', {messages: batch.messages.length});
+    const [, imports] = await Promise.allSettled([refreshFeed(env), runImportPipeline(env)]);
+    if (imports.status === 'rejected') {
+      console.error('Import pipeline fatal error (webhook trigger)', String(imports.reason));
+      throw imports.reason;
+    }
+  },
  async fetch(request, env, ctx) {
+  if (new URL(request.url).pathname === WEBHOOK_PATH) return handleFacebookWebhook(request, env);
   if (request.method !== 'GET') {
     return new Response('Method not allowed', {
       status: 405,
@@ -708,7 +721,7 @@ export default {
   if (cached) return cached;
 
   // This handler only reads FB_KV. Graph API calls and KV writes are limited
-  // to refreshFeed(), which is called solely by the scheduled cron handler.
+  // to refreshFeed(), which is called only by the cron and webhook queue handlers.
   const response = Response.json(
     publicFeed(await getCurrentFeed(env)),
     {
