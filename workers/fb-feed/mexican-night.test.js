@@ -4,7 +4,8 @@ import {validateMexicanNight,containsConsumerAdvisory,validateEvidence} from './
 import {harness, offer, poster} from './test-fixture.js';
 import {reconcileMexicanNight} from './guarded-auto.js';
 import {PARSER_VERSION} from './classify.js';
-import {composeMexicanItem,splitMexicanItem,MEXICAN_ITEM_LIMIT} from '../../src/lib/mexican-item.js';
+import {composeMexicanItem,splitMexicanItem,MEXICAN_ITEM_LIMIT,mexicanDisplayTitle,normalizeMexicanPrices} from '../../src/lib/mexican-item.js';
+import {mexicanNightExtractionPrompt,extractionPrompt} from './extraction.js';
 
 const entrees = [
   {description: '', title: '2 Soft Shell $8.50'},
@@ -24,18 +25,19 @@ const addons = [
   {description: '', title: 'Substitute shredded cheese for nacho cheese $0.75'},
 ];
 
-// Verbatim text from the October 6, 2026 production poster.
+// Faithful extraction of the October 6, 2026 production poster: printed dot leaders,
+// size labels, every column (including Nacho Deluxe) and the unlabeled add-on banner.
 const octoberPosterGroups = () => [
   {label: 'Entrees', items: [
-    {title: '2 Soft Shell $7.75', description: 'Meat, shredded cheese, lettuce, onion, tomato, and black olives'},
-    {title: 'Burrito $10.25', description: 'Meat, refried beans, shredded cheese, lettuce, onion, and tomato rolled up in a tortilla. Topped with shredded cheese, black olives, and enchilada sauce'},
-    {title: 'Chimichanga $12.25', description: 'Meat, refried beans, shredded cheese, and onion rolled up in a tortilla and fried. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side'},
-    {title: 'Enchilada $9.25', description: 'Meat, refried beans, shredded cheese, and onion rolled up in a tortilla. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side'},
+    {title: '2 Soft Shell ... $7.75', description: 'Meat, shredded cheese, lettuce, onion, tomato, and black olives'},
+    {title: 'Burrito ... $10.25', description: 'Meat, refried beans, shredded cheese, lettuce, onion, and tomato rolled up in a tortilla. Topped with shredded cheese, black olives, and enchilada sauce'},
+    {title: 'Chimichanga ... $12.25', description: 'Meat, refried beans, shredded cheese, and onion rolled up in a tortilla and fried. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side'},
+    {title: 'Enchilada ... $9.25', description: 'Meat, refried beans, shredded cheese, and onion rolled up in a tortilla. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side'},
   ]},
   {label: 'More', items: [
-    {title: 'Nacho Deluxe $9.75', description: 'Meat, lettuce, onion, tomato, black olives, and nacho cheese served on top of chips'},
-    {title: 'Taco Salad | Large $9.00 · Small $8.50 · Mini $6.00', description: 'Meat, shredded cheese, lettuce, onion, tomato, and black olives served in a shell bowl'},
-    {title: 'Chips & Salsa or Chips & Cheese $4.00', description: 'Add nacho cheese or salsa +$1.50'},
+    {title: 'Nacho Deluxe ... $9.75', description: 'Meat, lettuce, onion, tomato, black olives, and nacho cheese served on top of chips'},
+    {title: 'Taco Salad ... Large $9.00 | Small $8.50 | Mini $6.00', description: 'Meat, shredded cheese, lettuce, onion, tomato, and black olives served in a shell bowl'},
+    {title: 'Chips & Salsa or Chips & Cheese ... $4.00', description: 'Add nacho cheese or salsa +$1.50'},
   ]},
   {label: 'Substitutions & Add-ons', items: [
     {title: 'Substitute chicken $1.50', description: ''},
@@ -166,9 +168,19 @@ test('full-length October 6 poster descriptions validate verbatim with prices',a
   await f.run();
   assert.equal(mnCollection(f).section_source,'facebook');
   const contents=mnSlots(f).map(s=>s.content);
-  for(const item of octoberPosterGroups().flatMap(g=>g.items)) assert.ok(contents.includes(composeMexicanItem(item.title,item.description)),`missing ${item.title}`);
-  assert.ok(contents.includes('Substitute queso 50c'));
+  // Food evidence is stored verbatim, including the printed leaders.
+  for(const item of octoberPosterGroups().slice(0,2).flatMap(g=>g.items)) assert.ok(contents.includes(composeMexicanItem(item.title,item.description)),`missing ${item.title}`);
+  assert.ok(contents.includes(composeMexicanItem('Nacho Deluxe ... $9.75','Meat, lettuce, onion, tomato, black olives, and nacho cheese served on top of chips')));
+  assert.ok(contents.some(c=>c.startsWith('Taco Salad ... Large $9.00 | Small $8.50 | Mini $6.00\n')));
+  // The banner becomes the one canonical accessory group, with every price in USD format.
+  const accessoryGroups=mnGroups(f).filter(g=>g.label==='Substitutions & Add-ons');
+  assert.equal(accessoryGroups.length,1);
+  assert.deepEqual(f.sql('SELECT content FROM special_slots WHERE group_id=? ORDER BY position',accessoryGroups[0].id).map(s=>s.content),
+    ['Substitute chicken $1.50','Add Nacho Cheese $1.50','Substitute queso $0.50','Substitute Shredded Cheese for Nacho Cheese $0.50']);
+  assert.equal(mnSlots(f).length,11);
   assert.ok(mnSlots(f).every(s=>s.price===''));
+  // Candidate evidence keeps the printed 50c; only the published accessory text is normalized.
+  assert.match(f.imports()[0].candidate_json,/Substitute queso 50c/);
 });
 
 test('automated descriptions use canonical admin format across seven foods and add-ons',async t=>{
@@ -434,4 +446,86 @@ test('replacement is atomic: old food items absent, new food items present, acce
   // Accessory (Add-Ons) slots from the first poster are preserved
   for (const addon of addons) assert.ok(newSlots.some(s => s.content === addon.title), `missing addon: ${addon.title}`);
   assert.equal(newSlots.length, newItems.length + addons.length);
+});
+
+test('both Mexican Night prompts require every item, size labels and the unlabeled add-on banner',()=>{
+  for(const prompt of [mexicanNightExtractionPrompt(''),extractionPrompt('')]) {
+    assert.match(prompt,/every column, row, banner and ribbon/);
+    assert.match(prompt,/never skip an item because of a multi-column layout/);
+    assert.match(prompt,/size label with its price in the title/);
+    assert.match(prompt,/never output size prices without their (?:printed )?labels/i);
+    assert.match(prompt,/unlabeled banner or ribbon/);
+    assert.match(prompt,/group labeled exactly "Substitutions & Add-ons"/);
+    assert.doesNotMatch(prompt,/"label":"Add-Ons"/);
+  }
+});
+
+test('public titles show " - " instead of dot leaders before a price; other text is unchanged',()=>{
+  const cases=[
+    ['2 Soft Shell ... $7.75','2 Soft Shell - $7.75'],
+    ['Burrito ...... $10.25','Burrito - $10.25'],
+    ['Taco Salad ... Large $9.00 | Small $8.50 | Mini $6.00','Taco Salad - Large $9.00 | Small $8.50 | Mini $6.00'],
+    ['Chips & Salsa or Chips & Cheese … $4.00','Chips & Salsa or Chips & Cheese - $4.00'],
+    ['Enchilada‥$9.25','Enchilada - $9.25'],
+    ['Nacho Deluxe ⋯ $9.75','Nacho Deluxe - $9.75'],
+    ['Queso ··· 50c','Queso - 50c'],
+    ['Add nacho cheese or salsa +$1.50','Add nacho cheese or salsa +$1.50'],
+    ['Substitute chicken $1.50','Substitute chicken $1.50'],
+    ['Wait... there is more','Wait... there is more'],
+    ['... $5','... $5'],
+  ];
+  for(const [stored,shown] of cases) assert.equal(mexicanDisplayTitle(stored),shown,stored);
+});
+
+test('accessory prices normalize to USD format without changing their value',()=>{
+  const cases=[
+    ['Substitute queso 50c','Substitute queso $0.50'],['Substitute queso 50¢','Substitute queso $0.50'],
+    ['Add salsa 75c','Add salsa $0.75'],['Add salsa 75 cents','Add salsa $0.75'],['Add sour cream 5c','Add sour cream $0.05'],
+    ['Add guacamole $2','Add guacamole $2.00'],['Add steak $12','Add steak $12.00'],
+    ['Substitute chicken $1.5','Substitute chicken $1.50'],['Substitute chicken $1.50','Substitute chicken $1.50'],
+    ['Add queso $.50','Add queso $0.50'],['Add nacho cheese or salsa +$1.50','Add nacho cheese or salsa +$1.50'],
+    ['Substitute shredded cheese for nacho cheese','Substitute shredded cheese for nacho cheese'],['2 Soft Shell','2 Soft Shell'],['Code 1c2','Code 1c2'],
+  ];
+  for(const [raw,normalized] of cases) assert.equal(normalizeMexicanPrices(raw),normalized,raw);
+});
+
+const nextPost = f => { f.state.posts=[{...f.state.posts[0],id:'p2',created_time:'2030-01-14T14:30:00Z',updated_time:'2030-01-14T14:30:00Z'}]; };
+const priceFreeDefaults = [{title:'Substitute chicken',description:''},{title:'Add nacho cheese',description:''}];
+const accessorySlots = f => f.sql("SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='mexican-night' AND g.label='Substitutions & Add-ons' ORDER BY s.position");
+
+test('any Facebook accessory group replaces recurring accessory defaults regardless of label',async t=>{
+  const f=mnHarness(t,{candidate:mexicanNightCandidate({groups:[{label:'Entrees',items:entrees},{label:'Substitutions & Add-ons',items:priceFreeDefaults}]})});
+  await f.run();
+  nextPost(f);
+  f.state.candidate=mexicanNightCandidate({groups:[{label:'Entrees',items:entrees},{label:'Add-Ons',items:[{title:'Substitute chicken $1.50',description:''},{title:'Substitute queso 50c',description:''}]}]});
+  await f.run();
+  assert.deepEqual(mnGroups(f).map(g=>g.label),['Entrees','Add-Ons'],'old differently labeled accessory group removed');
+  const contents=mnSlots(f).map(s=>s.content);
+  assert.ok(contents.includes('Substitute chicken $1.50') && contents.includes('Substitute queso $0.50'));
+  assert.ok(!contents.includes('Substitute chicken') && !contents.includes('Add nacho cheese'),'no stale price-free defaults');
+});
+
+test('Facebook evidence without accessories keeps recurring accessory defaults exactly',async t=>{
+  const f=mnHarness(t,{candidate:mexicanNightCandidate({groups:[{label:'Entrees',items:entrees},{label:'Substitutions & Add-ons',items:priceFreeDefaults}]})});
+  await f.run();
+  const before=accessorySlots(f);
+  nextPost(f);
+  f.state.candidate=mexicanNightCandidate({groups:[{label:'Entrees',items:octoberPosterGroups()[0].items}]});
+  await f.run();
+  assert.ok(mnSlots(f).some(s=>s.content.startsWith('Burrito ... $10.25')),'food replaced');
+  assert.equal(before.length,2);
+  assert.deepEqual(accessorySlots(f),before);
+});
+
+test('manual-locked accessory correction blocks Facebook accessory replacement',async t=>{
+  const f=mnHarness(t);
+  await f.run();
+  const addonGroup=mnGroups(f).find(g=>g.label==='Add-Ons');
+  f.sql("UPDATE special_slots SET content='Substitute chicken $1.25',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",addonGroup.id);
+  const snapshot=()=>JSON.stringify([mnCollection(f),mnGroups(f),mnSlots(f)]);
+  const before=snapshot();
+  nextPost(f);
+  f.state.candidate=mexicanNightCandidate({groups:octoberPosterGroups()});
+  await f.run();
+  assert.equal(snapshot(),before,'staff correction and the whole section are untouched');
 });

@@ -1,6 +1,6 @@
 import {protectedMexicanSlots} from './mexican-night-defaults.js';
 import {automaticWeekRange} from './auto-week.js';
-import {composeMexicanItem} from '../../src/lib/mexican-item.js';
+import {composeMexicanItem,normalizeMexicanPrices} from '../../src/lib/mexican-item.js';
 // The Worker owns only automatic writes. Manual saves remain in specials-store.ts.
 // Every write, revision bump and acceptance audit commits in one D1 batch.
 import {reconcilePosterEvidence,validateWeeklyLunch,validateMexicanNight,canonicalizeSlotContent} from './reconcile.js';
@@ -284,19 +284,19 @@ async function applyMexicanNight(env, source, evidence, weekStart) {
   const prepare = (sql, ...args) => env.DB.prepare(sql).bind(...args);
   const gate = "EXISTS(SELECT 1 FROM special_collections WHERE id='mexican-night' AND mutation_token=?1)";
   const sourcePrefix = source.id.slice(0, 8);
-  const newGroupRows = evidence.groups.map((g, i) => [`mn:${sourcePrefix}:${i}`, g.label, i]);
-  const newSlotRows = evidence.groups.flatMap((g, i) =>
-    g.items.map((item, j) => [`mn:${sourcePrefix}:${i}`, j + 1, composeMexicanItem(item.title, item.description)])
-  );
-  const detail = `GUARDED_MEXICAN_NIGHT: fb_created=${source.fb_created_time}; ${evidence.groups.length} group(s); ${newSlotRows.length} item(s)`;
   // Accessory groups (Substitutions, Add-ons) are standing rules, not weekly menu items.
-  // Preserve them when Facebook omits them; let Facebook replace them when explicitly provided.
+  // Preserve them when Facebook omits them; any Facebook accessory group replaces them
+  // all, whatever its exact label. Manual locks still block the whole write below.
   const normalizeLabel = s => s.normalize('NFKC').replace(/[‐‑–—]/g, '-');
   const isAccessory = label => /\b(?:add[\s-]*ons?|substitutions?|substitutes?)\b/i.test(normalizeLabel(label));
-  const evidenceNormLabels = new Set(evidence.groups.map(g => normalizeLabel(g.label).toLowerCase()));
-  const accessoryGroupIds = currentGroups
-    .filter(g => isAccessory(g.label) && !evidenceNormLabels.has(normalizeLabel(g.label).toLowerCase()))
-    .map(g => g.id);
+  const newGroupRows = evidence.groups.map((g, i) => [`mn:${sourcePrefix}:${i}`, g.label, i]);
+  const newSlotRows = evidence.groups.flatMap((g, i) => g.items.map((item, j) => {
+    const price = isAccessory(g.label) ? normalizeMexicanPrices : text => text;
+    return [`mn:${sourcePrefix}:${i}`, j + 1, composeMexicanItem(price(item.title), price(item.description))];
+  }));
+  const detail = `GUARDED_MEXICAN_NIGHT: fb_created=${source.fb_created_time}; ${evidence.groups.length} group(s); ${newSlotRows.length} item(s)`;
+  const accessoryGroupIds = evidence.groups.some(g => isAccessory(g.label))
+    ? [] : currentGroups.filter(g => isAccessory(g.label)).map(g => g.id);
   const results = await env.DB.batch([
     prepare(`UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3,updated_at=?13,
       section_week_start=?12,section_service_date=date(?12,'+1 day'),section_source='facebook'

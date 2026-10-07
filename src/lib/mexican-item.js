@@ -17,6 +17,25 @@ export function splitMexicanItem(content) {
 // Mexican Night posters print full descriptions. Ordinary specials keep SPECIAL_LIMIT (150).
 export const MEXICAN_ITEM_LIMIT = 300;
 
+// Presentation only: poster dot leaders ("...", "…") before priced text display as " - ".
+// Stored Facebook evidence keeps the printed leader.
+const DOT_LEADER = /\s*(?:[.·]{2,}|[…‥⋯][.…‥⋯·]*)\s*/g;
+export function mexicanDisplayTitle(title) {
+  return String(title ?? '').replace(DOT_LEADER, (leader, offset, text) => {
+    const before = text.slice(0, offset), after = text.slice(offset + leader.length);
+    return before.trim() && /\$\s*\d|\d\s*(?:¢|c\b|cents?\b)/i.test(after) ? ' - ' : leader;
+  });
+}
+
+// Accessory prices publish in one USD format: 50c -> $0.50, $2 -> $2.00, $1.5 -> $1.50.
+// The numeric value is never changed. Text without a recognizable price is untouched.
+export function normalizeMexicanPrices(text) {
+  return String(text ?? '')
+    .replace(/(^|[^\w$.])(\d{1,2})\s*(?:¢|c|cents?)(?![A-Za-z\d])/gi, (_, lead, cents) => `${lead}$0.${cents.padStart(2, '0')}`)
+    .replace(/\$\s*(\d*)(?:\.(\d{1,2}))?(?![\d.])/g, (match, dollars, cents) =>
+      dollars || cents ? `$${dollars || '0'}.${(cents ?? '').padEnd(2, '0')}` : match);
+}
+
 export function composeMexicanItem(title, description) {
   if (typeof title !== 'string' || typeof description !== 'string') throw new Error('Item title and description must be text.');
   if (/[\r\n]/.test(title)) throw new Error('Item / price must be one line.');

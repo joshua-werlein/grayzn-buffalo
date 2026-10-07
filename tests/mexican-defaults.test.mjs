@@ -112,8 +112,8 @@ for(const explicitAccessories of [false,true]) test(`price-free seed accepts Tue
   assert.ok(live.slots.some(s=>s.content==='Burrito $11.75\nFresh beans'));
   assert.ok(live.slots.some(s=>s.content.includes('Large $12 · Small $10 · Mini $8')));
   if(explicitAccessories) {
-    assert.ok(live.slots.some(s=>s.content==='Substitute chicken +$2'));
-    assert.ok(live.slots.some(s=>s.content==='Substitute queso +$1'));
+    assert.ok(live.slots.some(s=>s.content==='Substitute chicken +$2.00'));
+    assert.ok(live.slots.some(s=>s.content==='Substitute queso +$1.00'));
   } else assert.deepEqual(live.slots.filter(s=>s.group_id===seeded.groups[2].id),accessories);
   assert.deepEqual(snapshot(f,'mexican-night-defaults'),defaultsBefore);
   f.state.now=Date.parse('2030-01-21T01:00:00Z');

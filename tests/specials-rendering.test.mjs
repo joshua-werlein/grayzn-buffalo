@@ -29,7 +29,7 @@ test('automated Mexican items reopen as stacked title and description controls',
   const form=html.match(/<form[^>]*id="mexican-form"[\s\S]*?<\/form>/)[0];
   assert.match(form,/name="g0_1_title"[^>]*value="Burrito \$10"/);
   assert.match(form,/name="g0_1_description"[^>]*>Beans\nSalsa<\/textarea>/);
-  assert.match(form,/name="g1_1_title"[^>]*value="Chicken \+\$1"/);
+  assert.match(form,/name="g1_1_title"[^>]*value="Chicken \+\$1\.00"/);
   assert.match(form,/name="g1_1_description"[^>]*><\/textarea>/);
   assert.match(form,/Description \(optional\)/);
   assert.doesNotMatch(form,/name="g\d+_\d+_(?:price|content)"/);
