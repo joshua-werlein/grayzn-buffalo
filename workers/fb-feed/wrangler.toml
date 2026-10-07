@@ -21,7 +21,7 @@ SPECIALS_AI_DAILY_LIMIT = "50"
 # Meta Page feed webhook: OFF = verify only; LOG = authenticate and log, no queue;
 # RUN = enqueue a complete current-day refresh/import. The cron stays the fallback.
 # FB_APP_SECRET and FB_WEBHOOK_VERIFY_TOKEN are Worker secrets, never set here.
-WEBHOOK_TRIGGER_MODE = "LOG"
+WEBHOOK_TRIGGER_MODE = "RUN"
 
 # Webhook trigger queue. One consumer at a time; failed batches retry, then dead-letter.
 [[queues.producers]]
