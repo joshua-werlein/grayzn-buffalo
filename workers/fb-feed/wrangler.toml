@@ -5,7 +5,7 @@ account_id = "a79e3b4a2bb8dad70c75bceac4b1d3f9"
 workers_dev = false
 routes = [
   { pattern = "grayznbuffalo.com/api/facebook-feed", zone_name = "grayznbuffalo.com" },
-  { pattern = "grayznbuffalo.com/api/facebook-webhook", zone_name = "grayznbuffalo.com" }
+  { pattern = "grayznbuffalo.com/api/facebook-webhook*", zone_name = "grayznbuffalo.com" }
 ]
 
 [triggers]
