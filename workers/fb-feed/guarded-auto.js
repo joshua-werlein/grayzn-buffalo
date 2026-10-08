@@ -86,7 +86,8 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
     }
     const eligible=proposed.filter(r=>{
       const soupSafe=r.old && r.old.manual_locked===0 && r.old.price==='' && r.old.section_link===''
-        && (!r.old.content || (r.old.origin==='automation' && r.old.content===r.old.last_auto_value));
+        && (!r.old.content || (r.old.origin==='manual' && r.old.last_auto_value===null)
+          || (r.old.origin==='automation' && r.old.content===r.old.last_auto_value));
       if (soup ? soupSafe : safe(r.old)) return true;
       block(r,r.position,'Protected or ineligible destination slot',dest.id);
       return false;

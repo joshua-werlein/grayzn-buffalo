@@ -59,12 +59,17 @@ test('homepage and Specials render Soup once outside meal sections; absent/disab
     assert.doesNotMatch(html,/class="daily-soup"|French Onion or Chili/);
   }
 });
-test('admin adds seven optional controls without read-time writes or recurring Soup',async t=>{
+test('admin adds seven weekly and recurring optional controls without read-time writes or extra Soup slots',async t=>{
   const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};const w=await weekFor(f);const before=f.sql('SELECT * FROM special_groups ORDER BY id');
   const html=await container.renderToString(adminPage,{request:new Request('http://localhost/admin/specials?week='+w.id,{headers:{cookie:'gb_session='+'a'.repeat(32)}}),locals:{runtime:{env:f.env}}});
   const form=html.match(/<form[^>]*id="weekly-form"[\s\S]*?<\/form>/)[0];
   assert.equal((form.match(/Soup today — optional/g)||[]).length,7);assert.equal((form.match(/Keep Soup hidden today/g)||[]).length,7);
   const defaults=html.match(/<form[^>]*id="recurring-defaults-form"[\s\S]*?<\/form>/)[0];assert.doesNotMatch(defaults,/Soup today|_hide/);
+  assert.equal((defaults.match(/Soup — optional/g)||[]).length,7);
+  const fields=defaults.match(/<fieldset[^>]*>[\s\S]*?<\/fieldset>/g).filter(field=>field.includes('Soup — optional'));
+  assert.ok(fields.every(field=>(field.match(/<textarea/g)||[]).length===1 && !field.includes('type="checkbox"')));
+  const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(match=>match[1]);assert.equal(ids.length,new Set(ids).size);
+  const names=[...defaults.matchAll(/\bname="(g\d+_[^"]+)"/g)].map(match=>match[1]);assert.equal(names.length,new Set(names).size);
   assert.deepEqual(f.sql('SELECT * FROM special_groups ORDER BY id'),before);
 });
 test('server parsing ignores forged Soup identity/ownership; manual edits lock and unchanged automation stays owned',async t=>{

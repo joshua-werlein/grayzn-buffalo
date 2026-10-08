@@ -48,7 +48,7 @@ export function blankGroup(day: number, sort = 0): SpecialGroup {
 }
 export function newWeekFromDefaults(defaults: SpecialCollection): SpecialCollection {
   return { id: '', kind: 'week', weekly_special_id: null, title: '', schedule: '', revision: 0,
-    groups: defaults.groups.filter(group=>!isSoupGroup(group)).map(group => ({ ...group, id: `new:${crypto.randomUUID()}`,
+    groups: defaults.groups.map(group => ({ ...group, id: isSoupGroup(group) ? soupGroupId('',group.day_of_week) : `new:${crypto.randomUUID()}`,
       slots: group.slots.map(slot => {
         const content = slot.content ?? '';
         // Blank default slots are immediately eligible for automation.
@@ -380,9 +380,9 @@ export function collectionFromForm(form: FormData, baseline: SpecialCollection):
       if (matches.length === 1) old = matches[0];
     }
     const soup=old && isSoupGroup(old);
-    const clearedSoup=soup && !!old.slots[0].content?.trim() && !value(p+'1_content').trim();
+    const clearedSoup=soup && baseline.kind==='week' && !!old.slots[0].content?.trim() && !value(p+'1_content').trim();
     return { id, day_of_week: soup ? old.day_of_week : Number(value(p+'day')), service: old?.service ?? value(p+'service'), label: soup ? 'Soup' : value(p+'label'),
-      service_time: soup ? '' : value(p+'time'), sort: old?.sort ?? index, enabled: soup ? (form.has(p+'hide') || clearedSoup ? 0 : 1) : form.has(p+'enabled') ? 1 : 0,
+      service_time: soup ? '' : value(p+'time'), sort: old?.sort ?? index, enabled: soup ? (baseline.kind==='week' && (form.has(p+'hide') || clearedSoup) ? 0 : 1) : form.has(p+'enabled') ? 1 : 0,
       slots: [1,2,3,4].map(position => {
         const prior = old?.slots.find(s => s.position === position);
         const splitFields = ['mexican-night','mexican-night-defaults'].includes(baseline.id) && form.has(p+position+'_title');
@@ -422,7 +422,7 @@ export function validateCollection(next: SpecialCollection, previous?: SpecialCo
     if (ids.has(group.id)) throw new Error('Duplicate group.');
     ids.add(group.id);
     if (isSoupGroup(group)) {
-      if (next.kind!=='week' || group.id!==soupGroupId(next.id,group.day_of_week)
+      if (!(next.kind==='week' || (next.kind==='defaults' && next.id==='defaults')) || group.id!==soupGroupId(next.id,group.day_of_week)
         || group.service!=='custom' || group.label!=='Soup' || group.service_time!==''
         || group.slots.some(s=>s.price || s.section_link || (s.position!==1 && (s.content ?? '').trim()))) throw new Error('Invalid reserved Soup group.');
     } else if (group.id.startsWith('soup:')) throw new Error('Invalid reserved Soup identity.');
@@ -487,7 +487,7 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
     const soup=isSoupGroup(group);
     const groupId = previous ? group.id : soup ? soupGroupId(collectionId,group.day_of_week) : crypto.randomUUID();
     if (!previous) groupIds[group.id] = groupId;
-    const clearedSoup=soup && !!previous?.slots[0].content?.trim() && !group.slots[0].content?.trim();
+    const clearedSoup=soup && next.kind==='week' && !!previous?.slots[0].content?.trim() && !group.slots[0].content?.trim();
     groupRows.push([groupId,group.day_of_week,group.service,group.label,group.service_time,group.sort,clearedSoup ? 0 : group.enabled]);
     for (const slot of group.slots) {
       const old = previous?.slots.find(s=>s.position===slot.position);
@@ -496,7 +496,7 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
       // Existing changed slots are staff edits: populated locks, cleared unlocks.
       const isPopulated = (slot.content ?? '').trim().length > 0;
       slotRows.push([groupId,slot.position,slot.content,slot.price,slot.section_link,old?.last_auto_value ?? null,
-        old === undefined ? (soup && isPopulated ? 1 : slot.manual_locked) : isPopulated ? 1 : 0,
+        old === undefined ? (soup && fresh && isPopulated ? 1 : slot.manual_locked) : isPopulated ? 1 : 0,
         old === undefined ? (soup && isPopulated ? 'manual' : slot.origin) : isPopulated ? 'manual' : 'legacy']);
     }
   }

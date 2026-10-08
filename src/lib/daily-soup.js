@@ -10,7 +10,7 @@ export function blankSoupGroup(collectionId, day) {
 }
 
 export function withSoupControls(collection) {
-  if (collection.kind !== 'week') return collection;
+  if (collection.kind !== 'week' && !(collection.kind === 'defaults' && collection.id === 'defaults')) return collection;
   const groups=[...collection.groups];
   for (let day=0;day<7;day++) if (!groups.some(g=>g.id===soupGroupId(collection.id,day))) groups.push(blankSoupGroup(collection.id,day));
   return {...collection,groups};

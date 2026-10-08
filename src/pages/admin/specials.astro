@@ -13,7 +13,7 @@ let mexicanDefaultsError='';
 let weekly = empty('week'), weekStart='', weekEnd='', editingId='', notice='', error='', recurringError='';
 let activeDay=0, weeklyDirty=false, weeklySaveAttempted=false, weeklyScrollY=0, weeklySaveError='';
 let ready=true;
-try { defaults=await readCollection(env,'defaults'); } catch { recurringError='Recurring defaults are unavailable. New weeks cannot be initialized.'; }
+try { defaults=withSoupControls(await readCollection(env,'defaults')); } catch { recurringError='Recurring defaults are unavailable. New weeks cannot be initialized.'; }
 try { mexican=await readCollection(env,'mexican-night'); } catch { /* Weekly editing does not depend on section availability. */ }
 try { mexicanDefaults=await readCollection(env,'mexican-night-defaults'); } catch { mexicanDefaultsError='Recurring Mexican Night Defaults are unavailable. Reload or contact support before changing future menus.'; }
 let requestedId = Number(Astro.url.searchParams.get('week') ?? '');

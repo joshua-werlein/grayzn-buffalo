@@ -30,10 +30,12 @@ export async function ensureAutomaticWeek(env,{today,weekday,hour}) {
     prepare(`INSERT INTO special_collections(id,kind,weekly_special_id,revision,mutation_token)
       SELECT ?1,'week',?3,1,?2 WHERE EXISTS(SELECT 1 FROM weekly_specials WHERE id=?3 AND week_start_date=?4 AND week_end_date=?5)`,collectionId,token,id,start,end),
     prepare(`INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled)
-      SELECT ?1||':'||id,?1,day_of_week,service,label,service_time,sort,enabled
+      SELECT CASE WHEN id='soup:defaults:'||day_of_week THEN 'soup:'||?1||':'||day_of_week ELSE ?1||':'||id END,
+        ?1,day_of_week,service,label,service_time,sort,enabled
       FROM special_groups WHERE collection_id='defaults' AND ${gate}`,collectionId,token),
     prepare(`INSERT INTO special_slots(group_id,position,content,price,section_link,origin,manual_locked,last_auto_value)
-      SELECT ?1||':'||s.group_id,s.position,COALESCE(s.content,''),s.price,s.section_link,
+      SELECT CASE WHEN g.id='soup:defaults:'||g.day_of_week THEN 'soup:'||?1||':'||g.day_of_week ELSE ?1||':'||s.group_id END,
+        s.position,COALESCE(s.content,''),s.price,s.section_link,
         'manual',0,NULL
       FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='defaults' AND ${gate}`,collectionId,token),
     ...(weekday!==0 || hour>=19
