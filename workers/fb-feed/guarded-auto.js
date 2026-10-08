@@ -5,6 +5,7 @@ import {composeMexicanItem,normalizeMexicanPrices} from '../../src/lib/mexican-i
 // Every write, revision bump and acceptance audit commits in one D1 batch.
 import {reconcilePosterEvidence,validateWeeklyLunch,validateMexicanNight,canonicalizeSlotContent} from './reconcile.js';
 import {PARSER_VERSION} from './classify.js';
+import {soupGroupId,blankSoupGroup} from '../../src/lib/daily-soup.js';
 
 export async function reconcileToday(env,{sourceIds,today,weekday}) {
   const stage=reason=>({written:false,reason});
@@ -45,7 +46,7 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
     try { return JSON.parse(json.replace(/^```(?:json)?\n?|\n?```$/gm,'').trim()); }
     catch { return null; }
   });
-  const {targets:proposedTargets,rejectedSources:rejected}=reconcilePosterEvidence(candidates,weekday,existing);
+  const {targets:proposedTargets,rejectedSources:rejected,unresolvedTargets=[]}=reconcilePosterEvidence(candidates,weekday,existing);
   sources.forEach((s,index)=>{
     const c=candidates[index];
     const dedicated=['weekly-lunch','mexican-night'].includes(c?.type) && !('offers' in c);
@@ -55,15 +56,28 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
   });
   const targets=rejected.length ? [] : proposedTargets;
   const rejectedSources=rejected.map(r=>({source_id:sources[r.index].id,fb_post_id:sources[r.index].fb_post_id,reason:r.reason}));
-  const rows=[],blocked=[];
+  const rows=[],createdGroups=[],blocked=rejected.length ? [] : unresolvedTargets.map(t=>({...t,day_of_week:weekday,group_id:null}));
   for (const target of targets) {
-    const destinations=groups.filter(g=>g.service===target.service);
+    const soup=target.role==='soup';
+    const soupId=soupGroupId(week.collection_id,weekday);
+    const destinations=groups.filter(g=>soup ? g.id===soupId : g.service===target.service);
+    if (soup && !destinations.length) {
+      const group=blankSoupGroup(week.collection_id,weekday);
+      createdGroups.push(group);
+      rows.push({group_id:group.id,position:1,content:target.items[0].content,old:group.slots[0]});
+      continue;
+    }
     const block=(item,position,reason,group_id=null)=>blocked.push({day_of_week:weekday,service:target.service,group_id,position,content:item.content,reason});
     if (destinations.length!==1 || destinations[0].enabled!==1) {
       target.items.forEach((item,i)=>block(item,i+1,'Missing, disabled or ambiguous destination'));
       continue;
     }
     const dest=destinations[0];
+    if (soup && (dest.service!=='custom' || dest.label!=='Soup' || dest.service_time!==''
+      || slots.filter(s=>s.group_id===dest.id).length!==4)) {
+      block(target.items[0],1,'Invalid reserved Soup destination',dest.id);
+      continue;
+    }
     const proposed=target.items.map((item,i)=>({group_id:dest.id,position:i+1,content:item.content,old:slots.find(s=>s.group_id===dest.id && s.position===i+1)}));
     // Never leave a third/fourth existing value alongside a complete new group.
     if (slots.some(s=>s.group_id===dest.id && s.position>proposed.length && s.content)) {
@@ -71,7 +85,9 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
       continue;
     }
     const eligible=proposed.filter(r=>{
-      if (safe(r.old)) return true;
+      const soupSafe=r.old && r.old.manual_locked===0 && r.old.price==='' && r.old.section_link===''
+        && (!r.old.content || (r.old.origin==='automation' && r.old.content===r.old.last_auto_value));
+      if (soup ? soupSafe : safe(r.old)) return true;
       block(r,r.position,'Protected or ineligible destination slot',dest.id);
       return false;
     });
@@ -102,7 +118,9 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
     AND (SELECT count(*) FROM special_groups WHERE collection_id=?2 AND day_of_week=?6)=json_array_length(?7)
     AND NOT EXISTS(SELECT 1 FROM json_each(?7) j WHERE NOT EXISTS(SELECT 1 FROM special_groups g
       WHERE g.id=json_extract(j.value,'$.id') AND g.collection_id=?2 AND g.day_of_week=?6
-      AND g.service=json_extract(j.value,'$.service') AND g.enabled=json_extract(j.value,'$.enabled')))
+      AND g.service=json_extract(j.value,'$.service') AND g.enabled=json_extract(j.value,'$.enabled')
+      AND g.label=json_extract(j.value,'$.label') AND g.service_time=json_extract(j.value,'$.service_time')
+      AND g.sort=json_extract(j.value,'$.sort')))
     AND (SELECT count(*) FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id=?2 AND g.day_of_week=?6)=json_array_length(?8)
     AND NOT EXISTS(SELECT 1 FROM json_each(?8) j WHERE NOT EXISTS(SELECT 1 FROM special_slots s
       WHERE s.group_id=json_extract(j.value,'$.group_id') AND s.position=json_extract(j.value,'$.position')
@@ -123,6 +141,12 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
     : `GUARDED_AUTO: ${today}; reconciled ${sources.length} source(s); ${rows.length} slot(s)${blocked.length ? `; CONFLICT: ${blocked.length} blocked proposal(s), review required` : ''}`;
   const results=await env.DB.batch([
     claim,
+    ...createdGroups.flatMap(g=>[
+      prepare(`INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled)
+        SELECT ?3,?1,?4,'custom','Soup','',99,1 WHERE ${gate}`,week.collection_id,token,g.id,weekday),
+      prepare(`INSERT INTO special_slots(group_id,position,content,price,section_link,origin,manual_locked,last_auto_value)
+        SELECT ?3,value,'','','','legacy',0,NULL FROM json_each('[1,2,3,4]') WHERE ${gate}`,week.collection_id,token,g.id),
+    ]),
     ...rows.map(r=>prepare(`UPDATE special_slots SET content=?3,price='',origin='automation',manual_locked=0,last_auto_value=?3
       WHERE group_id=?4 AND position=?5 AND ${gate}`,week.collection_id,token,r.content,r.group_id,r.position)),
     ...(rows.length ? [prepare(`UPDATE weekly_specials SET updated_at=CURRENT_TIMESTAMP WHERE id=?3 AND ${gate}`,week.collection_id,token,week.id)] : []),

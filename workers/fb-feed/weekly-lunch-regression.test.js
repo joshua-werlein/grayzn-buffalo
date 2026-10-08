@@ -175,33 +175,33 @@ function seedParser14(f) {
   return seedImport(f,14,'failed','rejected',JSON.stringify(emptyDaily()),null);
 }
 
-test('parser 16 re-extracts the same current-day source with a new deterministic identity; parser 13 is untouched', async t => {
+test('parser 17 re-extracts the same current-day source with a new deterministic identity; parser 13 is untouched', async t => {
   const f = currentWeek(t);
   const idFor = seedParser13(f);
   const old = f.imports()[0];
-  assert.equal(PARSER_VERSION,16);
+  assert.equal(PARSER_VERSION,17);
   await f.run();
   assert.equal(f.state.aiCalls,1);
   assert.deepEqual(f.imports()[0],old);
-  assert.equal(f.imports()[1].id,idFor(16));
-  assert.notEqual(idFor(13),idFor(16));
+  assert.equal(f.imports()[1].id,idFor(17));
+  assert.notEqual(idFor(13),idFor(17));
   allMeals(f);
   await f.run();
   assert.equal(f.imports().length,2);
   assert.equal(f.state.aiCalls,1);
 });
 
-test('parser 16 creates a different deterministic import identity from parser 14', async t => {
+test('parser 17 creates a different deterministic import identity from parser 14', async t => {
   const f = currentWeek(t);
   const idFor = seedParser14(f);
   const old = f.imports()[0];
-  assert.equal(PARSER_VERSION,16);
+  assert.equal(PARSER_VERSION,17);
   await f.run();
   // Parser-14 import (failed) is untouched.
   assert.deepEqual(f.imports()[0],old);
-  // Parser-16 creates a new import with a distinct id.
-  assert.equal(f.imports()[1].id,idFor(16));
-  assert.notEqual(idFor(14),idFor(16));
+  // Parser-17 creates a new import with a distinct id.
+  assert.equal(f.imports()[1].id,idFor(17));
+  assert.notEqual(idFor(14),idFor(17));
   allMeals(f);
   await f.run();
   assert.equal(f.imports().length,2);

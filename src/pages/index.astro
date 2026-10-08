@@ -1,6 +1,8 @@
 ---
 import Base from '../layouts/Base.astro';
 import SpecialGroup from '../components/SpecialGroup.astro';
+import DailySoup from '../components/DailySoup.astro';
+import {isSoupGroup} from '../lib/daily-soup.js';
 import { visibleGroups, getMexicanNight } from '../lib/specials-store';
 import { getMenu, getWeeklySpecialsForDateRange, getWelcomePhotos, thumbKey, type Item, type WelcomePhoto } from '../lib/db';
 import { calendarDatesFrom, calendarDayOfWeek, chicagoCalendarDate, formatWeeklyBoardDate } from '../lib/weekly-specials';
@@ -119,7 +121,7 @@ const welcomeHolderAssets = [
     <p class="home-weekly__label"><span aria-hidden="true">★</span> THIS WEEK AT GRAYZ'N <span aria-hidden="true">★</span></p>
     {weeklyHomeDays.length > 0 ? (
       <><h2 id="home-weekly-title">Specials</h2><div class="home-weekly__days">{weeklyHomeDays.map(({ date, groups }) => {
-        return <article class:list={['home-weekly__day', { 'is-today': date === today }]}>{date === today && <span class="home-weekly__today">TODAY</span>}<h3><span class="home-weekly__date-long">{formatWeeklyBoardDate(date)}</span><span class="home-weekly__date-compact">{formatWeeklyBoardDate(date, true)}</span></h3><div class="home-weekly__groups">{groups.map(group => <SpecialGroup group={group} showTime={false} mexicanAvailable={mexicanAvailable}/>)}</div></article>;
+        return <article class:list={['home-weekly__day', { 'is-today': date === today }]}>{date === today && <span class="home-weekly__today">TODAY</span>}<h3><span class="home-weekly__date-long">{formatWeeklyBoardDate(date)}</span><span class="home-weekly__date-compact">{formatWeeklyBoardDate(date, true)}</span></h3><div class="home-weekly__groups">{groups.filter(group=>!isSoupGroup(group)).map(group => <SpecialGroup group={group} showTime={false} mexicanAvailable={mexicanAvailable}/>)}<DailySoup groups={groups}/></div></article>;
       })}</div>{weeklyHomeDays.length <= 3 && <p class="home-weekly__more-soon">More specials coming soon.</p>}</>
     ) : <><h2 id="home-weekly-title">Upcoming Specials</h2><p class="home-weekly__fallback">No specials are posted right now. Check back soon.</p></>}
     <a class="home-weekly__cta" href="/specials">MORE DETAILS <span aria-hidden="true">→</span></a>

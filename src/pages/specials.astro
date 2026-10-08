@@ -1,6 +1,8 @@
 ---
 import Base from '../layouts/Base.astro';
 import SpecialGroup from '../components/SpecialGroup.astro';
+import DailySoup from '../components/DailySoup.astro';
+import {isSoupGroup} from '../lib/daily-soup.js';
 import MexicanNightMenu from '../components/MexicanNightMenu.astro';
 import { getSetting } from '../lib/db';
 import { getWeeklySpecialsForDateRange, getMexicanNight, visibleGroups, DAY_NAMES } from '../lib/specials-store';
@@ -78,7 +80,8 @@ const PC = ['denim','brick','saddle'] as const;
                 <span class="today-stamp" aria-label="Today">Today</span>
               </div>
               <div class="today-body">
-                {todayCard.groups.map(group=><SpecialGroup group={group} mexicanAvailable={mexicanNightVisible}/>)}
+                {todayCard.groups.filter(group=>!isSoupGroup(group)).map(group=><SpecialGroup group={group} mexicanAvailable={mexicanNightVisible}/>)}
+                <DailySoup groups={todayCard.groups}/>
               </div>
             </article>
           )}
@@ -93,7 +96,8 @@ const PC = ['denim','brick','saddle'] as const;
                       <time class="placard-date" datetime={date}>{cardDate(date)}</time>
                     </div>
                     <div class="card-body">
-                      {groups.map(group=><SpecialGroup group={group} mexicanAvailable={mexicanNightVisible}/>)}
+                      {groups.filter(group=>!isSoupGroup(group)).map(group=><SpecialGroup group={group} mexicanAvailable={mexicanNightVisible}/>)}
+                      <DailySoup groups={groups}/>
                     </div>
                   </article>
                 </li>

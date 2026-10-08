@@ -1,14 +1,16 @@
 ---
 import { displayedSpecial, specialInputCount, type SpecialGroup } from '../lib/specials-store';
 import MexicanItemFields from './MexicanItemFields.astro';
+import {isSoupGroup} from '../lib/daily-soup.js';
 interface Props { group: SpecialGroup; index: number; defaults?: boolean; formPrefix: string }
 const { group, index, defaults = false, formPrefix } = Astro.props;
 const p = `g${index}_`;
 const capacity = specialInputCount(group);
 const section = group.day_of_week === -1;
+const soup=isSoupGroup(group);
 ---
 <fieldset class="group-fields" data-group-index={index} data-group-day={group.day_of_week} data-service={group.service} hidden={capacity === 0}>
-  <legend>{group.label || 'New group'}{!section && group.service_time && <span> · {group.service_time}</span>}</legend>
+  <legend>{soup ? 'Soup today — optional' : group.label || 'New group'}{!section && group.service_time && <span> · {group.service_time}</span>}</legend>
   <input type="hidden" name={p+'id'} value={group.id}/><input type="hidden" name={p+'day'} value={group.day_of_week}/><input type="hidden" name={p+'service'} value={group.service}/>
   {section ? <>
     <label>Group label<input name={p+'label'} value={group.label} maxlength="80" /></label>
@@ -16,12 +18,13 @@ const section = group.day_of_week === -1;
     <label class="check"><input type="checkbox" name={p+'enabled'} checked={group.enabled === 1}/> Show this group when it has specials</label>
   </> : <>
     <input type="hidden" name={p+'label'} value={group.label}/><input type="hidden" name={p+'time'} value={group.service_time}/>
-    {group.enabled === 1 && <input type="hidden" name={p+'enabled'} value="on"/>}
+    {soup ? <label class="check"><input type="checkbox" name={p+'hide'} checked={group.enabled === 0}/> Keep Soup hidden today</label> : group.enabled === 1 && <input type="hidden" name={p+'enabled'} value="on"/>}
   </>}
   {group.slots.map(slot => slot.position <= capacity ? <div class="slot-fields">
     {['mexican','mexican-defaults'].includes(formPrefix) ? <MexicanItemFields content={displayedSpecial(slot)} prefix={p+slot.position+'_'} fieldId={`${formPrefix}-${index}-${slot.position}`} priceFree={formPrefix==='mexican-defaults'}/> : <>
-    <label for={`${formPrefix}-${index}-${slot.position}`}>{capacity === 1 ? 'Special' : `${slot.position === 1 ? 'First' : slot.position === 2 ? 'Second' : slot.position === 3 ? 'Third' : 'Fourth'} special`} <span>(optional)</span></label>
-    <textarea id={`${formPrefix}-${index}-${slot.position}`} name={p+slot.position+'_content'} rows="2" maxlength="150" data-content>{displayedSpecial(slot)}</textarea>
+    <label for={`${formPrefix}-${index}-${slot.position}`}>{soup ? 'Soup names' : capacity === 1 ? 'Special' : `${slot.position === 1 ? 'First' : slot.position === 2 ? 'Second' : slot.position === 3 ? 'Third' : 'Fourth'} special`} <span>(optional)</span></label>
+    <textarea id={`${formPrefix}-${index}-${slot.position}`} name={p+slot.position+'_content'} rows={soup ? 1 : 2} maxlength="150" data-content>{displayedSpecial(slot)}</textarea>
+    {soup && <small>Blank is hidden. Clearing Soup keeps it hidden from Facebook updates today.</small>}
     <output class="count" data-count>0 / 150</output>
     </>}
   </div> : <>

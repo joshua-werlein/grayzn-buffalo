@@ -4,6 +4,7 @@ import GroupFields from '../../components/SpecialGroupFields.astro';
 import { isAuthed } from '../../lib/auth';
 import { isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from '../../lib/weekly-specials';
 import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, readCollection, readWeek, currentSavedWeekId, collectionFromForm, saveCollection, SpecialConflict, type SpecialCollection } from '../../lib/specials-store';
+import {withSoupControls} from '../../lib/daily-soup.js';
 const env = (Astro.locals as any).runtime?.env ?? {};
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 const empty = (kind: SpecialCollection['kind'], id=''): SpecialCollection => ({ id,kind,weekly_special_id:null,title:'',schedule:'',revision:0,groups:[] });
@@ -24,6 +25,7 @@ if (Number.isSafeInteger(requestedId) && requestedId>0) {
   catch { ready=false; error='That saved week could not be loaded. Please reload.'; }
 } else if (defaults) weekly=newWeekFromDefaults(defaults);
 else ready=false;
+weekly=withSoupControls(weekly);
 if (Astro.request.method==='POST') {
   const form=await Astro.request.formData();
   const action=String(form.get('action') ?? 'save-weekly-specials');
@@ -39,7 +41,7 @@ if (Astro.request.method==='POST') {
       const baseline=editingId ? (await readWeek(env,Number(editingId))).collection : defaults ? newWeekFromDefaults(defaults) : null;
       if (!baseline) throw new Error(recurringError);
       // Keep server defaults so parsing can distinguish prefills from staff edits.
-      weekly=collectionFromForm(form,baseline);
+      weekly=collectionFromForm(form,withSoupControls(baseline));
       weekStart=String(form.get('week_start_date') ?? '');
       if (isIsoCalendarDate(weekStart)) { weekStart=mondayForIsoDate(weekStart); weekEnd=standardWeekEndDate(weekStart); }
       activeDay=Math.max(0,Math.min(6,Number(form.get('weekly_active_day')) || 0));

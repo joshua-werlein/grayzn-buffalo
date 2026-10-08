@@ -1,4 +1,6 @@
 import {composeMexicanItem} from '../../src/lib/mexican-item.js';
+import {standaloneSoup} from '../../src/lib/daily-soup.js';
+import {formatWingNight,validateWingNight} from './wing-night.js';
 // Evidence is persisted separately from the website's final group structure.
 // A poster-level night heading does NOT make every offer a night-only offer.
 const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
@@ -7,14 +9,13 @@ export const WEEKDAY_ENCODING_MISMATCH = 'numeric day does not match explicit we
 // Canonical display strings for recurring specials that are intentionally multiline.
 // These are deterministic — we replace whatever the AI extracted with the known
 // authoritative text rather than inheriting arbitrary whitespace from vision output.
-const WING_NIGHT_CANONICAL = 'Wing Night!\n$.89 Boneless Wings\n$.99 Bone In Wings\nAdd Fries';
 const PIZZA_NIGHT_CANONICAL = '12" 3-Topping Pizza $13.50\n16" 3-Topping Pizza $16';
 const STIR_FRY_CANONICAL = 'Chicken Stir Fry $12.99\nSteak Stir Fry $13.99';
 
 export function canonicalizeSlotContent(content, weekday, service) {
-  // Wednesday nightly Wing Night → fixed multiline canonical
+  // Wednesday prices always come from complete labelled source amounts.
   if (weekday === 3 && service === 'nightly' && /\bwing\s+night\b/i.test(content))
-    return WING_NIGHT_CANONICAL;
+    return formatWingNight(content);
   // Thursday nightly Pizza Night → fixed multiline canonical
   if (weekday === 4 && service === 'nightly' && /\bpizza\b/i.test(content))
     return PIZZA_NIGHT_CANONICAL;
@@ -201,7 +202,10 @@ function forToday(value,weekday) {
     if (!isExplicitToday && !isDayUnknown) return null;
     const offers=p.offers.map(o=>({...o,service:serviceOf(o.service_time)}));
     if (offers.some(o=>o.service==='conflict')) throw Error('Conflicting offer service evidence');
-    return {...p,offers,service:serviceOf(p.poster_evidence)};
+    const soupOffers=offers.filter(o=>/^\s*soup\s*:/i.test(o.content) || /^\s*soup\s*:/i.test(o.evidence));
+    const soup=soupOffers.map(standaloneSoup);
+    if (soupOffers.length>1 || soup.some(value=>!value)) throw Error('Ambiguous standalone Soup evidence');
+    return {...p,offers:offers.filter(o=>!soupOffers.includes(o)),soup:soup[0] ?? null,isExplicitToday,service:serviceOf(p.poster_evidence)};
 }
 const setKey = items => items.map(o=>offerKey(o.content)).sort().join('|');
 const unique = (sets,count) => {
@@ -220,13 +224,21 @@ export function reconcilePosterEvidence(candidates,weekday,existingAllDay=[]) {
   // An invalid source cannot disappear and manufacture agreement, even if its
   // visible content happens to match. We cannot establish agreement with it.
   if (rejectedSources.length) return {targets:[],rejectedSources};
-  const targets=mapPosters(posters,weekday,existingAllDay);
+  const unresolvedTargets=[];
+  const soupPosters=posters.filter(p=>p.soup);
+  if (new Set(soupPosters.map(p=>p.soup.normalize('NFKC').replace(/\s+/g,' ').trim().toLowerCase())).size>1) {
+    validIndices.forEach(index=>rejectedSources.push({index,reason:'Conflicting standalone Soup evidence'}));
+    return {targets:[],rejectedSources,unresolvedTargets};
+  }
+  const targets=mapPosters(posters,weekday,existingAllDay,unresolvedTargets);
+  if (soupPosters.length && !unresolvedTargets.some(t=>t.service==='all-day' && t.reason==='Conflicting Wednesday All Day pair'))
+    targets.push({day_of_week:weekday,service:'custom',role:'soup',items:[{content:soupPosters[0].soup}]});
   if (!targets.length && posters.length>1) {
     validIndices.forEach(index=>rejectedSources.push({index,reason:'Conflicting or unresolved daily source agreement'}));
   }
-  return {targets,rejectedSources};
+  return {targets,rejectedSources,unresolvedTargets};
 }
-function mapPosters(posters,weekday,existingAllDay) {
+function mapPosters(posters,weekday,existingAllDay,unresolvedTargets) {
   const proposals={'lunch':[],'all-day':[],'nightly':[]};
   for (const p of posters) {
     // Restaurant weekday pattern: generic three-offer posters list Lunch first,
@@ -234,6 +246,12 @@ function mapPosters(posters,weekday,existingAllDay) {
     // Explicit evidence must agree with those positions; never reinterpret a
     // night poster (including Wing Night) or apply this pattern on weekends.
     const heading=`${p.day_evidence} ${p.poster_evidence}`;
+    const night=p.offers.filter(o=>o.service==='nightly');
+    const meals=p.offers.filter(o=>o.service==='unknown');
+    p.wednesdayPair=weekday===3 && p.isExplicitToday && ['unknown','nightly'].includes(p.service) && p.offers.length===3
+      && night.length===1 && /\bwing\s+night\b/i.test(`${night[0].content} ${night[0].evidence}`)
+      && meals.length===2 && meals.every(o=>serviceOf(o.content)==='unknown' && ['unknown','all-day'].includes(serviceOf(o.evidence)));
+    if (p.wednesdayPair) { proposals['all-day'].push(meals); continue; }
     const orderedDaytime=p.offers.length===3 &&
       /\bspecials?\b/i.test(heading) && !/\bweekly\b/i.test(heading) && serviceOf(heading)==='unknown' &&
       p.offers.every((o,i)=>['unknown',i===0?'lunch':'all-day'].includes(o.service) &&
@@ -256,6 +274,10 @@ function mapPosters(posters,weekday,existingAllDay) {
     }
   }
   let allDay=unique(proposals['all-day'],2);
+  if (posters.some(p=>p.wednesdayPair) && !allDay) {
+    unresolvedTargets.push({service:'all-day',position:1,content:'',reason:'Conflicting Wednesday All Day pair'});
+    return [];
+  }
   // Preserve published text and order when a redesigned poster repeats it.
   if (allDay && existingAllDay.length===2 && setKey(allDay)===setKey(existingAllDay)) allDay=existingAllDay;
   const repeats=allDay || (proposals['all-day'].length ? [] : existingAllDay);
@@ -275,8 +297,20 @@ function mapPosters(posters,weekday,existingAllDay) {
   }
   const result=[];
   for (const [service,count] of [['lunch',1],['all-day',2],['nightly',[1,5].includes(weekday)?2:1]]) {
-    const items=service==='all-day'?allDay:unique(proposals[service],count);
-    if (items) result.push({day_of_week:weekday,service,items:items.map(o=>({content:canonicalizeSlotContent(o.content,weekday,service)}))});
+    const wing=weekday===3 && service==='nightly';
+    let sets=proposals[service];
+    if (wing) {
+      // Validate every source before comparing normalized item-to-price associations.
+      // Invalid evidence cannot disappear to manufacture agreement.
+      sets=sets.map(items=>items.map(o=>({...o,content:validateWingNight(o.content,o.evidence)})));
+      if (sets.flat().some(o=>!o.content)) {
+        unresolvedTargets.push({service,position:1,content:proposals.nightly.flat()[0].content,reason:'Missing, malformed or ambiguous Wing Night prices'});
+        continue;
+      }
+    }
+    const items=service==='all-day'?allDay:unique(sets,count);
+    if (items) result.push({day_of_week:weekday,service,items:items.map(o=>({content:wing ? o.content : canonicalizeSlotContent(o.content,weekday,service)}))});
+    else if (proposals[service].length) unresolvedTargets.push({service,position:1,content:'',reason:'Conflicting or unresolved service evidence'});
   }
   if (result.length) return result;
   // Four-item Monday/Friday night fallback: deterministic position mapping when

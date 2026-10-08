@@ -38,14 +38,14 @@ test('ordinary nightly special with embedded newline is normalized to one line',
 test('Wednesday Wing Night raw AI extraction → canonical multiline', () => {
   assert.equal(
     canonicalizeSlotContent('Wing Night — Bone-In $.89 each / Boneless $.99 each', 3, 'nightly'),
-    'Wing Night!\n$.89 Boneless Wings\n$.99 Bone In Wings\nAdd Fries'
+    'Wing Night!\nBone-In Wings $.89 each\nBoneless Wings $.99 each'
   );
 });
 
 test('Wednesday Wing Night already-multiline input → canonical (idempotent)', () => {
   assert.equal(
-    canonicalizeSlotContent('Wing Night\n$.89 Boneless Wings\n$.99 Bone In Wings', 3, 'nightly'),
-    'Wing Night!\n$.89 Boneless Wings\n$.99 Bone In Wings\nAdd Fries'
+    canonicalizeSlotContent('Wing Night!\nBone-In Wings $.89 each\nBoneless Wings $.99 each', 3, 'nightly'),
+    'Wing Night!\nBone-In Wings $.89 each\nBoneless Wings $.99 each'
   );
 });
 
@@ -54,7 +54,7 @@ test('Wednesday Wing Night canonical stored in DB via reconcilePosters', async t
   await f.run();
   assert.equal(
     f.slots(3, 'nightly')[0].content,
-    'Wing Night!\n$.89 Boneless Wings\n$.99 Bone In Wings\nAdd Fries'
+    'Wing Night!\nBone-In Wings $.89 each\nBoneless Wings $.99 each'
   );
 });
 
@@ -303,10 +303,10 @@ test('ALL CAPS: FF stays FF (explicit allowlist)', () => {
 });
 
 // Existing multiline canonicals are not damaged by the new path
-test('Wing Night ALL CAPS still produces canonical multiline (not title-cased)', () => {
+test('Wing Night ALL CAPS with missing prices stays unresolved', () => {
   assert.equal(
     canonicalizeSlotContent('WING NIGHT $.89 BONELESS', 3, 'nightly'),
-    'Wing Night!\n$.89 Boneless Wings\n$.99 Bone In Wings\nAdd Fries'
+    null
   );
 });
 

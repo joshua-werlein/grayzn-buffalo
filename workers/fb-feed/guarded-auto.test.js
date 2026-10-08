@@ -7,12 +7,12 @@ import {loadTs} from '../../tests/load-ts.mjs';
 import {pruneImportHistory} from './guarded-auto.js';
 const store=loadTs('src/lib/specials-store.ts');
 const wing='Wing Night — Bone-In $.89 each / Boneless $.99 each';
-const wingCanonical='Wing Night!\n$.89 Boneless Wings\n$.99 Bone In Wings\nAdd Fries';
+const wingCanonical='Wing Night!\nBone-In Wings $.89 each\nBoneless Wings $.99 each';
 const pair=[offer('Jalapeno Burger w/ Side Salad, Chili or Coleslaw $10.25'),offer('Chicken Salad Sandwich w/ Cup of Chili or Coleslaw $7.25')];
 const lunch=offer('Chicken Bacon Ranch Quesadilla & a Drink $9.75','11-1:30');
 const dayPoster=day=>poster(day,'Specials',[lunch,...pair]);
 const nightPoster=day=>poster(day,day===3?'Specials':'Night Specials 5-10',[
-  ...(day===3?[offer(wing,'Wing Night','5-10 PM')]:[offer('2 Burgers and 1 Order of Fries $14'),offer('Half Rack Ribs with Mac & Cheese & Coleslaw $18.75')]),
+  ...(day===3?[offer(wing,wing,'5-10 PM')]:[offer('2 Burgers and 1 Order of Fries $14'),offer('Half Rack Ribs with Mac & Cheese & Coleslaw $18.75')]),
   ...pair.map(o=>offer(o.content.replace('w/','with').replace(' $',' — $'))),
 ]);
 const contents=(f,day,service)=>f.slots(day,service).map(s=>s.content);
@@ -27,12 +27,13 @@ for (const [day,date] of [[1,'2030-01-07'],[3,'2030-01-09'],[5,'2030-01-11']]) {
     const f=harness(t,{now:date+'T23:00:00Z',caption:'Specials',candidate:nightFirst?nightPoster(day):dayPoster(day)});
     f.state.posts[0].created_time=date+'T14:00:00Z';f.state.posts[0].updated_time=date+'T14:00:00Z';
     await f.run();
-    if (nightFirst) {assert.ok(contents(f,day,'all-day').every(s=>s===''));assert.equal(contents(f,day,'nightly')[0],day===3?wingCanonical:'');}
+    const expectedPair=day===3 && nightFirst ? nightPoster(day).offers.slice(1).map(o=>o.content) : pair.map(o=>o.content);
+    if (nightFirst) {if(day===3) assert.deepEqual(contents(f,day,'all-day'),[...expectedPair,'','']);else assert.ok(contents(f,day,'all-day').every(s=>s===''));assert.equal(contents(f,day,'nightly')[0],day===3?wingCanonical:'');}
     const established=contents(f,day,'all-day');
     f.state.posts.push({...f.state.posts[0],id:'p2',created_time:date+'T20:00:00Z',updated_time:date+'T20:00:00Z'});
     f.state.candidate=nightFirst?dayPoster(day):nightPoster(day);await f.run();
     assert.equal(f.state.aiCalls,2);assert.equal(contents(f,day,'lunch')[0],lunch.content);
-    assert.deepEqual(contents(f,day,'all-day'),[...pair.map(o=>o.content),'','']);
+    assert.deepEqual(contents(f,day,'all-day'),[...expectedPair,'','']);
     assert.deepEqual(contents(f,day,'nightly'),day===3?[wingCanonical,'','','']:['2 Burgers and 1 Order of Fries $14','Half Rack Ribs with Mac & Cheese & Coleslaw $18.75','','']);
     if (!nightFirst) assert.deepEqual(contents(f,day,'all-day'),established);
     const rev=f.sql("SELECT revision FROM special_collections WHERE id='auto-week'")[0].revision;

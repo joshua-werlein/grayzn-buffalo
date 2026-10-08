@@ -7,7 +7,9 @@ import {fixture} from './specials-fixture.mjs';
 import {loadTs} from './load-ts.mjs';
 const s=loadTs('src/lib/specials-store.ts');
 const dates=loadTs('src/lib/weekly-specials.ts');
-const groupModule=await import('../dist/_worker.js/chunks/'+readdirSync('dist/_worker.js/chunks').find(name=>name.startsWith('SpecialGroup_')));
+const rendererChunk=readdirSync('dist/_worker.js/chunks').find(name=>name.startsWith('SpecialGroup_') || name.startsWith('DailySoup_'));
+const rendererModule=await import('../dist/_worker.js/chunks/'+rendererChunk);
+const groupModule={$:Object.values(rendererModule).find(component=>component.moduleId?.endsWith('/SpecialGroup.astro'))};
 const publicPage=(await import('../dist/_worker.js/pages/specials.astro.mjs')).page().default;
 const homePage=(await import('../dist/_worker.js/pages/index.astro.mjs')).page().default;
 const adminPage=(await import('../dist/_worker.js/pages/admin/specials.astro.mjs')).page().default;
@@ -171,11 +173,11 @@ test('compiled simple editor has service-specific inputs, inline prices and no d
   const html=await container.renderToString(adminPage,{request:new Request('http://localhost/admin/specials?week='+week.id,{headers:{cookie:'gb_session='+'a'.repeat(32)}}),locals:{runtime:{env:f.env}}});
   const form=html.match(/<form[^>]*id="weekly-form"[\s\S]*?<\/form>/)[0];
   const fields=[...form.matchAll(/<fieldset class="group-fields"([^>]*)>([\s\S]*?)<\/fieldset>/g)];
-  assert.equal(fields.length,21);
+  assert.equal(fields.length,28);
   for(const [,attrs,body] of fields) {
     const day=Number(attrs.match(/data-group-day="([^"]*)"/)[1]);
     const service=attrs.match(/data-service="([^"]*)"/)[1];
-    const expected=service==='lunch'?1:service==='all-day'?2:[0,6].includes(day)?0:[1,5].includes(day)?2:1;
+    const expected=service==='custom'?1:service==='lunch'?1:service==='all-day'?2:[0,6].includes(day)?0:[1,5].includes(day)?2:1;
     assert.equal((body.match(/<textarea /g)||[]).length,expected,`${day} ${service}`);
   }
   assert.match(form,/>Pizza Bread \$9.75<\/textarea>/);

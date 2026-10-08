@@ -1,5 +1,6 @@
 import { chicagoCalendarDate, isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from './weekly-specials';
 import {composeMexicanItem,assertPriceFreeMexicanDefault,MEXICAN_ITEM_LIMIT} from './mexican-item.js';
+import {isSoupGroup,soupGroupId} from './daily-soup.js';
 
 export const SPECIAL_LIMIT = 150;
 export const DAY_NUMBERS = [1, 2, 3, 4, 5, 6, 0];
@@ -47,7 +48,7 @@ export function blankGroup(day: number, sort = 0): SpecialGroup {
 }
 export function newWeekFromDefaults(defaults: SpecialCollection): SpecialCollection {
   return { id: '', kind: 'week', weekly_special_id: null, title: '', schedule: '', revision: 0,
-    groups: defaults.groups.map(group => ({ ...group, id: `new:${crypto.randomUUID()}`,
+    groups: defaults.groups.filter(group=>!isSoupGroup(group)).map(group => ({ ...group, id: `new:${crypto.randomUUID()}`,
       slots: group.slots.map(slot => {
         const content = slot.content ?? '';
         // Blank default slots are immediately eligible for automation.
@@ -378,8 +379,10 @@ export function collectionFromForm(form: FormData, baseline: SpecialCollection):
       const matches = baseline.groups.filter(g => g.day_of_week === Number(value(p+'day')) && g.service === value(p+'service'));
       if (matches.length === 1) old = matches[0];
     }
-    return { id, day_of_week: Number(value(p+'day')), service: old?.service ?? value(p+'service'), label: value(p+'label'),
-      service_time: value(p+'time'), sort: old?.sort ?? index, enabled: form.has(p+'enabled') ? 1 : 0,
+    const soup=old && isSoupGroup(old);
+    const clearedSoup=soup && !!old.slots[0].content?.trim() && !value(p+'1_content').trim();
+    return { id, day_of_week: soup ? old.day_of_week : Number(value(p+'day')), service: old?.service ?? value(p+'service'), label: soup ? 'Soup' : value(p+'label'),
+      service_time: soup ? '' : value(p+'time'), sort: old?.sort ?? index, enabled: soup ? (form.has(p+'hide') || clearedSoup ? 0 : 1) : form.has(p+'enabled') ? 1 : 0,
       slots: [1,2,3,4].map(position => {
         const prior = old?.slots.find(s => s.position === position);
         const splitFields = ['mexican-night','mexican-night-defaults'].includes(baseline.id) && form.has(p+position+'_title');
@@ -397,8 +400,8 @@ export function collectionFromForm(form: FormData, baseline: SpecialCollection):
         const price = value(p+position+'_price');
         if (content?.trim() && price) content = displayedSpecial({content,price});
         return { position, content, price: '', section_link: content?.trim() ? (form.has(p+position+'_link') ? value(p+position+'_link') : prior?.section_link ?? '') : '',
-          origin: newWeek || !prior ? (content?.trim() ? 'manual' : 'legacy') : prior.origin,
-          manual_locked: newWeek || !prior ? (content?.trim() ? 1 : 0) : prior.manual_locked, last_auto_value: prior?.last_auto_value ?? null };
+          origin: soup && content?.trim() ? 'manual' : newWeek || !prior ? (content?.trim() ? 'manual' : 'legacy') : prior.origin,
+          manual_locked: soup && content?.trim() ? 1 : newWeek || !prior ? (content?.trim() ? 1 : 0) : prior.manual_locked, last_auto_value: prior?.last_auto_value ?? null };
       }) };
   });
   return { ...baseline, revision: Number(value('revision')), title: baseline.kind==='section' ? value('title') : baseline.title,
@@ -418,6 +421,11 @@ export function validateCollection(next: SpecialCollection, previous?: SpecialCo
   for (const group of next.groups) {
     if (ids.has(group.id)) throw new Error('Duplicate group.');
     ids.add(group.id);
+    if (isSoupGroup(group)) {
+      if (next.kind!=='week' || group.id!==soupGroupId(next.id,group.day_of_week)
+        || group.service!=='custom' || group.label!=='Soup' || group.service_time!==''
+        || group.slots.some(s=>s.price || s.section_link || (s.position!==1 && (s.content ?? '').trim()))) throw new Error('Invalid reserved Soup group.');
+    } else if (group.id.startsWith('soup:')) throw new Error('Invalid reserved Soup identity.');
     if (!Number.isInteger(group.day_of_week) || (next.kind === 'section' ? group.day_of_week !== -1 : group.day_of_week < 0 || group.day_of_week > 6)) throw new Error('Invalid weekday.');
     if (!['lunch','all-day','nightly','custom'].includes(group.service) || ![0,1].includes(group.enabled)) throw new Error('Invalid group.');
     if (group.label.length > 80 || group.service_time.length > 80) throw new Error('Group labels and times allow 80 characters each.');
@@ -476,9 +484,11 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
   const slotRows: any[][] = [];
   for (const group of next.groups) {
     const previous = fresh?.groups.find(g => g.id===group.id);
-    const groupId = previous ? group.id : crypto.randomUUID();
+    const soup=isSoupGroup(group);
+    const groupId = previous ? group.id : soup ? soupGroupId(collectionId,group.day_of_week) : crypto.randomUUID();
     if (!previous) groupIds[group.id] = groupId;
-    groupRows.push([groupId,group.day_of_week,group.service,group.label,group.service_time,group.sort,group.enabled]);
+    const clearedSoup=soup && !!previous?.slots[0].content?.trim() && !group.slots[0].content?.trim();
+    groupRows.push([groupId,group.day_of_week,group.service,group.label,group.service_time,group.sort,clearedSoup ? 0 : group.enabled]);
     for (const slot of group.slots) {
       const old = previous?.slots.find(s=>s.position===slot.position);
       if (old && slotValue(old)===slotValue(slot)) continue;
@@ -486,8 +496,8 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
       // Existing changed slots are staff edits: populated locks, cleared unlocks.
       const isPopulated = (slot.content ?? '').trim().length > 0;
       slotRows.push([groupId,slot.position,slot.content,slot.price,slot.section_link,old?.last_auto_value ?? null,
-        old === undefined ? slot.manual_locked : isPopulated ? 1 : 0,
-        old === undefined ? slot.origin : isPopulated ? 'manual' : 'legacy']);
+        old === undefined ? (soup && isPopulated ? 1 : slot.manual_locked) : isPopulated ? 1 : 0,
+        old === undefined ? (soup && isPopulated ? 'manual' : slot.origin) : isPopulated ? 'manual' : 'legacy']);
     }
   }
   // JSON rowsets use one SELECT and three bound parameters per statement,

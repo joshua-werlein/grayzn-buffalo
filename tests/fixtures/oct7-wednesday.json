@@ -1,0 +1,11 @@
+{
+  "day_of_week": 3,
+  "day_evidence": "WEDNESDAY",
+  "poster_evidence": "WEDNESDAY NIGHT SPECIALS",
+  "offers": [
+    {"content":"Wing Night Bone-In $ .89 each • Boneless $ .99 each","service_time":"5-10 PM","evidence":"WING NIGHT Bone-In $ .89 each • Boneless $ .99 each"},
+    {"content":"Crispy Chipotle Chicken Sandwich w/ Side Salad, Soup or Coleslaw – $10.25","service_time":"","evidence":"Crispy Chipotle Chicken Sandwich w/ Side Salad, Soup or Coleslaw – $10.25"},
+    {"content":"Chicken Salad Sandwich with Cup of Soup or Coleslaw – $7.25","service_time":"","evidence":"Chicken Salad Sandwich with Cup of Soup or Coleslaw – $7.25"},
+    {"content":"Soup: French Onion or Chili","service_time":"","evidence":"Soup: French Onion or Chili"}
+  ]
+}

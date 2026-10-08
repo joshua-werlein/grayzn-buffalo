@@ -7,7 +7,7 @@ export function harness(t, options={}) {
   const f=fixture(t);
   const state={now:Date.parse(options.now ?? NOW),calls:[],aiCalls:0,images:new Map(),
     posts:[{id:'p1',message:options.caption ?? 'Wednesday Night Specials',created_time:'2030-01-09T14:00:00Z',updated_time:'2030-01-09T14:00:00Z',full_picture:'https://cdn.example/photo.jpg'}],
-    candidate:options.candidate ?? poster(3,'Wing Night',[offer('Wing Night — Bone-In $.89 each / Boneless $.99 each','Wing Night 5-10 PM')])};
+    candidate:options.candidate ?? poster(3,'Wing Night',[offer('Wing Night — Bone-In $.89 each / Boneless $.99 each','Wing Night Bone-In $.89 each / Boneless $.99 each')])};
   t.mock.method(Date,'now',()=>state.now);
   t.mock.method(console,'error',()=>{});
   t.mock.method(globalThis,'fetch',async input=>{
