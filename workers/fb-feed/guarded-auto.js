@@ -3,7 +3,7 @@ import {automaticWeekRange} from './auto-week.js';
 import {composeMexicanItem,normalizeMexicanPrices} from '../../src/lib/mexican-item.js';
 // The Worker owns only automatic writes. Manual saves remain in specials-store.ts.
 // Every write, revision bump and acceptance audit commits in one D1 batch.
-import {reconcilePosterEvidence,validateWeeklyLunch,validateMexicanNight,canonicalizeSlotContent} from './reconcile.js';
+import {reconcilePosterEvidence,validateWeeklyLunch,validateMexicanNight,canonicalizeSlotContent,singleDayLunchEvidence} from './reconcile.js';
 import {PARSER_VERSION} from './classify.js';
 import {soupGroupId,blankSoupGroup} from '../../src/lib/daily-soup.js';
 
@@ -49,7 +49,9 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
   const {targets:proposedTargets,rejectedSources:rejected,unresolvedTargets=[]}=reconcilePosterEvidence(candidates,weekday,existing);
   sources.forEach((s,index)=>{
     const c=candidates[index];
-    const dedicated=['weekly-lunch','mexican-night'].includes(c?.type) && !('offers' in c);
+    let recoveredDaily=false;
+    try { recoveredDaily=!!singleDayLunchEvidence(c); } catch { /* Reconciler already records invalid evidence. */ }
+    const dedicated=['weekly-lunch','mexican-night'].includes(c?.type) && !('offers' in c) && !recoveredDaily;
     if (s.processing_status==='failed' && !dedicated && !rejected.some(r=>r.index===index)) {
       rejected.push({index,reason:s.validation_reason || 'Rejected extracted evidence'});
     }

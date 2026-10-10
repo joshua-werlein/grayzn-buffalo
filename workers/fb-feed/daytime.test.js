@@ -103,14 +103,16 @@ for(const nightFirst of [false,true]) test(`Thursday pipeline ${nightFirst?'nigh
   if(!nightFirst) assert.deepEqual(f.slots(4,'all-day'),established);
   await f.run();assert.equal(f.state.aiCalls,2);
 });
-test('Thursday evening price conflict never replaces established All Day or creates Nightly',async t=>{
+test('Thursday evening repeat price conflict preserves All Day and publishes unrelated Nightly',async t=>{
   const f=makeHarness(t);await f.run();const before=f.slots(4,'all-day');
   f.state.posts=[{...f.state.posts[0],id:'evening'}];f.state.candidate=evening();
   f.state.candidate.offers[1].content=f.state.candidate.offers[1].content.replace('10.25','10.50');
-  await f.run();assert.deepEqual(f.slots(4,'all-day'),before);assert.ok(f.slots(4,'nightly').every(s=>s.content===''));
+  await f.run();assert.deepEqual(f.slots(4,'all-day'),before);
+  assert.ok(f.slots(4,'nightly')[0].content);
+  assert.match(f.sql("SELECT detail FROM special_import_events WHERE event_type='review' ORDER BY id DESC")[0].detail,/Repeated All Day price conflict/);
 });
-test('parser 17 reprocesses a Thursday source claimed by parser 10 without deleting history',async t=>{
-  assert.equal(PARSER_VERSION,17);
+test('parser 18 reprocesses a Thursday source claimed by parser 10 without deleting history',async t=>{
+  assert.equal(PARSER_VERSION,18);
   const f=makeHarness(t);const raw=f.state.posts[0];
   const digest=(s,n)=>createHash('sha256').update(s).digest('hex').slice(0,n*2);
   const captionHash=digest(raw.message,8), version=`updated:${raw.updated_time}`;
@@ -119,7 +121,7 @@ test('parser 17 reprocesses a Thursday source claimed by parser 10 without delet
   f.sql(`INSERT INTO special_imports(id,fb_post_id,fb_created_time,caption_hash,image_source_version,parser_version,model_id,processing_status,fetched_at)
     VALUES(?,?,?,?,?,10,?,'staged',?)`,oldId,raw.id,raw.created_time,captionHash,version,model,raw.created_time);
   await f.run();assert.equal(f.state.aiCalls,1);assert.equal(f.slots(4,'lunch')[0].content,dishes[0]);
-  assert.deepEqual(f.imports().map(r=>r.parser_version),[10,17]);
+  assert.deepEqual(f.imports().map(r=>r.parser_version),[10,18]);
   assert.equal(f.imports()[0].id,oldId);await f.run();assert.equal(f.state.aiCalls,1);
 });
 

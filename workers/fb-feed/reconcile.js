@@ -6,22 +6,10 @@ import {formatWingNight,validateWingNight} from './wing-night.js';
 const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 export const WEEKDAY_ENCODING_MISMATCH = 'numeric day does not match explicit weekday evidence';
 
-// Canonical display strings for recurring specials that are intentionally multiline.
-// These are deterministic — we replace whatever the AI extracted with the known
-// authoritative text rather than inheriting arbitrary whitespace from vision output.
-const PIZZA_NIGHT_CANONICAL = '12" 3-Topping Pizza $13.50\n16" 3-Topping Pizza $16';
-const STIR_FRY_CANONICAL = 'Chicken Stir Fry $12.99\nSteak Stir Fry $13.99';
-
 export function canonicalizeSlotContent(content, weekday, service) {
   // Wednesday prices always come from complete labelled source amounts.
   if (weekday === 3 && service === 'nightly' && /\bwing\s+night\b/i.test(content))
     return formatWingNight(content);
-  // Thursday nightly Pizza Night → fixed multiline canonical
-  if (weekday === 4 && service === 'nightly' && /\bpizza\b/i.test(content))
-    return PIZZA_NIGHT_CANONICAL;
-  // Friday all-day Stir Fry → fixed multiline canonical
-  if (weekday === 5 && service === 'all-day' && /\bstir\s*fry\b/i.test(content))
-    return STIR_FRY_CANONICAL;
   // ALL CAPS Facebook poster text → title case before publication.
   // Only fires when every Unicode letter in the string is uppercase; prices
   // ($9.75, $.89), punctuation (—, &), and non-letter characters are untouched.
@@ -35,8 +23,37 @@ export function canonicalizeSlotContent(content, weekday, service) {
       return word[0].toUpperCase() + word.slice(1).toLowerCase();
     });
   }
-  // Default: collapse all internal whitespace runs (newlines, tabs, multiple spaces) to one space
+  // Formatting only. Split complete, individually labelled price lines without
+  // adding/reordering dish names, sizes, descriptions, connectors or amounts.
+  const lines=pricedOfferLines(content);
+  if (lines.length>1 && lines.every(line=>hasCompletePrintedPrices(line) && hasPriceLabel(line))) return lines.join('\n');
   return content.replace(/[\t\r\n]+/g, ' ').replace(/ {2,}/g, ' ').trim();
+}
+function pricedOfferLines(content) {
+  return content.replace(/\r\n?/g,'\n').replace(/[ \t]+/g,' ').trim()
+    .replace(/(\$\s*(?:\d+(?:\.\d{2})?|\.\d{2}))\s*(?:([/|])\s*|\b(or|and)\s+|\n+)/gi,
+      (_,price,symbol,word)=>`${price}\n${word ? `${word} ` : ''}`)
+    .split('\n').map(line=>line.trim()).filter(Boolean);
+}
+function hasPriceLabel(line) {
+  const label=line.replace(/^(?:or|and)\s+/i,'').split('$')[0].trim();
+  return /\p{L}/u.test(label) || /\d\s*["”]/.test(label);
+}
+// Guard the previously rewritten meal families without deriving missing prices
+// or choices from a menu template. No weekday-specific price rules remain.
+function hasUnambiguousChoicePrices(content) {
+  if (!hasCompletePrintedPrices(content)) return false;
+  const sizes=[...content.matchAll(/\b\d+(?:\.\d+)?\s*(?:["”]|inch(?:es)?\b)/gi)];
+  if (sizes.length>1 && !sizes.every((size,i)=>{
+    const section=content.slice(size.index,sizes[i+1]?.index ?? content.length);
+    return (section.match(/\$/g) ?? []).length===1;
+  })) return false;
+  const lines=pricedOfferLines(content);
+  const prices=(content.match(/\$/g) ?? []).length;
+  const choices=(content.match(/\bstir[ -]*fry\b/gi) ?? []).length;
+  if (choices>prices) return false;
+  return prices===1 ? choices<=1 : lines.length===prices
+    && lines.every(line=>hasCompletePrintedPrices(line) && (line.match(/\$/g) ?? []).length===1 && hasPriceLabel(line));
 }
 export function offerKey(text) {
   return text.normalize('NFKC').toLowerCase()
@@ -94,6 +111,28 @@ function normalizeOfferPrice(offer) {
 }
 export const WEEKLY_LUNCH_SHAPE_ERROR = 'Weekly lunch evidence requires weekday entries, not daily offers';
 export const MEXICAN_NIGHT_SHAPE_ERROR = 'Mexican Night evidence requires the mexican-night shape, not daily offers';
+// Recover a mistaken schedule shape only when every row and the single-day
+// heading agree. A real weekly schedule (including a partial one) stays weekly.
+export function singleDayLunchEvidence(value) {
+  if (value?.type !== 'weekly-lunch' || 'offers' in value || value.date_range || !Array.isArray(value.entries)
+    || value.entries.length < 1 || hasWeeklyLunchEvidence(value.poster_evidence ?? '')
+    || /\bweekly\b/i.test(value.poster_evidence ?? '')) return null;
+  const days=DAYS.flatMap((day,i)=>new RegExp(`\\b${day}\\b`,'i').test(value.poster_evidence ?? '')?[i]:[]);
+  if (days.length!==1 || serviceOf(value.poster_evidence)!=='lunch'
+    || !value.entries.every(e=>e?.day_of_week===days[0])) return null;
+  for (const entry of value.entries) {
+    if (typeof entry.content!=='string') throw Error('Invalid single-day lunch content');
+    if (/^\s*soup\s*:/i.test(entry.content)) continue;
+    const amounts=[...entry.content.matchAll(/(?<![\w$.,–—−+-])\$\s*(?:\d+(?:\.\d{2})?|\.\d{2})(?![\d.,\w])/g)];
+    if (amounts.length!==1 || entry.content.replace(amounts[0][0],'').includes('$')
+      || /[-–—]\$|[−+]\s*\$/.test(entry.content)
+      || /^\s*[-–—/]\s*(?:\$|\d)/.test(entry.content.slice(amounts[0].index+amounts[0][0].length)))
+      throw Error('Missing or ambiguous single-day lunch price');
+  }
+  return validateEvidence({day_of_week:days[0],day_evidence:DAYS[days[0]],
+    poster_evidence:value.poster_evidence,
+    offers:value.entries.map((e,i)=>({content:e.content,evidence:e.content,service_time:i===0 ? (value.service_time ?? '') : ''}))});
+}
 function hasWeeklyLunchEvidence(text) {
   const normalized = text.toLowerCase().replace(/[–—]/g, '-');
   const schedule = /\bweekly\b/.test(normalized)
@@ -185,6 +224,7 @@ export function validateMexicanNight(value) {
   return {type: 'mexican-night', poster_evidence: posterEvidence, schedule, groups};
 }
 function forToday(value,weekday) {
+    value=singleDayLunchEvidence(value) ?? value;
     // Dedicated weekly/section evidence belongs to its own reconciliation path.
     if (['weekly-lunch','mexican-night'].includes(value?.type) && !('offers' in value)) return null;
     const p=validateEvidence(value);
@@ -212,6 +252,41 @@ const unique = (sets,count) => {
   const full=sets.filter(s=>s.length===count && new Set(s.map(o=>offerKey(o.content))).size===count);
   return full.length && full.length===sets.length && new Set(full.map(setKey)).size===1 ? full[0] : null;
 };
+// Conservative variation grouping: exactly one leading choice word differs,
+// followed by the same multiword dish name. Included sides and size/modifier
+// labels are not dish identity. Each choice must retain its own complete price.
+export function groupNightlyChoices(items,sourceOffers=items) {
+  const choice=o=>{
+    const match=/^\s*([\p{L}]+)\s+([\p{L}]+(?:[ -][\p{L}]+)+)\s+(\$\s*(?:\d+(?:\.\d{2})?|\.\d{2}))\s*$/u.exec(o.content);
+    if (!match || /\b(?:with|and|or|w|side|cup|of)\b/i.test(match[2])
+      || /^(?:small|medium|large|regular|half|full|single|double|triple|extra|add|mini)$/i.test(match[1])) return null;
+    return {variant:match[1].toLowerCase(),base:match[2].toLowerCase().replace(/[- ]+/g,' ')};
+  };
+  const pairs=[];
+  for (let i=0;i<items.length-1;i++) {
+    const a=choice(items[i]),b=choice(items[i+1]);
+    if (a && b && a.base===b.base && a.variant!==b.variant
+      && ['unknown','nightly'].includes(items[i].service) && ['unknown','nightly'].includes(items[i+1].service)
+      && sourceOffers.indexOf(items[i+1])===sourceOffers.indexOf(items[i])+1) pairs.push(i);
+  }
+  // Multiple possible pairings are ambiguous. Never merge just to fit capacity.
+  if (pairs.length!==1) return items;
+  const i=pairs[0],content=`${items[i].content} OR ${items[i+1].content}`;
+  if (content.length>150) return items;
+  return [...items.slice(0,i),{...items[i],content},...items.slice(i+2)];
+}
+function hasCompletePrintedPrices(content) {
+  const amounts=[...content.matchAll(/(?<![\w$.,–—−+-])\$\s*(?:\d+(?:\.\d{2})?|\.\d{2})(?![\d.,\w])/g)];
+  return amounts.length>0 && !content.replace(/\$\s*(?:\d+(?:\.\d{2})?|\.\d{2})(?![\d.,\w])/g,'').includes('$')
+    && !/[-–—]\$|[−+]\s*\$/.test(content)
+    && amounts.every(m=>{
+      const tail=content.slice(m.index+m[0].length);
+      // A slash followed by an explicitly labelled next size is another option,
+      // not an unlabelled numeric price range (e.g. $14 / 16 inch Pizza $17).
+      return !/^\s*[-–—/]\s*\d/.test(tail)
+        || /^\s*\/\s*\d+(?:\.\d+)?\s*(?:["”]|inch(?:es)?\b)/i.test(tail);
+    });
+}
 export function reconcilePosters(candidates,weekday,existingAllDay=[]) {
   return reconcilePosterEvidence(candidates,weekday,existingAllDay).targets;
 }
@@ -232,7 +307,7 @@ export function reconcilePosterEvidence(candidates,weekday,existingAllDay=[]) {
   }
   const targets=mapPosters(posters,weekday,existingAllDay,unresolvedTargets);
   if (soupPosters.length && !unresolvedTargets.some(t=>t.service==='all-day' && t.reason==='Conflicting Wednesday All Day pair'))
-    targets.push({day_of_week:weekday,service:'custom',role:'soup',items:[{content:soupPosters[0].soup}]});
+    targets.push({day_of_week:weekday,service:'custom',role:'soup',items:[{content:canonicalizeSlotContent(soupPosters[0].soup,weekday,'custom')}]});
   if (!targets.length && posters.length>1) {
     validIndices.forEach(index=>rejectedSources.push({index,reason:'Conflicting or unresolved daily source agreement'}));
   }
@@ -253,10 +328,17 @@ function mapPosters(posters,weekday,existingAllDay,unresolvedTargets) {
       && meals.length===2 && meals.every(o=>serviceOf(o.content)==='unknown' && ['unknown','all-day'].includes(serviceOf(o.evidence)));
     if (p.wednesdayPair) { proposals['all-day'].push(meals); continue; }
     const orderedDaytime=p.offers.length===3 &&
-      /\bspecials?\b/i.test(heading) && !/\bweekly\b/i.test(heading) && serviceOf(heading)==='unknown' &&
+      /\bspecials?\b/i.test(heading) && !/\bweekly\b/i.test(heading) && ['unknown','lunch'].includes(serviceOf(heading)) &&
       p.offers.every((o,i)=>['unknown',i===0?'lunch':'all-day'].includes(o.service) &&
         !['nightly','conflict'].includes(serviceOf(o.content)));
     if (orderedDaytime) {
+      if (p.service==='lunch') {
+        if (hasCompletePrintedPrices(p.offers[0].content)) proposals.lunch.push(p.offers.slice(0,1));
+        else unresolvedTargets.push({service:'lunch',position:1,content:'',reason:'Missing or malformed lunch price'});
+        if (p.offers.slice(1).every(o=>hasCompletePrintedPrices(o.content))) proposals['all-day'].push(p.offers.slice(1));
+        else unresolvedTargets.push({service:'all-day',position:1,content:'',reason:'Missing or malformed All Day prices'});
+        continue;
+      }
       proposals.lunch.push(p.offers.slice(0,1));
       proposals['all-day'].push(p.offers.slice(1));
       continue;
@@ -282,11 +364,29 @@ function mapPosters(posters,weekday,existingAllDay,unresolvedTargets) {
   if (allDay && existingAllDay.length===2 && setKey(allDay)===setKey(existingAllDay)) allDay=existingAllDay;
   const repeats=allDay || (proposals['all-day'].length ? [] : existingAllDay);
   const repeatKeys=new Set(repeats.map(o=>offerKey(o.content)));
+  // Dish-only comparison identifies a repeated offer; it never establishes price
+  // agreement. Use it only with a complete, independently established All Day pair.
+  const dishKey=text=>offerKey(text.replace(/^\s*\d+[).]\s*/, '').replace(/\$\s*(?:\d+(?:\.\d+)?|\.\d+)/g,''));
   for (const p of posters) {
     const explicit=p.offers.filter(o=>o.service==='nightly');
-    const hasAllDayPair=repeats.length===2 && repeats.every(r=>p.offers.some(o=>offerKey(o.content)===offerKey(r.content)));
+    const repeated=repeats.length===2 && new Set(repeats.map(r=>dishKey(r.content))).size===2
+      ? repeats.map(r=>p.offers.filter(o=>dishKey(o.content)===dishKey(r.content))) : [];
+    const hasAllDayPair=repeated.length===2 && repeated.every(matches=>matches.length===1);
     let nightly=explicit;
-    if (p.service==='nightly' && hasAllDayPair) nightly=p.offers.filter(o=>!repeatKeys.has(offerKey(o.content)) && ['nightly','unknown'].includes(o.service));
+    if (p.service==='nightly' && hasAllDayPair) {
+      repeated.forEach(([o],i)=>{
+        if (offerKey(o.content.replace(/^\s*\d+[).]\s*/,''))!==offerKey(repeats[i].content.replace(/^\s*\d+[).]\s*/,'')))
+          unresolvedTargets.push({service:'all-day',position:i+1,content:o.content,
+            reason:`Repeated All Day price conflict; retained ${canonicalizeSlotContent(repeats[i].content,weekday,'all-day')}`});
+      });
+      const excluded=new Set(repeated.flat());
+      nightly=p.offers.filter(o=>!excluded.has(o) && ['nightly','unknown'].includes(o.service));
+      if (nightly.some(o=>!hasCompletePrintedPrices(o.content))) {
+        unresolvedTargets.push({service:'nightly',position:1,content:'',reason:'Missing or malformed nightly prices'});
+        nightly=[];
+      }
+      if ([1,5].includes(weekday) && nightly.length===3) nightly=groupNightlyChoices(nightly,p.offers);
+    }
     // A night-only poster is safe by itself when it has precisely the expected
     // count. Larger posters remain staged until the repeated pair is known.
     const count=[1,5].includes(weekday)?2:1;
@@ -309,7 +409,14 @@ function mapPosters(posters,weekday,existingAllDay,unresolvedTargets) {
       }
     }
     const items=service==='all-day'?allDay:unique(sets,count);
-    if (items) result.push({day_of_week:weekday,service,items:items.map(o=>({content:wing ? o.content : canonicalizeSlotContent(o.content,weekday,service)}))});
+    if (items) {
+      const ambiguous=service==='lunch' ? [] : items.filter(o=>/\bpizza\b|\bstir[ -]*fry\b/i.test(o.content) && !hasUnambiguousChoicePrices(o.content));
+      if (ambiguous.length) {
+        ambiguous.forEach(o=>unresolvedTargets.push({service,position:items.indexOf(o)+1,content:o.content,reason:'Missing, malformed or ambiguous printed choice prices'}));
+        continue;
+      }
+      result.push({day_of_week:weekday,service,items:items.map(o=>({content:wing ? o.content : canonicalizeSlotContent(o.content,weekday,service)}))});
+    }
     else if (proposals[service].length) unresolvedTargets.push({service,position:1,content:'',reason:'Conflicting or unresolved service evidence'});
   }
   if (result.length) return result;
@@ -326,6 +433,13 @@ function mapPosters(posters,weekday,existingAllDay,unresolvedTargets) {
       if (!new RegExp(`\\b${dayLabel}\\s+night\\b`,'i').test(p.poster_evidence)) continue;
       // All four offers must be non-empty and well-formed.
       if (p.offers.some(o=>!o.content || !o.content.trim())) continue;
+      if (p.offers.some(o=>/\bpizza\b|\bstir[ -]*fry\b/i.test(o.content) && !hasUnambiguousChoicePrices(o.content))) {
+        p.offers.forEach((o,i)=>{
+          if (/\bpizza\b|\bstir[ -]*fry\b/i.test(o.content) && !hasUnambiguousChoicePrices(o.content))
+            unresolvedTargets.push({service:i<2?'nightly':'all-day',position:i%2+1,content:o.content,reason:'Missing, malformed or ambiguous printed choice prices'});
+        });
+        continue;
+      }
       return [
         {day_of_week:weekday,service:'nightly',items:[{content:canonicalizeSlotContent(p.offers[0].content,weekday,'nightly')},{content:canonicalizeSlotContent(p.offers[1].content,weekday,'nightly')}]},
         {day_of_week:weekday,service:'all-day',items:[{content:canonicalizeSlotContent(p.offers[2].content,weekday,'all-day')},{content:canonicalizeSlotContent(p.offers[3].content,weekday,'all-day')}]},

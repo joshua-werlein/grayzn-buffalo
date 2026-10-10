@@ -46,12 +46,14 @@ test('normalization preserves prices and dish identity while handling punctuatio
   assert.notEqual(offerKey('Ribs $14'),offerKey('Ribs $14.01'));
   assert.notEqual(offerKey('Chicken Salad $7.25'),offerKey('Chicken Sandwich $7.25'));
 });
-test('night poster with changed prices cannot replace All Day or publish unresolved night offers',async t=>{
+test('night poster with changed repeat prices preserves All Day and publishes unrelated night offers',async t=>{
   const f=harness(t,{now:'2030-01-07T23:00:00Z',candidate:dayPoster(1)});
   f.state.posts[0].created_time='2030-01-07T14:00:00Z';await f.run();
   const before=contents(f,1,'all-day');f.state.posts.push({...f.state.posts[0],id:'night'});
   f.state.candidate=nightPoster(1);f.state.candidate.offers[2].content=f.state.candidate.offers[2].content.replace('10.25','10.50');await f.run();
-  assert.deepEqual(contents(f,1,'all-day'),before);assert.ok(contents(f,1,'nightly').every(s=>s===''));
+  assert.deepEqual(contents(f,1,'all-day'),before);
+  assert.deepEqual(contents(f,1,'nightly'),['2 Burgers and 1 Order of Fries $14','Half Rack Ribs with Mac & Cheese & Coleslaw $18.75','','']);
+  assert.match(f.sql("SELECT detail FROM special_import_events WHERE event_type='review' ORDER BY id DESC")[0].detail,/Repeated All Day price conflict/);
 });
 for(const [name,content,origin,lock,baseline,expected] of [
   ['eligible blank','','legacy',0,null,wingCanonical],

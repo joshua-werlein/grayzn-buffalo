@@ -2,16 +2,28 @@
 
 ## Configuration and release status
 
-The October 6 durable-recovery changes are prepared locally and are **not deployed**. The Worker version below is historical documentation, not a verified live deployment. Apply migration 0021 and follow the release steps below before enabling the recovery code.
+Parser 18 includes the October 9 correction and removal of historical pizza/stir-fry price substitutions. The owner confirmed successful production deployment to `grayzn-fb-feed`, Cloudflare version `3608abae-9808-4809-baf6-f28a509af8d5`. Deployment success does not establish correct extraction or publication from future live Facebook posts: that still requires observation of new eligible imports and reconciliation events. Local regression tests and the production preflight passed, but no future-post live verification is claimed here. This patch requires no new production database migration; older migration instructions later in this guide describe their original release and must not be blindly rerun.
 
 | Item | Value |
 |---|---|
-| Parser version | 16 |
+| Deployed parser version (October 9 and dynamic-price fixes) | 18 |
 | AI model | `@cf/google/gemma-4-26b-a4b-it` (Gemma 4, Workers AI) |
 | `SPECIALS_IMPORT_MODE` | `GUARDED_AUTO` |
-| Worker version | `344d5be3-5203-4165-81f3-5a0d0fbc7949` |
+| Production Worker version (deployment confirmed by owner) | `3608abae-9808-4809-baf6-f28a509af8d5` |
+| Production Worker | `grayzn-fb-feed` |
+| Account ID | `a79e3b4a2bb8dad70c75bceac4b1d3f9` |
+
+The production configuration is `workers/fb-feed/wrangler.toml`. Read-only checks before deployment verified that its routes, half-hour cron, webhook queue consumer and dead-letter queue, vars, KV/R2/D1/AI bindings matched the live settings. The Worker dry run passed. The deployment command is retained as a technical reference; the deployment is complete and must not be rerun as part of documenting it:
+
+```powershell
+npx wrangler deploy --config workers/fb-feed/wrangler.toml --keep-vars
+```
+
+`--keep-vars` preserves dashboard variables; the configuration retains the preflight-verified bindings, routes and triggers. No secret values are supplied by this command. No production D1 modifications, migrations, historical replay or Astro Pages deployment are part of this documentation/commit task.
 
 ## Pipeline Overview
+
+For the October 9 correction, exact expected slot contents, grouping limits and the production recovery procedure, see [October 9 investigation and recovery](facebook-specials-oct9.md). Parser 18 deployment is complete; verification against future live Facebook posts remains pending.
 
 Each half-hour cron in `GUARDED_AUTO` mode:
 
@@ -45,14 +57,24 @@ The extraction records the printed weekday, poster heading, and each offer's own
 
 A generic day poster with one explicit lunch offer and two untimed offers establishes one Lunch and two All Day values. Explicit All Day evidence also establishes that pair. A night poster alone never establishes All Day.
 
-All Day repetitions are compared by complete normalized dish and price. Case, spacing, punctuation, `w/` versus `with`, ampersands, and dollar formatting normalize; different dishes or prices do not match. Existing automation-owned All Day text and order are retained when the pair matches.
+All Day agreement is compared by complete normalized dish and price. Case, spacing, punctuation, `w/` versus `with`, ampersands, and dollar formatting normalize; different dishes or prices do not agree. Existing automation-owned All Day text and order are retained when the pair matches. Once a complete All Day pair is independently established, dish-only matching (ignoring a leading printed list number and prices) may identify its repetitions on a night poster. Each dish must match exactly once. A different repeated price records a blocked All Day proposal containing the conflicting price and the retained baseline; it never replaces the baseline. Those repeated dishes are excluded from Nightly so unrelated valid night offers can publish in the existing guarded transaction.
 
 - A Monday/Friday four-offer night poster needs the repeated pair identified before its two remaining offers publish.
 - Wednesday publishes only one explicit Wing Night offer; Thursday allows one night-specific offer.
 - Tuesday Nightly retains its recurring behavior; the separate Mexican Night collection uses its own reconciliation path.
 - Weekend Nightly stays disabled; configured weekend Lunch/All Day groups remain subject to their existing enabled settings and capacities.
 
+## Source prices and formatting
+
+Current Facebook evidence supplies imported dish descriptions, sizes, choices, sides and prices. Canonicalization controls readable case and whitespace/multiline formatting, not food prices. The former Thursday Pizza Night and Friday All Day Stir Fry replacements have been removed: neither weekday nor keywords can substitute historical prices or invent additional sizes/options. Individually labelled, complete priced choices can display on separate lines; printed OR/and connectors are retained. A single printed pizza remains a single offer.
+
+For the previously rewritten pizza/stir-fry families, missing, malformed or ambiguous choice prices hold the affected service proposal for review. Raw extraction and the unresolved-price audit remain available; eligible proposals in other services can still publish. Unlabelled multiple prices are never assigned to sizes or proteins by guessing. The established October 9 fish text remains intact, including its unassigned portion/price range. The 150-character validation is unchanged and never truncates.
+
+Wing Night still uses its dedicated labelled bone-in/boneless price validation and source-derived formatting. Weekly Lunch, independent Soup and Mexican Night retain their existing workflows. No other runtime historical price/description substitutions were found in the production pipeline: extraction examples are illustrative, recurring menu values are fallback defaults, and Mexican Night/Wing Night normalizers preserve source amounts.
+
 ## Weekly Lunch
+
+A clearly single-day Lunch Specials heading with several weekly-shaped entries all carrying that same weekday is normalized into daily evidence before weekly validation. Weekly headings, date ranges, multiple weekdays and conflicting weekday labels are never converted. The complete raw extraction remains in the import audit. Each ordinary recovered meal requires one clear printed price; Soup retains its independent validation. The restaurant's existing three-meal daytime pattern applies to Lunch Specials headings as well as generic Specials: first meal Lunch, remaining pair All Day. The recovered overall lunch window belongs to the first meal, not to the All Day pair.
 
 If `poster_evidence` or `day_evidence` carries weekly lunch signals but the AI returned `daily-offers` shape, `WEEKLY_LUNCH_SHAPE_ERROR` triggers a retry with the weekly-lunch-only schema.
 

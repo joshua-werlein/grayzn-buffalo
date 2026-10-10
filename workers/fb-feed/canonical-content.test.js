@@ -63,14 +63,14 @@ test('Wednesday Wing Night canonical stored in DB via reconcilePosters', async t
 test('Thursday nightly pizza: raw extraction → canonical two-line format', () => {
   assert.equal(
     canonicalizeSlotContent('3-Topping Pizza 12" $13.50 / 16" $16', 4, 'nightly'),
-    '12" 3-Topping Pizza $13.50\n16" 3-Topping Pizza $16'
+    '3-Topping Pizza 12" $13.50\n16" $16'
   );
 });
 
 test('Thursday nightly pizza: space-separated extraction → canonical two-line format', () => {
   assert.equal(
     canonicalizeSlotContent('12" 3-Topping Pizza $13.50 or 16" 3-Topping Pizza $16', 4, 'nightly'),
-    '12" 3-Topping Pizza $13.50\n16" 3-Topping Pizza $16'
+    '12" 3-Topping Pizza $13.50\nor 16" 3-Topping Pizza $16'
   );
 });
 
@@ -80,7 +80,7 @@ test('Thursday nightly pizza canonical stored via reconcilePosters', () => {
   ]);
   const result = reconcilePosters([p], 4);
   const nightly = result.find(g => g.service === 'nightly');
-  assert.equal(nightly?.items[0].content, '12" 3-Topping Pizza $13.50\n16" 3-Topping Pizza $16');
+  assert.equal(nightly?.items[0].content, '12 inch 3-Topping Pizza $13.50\nand 16 inch 3-Topping Pizza $16');
 });
 
 // ── 4. Friday Stir Fry all-day → canonical multiline ─────────────────────────
@@ -129,11 +129,10 @@ test('Friday nightly offers without stir fry are collapsed, not canonicalized', 
   );
 });
 
-test('canonicalizeSlotContent: stir fry on non-Friday day is only whitespace-collapsed', () => {
-  // Stir Fry canonical only fires on Friday (weekday=5) all-day
+test('complete grouped prices format consistently regardless of weekday', () => {
   assert.equal(
     canonicalizeSlotContent('Chicken Stir Fry $12.99 / Steak Stir Fry $13.99', 3, 'all-day'),
-    'Chicken Stir Fry $12.99 / Steak Stir Fry $13.99'
+    'Chicken Stir Fry $12.99\nSteak Stir Fry $13.99'
   );
 });
 
@@ -310,14 +309,14 @@ test('Wing Night ALL CAPS with missing prices stays unresolved', () => {
   );
 });
 
-test('Pizza Night ALL CAPS still produces canonical multiline (not title-cased)', () => {
+test('single Pizza ALL CAPS retains only the printed description and price', () => {
   assert.equal(
     canonicalizeSlotContent('3-TOPPING PIZZA $13.50', 4, 'nightly'),
-    '12" 3-Topping Pizza $13.50\n16" 3-Topping Pizza $16'
+    '3-Topping Pizza $13.50'
   );
 });
 
-test('Stir Fry ALL CAPS still produces canonical multiline on Friday all-day (not title-cased)', () => {
+test('Stir Fry ALL CAPS preserves labelled prices in readable multiline form', () => {
   assert.equal(
     canonicalizeSlotContent('CHICKEN STIR FRY $12.99 / STEAK STIR FRY $13.99', 5, 'all-day'),
     'Chicken Stir Fry $12.99\nSteak Stir Fry $13.99'

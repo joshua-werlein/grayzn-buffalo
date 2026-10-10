@@ -3,7 +3,7 @@ import { classifyCaption, PARSER_VERSION } from './classify.js';
 import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexicanNight } from './guarded-auto.js';
 import {ensureAutomaticWeek} from './auto-week.js';
 import {MAX_IMPORT_ATTEMPTS,OWNS_ATTEMPT_SQL,isTransientFailure,claimImportAttempt,attemptEvent,saveAttemptImage,finishImportAttempt,retireImportAttempts} from './recovery.js';
-import {validateEvidence, validateWeeklyLunch, validateMexicanNight, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR, WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
+import {validateEvidence, validateWeeklyLunch, validateMexicanNight, singleDayLunchEvidence, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR, WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
 import {WEBHOOK_PATH, handleFacebookWebhook} from './webhook.js';
 
 const TIME_ZONE = 'America/Chicago';
@@ -479,7 +479,10 @@ function validateExtraction(extractedJson) {
     return { candidateJson: null, validationResult: 'rejected', validationReason: 'response is not valid JSON' };
   }
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.type === 'weekly-lunch') {
-    try { return {candidateJson:JSON.stringify(validateWeeklyLunch(parsed)),validationResult:'ok',validationReason:'weekly lunch evidence'}; }
+    try {
+      const daily=singleDayLunchEvidence(parsed);
+      return {candidateJson:JSON.stringify(daily ?? validateWeeklyLunch(parsed)),validationResult:'ok',validationReason:daily ? 'single-day lunch evidence' : 'weekly lunch evidence'};
+    }
     catch (error) { return {candidateJson:null,validationResult:'rejected',validationReason:error.message}; }
   }
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.type === 'mexican-night') {
