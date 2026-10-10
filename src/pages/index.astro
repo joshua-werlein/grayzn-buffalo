@@ -121,7 +121,7 @@ const welcomeHolderAssets = [
     <p class="home-weekly__label"><span aria-hidden="true">★</span> THIS WEEK AT GRAYZ'N <span aria-hidden="true">★</span></p>
     {weeklyHomeDays.length > 0 ? (
       <><h2 id="home-weekly-title">Specials</h2><div class="home-weekly__days">{weeklyHomeDays.map(({ date, groups }) => {
-        return <article class:list={['home-weekly__day', { 'is-today': date === today }]}>{date === today && <span class="home-weekly__today">TODAY</span>}<h3><span class="home-weekly__date-long">{formatWeeklyBoardDate(date)}</span><span class="home-weekly__date-compact">{formatWeeklyBoardDate(date, true)}</span></h3><div class="home-weekly__groups">{groups.filter(group=>!isSoupGroup(group)).map(group => <SpecialGroup group={group} showTime={false} mexicanAvailable={mexicanAvailable}/>)}<DailySoup groups={groups}/></div></article>;
+        return <article class:list={['home-weekly__day', { 'is-today': date === today }]}>{date === today && <span class="home-weekly__today">TODAY</span>}<h3><span class="home-weekly__date-long">{formatWeeklyBoardDate(date)}</span><span class="home-weekly__date-compact">{formatWeeklyBoardDate(date, true)}</span></h3><div class="home-weekly__groups"><div class="home-weekly__food">{groups.filter(group=>!isSoupGroup(group)).map(group => <SpecialGroup group={group} showTime={false} mexicanAvailable={mexicanAvailable}/>)}</div><DailySoup groups={groups}/></div></article>;
       })}</div>{weeklyHomeDays.length <= 3 && <p class="home-weekly__more-soon">More specials coming soon.</p>}</>
     ) : <><h2 id="home-weekly-title">Upcoming Specials</h2><p class="home-weekly__fallback">No specials are posted right now. Check back soon.</p></>}
     <a class="home-weekly__cta" href="/specials">MORE DETAILS <span aria-hidden="true">→</span></a>
@@ -1283,4 +1283,10 @@ const welcomeHolderAssets = [
   }
 
 </script>
-<style>.home-weekly__groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:18px;align-items:start}@media(max-width:520px){.home-weekly__groups{grid-template-columns:1fr}}</style>
+<style>
+/* Soup is a separate row so its full-width span cannot keep empty food tracks open. */
+.home-weekly__groups{display:grid;gap:18px;min-width:0}
+.home-weekly__food{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:18px;align-items:start;min-width:0}
+.home-weekly__food:empty{display:none}
+@media(max-width:520px){.home-weekly__food{grid-template-columns:minmax(0,1fr)}}
+</style>

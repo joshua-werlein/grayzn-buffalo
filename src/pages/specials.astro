@@ -80,7 +80,9 @@ const PC = ['denim','brick','saddle'] as const;
                 <span class="today-stamp" aria-label="Today">Today</span>
               </div>
               <div class="today-body">
+                <div class="today-food">
                 {todayCard.groups.filter(group=>!isSoupGroup(group)).map(group=><SpecialGroup group={group} mexicanAvailable={mexicanNightVisible}/>)}
+                </div>
                 <DailySoup groups={todayCard.groups}/>
               </div>
             </article>
@@ -96,7 +98,9 @@ const PC = ['denim','brick','saddle'] as const;
                       <time class="placard-date" datetime={date}>{cardDate(date)}</time>
                     </div>
                     <div class="card-body">
+                      <div class="card-food">
                       {groups.filter(group=>!isSoupGroup(group)).map(group=><SpecialGroup group={group} mexicanAvailable={mexicanNightVisible}/>)}
+                      </div>
                       <DailySoup groups={groups}/>
                     </div>
                   </article>
@@ -246,9 +250,9 @@ const PC = ['denim','brick','saddle'] as const;
 }
 .today-body{
   padding:14px 20px 18px;
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));
-  gap:16px 28px;align-items:start;align-content:start;
+  display:grid;gap:16px;min-width:0;align-content:start;
 }
+.today-food{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:16px 28px;align-items:start;min-width:0}
 
 /* Zero out global section{padding} that bleeds into SpecialGroup.astro's <section> */
 .today-body :global(.special-group),
@@ -261,9 +265,10 @@ const PC = ['denim','brick','saddle'] as const;
 }
 .card-body{
   padding:14px 20px 18px;
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));
-  gap:16px 28px;align-items:start;align-content:start;
+  display:grid;gap:16px;min-width:0;align-content:start;
 }
+.card-food{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:16px 28px;align-items:start;min-width:0}
+.today-food:empty,.card-food:empty{display:none}
 
 /* ── DENIM ── */
 .placard--denim{
@@ -393,9 +398,11 @@ const PC = ['denim','brick','saddle'] as const;
 }
 @media(max-width:640px){
   .today-hd{padding:9px 14px 10px}
-  .today-body{padding:12px 14px 16px;gap:12px;grid-template-columns:1fr}
+  .today-body{padding:12px 14px 16px;gap:12px}
+  .today-food{gap:12px;grid-template-columns:minmax(0,1fr)}
   .card-hd{padding:8px 14px 10px}
-  .card-body{padding:12px 14px 16px;gap:12px;grid-template-columns:1fr}
+  .card-body{padding:12px 14px 16px;gap:12px}
+  .card-food{gap:12px;grid-template-columns:minmax(0,1fr)}
   .mex-body{padding:14px 14px 20px}
   .recurring-grid{grid-template-columns:repeat(2,1fr)}
 }

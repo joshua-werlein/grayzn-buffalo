@@ -1,0 +1,27 @@
+{
+  "day_evidence": "Saturday",
+  "day_of_week": 6,
+  "offers": [
+    {
+      "content": "Philly & Fries – $11",
+      "evidence": "Philly & Fries – $11",
+      "service_time": ""
+    },
+    {
+      "content": "German Burger w/ Side Salad, Soup or Coleslaw – $10.25",
+      "evidence": "German Burger w/ Side Salad, Soup or Coleslaw – $10.25",
+      "service_time": ""
+    },
+    {
+      "content": "Chicken Salad Sandwich w/ cup of Soup or Coleslaw – $7.25",
+      "evidence": "Chicken Salad Sandwich w/ cup of Soup or Coleslaw – $7.25",
+      "service_time": ""
+    },
+    {
+      "content": "Soups: French Onion, Chili or Beer Cheese Soup",
+      "evidence": "Soups: French Onion, Chili or Beer Cheese Soup",
+      "service_time": ""
+    }
+  ],
+  "poster_evidence": "Saturday Oktoberfest Specials"
+}

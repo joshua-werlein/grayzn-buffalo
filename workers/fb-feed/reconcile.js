@@ -1,5 +1,5 @@
 import {composeMexicanItem} from '../../src/lib/mexican-item.js';
-import {standaloneSoup} from '../../src/lib/daily-soup.js';
+import {standaloneSoup,hasStandaloneSoupLabel} from '../../src/lib/daily-soup.js';
 import {formatWingNight,validateWingNight} from './wing-night.js';
 // Evidence is persisted separately from the website's final group structure.
 // A poster-level night heading does NOT make every offer a night-only offer.
@@ -122,7 +122,7 @@ export function singleDayLunchEvidence(value) {
     || !value.entries.every(e=>e?.day_of_week===days[0])) return null;
   for (const entry of value.entries) {
     if (typeof entry.content!=='string') throw Error('Invalid single-day lunch content');
-    if (/^\s*soup\s*:/i.test(entry.content)) continue;
+    if (hasStandaloneSoupLabel(entry.content)) continue;
     const amounts=[...entry.content.matchAll(/(?<![\w$.,–—−+-])\$\s*(?:\d+(?:\.\d{2})?|\.\d{2})(?![\d.,\w])/g)];
     if (amounts.length!==1 || entry.content.replace(amounts[0][0],'').includes('$')
       || /[-–—]\$|[−+]\s*\$/.test(entry.content)
@@ -242,7 +242,7 @@ function forToday(value,weekday) {
     if (!isExplicitToday && !isDayUnknown) return null;
     const offers=p.offers.map(o=>({...o,service:serviceOf(o.service_time)}));
     if (offers.some(o=>o.service==='conflict')) throw Error('Conflicting offer service evidence');
-    const soupOffers=offers.filter(o=>/^\s*soup\s*:/i.test(o.content) || /^\s*soup\s*:/i.test(o.evidence));
+    const soupOffers=offers.filter(o=>hasStandaloneSoupLabel(o.content) || hasStandaloneSoupLabel(o.evidence));
     const soup=soupOffers.map(standaloneSoup);
     if (soupOffers.length>1 || soup.some(value=>!value)) throw Error('Ambiguous standalone Soup evidence');
     return {...p,offers:offers.filter(o=>!soupOffers.includes(o)),soup:soup[0] ?? null,isExplicitToday,service:serviceOf(p.poster_evidence)};

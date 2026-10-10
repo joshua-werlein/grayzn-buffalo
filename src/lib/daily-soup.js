@@ -16,13 +16,15 @@ export function withSoupControls(collection) {
   return {...collection,groups};
 }
 
+export const hasStandaloneSoupLabel = text => /^\s*Soups?\s*:/i.test(text);
+
 export function standaloneSoup(offer) {
-  const read=text=>/^\s*Soup\s*:\s*([^\r\n]+?)\s*$/i.exec(text)?.[1];
+  const read=text=>/^\s*Soups?\s*:\s*([^\r\n]+?)\s*$/i.exec(text)?.[1];
   const content=read(offer.content), evidence=read(offer.evidence);
   // Never split an included side from a meal, or accept an empty/generic label.
   const ambiguous=/\b(?:sandwich|burger|with|cup\s+of|side|included|coleslaw|special|available|ask|today|tbd)\b|\bw\s*\/|[<>:;]|\$/i;
   if (!content || !evidence || offer.service_time.trim() || ambiguous.test(content) || ambiguous.test(evidence)
-    || !/\p{L}/u.test(content) || /^(?:or|and|soup|none|no soup)$/i.test(content) || /(?:^|\b)(?:or|and)\s*$/i.test(content)
+    || !/\p{L}/u.test(content) || /^(?:or|and|soups?|none|no soups?)$/i.test(content) || /(?:^|\b)(?:or|and)\s*$/i.test(content)
     || content.normalize('NFKC').replace(/\s+/g,' ').toLowerCase() !== evidence.normalize('NFKC').replace(/\s+/g,' ').toLowerCase()) return null;
   return content.replace(/\s+/g,' ').trim();
 }
