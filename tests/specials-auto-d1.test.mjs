@@ -6,6 +6,7 @@ import {reconcileToday} from '../workers/fb-feed/guarded-auto.js';
 import {PARSER_VERSION} from '../workers/fb-feed/classify.js';
 
 test('real local D1 guarded publication and audit are atomic; stale snapshots fail closed',async t=>{
+  t.mock.method(Date,'now',()=>Date.parse('2030-01-09T15:00:00Z'));
   const f=fixture(t);
   const mf=new Miniflare({modules:true,script:'export default {fetch(){return new Response("test")}}',d1Databases:['DB']});
   t.after(()=>mf.dispose());const DB=await mf.getD1Database('DB');

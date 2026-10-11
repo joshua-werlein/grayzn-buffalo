@@ -1,0 +1,32 @@
+{
+  "note": "Human-described regression layout, not a real image or an AI result. Expected extraction is a test contract; no production inference is performed.",
+  "bundle": {
+    "layout": "One clearly grouped offer containing two food-item lines above a single shared price, as confirmed by the user for the original October 11 poster.",
+    "lines": ["16\" 3-TOPPING PIZZA", "12 WINGS", "$30"],
+    "expectedExtraction": {
+      "content": "16\" 3-TOPPING PIZZA & 12 WINGS $30",
+      "evidence": "16\" 3-TOPPING PIZZA\n12 WINGS\n$30",
+      "service_time": ""
+    },
+    "expectedDisplay": "16\" 3-Topping Pizza & 12 Wings $30"
+  },
+  "otherBundle": {
+    "layout": "An explicitly labelled combo box encloses two complete item lines with one shared price.",
+    "lines": ["2 WRAPS", "1 ORDER OF FRIES", "$19"],
+    "expectedExtraction": {
+      "content": "2 WRAPS & 1 ORDER OF FRIES $19",
+      "evidence": "2 WRAPS\n1 ORDER OF FRIES\n$19",
+      "service_time": ""
+    },
+    "expectedDisplay": "2 Wraps & 1 Order Of Fries $19"
+  },
+  "unrelated": {
+    "layout": "Consecutive lines with independently associated prices; no common offer box or bundle heading.",
+    "lines": ["8\" Sub $10", "2 Wraps $14", "Garden Salad $9"],
+    "expectedExtractions": [
+      {"content": "8\" Sub $10", "evidence": "8\" Sub $10", "service_time": ""},
+      {"content": "2 Wraps $14", "evidence": "2 Wraps $14", "service_time": ""},
+      {"content": "Garden Salad $9", "evidence": "Garden Salad $9", "service_time": ""}
+    ]
+  }
+}

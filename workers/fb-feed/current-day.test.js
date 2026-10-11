@@ -89,7 +89,7 @@ test('unknown weekday retains publication behavior without mismatch retry',async
 
 test('weekday consistency validator checks all seven full names without rewriting input',()=>{
   for(const [day,name] of ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].entries()) {
-    const candidate={...mondayNight(day),day_evidence:name.toUpperCase()};
+    const candidate={...mondayNight(day),day_evidence:name.toUpperCase(),poster_evidence:`${name} Night Specials`};
     assert.equal(validateEvidence(candidate).day_of_week,day);
     candidate.day_of_week=(day+1)%7;
     assert.throws(()=>validateEvidence(candidate),{message:WEEKDAY_ENCODING_MISMATCH});
@@ -98,10 +98,11 @@ test('weekday consistency validator checks all seven full names without rewritin
   assert.throws(()=>validateEvidence({...mondayNight(-1),day_evidence:'Monday'}),{message:WEEKDAY_ENCODING_MISMATCH});
 });
 
-test('multiple or absent explicit weekday names do not trigger encoding retry',async t=>{
+test('conflicting weekdays fail without retry; heading-only encoding mismatch retries once',async t=>{
   for(const day_evidence of ['Monday Tuesday','', 'Mon']) {
     const f=monday(t,{...mondayNight(0),day_evidence});
-    await f.run();assert.equal(f.state.aiCalls,1);assert.deepEqual(retries(f),[]);
+    await f.run();assert.equal(f.state.aiCalls,day_evidence==='Monday Tuesday'?1:2);
+    assert.equal(retries(f).length,day_evidence==='Monday Tuesday'?0:1);
     assert.ok(f.slots(1,'nightly').every(s=>s.content===''));
   }
 });

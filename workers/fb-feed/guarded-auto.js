@@ -20,7 +20,9 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
       OR (processing_status='failed' AND validation_result='rejected' AND extracted_json IS NOT NULL))
     AND image_r2_key IS NOT NULL AND review_status IN ('pending','accepted')`).bind(JSON.stringify(sourceIds),PARSER_VERSION).all();
   const dateOf = value => new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
-  const sources=storedSources.filter(s=>Number.isFinite(Date.parse(s.fb_created_time)) && dateOf(s.fb_created_time)===today);
+  // Keep excluded sources in the guarded audit instead of silently dropping them.
+  // Publication below fails closed if any source timestamp is ineligible.
+  const sources=storedSources;
   if (!sources.length) return stage('No extracted evidence');
   const {results:weeks}=await env.DB.prepare(`SELECT w.id,c.id collection_id,c.revision FROM weekly_specials w
     LEFT JOIN special_collections c ON c.weekly_special_id=w.id AND c.kind='week'
@@ -46,8 +48,14 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
     try { return JSON.parse(json.replace(/^```(?:json)?\n?|\n?```$/gm,'').trim()); }
     catch { return null; }
   });
-  const {targets:proposedTargets,rejectedSources:rejected,unresolvedTargets=[]}=reconcilePosterEvidence(candidates,weekday,existing);
+  const {targets:proposedTargets,rejectedSources:rejected,unresolvedTargets=[]}=reconcilePosterEvidence(candidates,weekday,existing,{today});
   sources.forEach((s,index)=>{
+    const created=Date.parse(s.fb_created_time);
+    if (!Number.isFinite(created) || created>Date.now() || dateOf(s.fb_created_time)!==today) {
+      const reason='Facebook creation timestamp is invalid, future, or outside the current Chicago date';
+      const prior=rejected.find(r=>r.index===index);
+      if (prior) prior.reason=reason; else rejected.push({index,reason});
+    }
     const c=candidates[index];
     let recoveredDaily=false;
     try { recoveredDaily=!!singleDayLunchEvidence(c); } catch { /* Reconciler already records invalid evidence. */ }
@@ -133,6 +141,7 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
     AND NOT EXISTS(SELECT 1 FROM json_each(?9) j WHERE NOT EXISTS(SELECT 1 FROM special_imports i
       WHERE i.id=json_extract(j.value,'$.id') AND i.candidate_json IS json_extract(j.value,'$.candidate_json')
       AND i.extracted_json IS json_extract(j.value,'$.extracted_json')
+      AND i.fb_created_time IS json_extract(j.value,'$.fb_created_time')
       AND i.processing_status=json_extract(j.value,'$.processing_status') AND i.validation_result=json_extract(j.value,'$.validation_result')
       AND i.review_status=json_extract(j.value,'$.review_status')
       AND i.image_r2_key IS NOT NULL AND NOT EXISTS(SELECT 1 FROM special_imports newer

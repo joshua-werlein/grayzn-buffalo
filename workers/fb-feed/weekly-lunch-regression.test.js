@@ -74,8 +74,11 @@ test('recognizable weekday schedule without weekly wording rejects daily shape',
 
 test('non-special image and ordinary single-day evidence retain their existing validation', () => {
   for (const label of ['', 'Monday Specials 11am-1:30pm', 'Weekly entertainment']) {
-    assert.deepEqual(validateEvidence(emptyDaily(label)),emptyDaily(label));
+    const candidate=emptyDaily(label);
+    if (label.startsWith('Monday')) candidate.day_of_week=1;
+    assert.deepEqual(validateEvidence(candidate),candidate);
   }
+  assert.throws(()=>validateEvidence(emptyDaily('Monday Specials 11am-1:30pm')),/numeric day does not match explicit weekday evidence/);
 });
 
 test('exact production empty result fails after one weekly-specific retry, publishes nothing and stays idempotent', async t => {

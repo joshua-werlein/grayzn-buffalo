@@ -87,10 +87,9 @@ test('parser 3 source claim cannot block parser 4 extraction',async t=>{
 for(const mode of ['OFF','DRY_RUN','UNKNOWN']) test(`${mode} never writes specials or creates weeks`,async t=>{
   const f=harness(t,{mode,week:false});const before=f.sql('SELECT * FROM weekly_specials');await f.run();assert.deepEqual(f.sql('SELECT * FROM weekly_specials'),before);assert.equal(f.state.aiCalls,mode==='DRY_RUN'?1:0);
 });
-for(const failure of ['wrong day','missing weekday','conflicting weekdays','no image','malformed JSON','invalid image','two wings','non-wing Wednesday','conflicting service']) test(`${failure} fails closed`,async t=>{
+for(const failure of ['wrong day','conflicting weekdays','no image','malformed JSON','invalid image','two wings','non-wing Wednesday','conflicting service']) test(`${failure} fails closed`,async t=>{
   const f=harness(t);
   if(failure==='wrong day') f.state.candidate.day_of_week=4;
-  if(failure==='missing weekday') f.state.candidate.day_evidence='';
   if(failure==='conflicting weekdays') f.state.candidate.day_evidence='Wednesday Thursday';
   if(failure==='no image') delete f.state.posts[0].full_picture;
   if(failure==='malformed JSON') f.env.AI.run=async()=>({response:'bad'});
@@ -99,6 +98,10 @@ for(const failure of ['wrong day','missing weekday','conflicting weekdays','no i
   if(failure==='non-wing Wednesday') f.state.candidate=poster(3,'Night Specials',[offer('Dinner $14','Night')]);
   if(failure==='conflicting service') f.state.candidate.offers[0].service_time='Lunch Night';
   await f.run();assert.equal(f.slots()[0].content,'');
+});
+test('missing printed weekday uses verified same-day timestamp without discarding a matching numeric day',async t=>{
+  const f=harness(t);f.state.candidate.day_evidence='';
+  await f.run();assert.equal(f.slots()[0].content,wingCanonical);assert.equal(f.state.aiCalls,1);
 });
 test('Tuesday Mexican Night remains isolated, Thursday supports one night item, weekend keeps configured services',()=>{
   assert.deepEqual(reconcilePosters([poster(2,'Mexican Night',[offer('Tacos $5','Night')])],2),[]);

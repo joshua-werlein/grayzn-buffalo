@@ -6,10 +6,19 @@ import {formatWingNight,validateWingNight} from './wing-night.js';
 const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 export const WEEKDAY_ENCODING_MISMATCH = 'numeric day does not match explicit weekday evidence';
 
+// A bare numeric double-apostrophe/double-prime measurement token uses the
+// ordinary inch mark. Exclude attached words, opening quotes and feet/inch
+// compounds; never globally replace apostrophes or quotation marks.
+function normalizeInchMarks(content) {
+  return content.replace(/(?<![\p{L}\p{N}'‘’"“”.])\b(\d+(?:\.\d+)?)[ \t]*(?:''|’’|″)(?=\s|$|[/|&+])/gu,
+    (match, size, offset, text) => /\d\s*['′]\s*$/.test(text.slice(0, offset)) ? match : `${size}"`);
+}
+
 export function canonicalizeSlotContent(content, weekday, service) {
   // Wednesday prices always come from complete labelled source amounts.
   if (weekday === 3 && service === 'nightly' && /\bwing\s+night\b/i.test(content))
     return formatWingNight(content);
+  content = normalizeInchMarks(content);
   // ALL CAPS Facebook poster text → title case before publication.
   // Only fires when every Unicode letter in the string is uppercase; prices
   // ($9.75, $.89), punctuation (—, &), and non-letter characters are untouched.
@@ -36,12 +45,14 @@ function pricedOfferLines(content) {
     .split('\n').map(line=>line.trim()).filter(Boolean);
 }
 function hasPriceLabel(line) {
+  line=normalizeInchMarks(line);
   const label=line.replace(/^(?:or|and)\s+/i,'').split('$')[0].trim();
   return /\p{L}/u.test(label) || /\d\s*["”]/.test(label);
 }
 // Guard the previously rewritten meal families without deriving missing prices
 // or choices from a menu template. No weekday-specific price rules remain.
 function hasUnambiguousChoicePrices(content) {
+  content=normalizeInchMarks(content);
   if (!hasCompletePrintedPrices(content)) return false;
   const sizes=[...content.matchAll(/\b\d+(?:\.\d+)?\s*(?:["”]|inch(?:es)?\b)/gi)];
   if (sizes.length>1 && !sizes.every((size,i)=>{
@@ -111,6 +122,39 @@ function normalizeOfferPrice(offer) {
 }
 export const WEEKLY_LUNCH_SHAPE_ERROR = 'Weekly lunch evidence requires weekday entries, not daily offers';
 export const MEXICAN_NIGHT_SHAPE_ERROR = 'Mexican Night evidence requires the mexican-night shape, not daily offers';
+// A printed heading is weekday evidence too. Never use the source timestamp to
+// repair contradictory printed/numeric weekdays; it only supplies a missing day.
+function evidenceWeekday(value) {
+  const text=`${value.day_evidence} ${value.poster_evidence}`;
+  const days=DAYS.flatMap((day,i)=>new RegExp(`\\b${day}\\b`,'i').test(text)?[i]:[]);
+  if (days.length>1) throw Error('Conflicting printed weekdays in day evidence or poster heading');
+  if (days.length===1 && value.day_of_week!==days[0]) throw Error(WEEKDAY_ENCODING_MISMATCH);
+  return days[0] ?? null;
+}
+function validateCurrentDay(value,weekday,today) {
+  const printed=evidenceWeekday(value);
+  const text=`${value.day_evidence} ${value.poster_evidence}`.toLowerCase().replace(/[–—]/g,'-');
+  if (/\btomorrow\b|\byesterday\b|\bthis\s+weekend\b|\blater\s+this\s+week\b|\bupcoming\b/.test(text)
+    || /\b(?:next|last)\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday|week)\b/.test(text))
+    throw Error('Poster references another or future date; review required');
+  if (printed!==null && printed!==weekday) throw Error('Printed weekday does not match current Chicago day');
+  if (value.day_of_week!==-1 && value.day_of_week!==weekday)
+    throw Error('Numeric weekday does not match current Chicago day');
+  if (today) {
+    // Check explicit calendar dates without mistaking service windows for dates.
+    const dates=[...text.matchAll(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/g)]
+      .map(([,y,m,d])=>[Number(y),Number(m),Number(d)]);
+    for (const [,m,d,y] of text.matchAll(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?\b/g))
+      dates.push([y ? Number(y)+(y.length===2?2000:0) : Number(today.slice(0,4)),Number(m),Number(d)]);
+    const months=['january','february','march','april','may','june','july','august','september','october','november','december'];
+    const named=new RegExp(`\\b(${months.map(m=>m+'|'+m.slice(0,3)).join('|')})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`,'g');
+    for (const [,month,d,y] of text.matchAll(named))
+      dates.push([Number(y ?? today.slice(0,4)),months.findIndex(m=>m.startsWith(month))+1,Number(d)]);
+    if (dates.some(([y,m,d])=>`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`!==today))
+      throw Error('Printed calendar date does not match current Chicago date');
+  }
+  return printed!==null;
+}
 // Recover a mistaken schedule shape only when every row and the single-day
 // heading agree. A real weekly schedule (including a partial one) stays weekly.
 export function singleDayLunchEvidence(value) {
@@ -150,8 +194,7 @@ export function validateEvidence(value) {
   // Reject daily-offers shape when the poster clearly says "Mexican Night"; require the dedicated shape.
   if (/\bmexican\s+night\b/i.test(`${value.poster_evidence} ${value.day_evidence}`)) throw Error(MEXICAN_NIGHT_SHAPE_ERROR);
   // Internal encoding only: current-day eligibility remains authoritative in forToday().
-  const days=DAYS.flatMap((d,i)=>new RegExp(`\\b${d}\\b`,'i').test(value.day_evidence)?[i]:[]);
-  if (days.length===1 && value.day_of_week!==days[0]) throw Error(WEEKDAY_ENCODING_MISMATCH);
+  evidenceWeekday(value);
   const offers = value.offers.map(o => {
     if (!o || !str(o.content,150) || !o.content.trim() || !str(o.service_time,80) || !str(o.evidence,160)) throw Error('Invalid offer evidence');
     return normalizeOfferPrice(o);
@@ -223,23 +266,13 @@ export function validateMexicanNight(value) {
   });
   return {type: 'mexican-night', poster_evidence: posterEvidence, schedule, groups};
 }
-function forToday(value,weekday) {
+function forToday(value,weekday,today) {
     value=singleDayLunchEvidence(value) ?? value;
     // Dedicated weekly/section evidence belongs to its own reconciliation path.
     if (['weekly-lunch','mexican-night'].includes(value?.type) && !('offers' in value)) return null;
     const p=validateEvidence(value);
-    const days=DAYS.flatMap((d,i)=>new RegExp(`\\b${d}\\b`,'i').test(p.day_evidence)?[i]:[]);
-    const isExplicitToday=p.day_of_week===weekday && days.length===1 && days[0]===weekday;
-    // Accept posters where the AI found no printed weekday (day=-1, empty evidence).
-    // Guard against "tomorrow", "this weekend", "next Friday", and similar forward-looking
-    // headings that describe a future day's special posted the day before.
-    const headingText=`${p.day_evidence} ${p.poster_evidence}`.toLowerCase().replace(/[–—]/g,'-');
-    const hasFutureRef=/\btomorrow\b/.test(headingText)
-      || /\bthis\s+weekend\b/.test(headingText)
-      || /\bnext\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday|week)\b/.test(headingText)
-      || /\blater\s+this\s+week\b/.test(headingText);
-    const isDayUnknown=p.day_of_week===-1 && days.length===0 && !hasFutureRef;
-    if (!isExplicitToday && !isDayUnknown) return null;
+    // guarded-auto verifies each source's same-day Chicago creation timestamp.
+    const isExplicitToday=validateCurrentDay(p,weekday,today);
     const offers=p.offers.map(o=>({...o,service:serviceOf(o.service_time)}));
     if (offers.some(o=>o.service==='conflict')) throw Error('Conflicting offer service evidence');
     const soupOffers=offers.filter(o=>hasStandaloneSoupLabel(o.content) || hasStandaloneSoupLabel(o.evidence));
@@ -290,10 +323,10 @@ function hasCompletePrintedPrices(content) {
 export function reconcilePosters(candidates,weekday,existingAllDay=[]) {
   return reconcilePosterEvidence(candidates,weekday,existingAllDay).targets;
 }
-export function reconcilePosterEvidence(candidates,weekday,existingAllDay=[]) {
+export function reconcilePosterEvidence(candidates,weekday,existingAllDay=[],{today}={}) {
   const rejectedSources=[],validIndices=[];
   const posters=candidates.map((c,index)=>{
-    try { const p=forToday(c,weekday); if (p) validIndices.push(index); return p; }
+    try { const p=forToday(c,weekday,today); if (p) validIndices.push(index); return p; }
     catch(error) { rejectedSources.push({index,reason:error.message}); return null; }
   }).filter(Boolean);
   // An invalid source cannot disappear and manufacture agreement, even if its

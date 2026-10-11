@@ -2,14 +2,14 @@
 
 ## Configuration and release status
 
-Parser 18 includes the October 9 correction and removal of historical pizza/stir-fry price substitutions. The owner confirmed successful production deployment to `grayzn-fb-feed`, Cloudflare version `3608abae-9808-4809-baf6-f28a509af8d5`. Deployment success does not establish correct extraction or publication from future live Facebook posts: that still requires observation of new eligible imports and reconciliation events. Local regression tests and the production preflight passed, but no future-post live verification is claimed here. This patch requires no new production database migration; older migration instructions later in this guide describe their original release and must not be blindly rerun.
+Parser 18 includes the October 9 correction and removal of historical pizza/stir-fry price substitutions, the October 10 plural-Soups correction, and the October 11 shared weekday-evidence checks. The authorized October 11 Worker-only deployment is active at 100% as Cloudflare version `7538dae5-7638-4a50-bac1-6fe9726b5f17`; existing bindings, variables and schedule were verified unchanged. See the [October 11 recovery record](../recovery/oct11-2026-specials.md) for tests and actual scheduled verification. Deployment success alone does not establish publication from future Facebook posts. No new production database migration is required; older migration instructions later in this guide describe their original release and must not be blindly rerun.
 
 | Item | Value |
 |---|---|
 | Deployed parser version (October 9 and dynamic-price fixes) | 18 |
 | AI model | `@cf/google/gemma-4-26b-a4b-it` (Gemma 4, Workers AI) |
 | `SPECIALS_IMPORT_MODE` | `GUARDED_AUTO` |
-| Production Worker version (deployment confirmed by owner) | `3608abae-9808-4809-baf6-f28a509af8d5` |
+| Active production Worker version (October 11) | `7538dae5-7638-4a50-bac1-6fe9726b5f17` |
 | Production Worker | `grayzn-fb-feed` |
 | Account ID | `a79e3b4a2bb8dad70c75bceac4b1d3f9` |
 
@@ -51,7 +51,9 @@ Three shapes are offered via an `anyOf` schema:
 | `weekly-lunch` | `poster_evidence`, `date_range`, `service_time`, `entries[]` (weekday 1–5 with `content`) |
 | `mexican-night` | `poster_evidence`, `schedule`, `groups[]` (label and `items[]`) |
 
-The extraction records the printed weekday, poster heading, and each offer's own time and heading. The weekday must match today. A `day_of_week` of `-1` with empty `day_evidence` is accepted as same-day evidence (no-weekday fallback). Posts with recognizable future date references are rejected. Posting time never assigns service.
+The extraction records the printed weekday, poster heading, and each offer's own time and heading. Daily validation checks weekday names in both `day_evidence` and `poster_evidence`: exactly one printed weekday must agree with the numeric weekday and today's Chicago weekday. An empty `day_evidence` is valid when the poster heading supplies that matching weekday. With no printed weekday in either field, a `day_of_week` of `-1` or today's matching numeric day can use the verified current-day Facebook creation timestamp. Invalid, future or other-day timestamps, conflicting weekday names/numbers, explicit different calendar dates and relative other/future-date references fail closed with an idempotent guarded review diagnostic. A timestamp never overrides a printed different weekday or assigns service. Weekly Lunch and Mexican Night retain their separate evidence lifecycles.
+
+The October 11 production fixture and recovery record are documented in [October 11 weekday-evidence recovery](../recovery/oct11-2026-specials.md). Parser 18 remains unchanged so existing staged current-day evidence can reconcile on the next normal scan without another extraction; no historical replay is part of this fix.
 
 ## Same-Day Routing
 
