@@ -6,6 +6,7 @@ import {ensureAutomaticWeek} from './auto-week.js';
 import {MAX_IMPORT_ATTEMPTS,OWNS_ATTEMPT_SQL,isTransientFailure,claimImportAttempt,attemptEvent,saveAttemptImage,finishImportAttempt,retireImportAttempts} from './recovery.js';
 import {validateEvidence, validateWeeklyLunch, validateMexicanNight, singleDayLunchEvidence, validateCurrentDay, hasWeeklyLunchEvidence, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR, WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
 import {WEBHOOK_PATH, handleFacebookWebhook} from './webhook.js';
+import {expireDelivery,reconcileDelivery} from './delivery.js';
 
 const TIME_ZONE = 'America/Chicago';
 const GRAPH_API_VERSION = 'v26.0';
@@ -440,6 +441,16 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
       continue;
     }
     const validation = validateExtraction(outcome.extractedJson,reliable,budget.window);
+    // Delivery disagreement must fail closed without changing specials validation.
+    if (attempt && priorRaw) {
+      try {
+        const before=JSON.parse(priorRaw),after=JSON.parse(outcome.extractedJson);
+        if (JSON.stringify(before.delivery)!==JSON.stringify(after.delivery)) {
+          outcome={...outcome,deliveryConflict:true};
+          if (priorOutcome) priorOutcome={...priorOutcome,deliveryConflict:true};
+        }
+      } catch { /* Ordinary validation handles malformed JSON. */ }
+    }
     lastValidationReason = validation.validationReason;
     if(reliable) {
       // Verification is not a vote. Conflicting otherwise valid readings hold
@@ -677,6 +688,10 @@ async function processImportAttempt(env, record, raw, {window,modelId,dailyLimit
     const validation=result.verificationConflict
       ? {candidateJson:null,validationResult:'rejected',validationReason:'Conflicting image verification; nothing published'}
       : validateExtraction(result.extractedJson,env.SPECIALS_EVIDENCE_VERSION==='2',window);
+    // Preserve raw AI output for audit; a separate candidate flag fences delivery.
+    if (result.deliveryConflict && validation.candidateJson) {
+      validation.candidateJson=JSON.stringify({...JSON.parse(validation.candidateJson),delivery_blocked:true});
+    }
     await finishImportAttempt(env,record,{
       status:validation.validationResult==='ok' ? 'staged' : 'failed',
       failureKind:validation.validationResult==='ok' ? null : 'permanent',
@@ -693,6 +708,12 @@ async function processImportAttempt(env, record, raw, {window,modelId,dailyLimit
 }
 
 export async function runImportPipeline(env) {
+  // Expiration runs even outside processing hours or when imports are disabled.
+  // Keep delivery storage failures independent of existing specials processing.
+  if (env.DB) {
+    try { await expireDelivery(env); }
+    catch (err) { console.error('Delivery expiration error',String(err)); }
+  }
   const mode = env.SPECIALS_IMPORT_MODE ?? 'OFF';
   if (!['DRY_RUN','GUARDED_AUTO'].includes(mode) || !env.DB) return;
   const now = new Date(Date.now());
@@ -742,6 +763,8 @@ export async function runImportPipeline(env) {
   // A complete today-only Graph scan supplies the current versions for this Page.
   const writeNow=new Date(Date.now());
   if (mode==='GUARDED_AUTO' && isWithinProcessingHours(writeNow) && chicagoDate(writeNow)===window.today) {
+    try { await reconcileDelivery(env,{sourceIds,observedAt:now.toISOString()}); }
+    catch (err) { console.error('Delivery reconcile error',String(err)); }
     await reconcileToday(env,{sourceIds,today:window.today,weekday:window.weekday});
     try { await reconcileWeeklyLunch(env,window.today); }
     catch(err) { console.error('Weekly lunch reconcile error',String(err)); }
