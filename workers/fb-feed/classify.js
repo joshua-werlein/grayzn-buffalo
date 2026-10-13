@@ -2,6 +2,12 @@
 // Images are extracted independently. Never infer service from a timestamp.
 // Version changes make previously staged source versions distinct.
 export const PARSER_VERSION = 18;
+// Evidence contract 2 stores its rows under its own parser version. Every
+// supersession check compares rows of the SAME parser version, so a same-day
+// deploy or rollback between contracts never lets one contract's newer row
+// supersede (and permanently block) the other's evidence for the same post.
+export const CONTRACT2_PARSER_VERSION = 19;
+export const parserVersionFor = env => env?.SPECIALS_EVIDENCE_VERSION==='2' ? CONTRACT2_PARSER_VERSION : PARSER_VERSION;
 const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 export function classifyCaption(caption) {
   const result = (kind, day, service, reason, collectionId = null) => ({kind,day,service,collectionId,reason});

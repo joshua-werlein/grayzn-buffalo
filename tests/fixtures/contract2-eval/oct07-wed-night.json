@@ -1,0 +1,86 @@
+{
+  "poster": "oct07-wed-night",
+  "source": "Workers AI @cf/google/gemma-4-26b-a4b-it, contract-2 request, original R2 image, 2026-10-12 evaluation",
+  "window": {
+    "today": "2026-10-07",
+    "weekday": 3
+  },
+  "first_reading": {
+    "day_evidence": "Wednesday",
+    "day_of_week": 3,
+    "offers": [
+      {
+        "content": "Wing Night Bone-In $ .89 each & Boneless $ .99 each",
+        "date_evidence": "",
+        "evidence": "WING NIGHT Bone-In $.89 each • Boneless $.99 each",
+        "service_evidence": "5-10 PM",
+        "service_time": "5-10 PM",
+        "uncertainties": []
+      },
+      {
+        "content": "Crispy Chipotle Chicken Sandwich w/ Side Salad, Soup or Coleslaw – $10.25",
+        "date_evidence": "",
+        "evidence": "Crispy Chipotle Chicken Sandwich w/ Side Salad, Soup or Coleslaw – $10.25",
+        "service_evidence": "",
+        "service_time": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Chicken Salad Sandwich with Cup of Soup or Coleslaw – $7.25",
+        "date_evidence": "",
+        "evidence": "Chicken Salad Sandwich with Cup of Soup or Coleslaw – $7.25",
+        "service_evidence": "",
+        "service_time": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Soup: French Onion or Chili",
+        "date_evidence": "",
+        "evidence": "Soup: French Onion or Chili",
+        "service_evidence": "",
+        "service_time": "",
+        "uncertainties": []
+      }
+    ],
+    "poster_evidence": "WEDNESDAY NIGHT SPECIALS"
+  },
+  "repair_reading": {
+    "day_of_week": 3,
+    "day_evidence": "WEDNESDAY",
+    "poster_evidence": "WEDNESDAY NIGHT SPECIALS",
+    "offers": [
+      {
+        "content": "Wing Night Bone-In $ .89 each & Boneless $ .99 each",
+        "evidence": "WING NIGHT Bone-In $.89 each • Boneless $.99 each",
+        "service_time": "5-10 PM",
+        "service_evidence": "WING NIGHT Bone-In $.89 each • Boneless $.99 each 5-10 PM",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Crispy Chipotle Chicken Sandwich w/ Side Salad, Soup or Coleslaw – $10.25",
+        "evidence": "Crispy Chipotle Chicken Sandwich w/ Side Salad, Soup or Coleslaw – $10.25",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Chicken Salad Sandwich with Cup of Soup or Coleslaw – $7.25",
+        "evidence": "Chicken Salad Sandwich with Cup of Soup or Coleslaw – $7.25",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Soup: French Onion or Chili",
+        "evidence": "Soup: French Onion or Chili",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      }
+    ]
+  }
+}

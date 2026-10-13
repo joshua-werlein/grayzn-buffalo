@@ -4,8 +4,9 @@ import {composeMexicanItem,normalizeMexicanPrices} from '../../src/lib/mexican-i
 // The Worker owns only automatic writes. Manual saves remain in specials-store.ts.
 // Every write, revision bump and acceptance audit commits in one D1 batch.
 import {reconcilePosterEvidence,validateWeeklyLunch,validateMexicanNight,canonicalizeSlotContent,singleDayLunchEvidence} from './reconcile.js';
-import {PARSER_VERSION} from './classify.js';
+import {parserVersionFor} from './classify.js';
 import {soupGroupId,blankSoupGroup} from '../../src/lib/daily-soup.js';
+import {normalizeWeeklyRange,factKey} from './evidence.js';
 
 export async function reconcileToday(env,{sourceIds,today,weekday}) {
   const stage=reason=>({written:false,reason});
@@ -18,7 +19,7 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
   const {results:storedSources}=await env.DB.prepare(`SELECT * FROM special_imports WHERE id IN (SELECT value FROM json_each(?1))
     AND parser_version=?2 AND ((processing_status='staged' AND validation_result='ok')
       OR (processing_status='failed' AND validation_result='rejected' AND extracted_json IS NOT NULL))
-    AND image_r2_key IS NOT NULL AND review_status IN ('pending','accepted')`).bind(JSON.stringify(sourceIds),PARSER_VERSION).all();
+    AND image_r2_key IS NOT NULL AND review_status IN ('pending','accepted')`).bind(JSON.stringify(sourceIds),parserVersionFor(env)).all();
   const dateOf = value => new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
   // Keep excluded sources in the guarded audit instead of silently dropping them.
   // Publication below fails closed if any source timestamp is ineligible.
@@ -48,8 +49,12 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
     try { return JSON.parse(json.replace(/^```(?:json)?\n?|\n?```$/gm,'').trim()); }
     catch { return null; }
   });
-  const {targets:proposedTargets,rejectedSources:rejected,unresolvedTargets=[]}=reconcilePosterEvidence(candidates,weekday,existing,{today});
+  const slotLayout=slots.map(s=>({...s,service:groups.find(g=>g.id===s.group_id)?.service}));
+  const {targets:proposedTargets,rejectedSources:rejected,unresolvedTargets=[],excludedSources=[]}=reconcilePosterEvidence(candidates,weekday,existing,{today,slotLayout});
   sources.forEach((s,index)=>{
+    // Contract 2 only: printed evidence placed this whole poster on another day.
+    // Its stored import failure remains the audit record; it cannot block today.
+    if (excludedSources.some(e=>e.index===index) && !rejected.some(r=>r.index===index)) return;
     const created=Date.parse(s.fb_created_time);
     if (!Number.isFinite(created) || created>Date.now() || dateOf(s.fb_created_time)!==today) {
       const reason='Facebook creation timestamp is invalid, future, or outside the current Chicago date';
@@ -88,9 +93,10 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
       block(target.items[0],1,'Invalid reserved Soup destination',dest.id);
       continue;
     }
-    const proposed=target.items.map((item,i)=>({group_id:dest.id,position:i+1,content:item.content,old:slots.find(s=>s.group_id===dest.id && s.position===i+1)}));
+    const proposed=target.items.map((item,i)=>({group_id:dest.id,position:item.position??i+1,content:item.content,old:slots.find(s=>s.group_id===dest.id && s.position===(item.position??i+1))}));
     // Never leave a third/fourth existing value alongside a complete new group.
-    if (slots.some(s=>s.group_id===dest.id && s.position>proposed.length && s.content)) {
+    const capacity=target.service==='lunch'?1:target.service==='all-day'?2:target.service==='nightly'?([1,5].includes(weekday)?2:1):1;
+    if (slots.some(s=>s.group_id===dest.id && s.position>(target.partial?capacity:proposed.length) && s.content)) {
       proposed.forEach(r=>block(r,r.position,'Additional existing slots prevent replacement',dest.id));
       continue;
     }
@@ -190,19 +196,29 @@ async function resolveWeeklyLunchTargetWeek(env, evidence, fbCreatedTime, today)
       const {results} = await env.DB.prepare(`SELECT w.id,w.week_start_date,c.id collection_id,c.revision FROM weekly_specials w
         LEFT JOIN special_collections c ON c.weekly_special_id=w.id AND c.kind='week'
         WHERE w.week_start_date=?1`).bind(weekStart).all();
-      if (results.length === 1 && results[0].collection_id != null) return results[0];
+      if (results.length === 1 && results[0].collection_id != null) {
+        if(env.SPECIALS_EVIDENCE_VERSION==='2') {
+          const start=new Date(`${weekStart}T12:00:00Z`);
+          const end=new Date(start);end.setUTCDate(end.getUTCDate()+4);
+          if(start.getUTCDay()!==1 || end.getUTCMonth()+1!==+m[3] || end.getUTCDate()!==+m[4]) return null;
+        }
+        return results[0];
+      }
     }
     return null;
   }
-  // Fall back to current week
+  // In contract 2 an undated source belongs to its creation week, not to a
+  // future week that a later reconciliation happens to be visiting.
+  const sourceDay=env.SPECIALS_EVIDENCE_VERSION==='2'
+    ? new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(fbCreatedTime)) : today;
   const {results} = await env.DB.prepare(`SELECT w.id,w.week_start_date,c.id collection_id,c.revision FROM weekly_specials w
     LEFT JOIN special_collections c ON c.weekly_special_id=w.id AND c.kind='week'
-    WHERE w.week_start_date<=?1 AND w.week_end_date>=?1`).bind(today).all();
+    WHERE w.week_start_date<=?1 AND w.week_end_date>=?1`).bind(sourceDay).all();
   if (results.length !== 1 || !results[0].collection_id) return null;
   return results[0];
 }
 
-async function applyWeeklyLunch(env, source, evidence, week, today) {
+async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=[source]) {
   const stage = reason => ({written: false, reason});
   const {results: groups} = await env.DB.prepare(
     'SELECT * FROM special_groups WHERE collection_id=?1 AND day_of_week IN (1,2,3,4,5)'
@@ -250,6 +266,7 @@ async function applyWeeklyLunch(env, source, evidence, week, today) {
     WHERE id=?2 AND revision=?3 AND kind='week' AND weekly_special_id=?4
     AND EXISTS(SELECT 1 FROM special_migration_checks WHERE version=15 AND mismatches=0)
     AND (SELECT count(*) FROM weekly_specials WHERE id=?4)=1
+    AND EXISTS(SELECT 1 FROM weekly_specials WHERE id=?4 AND week_start_date=?8)
     AND (SELECT count(*) FROM special_groups WHERE collection_id=?2 AND day_of_week IN (1,2,3,4,5))=json_array_length(?5)
     AND NOT EXISTS(SELECT 1 FROM json_each(?5) j WHERE NOT EXISTS(SELECT 1 FROM special_groups g
       WHERE g.id=json_extract(j.value,'$.id') AND g.collection_id=?2 AND g.day_of_week=json_extract(j.value,'$.day_of_week')
@@ -262,11 +279,12 @@ async function applyWeeklyLunch(env, source, evidence, week, today) {
       AND s.manual_locked=json_extract(j.value,'$.manual_locked') AND s.last_auto_value IS json_extract(j.value,'$.last_auto_value')))
     AND NOT EXISTS(SELECT 1 FROM json_each(?7) j WHERE NOT EXISTS(SELECT 1 FROM special_imports i
       WHERE i.id=json_extract(j.value,'$.id') AND i.candidate_json=json_extract(j.value,'$.candidate_json')
+      AND i.fb_created_time IS json_extract(j.value,'$.fb_created_time')
       AND i.processing_status='staged' AND i.validation_result='ok' AND i.review_status=json_extract(j.value,'$.review_status')
       AND i.image_r2_key IS NOT NULL AND NOT EXISTS(SELECT 1 FROM special_imports newer
         WHERE newer.fb_post_id=i.fb_post_id AND newer.parser_version=i.parser_version AND newer.rowid>i.rowid)))`,
     token, week.collection_id, week.revision, week.id,
-    JSON.stringify(groups), JSON.stringify(slots), JSON.stringify([source]));
+    JSON.stringify(groups), JSON.stringify(slots), JSON.stringify(dependencies),week.week_start_date);
 
   const gate = 'EXISTS(SELECT 1 FROM special_collections WHERE id=?1 AND mutation_token=?2)';
   const detail = `GUARDED_WEEKLY_LUNCH: ${dateRangeLabel}; ${rows.length} slot(s)`;
@@ -288,8 +306,35 @@ export async function reconcileWeeklyLunch(env, today) {
      AND candidate_json LIKE ?2
      AND NOT EXISTS(SELECT 1 FROM special_imports newer WHERE newer.fb_post_id=special_imports.fb_post_id
        AND newer.parser_version=?1 AND newer.rowid>special_imports.rowid)`
-  ).bind(PARSER_VERSION, '{"type":"weekly-lunch"%').all();
+  ).bind(parserVersionFor(env), '{"type":"weekly-lunch"%').all();
   if (!sources.length) return {written: false, reason: 'No weekly lunch sources'};
+  if(env.SPECIALS_EVIDENCE_VERSION==='2') {
+    const plans=[];
+    for(const source of sources) {
+      try {
+        if(!Number.isFinite(Date.parse(source.fb_created_time)) || Date.parse(source.fb_created_time)>Date.now()) continue;
+        const raw=JSON.parse(source.candidate_json);
+        const evidence=validateWeeklyLunch(normalizeWeeklyRange(raw));
+        evidence.unresolved_days=raw.unresolved_days??[];
+        const week=await resolveWeeklyLunchTargetWeek(env,evidence,source.fb_created_time,today);
+        if(week) plans.push({source,evidence,week});
+      } catch { /* Unusable weekly scope cannot be rebound to an unrelated week. */ }
+    }
+    const results=[];
+    for(const plan of plans) {
+      const peers=plans.filter(p=>p.week.id===plan.week.id);
+      const entries=plan.evidence.entries.filter(entry=>!peers.some(p=>p.evidence.unresolved_days.some(d=>d.day===entry.day_of_week))
+        && new Set(peers.flatMap(p=>p.evidence.entries.filter(e=>e.day_of_week===entry.day_of_week).map(e=>factKey(e.content)))).size===1);
+      results.push(await applyWeeklyLunch(env,plan.source,{...plan.evidence,entries},plan.week,today,peers.map(p=>p.source)));
+      // Each apply snapshots the current collection revision; reread before a
+      // subsequent independent source to avoid using a stale plan revision.
+      for(const next of plans) if(next.week.id===plan.week.id) {
+        const row=await env.DB.prepare('SELECT revision FROM special_collections WHERE id=?1').bind(next.week.collection_id).first();
+        if(row) next.week.revision=row.revision;
+      }
+    }
+    return results;
+  }
   const perSource = [];
   for (const source of sources) {
     let evidence;
@@ -360,7 +405,7 @@ async function applyMexicanNight(env, source, evidence, weekStart) {
       token, evidence.poster_evidence, evidence.schedule, collection.revision,
       currentGroups.length, JSON.stringify(currentGroups),
       currentSlots.length, JSON.stringify(currentSlots),
-      source.id, source.candidate_json, PARSER_VERSION, weekStart, new Date(Date.now()).toISOString()),
+      source.id, source.candidate_json, parserVersionFor(env), weekStart, new Date(Date.now()).toISOString()),
     prepare(`DELETE FROM special_groups WHERE collection_id='mexican-night' AND id NOT IN (SELECT value FROM json_each(?2)) AND ${gate}`, token, JSON.stringify(accessoryGroupIds)),
     prepare(`INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled)
       SELECT json_extract(value,'$[0]'),'mexican-night',-1,'custom',json_extract(value,'$[1]'),'',json_extract(value,'$[2]'),1
@@ -385,7 +430,7 @@ export async function reconcileMexicanNight(env) {
        AND newer.parser_version=?1 AND newer.rowid>special_imports.rowid)
      AND NOT EXISTS(SELECT 1 FROM special_import_events WHERE import_id=special_imports.id AND event_type='review')
      ORDER BY fb_created_time DESC`
-  ).bind(PARSER_VERSION, '{"type":"mexican-night"%').all();
+  ).bind(parserVersionFor(env), '{"type":"mexican-night"%').all();
   if (!sources.length) return {written: false, reason: 'No new Mexican Night source'};
   const dateOf=value=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
   const today=dateOf(Date.now());

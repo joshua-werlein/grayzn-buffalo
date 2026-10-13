@@ -1,0 +1,22 @@
+{
+  "day_evidence": "Monday",
+  "day_of_week": 1,
+  "offers": [
+    {
+      "content": "Grilled Chicken Caesar Salad and a Drink",
+      "evidence": "Grilled Chicken Caesar Salad and a Drink (11-1:30) – $9.75",
+      "service_time": "11-1:30 (11-1:30) – $9.75"
+    },
+    {
+      "content": "Cheddar BLT w/ Side Salad, Soup or Coleslaw",
+      "evidence": "Cheddar BLT w/ Side Salad, Soup or Coleslaw – $10.25",
+      "service_time": ""
+    },
+    {
+      "content": "Chicken Salad Sandwich w/ Cup of Soup Coleslaw",
+      "evidence": "Chicken Salad Sandwich w/ Cup of Soup Coleslaw – $7.25",
+      "service_time": ""
+    }
+  ],
+  "poster_evidence": "MONDAY SPECIALS 10/12"
+}

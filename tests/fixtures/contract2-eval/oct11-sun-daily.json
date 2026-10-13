@@ -1,0 +1,86 @@
+{
+  "poster": "oct11-sun-daily",
+  "source": "Workers AI @cf/google/gemma-4-26b-a4b-it, contract-2 request, original R2 image, 2026-10-12 evaluation",
+  "window": {
+    "today": "2026-10-11",
+    "weekday": 0
+  },
+  "first_reading": {
+    "day_evidence": "SUNDAY",
+    "day_of_week": 0,
+    "offers": [
+      {
+        "content": "16” 3-TOPPING PIZZA & 12 WINGS $30",
+        "date_evidence": "",
+        "evidence": "16” 3-TOPPING PIZZA  12 WINGS $30",
+        "service_evidence": "",
+        "service_time": "",
+        "uncertainties": []
+      },
+      {
+        "content": "OLIVE BURGER W/ SIDE SALAD, SOUP OR COLESLAW $10.25",
+        "date_evidence": "",
+        "evidence": "OLIVE BURGER  W/ SIDE SALAD,  SOUP OR COLESLAW $10.25",
+        "service_evidence": "",
+        "service_time": "",
+        "uncertainties": []
+      },
+      {
+        "content": "CHICKEN SALAD SANDWICH W/ CUP OF SOUP OR COLESLAW $7.25",
+        "date_evidence": "",
+        "evidence": "CHICKEN SALAD SANDWICH  W/ CUP OF SOUP OR  COLESLAW $7.25",
+        "service_evidence": "",
+        "service_time": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Soups: Beer Cheese, French Onion or Chili",
+        "date_evidence": "",
+        "evidence": "Soups: Beer Cheese, French Onion or Chili",
+        "service_evidence": "",
+        "service_time": "",
+        "uncertainties": []
+      }
+    ],
+    "poster_evidence": "SUNDAY SPECIALS"
+  },
+  "repair_reading": {
+    "day_of_week": 0,
+    "day_evidence": "SUNDAY",
+    "poster_evidence": "SUNDAY SPECIALS",
+    "offers": [
+      {
+        "content": "16” 3-TOPPING PIZZA & 12 WINGS $30",
+        "evidence": "16” 3-TOPPING PIZZA  12 WINGS $30",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "OLIVE BURGER W/ SIDE SALAD, SOUP OR COLESLAW $10.25",
+        "evidence": "OLIVE BURGER  W/ SIDE SALAD,  SOUP OR COLESLAW $10.25",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "CHICKEN SALAD SANDWICH W/ CUP OF SOUP OR COLESLAW $7.25",
+        "evidence": "CHICKEN SALAD SANDWICH  W/ CUP OF SOUP OR  COLESLAW $7.25",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Soups: Beer Cheese, French Onion or Chili",
+        "evidence": "Soups: Beer Cheese, French Onion or Chili",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      }
+    ]
+  }
+}

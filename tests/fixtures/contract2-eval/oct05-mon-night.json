@@ -1,0 +1,86 @@
+{
+  "poster": "oct05-mon-night",
+  "source": "Workers AI @cf/google/gemma-4-26b-a4b-it, contract-2 request, original R2 image, 2026-10-12 evaluation",
+  "window": {
+    "today": "2026-10-05",
+    "weekday": 1
+  },
+  "first_reading": {
+    "day_of_week": 1,
+    "day_evidence": "MONDAY",
+    "poster_evidence": "MONDAY NIGHT SPECIALS",
+    "offers": [
+      {
+        "content": "2 Burgers and 1 Order of Fries - $14",
+        "evidence": "2 Burgers and 1 Order of Fries - $14",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Half Rack Ribs with Mac n Cheese & Coleslaw - $18.75",
+        "evidence": "Half Rack Ribs with Mac n Cheese & Coleslaw - $18.75",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "BLT on Texas Toast w/ Side Salad or Coleslaw - $10.25",
+        "evidence": "BLT on Texas Toast w/ Side Salad or Coleslaw - $10.25",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Chicken Salad Sandwich w/ Cup of Coleslaw - $7.25",
+        "evidence": "Chicken Salad Sandwich w/ Cup of Coleslaw - $7.25",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      }
+    ]
+  },
+  "repair_reading": {
+    "day_evidence": "MONDAY",
+    "day_of_week": 1,
+    "offers": [
+      {
+        "content": "2 Burgers and 1 Order of Fries - $14",
+        "date_evidence": "",
+        "evidence": "2 Burgers and 1 Order of Fries – $14",
+        "service_evidence": "MONDAY NIGHT SPECIALS",
+        "service_time": "NIGHT",
+        "uncertainties": []
+      },
+      {
+        "content": "Half Rack Ribs with Mac n Cheese & Coleslaw - $18.75",
+        "date_evidence": "",
+        "evidence": "Half Rack Ribs with Mac n Cheese & Coleslaw – $18.75",
+        "service_evidence": "MONDAY NIGHT SPECIALS",
+        "service_time": "NIGHT",
+        "uncertainties": []
+      },
+      {
+        "content": "BLT on Texas Toast w/ Side Salad or Coleslaw - $10.25",
+        "date_evidence": "",
+        "evidence": "BLT on Texas Toast w/ Side Salad or Coleslaw – $10.25",
+        "service_evidence": "MONDAY NIGHT SPECIALS",
+        "service_time": "NIGHT",
+        "uncertainties": []
+      },
+      {
+        "content": "Chicken Salad Sandwich w/ Cup of Coleslaw - $7.25",
+        "date_evidence": "",
+        "evidence": "Chicken Salad Sandwich w/ Cup of Coleslaw – $7.25",
+        "service_evidence": "MONDAY NIGHT SPECIALS",
+        "service_time": "NIGHT",
+        "uncertainties": []
+      }
+    ],
+    "poster_evidence": "MONDAY NIGHT SPECIALS"
+  }
+}

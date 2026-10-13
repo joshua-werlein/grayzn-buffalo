@@ -18,6 +18,10 @@ SPECIALS_IMPORT_MODE = "GUARDED_AUTO"
 SPECIALS_AI_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 # Maximum Workers AI vision calls per Chicago calendar day.
 SPECIALS_AI_DAILY_LIMIT = "50"
+# Local proposal only; deployment requires separate approval. Existing D1 JSON
+# storage supports this evidence contract without a migration.
+SPECIALS_EVIDENCE_VERSION = "2"
+SPECIALS_VERIFICATION_STRATEGY = "conditional"
 # Meta Page feed webhook: OFF = verify only; LOG = authenticate and log, no queue;
 # RUN = enqueue a complete current-day refresh/import. The cron stays the fallback.
 # FB_APP_SECRET and FB_WEBHOOK_VERIFY_TOKEN are Worker secrets, never set here.

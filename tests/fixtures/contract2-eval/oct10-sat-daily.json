@@ -1,0 +1,47 @@
+{
+  "poster": "oct10-sat-daily",
+  "source": "Workers AI @cf/google/gemma-4-26b-a4b-it, contract-2 request, original R2 image, 2026-10-12 evaluation",
+  "window": {
+    "today": "2026-10-10",
+    "weekday": 6
+  },
+  "first_reading": {
+    "day_evidence": "Saturday",
+    "day_of_week": 6,
+    "offers": [
+      {
+        "content": "Philly & Fries $11",
+        "date_evidence": "",
+        "evidence": "Philly & Fries – $11",
+        "service_evidence": "Saturday Oktoberfest Specials",
+        "service_time": "",
+        "uncertainties": []
+      },
+      {
+        "content": "German Burger w/ Side Salad, Soup or Coleslaw $10.25",
+        "date_evidence": "",
+        "evidence": "German Burger w/ Side Salad, Soup or Coleslaw – $10.25",
+        "service_evidence": "Saturday Oktoberfest Specials",
+        "service_time": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Chicken Salad Sandwich w/ cup of Soup or Coleslaw $7.25",
+        "date_evidence": "",
+        "evidence": "Chicken Salad Sandwich w/ cup of Soup or Coleslaw – $7.25",
+        "service_evidence": "Saturday Oktoberfest Specials",
+        "service_time": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Soups: French Onion, Chili or Beer Cheese Soup",
+        "date_evidence": "",
+        "evidence": "Soups: French Onion, Chili or Beer Cheese Soup",
+        "service_evidence": "",
+        "service_time": "",
+        "uncertainties": []
+      }
+    ],
+    "poster_evidence": "Saturday Oktoberfest Specials"
+  }
+}

@@ -1,0 +1,158 @@
+{
+  "poster": "oct06-mexican-night",
+  "source": "ACTUAL Workers AI output (@cf/google/gemma-4-26b-a4b-it), contract-2 single-shape reread of the original R2 image, final authorized validation 2026-10-12",
+  "request": {
+    "shape": "mexican-night",
+    "schema": "specials_evidence_v2_mexican",
+    "reason": "Tuesday night offers: reread for an explicit Mexican Night menu"
+  },
+  "usage": {
+    "prompt_tokens": 1309,
+    "completion_tokens": 920,
+    "total_tokens": 2229,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "neurons": 36.990909576416016
+  },
+  "model_latency_ms": 16819,
+  "reading": {
+    "groups": [
+      {
+        "items": [
+          {
+            "description": "Meat, shredded cheese, lettuce, onion, tomato, and black olives",
+            "evidence": "2 Soft Shell ... $7.75 Meat, shredded cheese, lettuce, onion, tomato, and black olives",
+            "title": "2 Soft Shell ... $7.75",
+            "uncertainties": []
+          }
+        ],
+        "label": "Entrees"
+      },
+      {
+        "items": [
+          {
+            "description": "Meat, refried beans, shredded cheese, and onion rolled up in a tortilla. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side",
+            "evidence": "Enchilada ... $9.25 Meat, refried beans, shredded cheese, and onion rolled up in a tortilla. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side",
+            "title": "Enchilada ... $9.25",
+            "uncertainties": []
+          }
+        ],
+        "label": "Entrees"
+      },
+      {
+        "items": [
+          {
+            "description": "Meat, refried beans, shredded cheese, lettuce, onion, and tomato rolled up in a tortilla. Topped with shredded cheese, black olives, and enchilada sauce",
+            "evidence": "Burrito ... $10.25 Meat, refried beans, shredded cheese, lettuce, onion, and tomato rolled up in a tortilla. Topped with shredded cheese, black olives, and enchilada sauce",
+            "title": "Burrito ... $10.25",
+            "uncertainties": []
+          }
+        ],
+        "label": "Entrees"
+      },
+      {
+        "items": [
+          {
+            "description": "Meat, lettuce, onion, tomato, black olives, and nacho cheese served on top of chips",
+            "evidence": "Nacho Deluxe ... $9.75 Meat, lettuce, onion, tomato, black olives, and nacho cheese served on top of chips",
+            "title": "Nacho Deluxe ... $9.75",
+            "uncertainties": []
+          }
+        ],
+        "label": "Entrees"
+      },
+      {
+        "items": [
+          {
+            "description": "Meat, refried beans, shredded cheese, and onion rolled up in a tortilla and fried. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side",
+            "evidence": "Chimichanga ... $12.25 Meat, refried beans, shredded cheese, and onion rolled up in a tortilla and fried. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side",
+            "title": "Chimichanga ... $12.25",
+            "uncertainties": []
+          }
+        ],
+        "label": "Entrees"
+      },
+      {
+        "items": [
+          {
+            "description": "Meat, shredded cheese, lettuce, onion, tomato, and black olives served in a shell bowl",
+            "evidence": "Taco Salad ... $9.00 | $8.50 | $6.00 Meat, shredded cheese, lettuce, onion, tomato, and black olives served in a shell bowl Large $9.00 • Small $8.50 • Mini $6.00",
+            "title": "Taco Salad ... $9.00 | $8.50 | $6.00",
+            "uncertainties": []
+          }
+        ],
+        "label": "Entrees"
+      },
+      {
+        "items": [
+          {
+            "description": "",
+            "evidence": "Chips & Salsa or Chips & Cheese ... $4.00",
+            "title": "Chips & Salsa or Chips & Cheese ... $4.00",
+            "uncertainties": []
+          }
+        ],
+        "label": "Entrees"
+      },
+      {
+        "items": [
+          {
+            "description": "",
+            "evidence": "Substitute chicken $1.50",
+            "title": "Substitute chicken $1.50",
+            "uncertainties": []
+          }
+        ],
+        "label": "Substitutions & Add-ons"
+      },
+      {
+        "items": [
+          {
+            "description": "",
+            "evidence": "Add Nacho Cheese $1.50",
+            "title": "Add Nacho Cheese $1.50",
+            "uncertainties": []
+          }
+        ],
+        "label": "Substitutions & Add-ons"
+      },
+      {
+        "items": [
+          {
+            "description": "",
+            "evidence": "Substitute Queso 50c",
+            "title": "Substitute Queso 50c",
+            "uncertainties": []
+          }
+        ],
+        "label": "Substitutions & Add-ons"
+      },
+      {
+        "items": [
+          {
+            "description": "",
+            "evidence": "Substitute Shredded Cheese for Nacho Cheese 50c",
+            "title": "Substitute Shredded Cheese for Nacho Cheese 50c",
+            "uncertainties": []
+          }
+        ],
+        "label": "Substitutions & Add-ons"
+      },
+      {
+        "items": [
+          {
+            "description": "",
+            "evidence": "Add nacho cheese or salsa +$1.50",
+            "title": "Add nacho cheese or salsa +$1.50",
+            "uncertainties": []
+          }
+        ],
+        "label": "Substitutions & Add-ons"
+      }
+    ],
+    "poster_evidence": "Mexican Night",
+    "schedule": "Every Tuesday Night 5-10pm",
+    "type": "mexican-night"
+  }
+}

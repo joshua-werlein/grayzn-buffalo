@@ -1,0 +1,57 @@
+{
+  "poster": "oct12-weekly",
+  "source": "ACTUAL Workers AI output (@cf/google/gemma-4-26b-a4b-it), contract-2 single-shape reread of the original R2 image, final authorized validation 2026-10-12",
+  "request": {
+    "shape": "weekly-lunch",
+    "schema": "specials_evidence_v2_weekly",
+    "reason": "Weekly lunch evidence requires weekday entries, not daily offers"
+  },
+  "usage": {
+    "prompt_tokens": 1120,
+    "completion_tokens": 240,
+    "total_tokens": 1360,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "neurons": 16.727272033691406
+  },
+  "model_latency_ms": 5162,
+  "reading": {
+    "date_range": "OCT 12-16",
+    "entries": [
+      {
+        "content": "Grilled Chicken Caesar Salad & a Drink",
+        "day_of_week": 1,
+        "evidence": "Monday Grilled Chicken Caesar Salad & a Drink",
+        "uncertainties": []
+      },
+      {
+        "content": "Enchilada & a Drink",
+        "day_of_week": 2,
+        "evidence": "Tuesday Enchilada & a Drink",
+        "uncertainties": []
+      },
+      {
+        "content": "Chicken Philly Tots & a Drink",
+        "day_of_week": 3,
+        "evidence": "Wednesday Chicken Philly Tots & a Drink",
+        "uncertainties": []
+      },
+      {
+        "content": "Spaghetti and Meatballs and Breadsticks & a Drink",
+        "day_of_week": 4,
+        "evidence": "Thursday Spaghetti and Meatballs and Breadsticks & a Drink",
+        "uncertainties": []
+      },
+      {
+        "content": "Fish Sandwich and French Fries & a Drink",
+        "day_of_week": 5,
+        "evidence": "Friday Fish Sandwich and French Fries & a Drink",
+        "uncertainties": []
+      }
+    ],
+    "poster_evidence": "WEEKLY LUNCH SPECIALS OCT 12-16 • 11AM-1:30PM",
+    "service_time": "11AM-1:30PM",
+    "type": "weekly-lunch"
+  }
+}

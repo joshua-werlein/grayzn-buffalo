@@ -1,6 +1,7 @@
 import {composeMexicanItem} from '../../src/lib/mexican-item.js';
 import {standaloneSoup,hasStandaloneSoupLabel} from '../../src/lib/daily-soup.js';
 import {formatWingNight,validateWingNight} from './wing-night.js';
+import {planDailyEvidence} from './evidence.js';
 // Evidence is persisted separately from the website's final group structure.
 // A poster-level night heading does NOT make every offer a night-only offer.
 const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
@@ -131,7 +132,7 @@ function evidenceWeekday(value) {
   if (days.length===1 && value.day_of_week!==days[0]) throw Error(WEEKDAY_ENCODING_MISMATCH);
   return days[0] ?? null;
 }
-function validateCurrentDay(value,weekday,today) {
+export function validateCurrentDay(value,weekday,today) {
   const printed=evidenceWeekday(value);
   const text=`${value.day_evidence} ${value.poster_evidence}`.toLowerCase().replace(/[–—]/g,'-');
   if (/\btomorrow\b|\byesterday\b|\bthis\s+weekend\b|\blater\s+this\s+week\b|\bupcoming\b/.test(text)
@@ -177,7 +178,7 @@ export function singleDayLunchEvidence(value) {
     poster_evidence:value.poster_evidence,
     offers:value.entries.map((e,i)=>({content:e.content,evidence:e.content,service_time:i===0 ? (value.service_time ?? '') : ''}))});
 }
-function hasWeeklyLunchEvidence(text) {
+export function hasWeeklyLunchEvidence(text) {
   const normalized = text.toLowerCase().replace(/[–—]/g, '-');
   const schedule = /\bweekly\b/.test(normalized)
     || /\b\d{1,2}\/\d{1,2}\s*-\s*\d{1,2}\/\d{1,2}\b/.test(normalized)
@@ -323,7 +324,9 @@ function hasCompletePrintedPrices(content) {
 export function reconcilePosters(candidates,weekday,existingAllDay=[]) {
   return reconcilePosterEvidence(candidates,weekday,existingAllDay).targets;
 }
-export function reconcilePosterEvidence(candidates,weekday,existingAllDay=[],{today}={}) {
+export function reconcilePosterEvidence(candidates,weekday,existingAllDay=[],{today,slotLayout=[]}={}) {
+  if(candidates.some(c=>c?.evidence_version===2)) return planDailyEvidence(candidates,weekday,{
+    today,existingAllDay,slotLayout,validateDay:validateCurrentDay,canonicalize:canonicalizeSlotContent});
   const rejectedSources=[],validIndices=[];
   const posters=candidates.map((c,index)=>{
     try { const p=forToday(c,weekday,today); if (p) validIndices.push(index); return p; }

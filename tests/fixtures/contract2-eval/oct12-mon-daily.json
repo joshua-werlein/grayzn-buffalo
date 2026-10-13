@@ -1,0 +1,74 @@
+{
+  "poster": "oct12-mon-daily",
+  "source": "Workers AI @cf/google/gemma-4-26b-a4b-it, contract-2 request, original R2 image, 2026-10-12 evaluation",
+  "window": {
+    "today": "2026-10-12",
+    "weekday": 1
+  },
+  "first_reading": {
+    "day_evidence": "MONDAY",
+    "day_of_week": 1,
+    "offers": [
+      {
+        "content": "Grilled Chicken Caesar Salad and a Drink - $9.75",
+        "date_evidence": "10/12",
+        "evidence": "Grilled Chicken Caesar Salad and a Drink - $9.75 (11-1:30)",
+        "service_evidence": "(11-1:30)",
+        "service_time": "(11-1:30)",
+        "uncertainties": []
+      },
+      {
+        "content": "Cheddar BLT w/ Side Salad, Soup or Coleslaw - $10.25",
+        "date_evidence": "10/12",
+        "evidence": "Cheddar BLT w/ Side Salad, Soup or Coleslaw - $10.25",
+        "service_evidence": "",
+        "service_time": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Chicken Salad Sandwich w/ Cup of Soup Coleslaw - $7.25",
+        "date_evidence": "10/12",
+        "evidence": "Chicken Salad Sandwich w/ Cup of Soup Coleslaw - $7.25",
+        "service_evidence": "",
+        "service_time": "",
+        "uncertainties": [
+          "Missing connector between Cup of Soup and Coleslaw"
+        ]
+      }
+    ],
+    "poster_evidence": "MONDAY SPECIALS 10/12"
+  },
+  "repair_reading": {
+    "day_evidence": "MONDAY",
+    "day_of_week": 1,
+    "offers": [
+      {
+        "content": "Grilled Chicken Caesar Salad and a Drink - $9.75",
+        "date_evidence": "10/12",
+        "evidence": "Grilled Chicken Caesar Salad and a Drink (11-1:30) - $9.75",
+        "service_evidence": "(11-1:30)",
+        "service_time": "(11-1:30)",
+        "uncertainties": []
+      },
+      {
+        "content": "Cheddar BLT w/ Side Salad, Soup or Coleslaw - $10.25",
+        "date_evidence": "10/12",
+        "evidence": "Cheddar BLT w/ Side Salad, Soup or Coleslaw - $10.25",
+        "service_evidence": "",
+        "service_time": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Chicken Salad Sandwich w/ Cup of Soup Coleslaw - $7.25",
+        "date_evidence": "10/12",
+        "evidence": "Chicken Salad Sandwich w/ Cup of Soup Coleslaw - $7.25",
+        "service_evidence": "",
+        "service_time": "",
+        "uncertainties": [
+          "Missing connector between Cup of Soup and Coleslaw"
+        ]
+      }
+    ],
+    "poster_evidence": "MONDAY SPECIALS 10/12"
+  }
+}

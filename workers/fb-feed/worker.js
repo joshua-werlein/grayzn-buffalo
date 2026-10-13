@@ -1,9 +1,10 @@
-import {buildExtractionRequest, buildWeeklyLunchExtractionRequest, buildMexicanNightExtractionRequest} from './extraction.js';
-import { classifyCaption, PARSER_VERSION } from './classify.js';
+import {buildExtractionRequest, buildWeeklyLunchExtractionRequest, buildMexicanNightExtractionRequest,buildReliableExtractionRequest} from './extraction.js';
+import {analyzeDailyEvidence,normalizeEvidenceOffer,factKey,serviceFromEvidence,normalizeWeeklyRange,weeklyEntryEvidence,sameMealFacts,sameMenuItemFacts,labelBareSizePrices} from './evidence.js';
+import { classifyCaption, parserVersionFor } from './classify.js';
 import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexicanNight } from './guarded-auto.js';
 import {ensureAutomaticWeek} from './auto-week.js';
 import {MAX_IMPORT_ATTEMPTS,OWNS_ATTEMPT_SQL,isTransientFailure,claimImportAttempt,attemptEvent,saveAttemptImage,finishImportAttempt,retireImportAttempts} from './recovery.js';
-import {validateEvidence, validateWeeklyLunch, validateMexicanNight, singleDayLunchEvidence, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR, WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
+import {validateEvidence, validateWeeklyLunch, validateMexicanNight, singleDayLunchEvidence, validateCurrentDay, hasWeeklyLunchEvidence, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR, WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
 import {WEBHOOK_PATH, handleFacebookWebhook} from './webhook.js';
 
 const TIME_ZONE = 'America/Chicago';
@@ -381,6 +382,9 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
   const image = `data:${r2Object.httpMetadata?.contentType ?? 'image/jpeg'};base64,${await arrayBufferToBase64(await r2Object.arrayBuffer())}`;
   let outcome = {extractedJson:null};
   let lastValidationReason = null;
+  const reliable=env.SPECIALS_EVIDENCE_VERSION==='2';
+  const strategy=['single','always'].includes(env.SPECIALS_VERIFICATION_STRATEGY)?env.SPECIALS_VERIFICATION_STRATEGY:'conditional';
+  let priorValidation=null,priorRaw='',priorOutcome=null;
   // Tracks whether a Tuesday empty-offers result has armed the Mexican Night targeted retry.
   let needsMexicanNightRetry = false;
   for (let attempt=0;attempt<2;attempt++) {
@@ -391,10 +395,11 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
       AND EXISTS(SELECT 1 FROM special_imports i WHERE i.id=?3 AND i.attempt_token=?7
         AND i.processing_status='processing' AND i.review_status='pending' AND julianday(i.lease_expires_at)>julianday(?5)
         AND NOT EXISTS(SELECT 1 FROM special_imports newer WHERE newer.fb_post_id=i.fb_post_id
-          AND newer.parser_version=i.parser_version AND newer.rowid>i.rowid))`).bind(
+          AND newer.parser_version=i.parser_version AND newer.rowid>i.rowid))
+      ${reliable ? "AND (SELECT count(*) FROM special_import_events WHERE import_id=?3 AND event_type='extract')<3" : ''}`).bind(
       new Date(budget.window.since*1000).toISOString(),new Date(budget.window.until*1000).toISOString(),
       budget.importId,modelId,now.toISOString(),budget.dailyLimit,budget.record.attempt_token).run();
-    if (reservation.meta?.changes!==1) return attempt ? outcome : {extractedJson:null,budgetExceeded:true};
+    if (reservation.meta?.changes!==1) return attempt ? (reliable && strategy==='always'?{...outcome,verificationConflict:true}:outcome) : {extractedJson:null,budgetExceeded:true};
     if (attempt) {
       // Select the most informative retry description and the focused schema.
       const retryDetail = lastValidationReason === WEEKLY_LUNCH_SHAPE_ERROR
@@ -406,7 +411,8 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
             : 'One retry with identical extraction instructions and schema';
       await attemptEvent(env,budget.record,'retry',retryDetail);
     }
-    const request = lastValidationReason === WEEKLY_LUNCH_SHAPE_ERROR
+    const request = reliable ? buildReliableExtractionRequest(caption,image,{reason:attempt?lastValidationReason:'',previous:priorRaw,verify:attempt>0,shape:attempt?priorValidation?.repairShape:undefined})
+      : lastValidationReason === WEEKLY_LUNCH_SHAPE_ERROR
       ? buildWeeklyLunchExtractionRequest(caption,image)
       : (needsMexicanNightRetry || lastValidationReason === MEXICAN_NIGHT_SHAPE_ERROR)
         ? buildMexicanNightExtractionRequest(caption,image)
@@ -418,17 +424,40 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
       !await env.DB.prepare(`SELECT 1 WHERE ${OWNS_ATTEMPT_SQL}`)
         .bind(budget.importId,budget.record.attempt_token,callNow.toISOString()).first()) return {cancelled:true};
     try {
+      const started=Date.now();
       const result = await env.AI.run(modelId,request);
       const raw = result?.choices?.[0]?.message?.content ?? result?.response;
       outcome = {extractedJson:typeof raw==='string' ? raw : JSON.stringify(raw ?? null),processedAt:now.toISOString()};
+      if(reliable) await attemptEvent(env,budget.record,'validate',JSON.stringify({phase:'evidence-v2-response',
+        attempt,latency_ms:Date.now()-started,usage:result?.usage??null,raw:outcome.extractedJson.slice(0,64000)}));
     } catch(error) {
       const aiError = safeAiError(error,env);
       outcome = {extractedJson:null,aiError,transient:isTransientFailure(error),processedAt:now.toISOString()};
+      // A failed repair/verification call never discards the first reading. It
+      // keeps its own per-offer issues; "always" requires a completed second read.
+      if (reliable && attempt && priorOutcome) return strategy==='always' ? {...priorOutcome,verificationConflict:true} : priorOutcome;
       if (!/json[ _]mode|json[ _]schema/i.test(aiError)) return outcome;
       continue;
     }
-    const validation = validateExtraction(outcome.extractedJson);
+    const validation = validateExtraction(outcome.extractedJson,reliable,budget.window);
     lastValidationReason = validation.validationReason;
+    if(reliable) {
+      // Verification is not a vote. Conflicting otherwise valid readings hold
+      // publication. A repair may not silently drop offers to appear complete.
+      if(attempt && priorValidation?.candidateJson && validation.candidateJson) {
+        const before=JSON.parse(priorValidation.candidateJson),after=JSON.parse(validation.candidateJson);
+        const fingerprint=p=>p.offers ? JSON.stringify([p.day_of_week,p.offers.map(o=>[factKey(o.content??''),serviceFromEvidence(`${o.service_time??''} ${o.service_evidence??''}`)]).sort()]) : JSON.stringify(p);
+        if((before.offers && after.offers && after.offers.length<before.offers.length)
+          || (!priorValidation.needsRepair && fingerprint(before)!==fingerprint(after)))
+          return {...outcome,verificationConflict:true};
+      }
+      // A repair that reads worse never replaces a usable first reading.
+      if(attempt) return validation.validationResult!=='ok' && priorValidation?.validationResult==='ok' ? priorOutcome : outcome;
+      // Shape repairs (weekly / Mexican Night read as daily) run under every strategy.
+      if(!validation.repairShape && (strategy==='single' || (strategy!=='always' && !validation.needsRepair && validation.validationResult==='ok'))) return outcome;
+      priorValidation=validation;priorRaw=outcome.extractedJson;priorOutcome=outcome;
+      continue;
+    }
     // Tuesday empty-offers: generic validation passed but offers are empty → retry once
     // with the targeted Mexican Night extraction to check whether the image is Mexican Night.
     // Only fires on attempt 0; never infers Mexican Night from Tuesday or time alone.
@@ -468,7 +497,7 @@ function safeAiError(error, env) {
 
 const VALID_SERVICES = new Set(['lunch', 'nightly', 'all-day', 'custom']);
 
-function validateExtraction(extractedJson) {
+export function validateExtraction(extractedJson,reliable=false,window={}) {
   if (!extractedJson) {
     return { candidateJson: null, validationResult: 'rejected', validationReason: 'no AI response' };
   }
@@ -480,19 +509,75 @@ function validateExtraction(extractedJson) {
   }
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.type === 'weekly-lunch') {
     try {
+      const unresolved=[];
+      if(reliable) {
+        if(!Array.isArray(parsed.entries)) throw Error('Missing weekly evidence entries');
+        parsed=normalizeWeeklyRange(parsed);
+        const days=parsed.entries.map(e=>e.day_of_week);
+        if(days.some(d=>!Number.isInteger(d)||d<1||d>5)||new Set(days).size!==days.length) throw Error('Invalid or duplicate weekly weekday evidence');
+        parsed={...parsed,entries:parsed.entries.flatMap(e=>{
+          try {
+            if(typeof e.evidence!=='string'||!e.evidence.trim()||e.uncertainties?.length) throw Error('Missing or uncertain weekly meal evidence');
+            // The row's own weekday label is layout, not meal content.
+            const evidence=weeklyEntryEvidence(e.evidence,e.day_of_week);
+            const offer=normalizeEvidenceOffer({...e,evidence,service_time:''});
+            if(!sameMealFacts(offer.content,evidence)) throw Error('Weekly meal facts differ from original evidence');
+            return [{day_of_week:e.day_of_week,content:offer.content}];
+          } catch(error) {unresolved.push({day:e.day_of_week,reason:error.message});return [];}
+        })};
+      }
       const daily=singleDayLunchEvidence(parsed);
-      return {candidateJson:JSON.stringify(daily ?? validateWeeklyLunch(parsed)),validationResult:'ok',validationReason:daily ? 'single-day lunch evidence' : 'weekly lunch evidence'};
+      if(reliable && daily) throw Error('Single-day poster requires daily offers with individual service evidence');
+      const candidate=daily??validateWeeklyLunch(parsed);
+      if(unresolved.length) candidate.unresolved_days=unresolved;
+      return {candidateJson:JSON.stringify(candidate),validationResult:'ok',needsRepair:unresolved.length>0,
+        validationReason:unresolved.length?`Unresolved weekly meals: ${JSON.stringify(unresolved)}`:daily ? 'single-day lunch evidence' : 'weekly lunch evidence'};
     }
     catch (error) { return {candidateJson:null,validationResult:'rejected',validationReason:error.message}; }
   }
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.type === 'mexican-night') {
-    try { return {candidateJson:JSON.stringify(validateMexicanNight(parsed)),validationResult:'ok',validationReason:'mexican night evidence'}; }
+    try {
+      if(reliable) {
+        if(!Array.isArray(parsed.groups)) throw Error('Missing Mexican Night evidence groups');
+        for(const group of parsed.groups) for(const item of group.items??[]) {
+          // Restore printed size labels only when the item's own evidence pairs them.
+          if(item && typeof item.title==='string') item.title=labelBareSizePrices(item.title,item.evidence);
+          if(typeof item.evidence!=='string'||!item.evidence.trim()||item.uncertainties?.length
+            || !sameMenuItemFacts(item.title,item.description,item.evidence)) throw Error('Mexican Night item facts differ from original evidence');
+        }
+      }
+      return {candidateJson:JSON.stringify(validateMexicanNight(parsed)),validationResult:'ok',validationReason:'mexican night evidence'};
+    }
     catch (error) { return {candidateJson:null,validationResult:'rejected',validationReason:error.message}; }
   }
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'offers' in parsed) {
+    if(reliable || parsed.evidence_version===2) {
+      try {
+        const candidate=analyzeDailyEvidence(parsed);
+        // Wrong response shape: a weekly or Mexican Night poster read as daily
+        // offers gets ONE targeted single-shape reread, as the legacy contract does.
+        const heading=`${candidate.day_evidence} ${candidate.poster_evidence}`;
+        if(hasWeeklyLunchEvidence(heading)) return {candidateJson:null,validationResult:'rejected',validationReason:WEEKLY_LUNCH_SHAPE_ERROR,needsRepair:true,repairShape:'weekly-lunch'};
+        if(/mexicans+night/i.test(heading)) return {candidateJson:null,validationResult:'rejected',validationReason:MEXICAN_NIGHT_SHAPE_ERROR,needsRepair:true,repairShape:'mexican-night'};
+        validateCurrentDay(candidate,window.weekday??candidate.day_of_week,window.today);
+        // Tuesday has no daily Nightly slot; night offers or an empty reading
+        // may be a Mexican Night menu. The reread requires the printed heading.
+        const tuesdayNight=window.weekday===2 && (!candidate.offers.length || serviceFromEvidence(heading)==='nightly'
+          || candidate.offers.some(o=>serviceFromEvidence(`${o?.service_time??''} ${o?.service_evidence??''}`)==='nightly'));
+        // A missing service label is not an extraction fault: rereading cannot
+        // print a label the poster lacks (and a reread copied a heading onto
+        // unrelated offers). Only factual issues justify a repair call.
+        const actionable=candidate.issues.filter(i=>i.reason!=='Service not established by evidence');
+        return {candidateJson:JSON.stringify(candidate),validationResult:'ok',needsRepair:actionable.length>0||tuesdayNight,
+          ...(tuesdayNight?{repairShape:'mexican-night'}:{}),
+          validationReason:tuesdayNight?'Tuesday night offers: reread for an explicit Mexican Night menu'
+            :actionable.length?actionable.map(i=>`offer ${i.index+1}: ${i.reason}`).join('; '):'poster evidence v2'};
+      } catch(error) {return {candidateJson:null,validationResult:'rejected',validationReason:error.message,needsRepair:true};}
+    }
     try { return {candidateJson:JSON.stringify(validateEvidence(parsed)),validationResult:'ok',validationReason:'poster evidence'}; }
     catch (error) { return {candidateJson:null,validationResult:'rejected',validationReason:error.message}; }
   }
+  if(reliable) return {candidateJson:null,validationResult:'rejected',validationReason:'Unsupported evidence contract',needsRepair:true};
   // Historical group-shaped responses remain reviewable, never auto-published.
   if (!Array.isArray(parsed) || parsed.length > 84) {
     return { candidateJson: null, validationResult: 'rejected', validationReason: 'expected a JSON array' };
@@ -589,7 +674,9 @@ async function processImportAttempt(env, record, raw, {window,modelId,dailyLimit
         validationResult:'rejected',processedAt:result.processedAt,
       });
     }
-    const validation=validateExtraction(result.extractedJson);
+    const validation=result.verificationConflict
+      ? {candidateJson:null,validationResult:'rejected',validationReason:'Conflicting image verification; nothing published'}
+      : validateExtraction(result.extractedJson,env.SPECIALS_EVIDENCE_VERSION==='2',window);
     await finishImportAttempt(env,record,{
       status:validation.validationResult==='ok' ? 'staged' : 'failed',
       failureKind:validation.validationResult==='ok' ? null : 'permanent',
@@ -613,7 +700,8 @@ export async function runImportPipeline(env) {
   const modelId = env.SPECIALS_AI_MODEL ?? SPECIALS_AI_MODEL_DEFAULT;
   const dailyLimit = Number(env.SPECIALS_AI_DAILY_LIMIT ?? 50);
   // Retire work without inference, including after closing or on the following day.
-  await retireImportAttempts(env,{window,modelId,parserVersion:PARSER_VERSION,closed:chicagoHour(now)>=IMPORT_HOUR_END});
+  const parserVersion=parserVersionFor(env);
+  await retireImportAttempts(env,{window,modelId,parserVersion,closed:chicagoHour(now)>=IMPORT_HOUR_END});
   // Sunday provisioning retains its separate evening lifecycle.
   if (mode === 'GUARDED_AUTO' && window.weekday===0 && chicagoHour(now)>=19) {
     await ensureAutomaticWeek(env,{...window,hour:chicagoHour(now)});
@@ -630,7 +718,7 @@ export async function runImportPipeline(env) {
     if (classification.kind === 'ignored' && !raw.full_picture) continue;
     const captionDigest = await hexDigest(caption, 8);
     const imgSrcVer = imageSourceVersion(raw);
-    const importId = await importSourceId(`${env.FB_PAGE_ID}:${raw.id}`, captionDigest, imgSrcVer, PARSER_VERSION, modelId);
+    const importId = await importSourceId(`${env.FB_PAGE_ID}:${raw.id}`, captionDigest, imgSrcVer, parserVersion, modelId);
     sourceIds.push(importId);
     await env.DB.prepare(`INSERT OR IGNORE INTO special_imports(
       id,fb_post_id,fb_created_time,fb_updated_time,caption,permalink_url,
@@ -638,7 +726,7 @@ export async function runImportPipeline(env) {
       target_kind,target_day,target_service,target_collection_id,classification_reason,processing_status,fetched_at)
       VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'pending',?16)`).bind(
       importId,raw.id,raw.created_time,raw.updated_time ?? null,caption,raw.permalink_url ?? '',
-      captionDigest,imgSrcVer,PARSER_VERSION,modelId,classification.kind,classification.day,
+      captionDigest,imgSrcVer,parserVersion,modelId,classification.kind,classification.day,
       classification.service,classification.collectionId,classification.reason,new Date(Date.now()).toISOString()).run();
     work.push({importId,raw});
   }
@@ -647,7 +735,7 @@ export async function runImportPipeline(env) {
     if (!isWithinProcessingHours(processingNow) || chicagoDate(processingNow) !== window.today) break;
     // A fresh matching Graph source supplies current image URLs. No retry of a
     // removed/edited source, incomplete Graph scan, or yesterday's pending row.
-    const record=await claimImportAttempt(env,importId,{window,modelId,parserVersion:PARSER_VERSION,mode});
+    const record=await claimImportAttempt(env,importId,{window,modelId,parserVersion,mode});
     if (record) await processImportAttempt(env,record,raw,{window,modelId,dailyLimit});
   }
   // Reuse durable evidence even when every source claim was already present.

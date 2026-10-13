@@ -1,7 +1,9 @@
 // Parse complete labelled amounts; partial tokens and detached prices never qualify.
 const amount='\\$\\s*(?:\\d+(?:\\.\\d{2})?|\\.\\d{2})';
 const label='(bone[ -]in|boneless)(?:\\s+wings?)?';
-const separator='[\\s•/|,;–—-]*';
+// "&" joins the two independently labelled options exactly like "•" does; each
+// amount stays bound to its own Bone-In/Boneless label.
+const separator='[\\s•/|,;&–—-]*';
 const suffix='(\\s+each)?';
 const itemAfter=`${label}\\s*(${amount})${suffix}`;
 const itemBefore=`(${amount})\\s*${label}${suffix}`;
