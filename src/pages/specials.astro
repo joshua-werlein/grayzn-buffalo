@@ -5,12 +5,15 @@ import DailySoup from '../components/DailySoup.astro';
 import {isSoupGroup} from '../lib/daily-soup.js';
 import MexicanNightMenu from '../components/MexicanNightMenu.astro';
 import { getSetting } from '../lib/db';
+import { readAutomaticDelivery, resolveDeliveryDisplay } from '../lib/delivery.js';
 import { getWeeklySpecialsForDateRange, getMexicanNight, visibleGroups, DAY_NAMES } from '../lib/specials-store';
 import { chicagoCalendarDate, formatWeeklyDateRange } from '../lib/weekly-specials';
 import { mexicanNightDetailVisible } from '../lib/mexican-night-visibility.js';
 const env = (Astro.locals as any).runtime?.env ?? {};
 const today=chicagoCalendarDate();
-const [weeklySpecials,deliveryDisplay,mexican]=await Promise.all([getWeeklySpecialsForDateRange(env,today,'9999-12-31'),getSetting(env,'delivery_display','available'),getMexicanNight(env)]);
+const [weeklySpecials,deliveryDisplaySetting,automaticDelivery,mexican]=await Promise.all([getWeeklySpecialsForDateRange(env,today,'9999-12-31'),getSetting(env,'delivery_display','auto'),readAutomaticDelivery(env),getMexicanNight(env)]);
+// Same resolution as the site banner: manual choices win; Automatic expires at 3 PM.
+const deliveryDisplay=resolveDeliveryDisplay(deliveryDisplaySetting,automaticDelivery);
 const weekDateFor=(start:string,dow:number) => {const date=new Date(`${start}T12:00:00Z`); date.setUTCDate(date.getUTCDate()+((dow-date.getUTCDay()+7)%7)); return date.toISOString().slice(0,10);};
 const weeks=weeklySpecials.flatMap(week=>{
   const days=[0,1,2,3,4,5,6].map(day=>({day,date:weekDateFor(week.week_start_date,day),groups:visibleGroups(week.collection.groups,day)}))
