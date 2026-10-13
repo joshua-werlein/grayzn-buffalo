@@ -1,5 +1,7 @@
 // Shared by the worker and server rendering. Manual choices always win.
-export const DELIVERY_TEXT = 'Delivery M–F 11 AM–1:30 PM, within Mondovi city limits.';
+export const DELIVERY_HOURS = 'Delivery M–F 11 AM–1:30 PM';
+export const DELIVERY_AREA = 'within Mondovi city limits.';
+export const DELIVERY_TEXT = `${DELIVERY_HOURS}, ${DELIVERY_AREA}`;
 const formatter = new Intl.DateTimeFormat('en-US', {
   timeZone:'America/Chicago', year:'numeric', month:'2-digit', day:'2-digit',
   hour:'2-digit', minute:'2-digit', second:'2-digit', hourCycle:'h23',

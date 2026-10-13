@@ -161,3 +161,12 @@ test('AI completion crossing 3 PM cannot activate',async t=>{
   f.env.AI.run=async(...args)=>{f.state.now=Date.parse('2030-01-09T21:00:01Z');return run(...args);};
   await f.run();assert.equal(f.display(),'hidden');assert.notEqual(f.stateRow()?.active,1);
 });
+
+test('every public delivery_display consumer resolves Automatic through the shared deadline',()=>{
+  // A raw 'auto' value must never render as Available on any page.
+  for (const page of ['src/layouts/Base.astro','src/pages/specials.astro']) {
+    const source=readFileSync(new URL(`../../${page}`,import.meta.url),'utf8');
+    assert.match(source,/getSetting\(env,\s*'delivery_display',\s*'auto'\)/,page);
+    assert.match(source,/resolveDeliveryDisplay\(deliveryDisplaySetting,\s*automaticDelivery\)/,page);
+  }
+});

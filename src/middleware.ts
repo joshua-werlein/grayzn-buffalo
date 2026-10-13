@@ -43,6 +43,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
     headers.set('X-Robots-Tag', 'noindex, nofollow');
   }
 
+  // Pages re-evaluate the Automatic delivery deadline on every request. A layout
+  // cannot set this itself: streamed HTML commits headers before it renders.
+  if (headers.get('Content-Type')?.startsWith('text/html') && !headers.has('Cache-Control')) {
+    headers.set('Cache-Control', 'no-store');
+  }
+
   // Prevent Astro API endpoints from being indexed.
   if (pathname === '/api' || pathname.startsWith('/api/')) {
     headers.set('X-Robots-Tag', 'noindex, nofollow');

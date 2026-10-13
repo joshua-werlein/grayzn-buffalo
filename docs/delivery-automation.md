@@ -74,7 +74,9 @@ Parser identities remain 18/19: the change is an additive, independently validat
 | --- | --- |
 | `migrations/0022_delivery_automation.sql` | Create separate temporary automation table; no setting or specials data changes. |
 | `src/lib/delivery.js` | Shared Chicago deadline, fixed copy, manual precedence, safe state read. |
-| `src/layouts/Base.astro` | Resolve visibility at render time and prevent stale HTML caching. |
+| `src/layouts/Base.astro` | Resolve visibility at render time; restore the existing hours/qualifier spans so mobile wraps cleanly. |
+| `src/pages/specials.astro` | Resolve the specials-page delivery block through the same shared resolver (follow-up fix). |
+| `src/middleware.ts` | Send `Cache-Control: no-store` on HTML without an explicit cache policy (follow-up fix). |
 | `src/pages/admin/index.astro` | Add Automatic while retaining all three staff choices. |
 | `workers/fb-feed/delivery.js` | Validate evidence, expire state, reconcile current source snapshots. |
 | `workers/fb-feed/extraction.js` | Add delivery evidence to daily AI schemas/prompts only. |
@@ -104,6 +106,16 @@ Full Worker suite: **974/974 passed**, including all existing specials regressio
 Logs are local ignored files under `.wrangler/delivery-*.log`. Initial sandboxed D1/runtime tests were blocked by localhost EACCES, and the first sandboxed build failed with EPERM resolving an installed dependency; they were rerun with local runtime access. The first focused run had one incorrect expected Wing Night string in the new test; correcting it to the existing canonical formatter resolved the failure.
 
 Authoritative successful logs: `.wrangler/delivery-worker-tests-unrestricted.log`, `.wrangler/delivery-app-tests-unrestricted.log`, `.wrangler/delivery-focused-tests.log`, `.wrangler/delivery-build.log`, and `.wrangler/delivery-dryrun.log`. The earlier sandboxed `delivery-worker-tests.log` and `delivery-app-tests.log` retain the permission failures and are not the final results. Focused tests were rerun after the final audit-preservation/write-cutoff adjustment; the full worker suite was running across that adjustment. If an exact single-revision full-suite rerun is required by release policy, run the full commands above on the handoff commit before rollout.
+
+## Follow-up verification (Claude Code, October 13, 2026)
+
+Re-ran on handoff commit `9a88811` before changes: Worker 974/974, application 126/126. Three gaps were found and fixed as uncommitted changes on top of that commit:
+
+1. **`/specials` ignored Automatic.** `src/pages/specials.astro` read `delivery_display` directly and treated any value other than `hidden`/`unavailable` as available, so after opting in to `auto` its delivery block would have shown permanently (weekends, after 3 PM, without evidence). It now uses `readAutomaticDelivery` + `resolveDeliveryDisplay`. A source-level test in `delivery.test.js` guards both public consumers.
+2. **`no-store` was never sent.** `Astro.response.headers.set` in a layout has no effect because streamed HTML commits headers before the layout renders (verified against the dev server). The header now comes from `src/middleware.ts` for HTML responses that set no other cache policy; `/menu.json` keeps its 5-minute cache and admin remains `no-store`.
+3. **Banner wrapping.** The plain `<span>` dropped the existing `.dmain`/`.qualifier` styling. The banner again uses those spans (identical desktop text via the existing `", "` pseudo-element; the qualifier stacks on phones). `DELIVERY_TEXT` is unchanged and is composed from `DELIVERY_HOURS` and `DELIVERY_AREA`.
+
+After the fixes: Worker 975/975 (24/24 focused delivery), application 126/126, `npm run build` and `git diff --check` passed. The Worker dry-run bundle was not re-run in this session; the only Worker-reachable change is the constant split in `src/lib/delivery.js`, which the full Worker suite imports.
 
 ## Migration 0022 requirements
 

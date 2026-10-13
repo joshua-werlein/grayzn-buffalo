@@ -1,6 +1,6 @@
 ---
 import { getSetting } from '../lib/db';
-import {DELIVERY_TEXT,readAutomaticDelivery,resolveDeliveryDisplay} from '../lib/delivery.js';
+import {DELIVERY_HOURS,DELIVERY_AREA,readAutomaticDelivery,resolveDeliveryDisplay} from '../lib/delivery.js';
 import ImageLightbox from '../components/ImageLightbox.astro';
 import '@fontsource/alfa-slab-one/latin-400.css';
 import '@fontsource/barlow/latin-400.css';
@@ -38,8 +38,7 @@ const announcements = [announcement1, announcement2, announcement3]
   .map((message) => message.trim())
   .filter(Boolean);
 const deliveryDisplay = resolveDeliveryDisplay(deliveryDisplaySetting, automaticDelivery);
-// Every request must re-evaluate the automatic deadline, including cached clients.
-Astro.response.headers.set('Cache-Control', 'no-store');
+// src/middleware.ts marks HTML no-store so the 3 PM deadline is re-checked per request.
 const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 ---
 <!DOCTYPE html>
@@ -572,7 +571,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
         <li class="delivery-notice">
           {deliveryDisplay === 'unavailable'
             ? deliveryUnavailableMsg
-            : (<span>{DELIVERY_TEXT}</span>)}
+            : (<><span class="dmain">{DELIVERY_HOURS}</span><span class="qualifier">{DELIVERY_AREA}</span></>)}
         </li>
       )}
       {announcements.map((message) => <li>{message}</li>)}
