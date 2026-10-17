@@ -57,6 +57,8 @@ The October 11 production fixture and recovery record are documented in [October
 
 ## Same-Day Routing
 
+Contract 2 October 15–16 repair: see [production evidence, exact boundaries and release plan](facebook-specials-oct15-16.md). The guarded publisher may establish the existing three-priced-meal layout for a weekday poster headed exactly `DAILY SPECIALS` with no printed weekday, only after independently validating its stored Facebook timestamp. Printed contradictory evidence still wins. Copied bare lunch windows are handled only within the documented three-meal Lunch Specials convention; genuine offer-level times remain authoritative.
+
 A generic day poster with one explicit lunch offer and two untimed offers establishes one Lunch and two All Day values. Explicit All Day evidence also establishes that pair. A night poster alone never establishes All Day.
 
 All Day agreement is compared by complete normalized dish and price. Case, spacing, punctuation, `w/` versus `with`, ampersands, and dollar formatting normalize; different dishes or prices do not agree. Existing automation-owned All Day text and order are retained when the pair matches. Once a complete All Day pair is independently established, dish-only matching (ignoring a leading printed list number and prices) may identify its repetitions on a night poster. Each dish must match exactly once. A different repeated price records a blocked All Day proposal containing the conflicting price and the retained baseline; it never replaces the baseline. Those repeated dishes are excluded from Nightly so unrelated valid night offers can publish in the existing guarded transaction.

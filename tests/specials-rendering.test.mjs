@@ -15,6 +15,24 @@ const homePage=(await import('../dist/_worker.js/pages/index.astro.mjs')).page()
 const adminPage=(await import('../dist/_worker.js/pages/admin/specials.astro.mjs')).page().default;
 const container=await AstroContainer.create();
 
+test('October 15–16 accepted production evidence displays every meal price and choice',async()=>{
+  const {reconcilePosterEvidence}=await import('../workers/fb-feed/reconcile.js');
+  const evidence=JSON.parse(readFileSync('tests/fixtures/oct15-16-production.json','utf8')).imports[0].results;
+  for(const [i,day] of [[0,4],[1,5]]) {
+    const result=reconcilePosterEvidence([JSON.parse(evidence[i].candidate_json)],day,[],{
+      today:`2026-10-${i===0?'15':'16'}`,verifiedSameDaySources:new Set([0])});
+    let html='';
+    for(const target of result.targets) {
+      const group=s.blankGroup(day);group.service=target.service;group.label=target.role??target.service;
+      target.items.forEach(item=>{group.slots[item.position-1].content=item.content;});
+      html+=await container.renderToString(groupModule.$,{props:{group}});
+    }
+    for(const price of ['$9.75','$10.25','$7.25']) assert.ok(html.includes(price));
+    assert.match(html,/French Onion [Oo]r Chili/);
+    if(i===1) assert.match(html,/Cheeseburger Or Fish Sandwich/);
+  }
+});
+
 // Returns a Tuesday Date within the same Sun–Sat week as now, at 15:00 UTC (9 AM Chicago).
 // Keeps mexicanNightDetailVisible() returning true regardless of what day the test runs.
 function mexicanTestNow() {

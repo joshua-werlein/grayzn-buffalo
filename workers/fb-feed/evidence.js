@@ -31,6 +31,9 @@ function withoutService(s) {
   return s.replace(windows(),' ').replace(/\b(?:all[ -]+day|lunch|nightly)\s*(?:specials?)?\s*:?/gi,' ')
     .replace(/[()]/g,' ').replace(/\s+/g,' ').trim();
 }
+// Only a leading punctuated list marker is presentation. Bare quantities,
+// including "1 or 2 Piece Fish", remain part of the exact fact comparison.
+const withoutListMarker=s=>s.replace(/^\s*\d+[).]\s+(?=\S)/u,'');
 function priceFacts(s) {
   const p=prices(s);
   // A minus attached to the amount (-$9.75), or a leading one with nothing
@@ -86,8 +89,8 @@ export function normalizeEvidenceOffer(input) {
     if (cp.length && (cp.length!==1 || cp[0].cents!==price.cents)) throw Error('Conflicting offer price');
     if (!cp.length && (ep.length!==1 || ep[0].cents!==price.cents)) throw Error('Missing corroborating price evidence');
   } else time=normalizedTime(time);
-  const cCore=withoutService(content).replace(pricePattern(),'');
-  const eCore=withoutService(evidence).replace(pricePattern(),'');
+  const cCore=withoutService(withoutListMarker(content)).replace(pricePattern(),'');
+  const eCore=withoutService(withoutListMarker(evidence)).replace(pricePattern(),'');
   // Full meal evidence, unlike a bare service label, must preserve every token.
   if (ep.length && !sameTokensAllowingBundleConnectors(cCore,eCore)) throw Error('Meal facts differ from original evidence');
   if (cp.length && ep.length && JSON.stringify(cp.map(p=>p.cents))!==JSON.stringify(ep.map(p=>p.cents))) throw Error('Conflicting offer price');
@@ -176,8 +179,19 @@ const isMeal=o=>!soupLabel(o?.content??'')&&!soupLabel(o?.evidence??'');
 function offerService(o,p) {
   const heading=` ${factKey(`${p.day_evidence} ${p.poster_evidence}`)} `;
   const labels=[o?.service_time??'',o?.service_evidence??''].filter(s=>s.trim());
-  const own=labels.filter(s=>!heading.includes(` ${factKey(s)} `));
-  return serviceFromEvidence(own.join(' '));
+  const own=labels.filter(s=>serviceFromEvidence(o.evidence??'')!=='unknown' || !heading.includes(` ${factKey(s)} `));
+  // A repeated bare lunch window, absent from every meal's verbatim text,
+  // under a Lunch Specials heading is copied scope in the three-meal layout.
+  // Explicit labels, distinct windows and any corroborating meal text survive.
+  const meals=p.offers.filter(isMeal);
+  const bare=s=>!!s.trim() && !s.replace(windows(),'').replace(/[()]/g,'').trim();
+  const copied=meals.length===3 && headingService(p)==='lunch'
+    && meals.every(m=>pricedMeal(m) && serviceFromEvidence(m.evidence??'')==='unknown'
+      && bare(m.service_time??'') && factKey(m.service_time)===factKey(meals[0].service_time)
+      && (!(m.service_evidence??'').trim() || (bare(m.service_evidence) && factKey(m.service_evidence)===factKey(m.service_time))))
+    && serviceFromEvidence(meals[0].service_time)==='lunch';
+  if(copied) return 'unknown';
+  return serviceFromEvidence(`${own.join(' ')} ${o.evidence??''}`);
 }
 // A meal is identifiable by layout when it carries unambiguous printed price(s),
 // even if its wording is held for another reason (e.g. a missing printed "or").
@@ -191,16 +205,24 @@ const headingNames=(p,pattern)=>pattern.test(`${p.day_evidence} ${p.poster_evide
 // Established house layouts, each applied only when ALL of its identifying
 // conditions hold and every explicit label agrees with its assignment.
 // Returns Map(offerIndex → service) or null. Never used to repair facts.
-function houseLayout(p,isExplicitToday,weekday,known,explicit) {
-  if(isExplicitToday!==true || headingNames(p,/\bweekly\b/i)) return null;
+function houseLayout(p,isExplicitToday,weekday,known,explicit,verifiedSameDay=false) {
+  if(headingNames(p,/\bweekly\b/i)) return null;
   const meals=p.offers.flatMap((o,i)=>isMeal(o)?[i]:[]);
   if(!meals.length || !meals.every(i=>pricedMeal(p.offers[i]))) return null;
   const agree=assignment=>meals.every((i,k)=>['unknown',assignment[k]].includes(explicit[i]))?new Map(meals.map((i,k)=>[i,assignment[k]])):null;
   const nightText=i=>['nightly','conflict'].includes(serviceFromEvidence(p.offers[i].content));
   const heading=headingService(p);
+  // Timestamp trust comes from the guarded publisher, never extracted JSON.
+  // Only the weekday DAILY SPECIALS three-priced-meal format gets this fallback.
+  const sameDayLayout=verifiedSameDay && weekday>=1 && weekday<=5
+    && /^\s*daily\s+specials\s*$/i.test(p.poster_evidence)
+    && !p.day_evidence.trim() && p.day_of_week===-1 && meals.length===3
+    && meals.every(i=>prices(p.offers[i].evidence??'').length===1);
+  if(isExplicitToday!==true && !sameDayLayout) return null;
   // Day poster: one Lunch/Day Special meal, then two All Day meals.
   if(meals.length===3 && headingNames(p,/\bspecials?\b/i) && ['unknown','lunch'].includes(heading) && !meals.some(nightText))
     return agree(['lunch','all-day','all-day']);
+  if(isExplicitToday!==true) return null;
   // Wednesday Wing Night poster: the Wing Night offer plus two daytime meals.
   if(weekday===3 && meals.length===3 && ['unknown','nightly'].includes(heading)) {
     const wing=meals.filter(i=>/\bwing\s+night\b/i.test(`${p.offers[i].content} ${p.offers[i].evidence}`));
@@ -229,7 +251,7 @@ function houseLayout(p,isExplicitToday,weekday,known,explicit) {
   return null;
 }
 
-export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,today,existingAllDay=[],slotLayout=[]}) {
+export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,today,existingAllDay=[],slotLayout=[],verifiedSameDaySources=new Set()}) {
   const rejectedSources=[],excludedSources=[],unresolvedTargets=[],blocked=new Set();
   const sources=[];
   for (let source=0;source<candidates.length;source++) {
@@ -248,6 +270,11 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
     try {
       // An offer-level date may differ from a correct heading; that cannot be
       // proof the whole poster is elsewhere, so it blocks rather than excludes.
+      if(!isExplicitToday && verifiedSameDaySources.has(source)) {
+        // Check all printed fields before allowing the narrowly scoped fallback.
+        validateDay({...p,poster_evidence:[p.poster_evidence,...p.offers.flatMap(o=>
+          [o.content,o.evidence,o.service_time,o.service_evidence,o.date_evidence])].filter(Boolean).join(' ')},weekday,today);
+      }
       for (const o of p.offers) if(o?.date_evidence) validateDay({...p,poster_evidence:`${p.poster_evidence} ${o.date_evidence}`},weekday,today);
     } catch(error) {rejectedSources.push({index:source,reason:error.message});blocked.add('*');continue;}
     sources.push({source,p,isExplicitToday,explicit:p.offers.map(o=>isMeal(o)?offerService(o,p):'soup')});
@@ -256,7 +283,7 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
   const known=existingAllDay.map(e=>({content:e.content,source:-1}));
   const knownFrom=source=>known.filter(k=>k.source!==source).map(k=>k.content);
   const resolve=s=>{
-    const layout=houseLayout(s.p,s.isExplicitToday,weekday,knownFrom(s.source),s.explicit);
+    const layout=houseLayout(s.p,s.isExplicitToday,weekday,knownFrom(s.source),s.explicit,verifiedSameDaySources.has(s.source));
     return s.explicit.map((service,i)=>{
       if(service==='soup') return 'soup';
       if(service==='unknown' && layout?.has(i)) return layout.get(i);
@@ -275,7 +302,7 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
 
   // Build per-source proposals with stable reading-order positions per service.
   // The dish named before its sides/price: similar-looking offers share it.
-  const dishName=text=>factKey(text.replace(pricePattern(),'').split(/\s+(?:w\/|with)\s+|\s+[-–—]\s*$/i)[0]);
+  const dishName=text=>factKey(text.replace(pricePattern(),'').split(/\s+(?:w\/\s*|with\s+)|\s+[-–—]\s*$/i)[0]);
   const proposals=new Map(),reserved=new Map(),pending=[];
   for(const {source,p,services} of sources) {
     const positions=new Map(),sourceItems=new Map(),placedAt=[];

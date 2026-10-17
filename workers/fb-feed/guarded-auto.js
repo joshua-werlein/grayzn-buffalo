@@ -50,7 +50,11 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
     catch { return null; }
   });
   const slotLayout=slots.map(s=>({...s,service:groups.find(g=>g.id===s.group_id)?.service}));
-  const {targets:proposedTargets,rejectedSources:rejected,unresolvedTargets=[],excludedSources=[]}=reconcilePosterEvidence(candidates,weekday,existing,{today,slotLayout});
+  const verifiedSameDaySources=new Set(sources.flatMap((s,i)=>{
+    const created=Date.parse(s.fb_created_time);
+    return Number.isFinite(created) && created<=Date.now() && dateOf(s.fb_created_time)===today ? [i] : [];
+  }));
+  const {targets:proposedTargets,rejectedSources:rejected,unresolvedTargets=[],excludedSources=[]}=reconcilePosterEvidence(candidates,weekday,existing,{today,slotLayout,verifiedSameDaySources});
   sources.forEach((s,index)=>{
     // Contract 2 only: printed evidence placed this whole poster on another day.
     // Its stored import failure remains the audit record; it cannot block today.

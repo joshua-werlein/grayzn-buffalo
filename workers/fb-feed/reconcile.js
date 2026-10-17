@@ -324,9 +324,9 @@ function hasCompletePrintedPrices(content) {
 export function reconcilePosters(candidates,weekday,existingAllDay=[]) {
   return reconcilePosterEvidence(candidates,weekday,existingAllDay).targets;
 }
-export function reconcilePosterEvidence(candidates,weekday,existingAllDay=[],{today,slotLayout=[]}={}) {
+export function reconcilePosterEvidence(candidates,weekday,existingAllDay=[],{today,slotLayout=[],verifiedSameDaySources=new Set()}={}) {
   if(candidates.some(c=>c?.evidence_version===2)) return planDailyEvidence(candidates,weekday,{
-    today,existingAllDay,slotLayout,validateDay:validateCurrentDay,canonicalize:canonicalizeSlotContent});
+    today,existingAllDay,slotLayout,verifiedSameDaySources,validateDay:validateCurrentDay,canonicalize:canonicalizeSlotContent});
   const rejectedSources=[],validIndices=[];
   const posters=candidates.map((c,index)=>{
     try { const p=forToday(c,weekday,today); if (p) validIndices.push(index); return p; }
