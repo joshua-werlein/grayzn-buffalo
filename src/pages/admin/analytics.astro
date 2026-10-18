@@ -76,6 +76,7 @@ const period = `${date(window.start)} – ${date(window.today)}`;
   document.querySelectorAll<HTMLElement>('[data-month-chart]').forEach(initializeMonthChart);
 </script>
 <style>
+  [data-calendar-month]{padding:0}
   .analytics-page{padding-block:28px}.analytics-content{max-width:1040px;margin:auto;display:flex;flex-direction:column;gap:20px}.section-head{margin-bottom:24px}
   .primary-cards,.detail-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
   .metric{min-width:0;padding:24px;background:var(--surface-parchment);border:1px solid var(--rule);border-radius:8px;box-shadow:var(--panel-shadow)}
