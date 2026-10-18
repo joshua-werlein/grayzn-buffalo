@@ -23,11 +23,13 @@ if (Astro.request.method === 'POST') {
     // Turnstile FIRST — a bot without a valid token never reaches the password
     // comparison and never touches KV.
     const ip = Astro.request.headers.get('CF-Connecting-IP') ?? undefined;
-    const human = turnstileOn
-      ? await verifyTurnstile(String(form.get('cf-turnstile-response') ?? ''), env, ip)
-      : true;
+    const human = turnstileOn &&
+      await verifyTurnstile(String(form.get('cf-turnstile-response') ?? ''), env, ip);
 
-    if (!human) {
+    if (!turnstileOn) {
+      Astro.response.status = 503;
+      error = 'Staff sign-in is temporarily unavailable. Please contact the site administrator.';
+    } else if (!human) {
       error = 'Verification failed. Reload the page and try again.';
     } else if (await login(String(form.get('password') ?? ''), Astro.cookies, env)) {
       return Astro.redirect('/admin/specials', 303);
@@ -137,9 +139,9 @@ const deliveryDisplay = authed ? await getSetting(env, 'delivery_display', 'auto
       <input id="password" type="password" name="password" required autocomplete="current-password" />
       {turnstileOn
         ? <div class="cf-turnstile" data-sitekey={sitekey} data-size="compact"></div>
-        : <p class="warn">Bot protection is off — Turnstile isn't configured.</p>}
+        : <p class="warn">Staff sign-in is temporarily unavailable. Please contact the site administrator.</p>}
       {error && <p class="err">{error}</p>}
-      <button class="btn btn-primary" type="submit">Sign in</button>
+      <button class="btn btn-primary" type="submit" disabled={!turnstileOn}>Sign in</button>
     </form>
   )}
 </section>
