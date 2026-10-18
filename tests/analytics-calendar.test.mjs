@@ -8,6 +8,44 @@ const config = { CF_ANALYTICS_API_TOKEN: 'private-token', CF_ANALYTICS_ACCOUNT_I
 const limits = { enabled: true, maxDuration: 8035200, maxPageSize: 10000, notOlderThan: 15897600 };
 const reply = value => Response.json({ data: { viewer: { accounts: [value] } } });
 
+test('compiled chart renders covered calendar rows; provider failure keeps metrics unavailable and Facebook clicks independent', async t => {
+  const { experimental_AstroContainer: AstroContainer } = await import('astro/container');
+  const page = (await import('../dist/_worker.js/pages/admin/analytics.astro.mjs')).page().default;
+  const container = await AstroContainer.create();
+  const env = { ...config, SESSIONS: { get: async () => '1' }, DB: { prepare(sql) {
+    const statement = { bind() { return statement; }, all: async () => ({ results: [] }),
+      first: async () => sql.includes('settings') ? { value: '2026-01-01' } : { total: 18 } };
+    return statement;
+  } } };
+  let fail = false;
+  t.mock.method(console, 'warn', () => {});
+  t.mock.method(globalThis, 'fetch', async (_, options) => {
+    if (fail) return Response.json({ errors: [{ message: 'upstream unavailable confidential' }] }, { status: 503 });
+    const { query } = JSON.parse(options.body);
+    return query.includes('settings{') ? reply({ settings: { rumPageloadEventsAdaptiveGroups: limits } })
+      : query.includes('hours:') ? reply({ hours: [] }) : reply({ pages: [], sources: [] });
+  });
+  const render = () => container.renderToString(page, {
+    request: new Request('https://grayznbuffalo.com/admin/analytics', { headers: { cookie: `gb_session=${'c'.repeat(32)}` } }),
+    locals: { runtime: { env } },
+  });
+  const success = await render();
+  assert.match(success, /Previous Month/);
+  assert.match(success, /Next Month/);
+  assert.match(success, /aria-live="polite"/);
+  assert.match(success, /Partial historical coverage begins/);
+  assert.match(success, /Today is incomplete/);
+  assert.match(success, /Unavailable/); // Dates before retention are unknown, not zero.
+  assert.ok((success.match(/data-calendar-month/g) ?? []).length >= 6);
+  fail = true;
+  const unavailable = await render();
+  assert.match(unavailable, /Website analytics is temporarily unavailable/);
+  assert.match(unavailable, /Daily visits unavailable/);
+  assert.doesNotMatch(unavailable, /data-month-chart|Previous Month|confidential/);
+  assert.match(unavailable, /Facebook outbound clicks/);
+  assert.match(unavailable, /class="metric-value"[^>]*>18</);
+});
+
 test('calendar months cross the year and include every date of leap and non-leap February', () => {
   for (const [year, length] of [[2024, 29], [2026, 28]]) {
     const months = calendarMonths(new Map(), chicagoMidnight(`${year - 1}-12-15`), new Date(`${year}-03-02T18:00:00Z`));
