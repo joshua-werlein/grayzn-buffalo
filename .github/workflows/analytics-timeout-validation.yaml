@@ -1,0 +1,24 @@
+name: Analytics timeout validation (isolated)
+on:
+  push:
+    branches: [codex/analytics-history-timeout-20261018]
+    paths: [tests/analytics.test.mjs]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm run build
+      - run: node --test tests/*.test.mjs
+      - run: node --test workers/fb-feed/*.test.js
+      - run: npx astro check
