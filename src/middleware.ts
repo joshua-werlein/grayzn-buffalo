@@ -38,7 +38,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
   headers.set('Content-Security-Policy-Report-Only', CSP_REPORT_ONLY);
 
   // Prevent admin pages from being cached or indexed.
-  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+  if (pathname === '/admin' || pathname.startsWith('/admin/') ||
+      pathname === '/api/menu-photo' || pathname === '/api/welcome-photo') {
     headers.set('Cache-Control', 'no-store');
     headers.set('X-Robots-Tag', 'noindex, nofollow');
   }
