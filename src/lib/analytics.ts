@@ -61,7 +61,9 @@ export function reportingWindow(now = new Date()) {
 export function calendarMonths(byDay: Map<string, number>, historyStart: number, now: Date) {
   const today = chicagoCalendarDate(now);
   const current = today.slice(0, 7);
-  const first = chicagoCalendarDate(new Date(historyStart)).slice(0, 7);
+  const firstDay = chicagoCalendarDate(new Date(historyStart));
+  const first = firstDay.slice(0, 7);
+  const firstDayComplete = historyStart === chicagoMidnight(firstDay);
   const months: { month: string; days: { date: string; visits: number | null; coverage: 'complete' | 'partial' | 'today' | 'unavailable' | 'future' }[] }[] = [];
   for (let month = current; month >= first;) {
     const start = `${month}-01`;
@@ -70,8 +72,8 @@ export function calendarMonths(byDay: Map<string, number>, historyStart: number,
     const end = next.toISOString().slice(0, 10);
     const days: typeof months[number]['days'] = [];
     for (let date = start; date < end; date = shiftDay(date, 1)) {
-      const coverage = date > today ? 'future' : chicagoMidnight(shiftDay(date, 1)) <= historyStart ? 'unavailable'
-        : chicagoMidnight(date) < historyStart ? 'partial' : date === today ? 'today' : 'complete';
+      const coverage = date > today ? 'future' : date < firstDay ? 'unavailable'
+        : date === firstDay && !firstDayComplete ? 'partial' : date === today ? 'today' : 'complete';
       days.push({ date, visits: coverage === 'unavailable' || coverage === 'future' ? null : byDay.get(date) ?? 0, coverage });
     }
     months.push({ month, days });
