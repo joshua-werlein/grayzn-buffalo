@@ -55,10 +55,7 @@ export async function logout(cookies: any, env: any) {
 /**
  * Verify a Turnstile token against Cloudflare.
  *
- *Fails CLOSED when TURNSTILE_SECRET is unset. Callers that need a deliberate
- * bypass should check for the secret themselves and skip the call — see the
- * `turnstileOn` guard in admin/index.astro, which keeps the bypass visible
- * rather than hiding it in here. 
+ * Fails closed when TURNSTILE_SECRET is unset or verification is unavailable.
  */
 export async function verifyTurnstile(token: string, env: any, ip?: string): Promise<boolean> {
   if (!env?.TURNSTILE_SECRET) return false; 
@@ -73,7 +70,9 @@ export async function verifyTurnstile(token: string, env: any, ip?: string): Pro
     const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
       method: 'POST',
       body,
+      signal: AbortSignal.timeout(10000),
     });
+    if (!res.ok) return false;
     const out: any = await res.json();
     return out?.success === true;
   } catch {
