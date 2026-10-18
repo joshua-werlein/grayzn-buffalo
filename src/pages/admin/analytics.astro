@@ -8,13 +8,15 @@ const env = (Astro.locals as any).runtime?.env ?? {};
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 const now = new Date();
 const window = reportingWindow(now);
-const [result, clicks] = await Promise.all([loadAnalytics(env, now), getFacebookClicks(env, window.start, window.today)]);
+const [result, clicks] = await Promise.all([
+  loadAnalytics(env, now, fetch, diagnostic => console.warn('analytics_failure', JSON.stringify(diagnostic))),
+  getFacebookClicks(env, window.start, window.today),
+]);
 const data = result.status === 'ok' ? result.data : null;
 const number = (value: number) => value.toLocaleString('en-US');
 const date = (value: string) => new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' })
   .format(new Date(value.length === 10 ? `${value}T12:00:00Z` : value));
 const month = (value: string) => new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(new Date(`${value}-01T12:00:00Z`));
-const maxDaily = Math.max(1, ...(data?.daily.map(day => day.visits) ?? []));
 const period = `${date(window.start)} – ${date(window.today)}`;
 ---
 <Base title="Admin Analytics — Grayz'n Buffalo">
@@ -43,17 +45,36 @@ const period = `${date(window.start)} – ${date(window.today)}`;
           <p>Recorded link activations, not unique people or confirmed Facebook arrivals.</p>
         </article>
       </div>
-      <article class="metric daily"><h2>Visits by day</h2><p class="period">Last 30 days · Today is incomplete</p>
-        {data ? <ol class="daily-bars" aria-label="Daily visits">{data.daily.map(day => <li>
-          <time datetime={day.date}>{date(day.date)}{day.date === window.today ? ' · so far' : ''}</time>
-          <span class="bar-track" aria-hidden="true"><span style={`width:${day.visits / maxDaily * 100}%`}></span></span>
-          <strong>{number(day.visits)}</strong>
-        </li>)}</ol> : <p>Daily visits unavailable.</p>}
+      <article class="metric daily"><h2>Visits by day</h2>
+        {data ? <div data-month-chart>
+          <div class="month-navigation" hidden>
+            <button type="button" data-previous-month aria-controls="calendar-months">Previous Month</button>
+            <p data-selected-month aria-live="polite" aria-atomic="true">{month(data.calendarMonths[0].month)}</p>
+            <button type="button" data-next-month aria-controls="calendar-months" disabled>Next Month</button>
+          </div>
+          <div id="calendar-months">{data.calendarMonths.map((calendar, index) => {
+            const maximum = Math.max(1, ...calendar.days.map(day => day.visits ?? 0));
+            const partial = calendar.days.some(day => ['partial', 'unavailable'].includes(day.coverage));
+            return <section data-calendar-month data-month-label={month(calendar.month)} aria-labelledby={`month-${index}`}>
+              <h3 id={`month-${index}`}>{month(calendar.month)}</h3>
+              <p class="period">America/Chicago{partial ? ` · Partial historical coverage begins ${date(data.historyStart)}` : ''}{calendar.month === window.today.slice(0, 7) ? ' · Today is incomplete' : ''}</p>
+              <ol class="daily-bars" aria-label={`Daily visits for ${month(calendar.month)}`}>{calendar.days.map(day => <li>
+                <time datetime={day.date}>{date(day.date)}{day.coverage === 'today' ? ' · so far' : day.coverage === 'partial' ? ' · partial' : ''}</time>
+                <span class="bar-track" aria-hidden="true"><span style={`width:${(day.visits ?? 0) / maximum * 100}%`}></span></span>
+                <strong>{day.visits === null ? day.coverage === 'future' ? 'Not yet' : 'Unavailable' : number(day.visits)}</strong>
+              </li>)}</ol>
+            </section>;
+          })}</div>
+        </div> : <p>Daily visits unavailable.</p>}
       </article>
       <p class="data-note">Cloudflare visits are not unique people. Traffic figures may be estimated through sampling, and blocked analytics or excluded regions are not included. Missing referrers are grouped under Direct / Other. Older traffic before collection began is unavailable.</p>
     </div>
   </section>
 </Base>
+<script>
+  import { initializeMonthChart } from '../../lib/analytics-month-client';
+  document.querySelectorAll<HTMLElement>('[data-month-chart]').forEach(initializeMonthChart);
+</script>
 <style>
   .analytics-page{padding-block:28px}.analytics-content{max-width:1040px;margin:auto;display:flex;flex-direction:column;gap:20px}.section-head{margin-bottom:24px}
   .primary-cards,.detail-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
@@ -63,6 +84,7 @@ const period = `${date(window.start)} – ${date(window.today)}`;
   .primary{border-top:5px solid var(--crimson)}.history{border-top-color:var(--gold)}.metric .period{margin:6px 0 14px}
   .daily-bars{list-style:none;padding:0;margin-top:16px}.daily-bars li{display:grid;grid-template-columns:170px minmax(0,1fr) 60px;gap:12px;align-items:center;padding:5px 0;font-size:.9rem}.daily-bars strong{text-align:right;font-variant-numeric:tabular-nums}
   .bar-track{height:12px;background:var(--cream-2);border-radius:2px;overflow:hidden}.bar-track>span{display:block;height:100%;background:var(--crimson)}
+  .month-navigation{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:16px 0}.month-navigation[hidden]{display:none}.month-navigation p{font-weight:700;margin:0}.month-navigation button{min-height:44px;padding:8px 12px;font:inherit;border:1px solid var(--rule);border-radius:4px;background:var(--cream-2);color:var(--ink);cursor:pointer}.month-navigation button:disabled{opacity:.5;cursor:default}.month-navigation button:focus-visible{outline:3px solid var(--crimson);outline-offset:3px}.daily h3{font:700 1.2rem var(--label);margin-top:16px}.daily-bars strong{overflow-wrap:anywhere}
   table{width:100%;border-collapse:collapse;margin-top:12px}th,td{text-align:left;padding:10px 0;border-bottom:1px solid var(--rule);overflow-wrap:anywhere}thead th{font:700 .85rem var(--label);text-transform:uppercase;color:var(--ink-2)}tbody th{font-weight:500}td,th:last-child{text-align:right;font-variant-numeric:tabular-nums}td{padding-left:12px}small{display:block;color:var(--ink-2);font-size:.8rem}
   .data-note{color:var(--ink-2);font-size:.9rem}.analytics-notice{padding:16px;border-left:4px solid var(--crimson);background:var(--surface-parchment)}
   @media(max-width:680px){.analytics-page{padding:24px 12px 32px}.analytics-content{gap:16px}.primary-cards,.detail-cards{grid-template-columns:1fr;gap:16px}.metric{padding:18px}.daily-bars li{grid-template-columns:130px minmax(0,1fr) 42px;gap:8px;font-size:.8rem}}
