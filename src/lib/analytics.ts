@@ -15,13 +15,19 @@ type Limits = { enabled: boolean; maxDuration: number; maxPageSize: number; notO
 export type AnalyticsData = {
   recentVisits: number; historyVisits: number; historyStart: string; firstRecordedDay: string | null;
   daily: { date: string; visits: number }[];
+  calendarMonths: ReturnType<typeof calendarMonths>;
   monthly: { month: string; visits: number; partial: boolean }[];
   pages: { path: string; views: number }[];
   sources: { name: string; visits: number }[];
 };
 class AnalyticsError extends Error {
-  constructor(public status: Exclude<AnalyticsStatus, 'ok'>) { super(status); }
+  constructor(public status: Exclude<AnalyticsStatus, 'ok'>, public reason = 'response-shape', public httpStatus?: number) { super(status); }
 }
+
+export type AnalyticsDiagnostic = {
+  stage: 'settings' | 'history' | 'recent' | 'normalize'; reason: string; httpStatus?: number;
+  limits?: Limits; chunk?: number;
+};
 
 export function shiftDay(day: string, amount: number): string {
   const date = new Date(`${day}T12:00:00Z`);
@@ -49,6 +55,31 @@ export function reportingWindow(now = new Date()) {
   const today = chicagoCalendarDate(now);
   const start = shiftDay(today, -29);
   return { today, start, startMs: chicagoMidnight(start), endMs: now.getTime() };
+}
+
+/** Calendar rows use coverage, not the presence of a visit, to distinguish zero from unknown. */
+export function calendarMonths(byDay: Map<string, number>, historyStart: number, now: Date) {
+  const today = chicagoCalendarDate(now);
+  const current = today.slice(0, 7);
+  const first = chicagoCalendarDate(new Date(historyStart)).slice(0, 7);
+  const months: { month: string; days: { date: string; visits: number | null; coverage: 'complete' | 'partial' | 'today' | 'unavailable' | 'future' }[] }[] = [];
+  for (let month = current; month >= first;) {
+    const start = `${month}-01`;
+    const next = new Date(`${start}T12:00:00Z`);
+    next.setUTCMonth(next.getUTCMonth() + 1);
+    const end = next.toISOString().slice(0, 10);
+    const days: typeof months[number]['days'] = [];
+    for (let date = start; date < end; date = shiftDay(date, 1)) {
+      const coverage = date > today ? 'future' : chicagoMidnight(shiftDay(date, 1)) <= historyStart ? 'unavailable'
+        : chicagoMidnight(date) < historyStart ? 'partial' : date === today ? 'today' : 'complete';
+      days.push({ date, visits: coverage === 'unavailable' || coverage === 'future' ? null : byDay.get(date) ?? 0, coverage });
+    }
+    months.push({ month, days });
+    const previous = new Date(`${start}T12:00:00Z`);
+    previous.setUTCMonth(previous.getUTCMonth() - 1);
+    month = previous.toISOString().slice(0, 7);
+  }
+  return months;
 }
 
 export function isPublicPath(path: string): boolean {
@@ -97,25 +128,34 @@ export function historyChunks(now: number, limits: Limits): [number, number][] {
   return chunks;
 }
 
-export async function loadAnalytics(env: Record<string, any>, now = new Date(), request: typeof fetch = fetch): Promise<
+export async function loadAnalytics(env: Record<string, any>, now = new Date(), request: typeof fetch = fetch,
+  diagnose: (value: AnalyticsDiagnostic) => void = () => {}): Promise<
   { status: 'ok'; data: AnalyticsData } | { status: Exclude<AnalyticsStatus, 'ok'> }
 > {
   const token = env.CF_ANALYTICS_API_TOKEN?.trim();
   const account = env.CF_ANALYTICS_ACCOUNT_ID?.trim();
   const site = env.CF_ANALYTICS_SITE_TAG?.trim();
   if (!token || !/^[a-f0-9]{32}$/.test(account ?? '') || !/^[a-f0-9]{32}$/.test(site ?? '')) return { status: 'configuration' };
+  let stage: AnalyticsDiagnostic['stage'] = 'settings';
+  let verifiedLimits: Limits | undefined;
+  let chunk: number | undefined;
   const gql = async (query: string, variables: object = {}) => {
     const response = await request(ENDPOINT, {
       method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, variables: { account, ...variables } }), signal: AbortSignal.timeout(12_000),
     });
-    if (response.status === 401 || response.status === 403) throw new AnalyticsError('permission');
-    if (!response.ok) throw new AnalyticsError('provider');
+    if (response.status === 401 || response.status === 403) throw new AnalyticsError('permission', 'http', response.status);
     const body = await response.json();
     if (body.errors?.length) {
-      const denied = body.errors.some((e: any) => /auth|permission|access denied|not allowed|token/i.test(String(e.message)));
-      throw new AnalyticsError(denied ? 'permission' : 'provider');
+      // Inspect messages only to classify them. Never return or log provider text.
+      const messages = body.errors.map((e: any) => String(e.message)).join(' ');
+      const denied = /auth|permission|access denied|not allowed|token/i.test(messages);
+      const reason = denied ? 'access' : /older than|retention/i.test(messages) ? 'retention'
+        : /time range|duration/i.test(messages) ? 'duration' : /limit|number of fields/i.test(messages) ? 'query-limit'
+        : /unknown field|parsing|scalar fields|object field|query contains error/i.test(messages) ? 'query-schema' : 'graphql';
+      throw new AnalyticsError(denied ? 'permission' : 'provider', reason, response.status);
     }
+    if (!response.ok) throw new AnalyticsError('provider', 'http', response.status);
     const accounts = body.data?.viewer?.accounts;
     if (!Array.isArray(accounts) || accounts.length !== 1) throw new AnalyticsError('permission');
     return accounts[0];
@@ -127,23 +167,30 @@ export async function loadAnalytics(env: Record<string, any>, now = new Date(), 
     const limits: Limits = settings.settings?.rumPageloadEventsAdaptiveGroups;
     if (limits?.enabled === false) throw new AnalyticsError('permission');
     if (limits?.enabled !== true || ![limits.maxDuration, limits.maxPageSize, limits.notOlderThan].every(n => Number.isSafeInteger(n) && n > 0)) throw new AnalyticsError('provider');
+    verifiedLimits = { enabled: true, maxDuration: limits.maxDuration, maxPageSize: limits.maxPageSize, notOlderThan: limits.notOlderThan };
+    stage = 'history';
     const chunks = historyChunks(now.getTime(), limits);
     const window = reportingWindow(now);
-    if (chunks[0][0] > window.startMs || limits.maxDuration * 1000 < window.endMs - window.startMs) throw new AnalyticsError('provider');
+    if (chunks[0][0] > window.startMs) throw new AnalyticsError('provider', 'insufficient-retention');
+    if (limits.maxDuration * 1000 < window.endMs - window.startMs) throw new AnalyticsError('provider', 'recent-duration');
     const hourly: Row[] = [];
     // Sequential bounded requests keep the small dashboard gentle on provider limits.
     for (const [start, end] of chunks) {
+      chunk = (chunk ?? 0) + 1;
       const result = await gql(`query($account:string!,$filter:AccountRumPageloadEventsAdaptiveGroupsFilter_InputObject!,$limit:Int!){
         viewer{accounts(filter:{accountTag:$account}){hours:rumPageloadEventsAdaptiveGroups(limit:$limit,filter:$filter,orderBy:[datetimeHour_ASC]){
           sum{visits} dimensions{datetimeHour}
         }}}}`, { filter: publicFilter(site, start, end), limit: limits.maxPageSize });
       hourly.push(...rows(result.hours, limits.maxPageSize));
     }
+    stage = 'recent';
+    chunk = undefined;
     const recent = await gql(`query($account:string!,$filter:AccountRumPageloadEventsAdaptiveGroupsFilter_InputObject!,$limit:Int!){
       viewer{accounts(filter:{accountTag:$account}){
         pages:rumPageloadEventsAdaptiveGroups(limit:$limit,filter:$filter,orderBy:[count_DESC]){count dimensions{requestPath}}
         sources:rumPageloadEventsAdaptiveGroups(limit:$limit,filter:$filter){sum{visits} dimensions{refererHost}}
       }}}`, { filter: publicFilter(site, window.startMs, window.endMs), limit: limits.maxPageSize });
+    stage = 'normalize';
     const byDay = new Map<string, number>();
     let historyVisits = 0;
     for (const row of hourly) {
@@ -177,8 +224,12 @@ export async function loadAnalytics(env: Record<string, any>, now = new Date(), 
     }
     return { status: 'ok', data: { recentVisits: daily.reduce((sum, day) => sum + day.visits, 0), historyVisits,
       historyStart: new Date(chunks[0][0]).toISOString(), firstRecordedDay: [...byDay.keys()].sort()[0] ?? null,
-      daily, monthly, pages, sources } };
+      daily, calendarMonths: calendarMonths(byDay, chunks[0][0], now), monthly, pages, sources } };
   } catch (error) {
+    const reason = error instanceof AnalyticsError ? error.reason
+      : error instanceof Error && /^(TimeoutError|AbortError)$/.test(error.name) ? 'timeout' : 'network-or-json';
+    // This object contains fixed categories and validated limits, never tokens, paths, visitors, or raw errors.
+    try { diagnose({ stage, reason, httpStatus: error instanceof AnalyticsError ? error.httpStatus : undefined, limits: verifiedLimits, chunk }); } catch {}
     return { status: error instanceof AnalyticsError ? error.status : 'provider' };
   }
 }
