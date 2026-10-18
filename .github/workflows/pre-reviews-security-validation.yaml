@@ -1,0 +1,30 @@
+name: Pre-Reviews Security Validation
+on:
+  push:
+    branches: ['codex/pre-reviews-security-20261018']
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npx astro check
+        env:
+          ASTRO_TELEMETRY_DISABLED: '1'
+      - run: npm run build
+        env:
+          ASTRO_TELEMETRY_DISABLED: '1'
+      - name: Full application suite including local D1
+        run: node --test tests/*.test.mjs
+      - name: Full Facebook Worker regression suite
+        if: always()
+        run: node --test workers/fb-feed/*.test.js
