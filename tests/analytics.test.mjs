@@ -24,13 +24,20 @@ test('30 Chicago calendar days, year/month rollover, and DST boundaries', () => 
 
 test('available history uses account retention and contiguous bounded chunks', () => {
   const chunks = a.historyChunks(now.getTime(), limits);
-  assert.equal(chunks.length, 2);
+  assert.equal(chunks.length, 6);
   assert.equal(chunks[0][0], now.getTime() - 184 * 86400000 + 120000);
   assert.equal(chunks.at(-1)[1], now.getTime());
   for (let i = 0; i < chunks.length; i++) {
     assert.ok(chunks[i][1] > chunks[i][0]);
     assert.ok(chunks[i][1] - chunks[i][0] <= limits.maxDuration * 1000);
+    assert.ok(chunks[i][1] - chunks[i][0] <= 31 * 86400000);
     if (i) assert.equal(chunks[i - 1][1], chunks[i][0]);
+  }
+  for (const constrained of [{ maxDuration: 21600 }, { maxPageSize: 20 }]) {
+    const runtime = { ...limits, notOlderThan: 172800, ...constrained };
+    for (const [start, end] of a.historyChunks(now.getTime(), runtime)) {
+      assert.ok(end - start <= Math.min(runtime.maxDuration * 1000, (runtime.maxPageSize - 2) * 3600000));
+    }
   }
 });
 
@@ -67,6 +74,42 @@ function provider(overrides = {}) {
     ], ...overrides });
   };
 }
+
+test('historical queries avoid the demonstrated large-range timeout without changing totals or the recent query', async () => {
+  const normal = provider(), ranges = [];
+  const r = await a.loadAnalytics(config, now, async (url, options) => {
+    const { query, variables } = JSON.parse(options.body);
+    if (query.includes('hours:')) {
+      const start = Date.parse(variables.filter.datetime_geq), end = Date.parse(variables.filter.datetime_lt);
+      ranges.push([start, end]);
+      // Reproduce the production timeout on the large second chunk containing recent traffic.
+      if (end > a.reportingWindow(now).startMs && end - start > 31 * 86400000) throw new DOMException('timeout', 'TimeoutError');
+    } else if (query.includes('pages:')) {
+      assert.equal(Date.parse(variables.filter.datetime_geq), a.reportingWindow(now).startMs);
+      assert.equal(Date.parse(variables.filter.datetime_lt), now.getTime());
+    }
+    return normal(url, options);
+  });
+  assert.equal(r.status, 'ok');
+  assert.equal(ranges.length, 6);
+  assert.equal(r.data.historyVisits, 18);
+  assert.equal(r.data.recentVisits, 5);
+});
+
+test('exclusive chunk boundaries count an hour exactly once across the complete retained history', async () => {
+  const boundary = a.historyChunks(now.getTime(), limits)[0][1];
+  const samples = [[boundary - 3600000, 1], [boundary, 2], [boundary + 3600000, 4]];
+  const r = await a.loadAnalytics(config, now, async (_, options) => {
+    const { query, variables } = JSON.parse(options.body);
+    if (query.includes('settings{')) return reply({ settings: { rumPageloadEventsAdaptiveGroups: limits } });
+    if (!query.includes('hours:')) return reply({ pages: [], sources: [] });
+    const start = Date.parse(variables.filter.datetime_geq), end = Date.parse(variables.filter.datetime_lt);
+    return reply({ hours: samples.filter(([stamp]) => stamp >= start && stamp < end)
+      .map(([stamp, visits]) => ({ dimensions: { datetimeHour: new Date(stamp).toISOString() }, sum: { visits } })) });
+  });
+  assert.equal(r.status, 'ok');
+  assert.equal(r.data.historyVisits, 7);
+});
 
 test('normalizes verified response shape, pageviews, recent/history totals and months', async () => {
   const r = await a.loadAnalytics(config, now, provider());
