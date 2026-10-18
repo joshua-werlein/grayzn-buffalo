@@ -118,7 +118,9 @@ export function publicFilter(siteTag: string, start: number, end: number) {
 export function historyChunks(now: number, limits: Limits): [number, number][] {
   // Two minutes inside the moving retention boundary avoids aging out while requests run.
   const start = now - limits.notOlderThan * 1000 + 120_000;
-  const span = Math.floor(Math.min(limits.maxDuration * 1000, (limits.maxPageSize - 2) * HOUR) / HOUR) * HOUR;
+  // The allowed 93-day range timed out in production. Keep history requests month-sized,
+  // while respecting stricter provider duration and hourly row limits.
+  const span = Math.floor(Math.min(31 * 24 * HOUR, limits.maxDuration * 1000, (limits.maxPageSize - 2) * HOUR) / HOUR) * HOUR;
   if (span < HOUR || start >= now) throw new AnalyticsError('provider');
   const chunks: [number, number][] = [];
   for (let from = start; from < now;) {
