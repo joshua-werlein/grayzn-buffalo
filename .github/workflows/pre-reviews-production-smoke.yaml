@@ -1,0 +1,68 @@
+name: Pre-Reviews Production Smoke
+on:
+  push:
+    branches: ['codex/pre-reviews-production-smoke-20261018']
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+      - name: Verify production security responses without sessions or data writes
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          const base = 'https://grayznbuffalo.com';
+          const request = (path, options = {}) => fetch(base + path, { ...options, redirect: 'manual', signal: AbortSignal.timeout(15000) });
+          let ready = false;
+          for (let attempt = 0; attempt < 12; attempt++) {
+            const r = await request('/api/menu-photo', { method: 'POST', headers: { origin: base } });
+            ready = r.status === 401 && r.headers.get('cache-control') === 'no-store';
+            await r.arrayBuffer();
+            if (ready) break;
+            await new Promise(resolve => setTimeout(resolve, 5000));
+          }
+          assert.ok(ready, 'Deployed photo API cache policy did not appear');
+          for (const path of ['/', '/menu', '/specials', '/contact']) {
+            const r = await request(path);
+            assert.equal(r.status, 200, path);
+            assert.ok(r.headers.get('content-security-policy-report-only'), path + ' report-only CSP');
+            assert.equal(r.headers.has('content-security-policy'), false, path + ' unexpectedly enforces CSP');
+            await r.arrayBuffer();
+            console.log(path + ': 200; CSP remains Report-Only');
+          }
+          for (const path of ['/api/menu-photo', '/api/welcome-photo']) {
+            const r = await request(path, { method: 'POST', headers: { origin: base } });
+            assert.equal(r.status, 401, path);
+            assert.equal(r.headers.get('cache-control'), 'no-store', path);
+            assert.match(r.headers.get('x-robots-tag'), /noindex/);
+            assert.doesNotMatch(r.headers.get('set-cookie') || '', /gb_session=/);
+            await r.arrayBuffer();
+            console.log(path + ': unauthorized; no-store; no session issued');
+          }
+          const loginPage = await request('/admin');
+          assert.equal(loginPage.status, 200);
+          assert.equal(loginPage.headers.get('cache-control'), 'no-store');
+          assert.match(await loginPage.text(), /class="cf-turnstile"/);
+          const denied = await request('/admin', { method: 'POST', headers: { origin: base }, body: new URLSearchParams({ action: 'login', password: 'invalid-security-smoke-test' }) });
+          assert.equal(denied.status, 200);
+          assert.match(await denied.text(), /Verification failed/);
+          assert.doesNotMatch(denied.headers.get('set-cookie') || '', /gb_session=/);
+          console.log('/admin: Turnstile rendered; missing verification rejected; no session issued');
+          for (const path of ['/admin/specials', '/admin/menu', '/admin/welcome-photos', '/admin/analytics']) {
+            const r = await request(path);
+            assert.equal(r.status, 302, path);
+            assert.equal(new URL(r.headers.get('location'), base).pathname, '/admin', path);
+            assert.equal(r.headers.get('cache-control'), 'no-store', path);
+            await r.arrayBuffer();
+            console.log(path + ': unauthorized access redirected to sign-in; no-store');
+          }
+          const contact = await request('/api/contact', { method: 'POST', headers: { origin: base, 'content-type': 'application/json' }, body: '{}' });
+          assert.equal(contact.status, 400);
+          await contact.arrayBuffer();
+          console.log('/api/contact: empty submission rejected before delivery');
+          JS
