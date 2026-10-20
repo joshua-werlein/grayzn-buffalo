@@ -170,3 +170,103 @@ test('every public delivery_display consumer resolves Automatic through the shar
     assert.match(source,/resolveDeliveryDisplay\(deliveryDisplaySetting,\s*automaticDelivery\)/,page);
   }
 });
+
+// October 19: the first image needed a weekly-shape repair; the later daily
+// image already had correct delivery and food evidence. Both share one scan.
+async function october19Scan(t) {
+  const f=harness(t,{week:false,now:'2026-10-19T14:00:00Z'});
+  f.sql(readFileSync(new URL('../../migrations/0022_delivery_automation.sql',import.meta.url),'utf8'));
+  Object.assign(f.env,{SPECIALS_EVIDENCE_VERSION:'2',SPECIALS_VERIFICATION_STRATEGY:'conditional'});
+  const notice={status:'available',evidence:'DELIVERY AVAILABLE 11-1:30',date_evidence:'',uncertainties:[]};
+  const weekly={type:'weekly-lunch',poster_evidence:'WEEKLY LUNCH SPECIALS 10/19 - 10/23',
+    date_range:'10/19 - 10/23',service_time:'11-1:30',entries:[
+      'Club Wrap with Tots and a Drink',
+      'Crispy Chicken Jalapeno Sandwich with French Fries & a Drink',
+      'French Dip with Beer Fries and a Drink',
+      'Pulled Pork Sandwich with Tots and a Drink',
+      'Fish Sandwich with French Fries and a Drink',
+    ].map((content,i)=>({day_of_week:i+1,content,evidence:content,uncertainties:[]}))};
+  const daily={day_of_week:1,day_evidence:'MONDAY',poster_evidence:'MONDAY LUNCH SPECIALS',delivery:notice,
+    offers:[
+      ['Club Wrap with Tots and a Drink $9.75','11-1:30'],
+      ['Grilled Chicken Bacon Swiss with Side Salad, Chili or Coleslaw $10.25',''],
+      ['Grilled Ham and Cheese with a Cup of Chili or Coleslaw $7.25',''],
+    ].map(([content,time])=>({content,evidence:`${content}${time?' (11-1:30)':''}`,
+      service_time:time,service_evidence:time,date_evidence:'',uncertainties:[]}))};
+  f.state.posts=[['weekly','2026-10-19T13:24:11Z'],['daily','2026-10-19T13:47:26Z']]
+    .map(([id,created_time])=>({id,message:'',created_time,updated_time:created_time,full_picture:`https://cdn.example/${id}.jpg`}));
+  const responses=[{day_of_week:-1,day_evidence:'',poster_evidence:weekly.poster_evidence,
+    offers:[],delivery:{...notice,status:'ambiguous'}},weekly,daily];
+  f.env.AI.run=async(_model,request)=>{
+    const index=f.state.aiCalls++;
+    assert.ok(index<responses.length,'repeat scans must not invoke AI again');
+    if(index===1) assert.equal(request.response_format.json_schema.schema.properties.type.const,'weekly-lunch');
+    return {response:JSON.stringify(responses[index])};
+  };
+  const slots=()=>f.sql(`SELECT g.service,s.position,s.content,s.origin,s.manual_locked,s.last_auto_value
+    FROM special_slots s JOIN special_groups g ON g.id=s.group_id
+    JOIN special_collections c ON c.id=g.collection_id JOIN weekly_specials w ON w.id=c.weekly_special_id
+    WHERE w.week_start_date='2026-10-19' AND g.day_of_week=1 ORDER BY g.service,s.position`);
+  const state=()=>f.sql('SELECT * FROM delivery_automation WHERE id=1')[0];
+  await f.run();
+  assert.equal(f.state.aiCalls,3,'one weekly read, one shape repair, one daily read');
+  const [weeklyImport,dailyImport]=f.imports();
+  for(const row of [weeklyImport,dailyImport]) {
+    assert.equal(row.processing_status,'staged');assert.equal(row.validation_result,'ok');
+  }
+  assert.equal(JSON.parse(weeklyImport.candidate_json).delivery_blocked,true);
+  assert.equal(JSON.parse(weeklyImport.extracted_json).type,'weekly-lunch');
+  assert.equal(JSON.parse(weeklyImport.extracted_json).delivery,undefined);
+  assert.equal(JSON.parse(dailyImport.candidate_json).delivery_blocked,undefined);
+  return {...f,slots,stateRow:state,weeklyImport,dailyImport,daily,weekly,
+    display:()=>resolveDeliveryDisplay('auto',state(),new Date(f.state.now))};
+}
+
+test('October 19 weekly shape repair cannot veto the separate daily delivery poster',async t=>{
+  const f=await october19Scan(t);
+  const before=f.slots();
+  assert.deepEqual(before.filter(s=>s.content && ['lunch','all-day'].includes(s.service)).map(s=>[s.service,s.position,s.content]),[
+    ['all-day',1,'Grilled Chicken Bacon Swiss with Side Salad, Chili or Coleslaw $10.25'],
+    ['all-day',2,'Grilled Ham and Cheese with a Cup of Chili or Coleslaw $7.25'],
+    ['lunch',1,'Club Wrap with Tots and a Drink $9.75'],
+  ]);
+  for(const slot of before.filter(s=>s.service==='nightly' && s.content)) {
+    assert.equal(slot.origin,'manual');assert.equal(slot.manual_locked,0);assert.equal(slot.last_auto_value,null);
+  }
+  assert.equal(f.display(),'available');
+  assert.deepEqual(JSON.parse(f.stateRow().source_ids),f.imports().map(i=>i.id));
+  const state=f.stateRow();await f.run();assert.deepEqual(f.stateRow(),state);
+  f.state.now+=60000;await f.run();assert.equal(f.display(),'available');
+  assert.deepEqual(f.slots(),before);assert.equal(f.state.aiCalls,3);
+  for(const manual of ['available','unavailable','hidden'])
+    assert.equal(resolveDeliveryDisplay(manual,f.stateRow(),new Date(f.state.now)),manual);
+  f.state.now=Date.parse('2026-10-19T19:59:59Z');assert.equal(f.display(),'available');
+  f.state.now=Date.parse('2026-10-19T20:00:00Z');assert.equal(f.display(),'hidden');
+  await f.run();assert.equal(f.stateRow().active,0);assert.equal(f.state.aiCalls,3);
+  assert.deepEqual(f.slots(),before);
+});
+
+for(const kind of ['cancelled','ambiguous','daily conflict','pending','processing','rejected',
+  'unresolved weekly','malformed weekly','hybrid daily','weekly delivery','mismatched shape','staff dismissed'])
+  test(`October 19 multi-post scan retains ${kind} protection`,async t=>{
+    const f=await october19Scan(t),before=f.slots();
+    let raw=JSON.parse(f.weeklyImport.extracted_json),candidate=JSON.parse(f.weeklyImport.candidate_json);
+    if(['cancelled','ambiguous','daily conflict'].includes(kind)) {
+      raw=structuredClone(f.daily);
+      if(kind!=='daily conflict') raw.delivery={...raw.delivery,status:kind,
+        evidence:kind==='cancelled'?'NO DELIVERY TODAY':'Delivery may be available'};
+      candidate={...JSON.parse(f.dailyImport.candidate_json),...(kind==='daily conflict'?{delivery_blocked:true}:{})};
+    }
+    if(kind==='unresolved weekly') candidate.unresolved_days=[{day:2,reason:'Unreadable meal'}];
+    if(kind==='malformed weekly') raw.entries=[];
+    if(kind==='hybrid daily') raw.offers=[];
+    if(kind==='weekly delivery') raw.delivery={...f.daily.delivery,status:'cancelled',evidence:'NO DELIVERY TODAY'};
+    if(kind==='mismatched shape') raw=structuredClone(f.daily);
+    f.sql('UPDATE special_imports SET extracted_json=?,candidate_json=? WHERE id=?',JSON.stringify(raw),JSON.stringify(candidate),f.weeklyImport.id);
+    if(['pending','processing'].includes(kind)) f.sql('UPDATE special_imports SET processing_status=? WHERE id=?',kind,f.weeklyImport.id);
+    if(kind==='rejected') f.sql("UPDATE special_imports SET processing_status='failed',validation_result='rejected' WHERE id=?",f.weeklyImport.id);
+    if(kind==='staff dismissed') f.sql("UPDATE special_imports SET review_status='dismissed' WHERE id=?",f.weeklyImport.id);
+    f.state.now+=60000;
+    await reconcileDelivery(f.env,{sourceIds:f.imports().map(i=>i.id),observedAt:new Date(f.state.now).toISOString()});
+    assert.equal(f.display(),'hidden');assert.deepEqual(f.slots(),before);assert.equal(f.state.aiCalls,3);
+  });

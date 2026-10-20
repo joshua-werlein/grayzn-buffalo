@@ -1,5 +1,6 @@
 import {deliveryWindow} from '../../src/lib/delivery.js';
-import {validateCurrentDay} from './reconcile.js';
+import {validateCurrentDay,validateWeeklyLunch,hasWeeklyLunchEvidence} from './reconcile.js';
+import {normalizeWeeklyRange} from './evidence.js';
 import {parserVersionFor} from './classify.js';
 
 // A model label alone is not sufficient. Accept only a complete affirmative
@@ -41,7 +42,19 @@ export async function reconcileDelivery(env,{sourceIds,observedAt}) {
     let raw;
     try {
       raw=JSON.parse(source.extracted_json);
-      if (JSON.parse(source.candidate_json)?.delivery_blocked) {blocked=true;continue;}
+      const candidate=JSON.parse(source.candidate_json);
+      // A resolved weekly-shape repair drops the daily-only delivery field by
+      // contract. Its comparison flag is not conflicting current-day evidence.
+      // Require both durable shapes, weekly headings and complete validation;
+      // hybrid, unresolved, staff-excluded and unfinished sources still block.
+      if (raw?.type==='weekly-lunch' && candidate?.type==='weekly-lunch'
+        && hasWeeklyLunchEvidence(raw.poster_evidence) && hasWeeklyLunchEvidence(candidate.poster_evidence)
+        && !['offers','day_of_week','day_evidence','delivery','unresolved_days'].some(key=>key in raw || key in candidate)) {
+        validateWeeklyLunch(normalizeWeeklyRange(raw));
+        validateWeeklyLunch(candidate);
+        continue;
+      }
+      if (candidate?.delivery_blocked) {blocked=true;continue;}
     } catch {blocked=true;continue;}
     const evidence=deliveryEvidence(raw,w);
     available ||= evidence==='available';

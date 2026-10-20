@@ -1,5 +1,150 @@
 # Delivery banner automation
 
+## October 19, 2026 correction (committed locally; Worker not yet deployed)
+
+This section describes a narrow follow-up to the original feature rollout below.
+The source baseline is `main` / `origin/main` at
+`25dca4fe17e867d07719f32a93d228409796b54a`. Codex prepared the change in a
+restricted sandbox; it was then applied unchanged to the Windows checkout,
+validated there and committed locally. No push, deployment, production write,
+replay, migration or settings change is authorized by that commit. The separate
+migration-tracking reconciliation is untouched.
+
+### Failure and correction
+
+The October 19 weekly-lunch poster was initially read as a daily shape. Its
+successful targeted repair returned the weekly schema, which intentionally has
+no delivery field. The unchanged whole-object delivery comparison recorded
+`delivery_blocked:true`. The later daily poster correctly extracted
+`DELIVERY AVAILABLE 11-1:30`, but the weekly row vetoed the complete scan.
+
+Delivery reconciliation now treats that row as ineligible delivery evidence only
+after the existing staged/ok/image/parser/staff-review checks pass, both stored
+raw and candidate shapes are explicitly weekly-lunch with weekly lunch headings,
+both pass existing weekly structural validation (using the existing raw range
+normalizer), and neither contains daily fields, delivery or unresolved days.
+The row remains in snapshot fencing. A weekly type label alone is insufficient;
+unfinished/rejected sources, unresolved weeks, mixed shapes, delivery-bearing
+weekly responses and eligible daily conflicts retain their existing vetoes.
+Mexican Night behavior is unchanged.
+
+The extraction comparison and raw audit records are unchanged. Comparing complete
+delivery objects with `JSON.stringify` can still reject equivalent evidence/key
+ordering. That improvement is deferred: it is unnecessary to correct this incident
+and requires separate tests that distinguish harmless formatting from changed
+conditions, negation, date evidence or uncertainty. No parser bump or extra AI call
+is introduced. Food publication, defaults, locks, settings and rendering are unchanged.
+
+### Validation
+
+Codex ran the new October 19 pipeline regression before the fix; it failed because
+delivery was hidden, after confirming the three food slots were correct. Its
+mocked two-image scan performs exactly three AI calls: initial weekly read,
+weekly shape repair and daily read. It verifies complete source IDs, activation,
+food-slot preservation, untouched Nightly default provenance, idempotent repeated
+scans without further inference, manual precedence and the actual October 19
+3 PM Chicago deadline (`2026-10-19T20:00:00Z`). Multi-post negative regressions
+exercise cancellation, ambiguity, daily conflict, pending/processing/rejected
+sources, unresolved/malformed/hybrid weekly evidence and staff exclusions.
+
+Final Windows verification (October 19, 2026, normal local terminal, current
+installed dependencies, patch applied unchanged to `25dca4f`):
+
+- New October 19 regressions: **13/13 passed**.
+- Focused delivery suite (`delivery.test.js` + `delivery-d1.test.js`):
+  **37/37 passed**, 0 skipped.
+- Complete Worker suite: **1020/1020 passed**, 0 skipped.
+- Application suite after a fresh build: **146/146 passed**, 0 skipped.
+- Every real local D1 test blocked in the sandbox **passed**, with no `EACCES`
+  errors. The sandbox's seven failures (listed below) were six distinct tests:
+  `delivery-d1.test.js` failed in both the focused and complete Worker runs.
+- `npm run build`: **passed**. Astro check: **0 errors, 0 warnings, 6 hints** in
+  existing application code. Worker `wrangler deploy --dry-run`: **passed**
+  (bindings and variables unchanged). `git diff --check`: **passed**.
+
+Earlier Codex sandbox verification (superseded by the Windows results above;
+kept for history). The sandbox denied loopback connections, so every real-D1
+test failed there for environmental reasons:
+
+- New October 19 regressions: **13/13 passed**, no skipped tests.
+- Focused delivery suite, including actual local D1: **37 tests, 36 passed,
+  1 failed, 0 skipped**. The sole failure is `delivery-d1.test.js`: the sandbox
+  denies its loopback connection (`connect EACCES 127.0.0.1`). The identical test
+  also fails with EACCES against the unchanged original checkout.
+- Application suite after a fresh build: **146 tests, 144 passed, 2 failed,
+  0 skipped**. Both failures are the real-D1 tests in `specials-auto-d1.test.mjs`
+  and `specials-hotfix.test.mjs`, with the same loopback denial. An earlier run
+  before building also reported missing compiled routes; the fresh-build rerun
+  resolved all of those failures.
+- Production build, local Worker dry-run bundle, JavaScript syntax checks and
+  `git diff --check`: **passed**. Astro check: **0 errors, 0 warnings, 6 hints**
+  in existing application code. No dependencies or configuration were changed.
+- Complete Worker suite: **1020 tests, 1016 passed, 4 failed, 0 skipped**.
+  All four failures are real-D1 tests with `connect EACCES 127.0.0.1`, in
+  `delivery-d1.test.js`, `mexican-night-lifecycle.test.js`, `recovery-d1.test.js`
+  and `soup-wing.test.js`. No assertion failures were observed in executable
+  behavioral tests. This was not an all-green release verification; the
+  Windows run above is.
+
+Validation commands (as run on Windows):
+
+```powershell
+npm run build
+npx --no-install astro check
+node --test workers/fb-feed/delivery.test.js workers/fb-feed/delivery-d1.test.js
+node --test --test-concurrency=4 workers/fb-feed/*.test.js
+node --test --test-concurrency=4 tests/*.test.mjs
+npx --no-install wrangler deploy --dry-run --config workers/fb-feed/wrangler.toml --outdir .wrangler/delivery-dryrun
+git diff --check
+```
+
+### Later rollout and rollback (explicit approval required)
+
+This correction requires **only a Worker release**, not the original migration /
+Pages / opt-in procedure below. If the source differs from the validated commit,
+rerun the checks above before deploying.
+
+Read-only production preflight (October 19, 2026, evening):
+
+- Active `grayzn-fb-feed` deployment `76209da9-455c-425b-8c82-c7700ab770c3`,
+  version `f43e94e4-cce1-4db5-902b-50c97a2e336a` at 100%, uploaded October 17
+  shortly after commit `82e1001`. Later commits touch only analytics, auth,
+  middleware and admin pages, none of which the Worker bundles.
+- Bindings and variables match `workers/fb-feed/wrangler.toml`: `GUARDED_AUTO`,
+  evidence version `2`, `conditional` verification, the configured AI model,
+  daily limit `50` and webhook mode `RUN`.
+- `delivery_display` is `auto`. The October 19 `delivery_automation` row is
+  inactive, with the weekly source carrying `delivery_blocked` and the daily source
+  carrying `delivery.status` `available`, which matches the diagnosis above.
+
+Re-check the active version immediately before deploying; if it is no longer
+`f43e94e4-cce1-4db5-902b-50c97a2e336a`, stop and review the difference.
+
+After separate explicit Worker deployment approval, deploy the reviewed revision:
+
+```powershell
+npx --no-install wrangler deploy --config workers/fb-feed/wrangler.toml --keep-vars
+```
+
+Do not deploy Pages, modify settings, reset import rows, apply any migration or
+replay October 19 posts. Normal future complete scans reuse durable evidence;
+Automatic remains hidden after 3 PM and on days without eligible evidence. Verify
+the next naturally qualifying weekday scan, unchanged food content, staff override
+precedence and expiration using read-only observations. Any source-control push
+requires its own review because pushing main also triggers the Pages workflow.
+
+After separate rollback approval, restore only the recorded pre-fix Worker version:
+
+```powershell
+npx --no-install wrangler rollback f43e94e4-cce1-4db5-902b-50c97a2e336a --config workers/fb-feed/wrangler.toml --message "Revert Oct 19 delivery fix"
+```
+
+Verify the active version and preserved
+configuration. Do not restore D1, change migration tracking, revert Pages or modify
+staff settings as part of this rollback. Delivery automation can write during
+ordinary scheduled execution; observe the resulting state without manually
+correcting records. Source rollback before a subsequent release must also be reviewed.
+
 Prepared against fetched `origin/main` / local `main` at `121a011` on October 13, 2026. No production deployment or remote database changes have been made.
 
 ## Claude Code handoff: start here
