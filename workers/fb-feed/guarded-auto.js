@@ -1,3 +1,4 @@
+import {mergeMexicanMenu, storedMexicanGroups, accessoryGroup, scheduleKey} from './mexican-menu.js';
 import {protectedMexicanSlots} from './mexican-night-defaults.js';
 import {automaticWeekRange} from './auto-week.js';
 import {composeMexicanItem,normalizeMexicanPrices} from '../../src/lib/mexican-item.js';
@@ -355,7 +356,7 @@ export async function reconcileWeeklyLunch(env, today) {
 async function applyMexicanNight(env, source, evidence, weekStart) {
   const stage = reason => ({written: false, reason});
   const collection = await env.DB.prepare(
-    "SELECT id,revision FROM special_collections WHERE id='mexican-night' AND kind='section'"
+    "SELECT * FROM special_collections WHERE id='mexican-night' AND kind='section'"
   ).first();
   if (!collection) return stage('Mexican Night collection not found');
   const {results: currentGroups} = await env.DB.prepare(
@@ -365,28 +366,47 @@ async function applyMexicanNight(env, source, evidence, weekStart) {
     `SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id
      WHERE g.collection_id='mexican-night' ORDER BY g.sort,g.id,s.position`
   ).all();
+  const defaults = await env.DB.prepare("SELECT * FROM special_collections WHERE id='mexican-night-defaults'").first();
+  const {results: defaultGroups} = await env.DB.prepare("SELECT * FROM special_groups WHERE collection_id='mexican-night-defaults' ORDER BY sort,id").all();
+  const {results: defaultSlots} = await env.DB.prepare("SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='mexican-night-defaults' ORDER BY g.sort,g.id,s.position").all();
+  const schedule=defaults?.schedule || 'Tuesdays · 5 – 10 PM';
+  if(evidence.schedule && (!scheduleKey(evidence.schedule) || scheduleKey(evidence.schedule)!==scheduleKey(schedule))) {
+    const reason=`REVIEW_REQUIRED_MEXICAN_SCHEDULE: printed ${evidence.schedule}; recurring ${schedule}`;
+    await env.DB.batch([
+      env.DB.prepare("UPDATE special_imports SET review_reason=?2 WHERE id=?1 AND review_status='pending'").bind(source.id,reason),
+      env.DB.prepare("INSERT INTO special_import_events(import_id,event_type,detail) SELECT ?1,'review',?2 WHERE NOT EXISTS(SELECT 1 FROM special_import_events WHERE import_id=?1 AND detail=?2)").bind(source.id,reason),
+    ]);
+    return stage(reason);
+  }
+  let groups;
+  try {
+    const recurring=storedMexicanGroups(defaultGroups,defaultSlots);
+    const current=collection.section_week_start===weekStart || !collection.section_week_start
+      ? storedMexicanGroups(currentGroups,currentSlots) : [];
+    groups=mergeMexicanMenu(evidence.groups,mergeMexicanMenu(current,recurring));
+  } catch(error) { return stage(error.message); }
   const token = crypto.randomUUID();
   const prepare = (sql, ...args) => env.DB.prepare(sql).bind(...args);
   const gate = "EXISTS(SELECT 1 FROM special_collections WHERE id='mexican-night' AND mutation_token=?1)";
   const sourcePrefix = source.id.slice(0, 8);
-  // Accessory groups (Substitutions, Add-ons) are standing rules, not weekly menu items.
-  // Preserve them when Facebook omits them; any Facebook accessory group replaces them
-  // all, whatever its exact label. Manual locks still block the whole write below.
-  const normalizeLabel = s => s.normalize('NFKC').replace(/[‐‑–—]/g, '-');
-  const isAccessory = label => /\b(?:add[\s-]*ons?|substitutions?|substitutes?)\b/i.test(normalizeLabel(label));
-  const newGroupRows = evidence.groups.map((g, i) => [`mn:${sourcePrefix}:${i}`, g.label, i]);
-  const newSlotRows = evidence.groups.flatMap((g, i) => g.items.map((item, j) => {
-    const price = isAccessory(g.label) ? normalizeMexicanPrices : text => text;
-    return [`mn:${sourcePrefix}:${i}`, j + 1, composeMexicanItem(price(item.title), price(item.description))];
+  const storedCurrent=storedMexicanGroups(currentGroups,currentSlots);
+  const retainedIds=groups.filter(g=>g.id && storedCurrent.some(old=>old.id===g.id && JSON.stringify(old.items)===JSON.stringify(g.items))).map(g=>g.id);
+  const newGroupRows = groups.map((g, i) => [currentGroups.some(old=>old.id===g.id) ? g.id : `mn:${sourcePrefix}:${i}`, g.label, i]);
+  const newSlotRows = groups.flatMap((g, i) => g.items.map((item, j) => {
+    const price = accessoryGroup(g.label) ? normalizeMexicanPrices : text => text;
+    return [newGroupRows[i][0], j + 1, composeMexicanItem(price(item.title), price(item.description))];
   }));
-  const detail = `GUARDED_MEXICAN_NIGHT: fb_created=${source.fb_created_time}; ${evidence.groups.length} group(s); ${newSlotRows.length} item(s)`;
-  const accessoryGroupIds = evidence.groups.some(g => isAccessory(g.label))
-    ? [] : currentGroups.filter(g => isAccessory(g.label)).map(g => g.id);
+  const detail = `GUARDED_MEXICAN_NIGHT: fb_created=${source.fb_created_time}; ${groups.length} group(s); ${newSlotRows.length} item(s)`;
   const results = await env.DB.batch([
     prepare(`UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3,updated_at=?13,
       section_week_start=?12,section_service_date=date(?12,'+1 day'),section_source='facebook'
       WHERE id='mexican-night' AND kind='section' AND revision=?4
       AND COALESCE(section_source,'')<>'manual' AND NOT ${protectedMexicanSlots}
+      AND (SELECT revision FROM special_collections WHERE id='mexican-night-defaults') IS ?14
+      AND (SELECT count(*) FROM special_groups WHERE collection_id='mexican-night-defaults')=json_array_length(?15)
+      AND NOT EXISTS(SELECT 1 FROM json_each(?15) j WHERE NOT EXISTS(SELECT 1 FROM special_groups g WHERE g.id=json_extract(j.value,'$.id') AND g.label=json_extract(j.value,'$.label') AND g.enabled=json_extract(j.value,'$.enabled') AND g.sort=json_extract(j.value,'$.sort')))
+      AND (SELECT count(*) FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='mexican-night-defaults')=json_array_length(?16)
+      AND NOT EXISTS(SELECT 1 FROM json_each(?16) j WHERE NOT EXISTS(SELECT 1 FROM special_slots s WHERE s.group_id=json_extract(j.value,'$.group_id') AND s.position=json_extract(j.value,'$.position') AND s.content IS json_extract(j.value,'$.content') AND s.price=json_extract(j.value,'$.price')))
       AND (section_week_start IS NULL OR section_week_start<=?12)
       AND EXISTS(SELECT 1 FROM special_migration_checks WHERE version=15 AND mismatches=0)
       AND (SELECT count(*) FROM special_groups WHERE collection_id='mexican-night')=?5
@@ -406,17 +426,17 @@ async function applyMexicanNight(env, source, evidence, weekStart) {
         AND review_status IN ('pending','accepted')
         AND NOT EXISTS(SELECT 1 FROM special_imports newer WHERE newer.fb_post_id=special_imports.fb_post_id
           AND newer.parser_version=?11 AND newer.rowid>special_imports.rowid))`,
-      token, evidence.poster_evidence, evidence.schedule, collection.revision,
+      token, 'Mexican Night', schedule, collection.revision,
       currentGroups.length, JSON.stringify(currentGroups),
       currentSlots.length, JSON.stringify(currentSlots),
-      source.id, source.candidate_json, parserVersionFor(env), weekStart, new Date(Date.now()).toISOString()),
-    prepare(`DELETE FROM special_groups WHERE collection_id='mexican-night' AND id NOT IN (SELECT value FROM json_each(?2)) AND ${gate}`, token, JSON.stringify(accessoryGroupIds)),
+      source.id, source.candidate_json, parserVersionFor(env), weekStart, new Date(Date.now()).toISOString(), defaults?.revision ?? null, JSON.stringify(defaultGroups), JSON.stringify(defaultSlots)),
+    prepare(`DELETE FROM special_groups WHERE collection_id='mexican-night' AND id NOT IN (SELECT value FROM json_each(?2)) AND ${gate}`, token, JSON.stringify(retainedIds)),
     prepare(`INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled)
       SELECT json_extract(value,'$[0]'),'mexican-night',-1,'custom',json_extract(value,'$[1]'),'',json_extract(value,'$[2]'),1
-      FROM json_each(?2) WHERE ${gate}`, token, JSON.stringify(newGroupRows)),
+      FROM json_each(?2) WHERE ${gate}`, token, JSON.stringify(newGroupRows.filter(row=>!retainedIds.includes(row[0])))),
     prepare(`INSERT INTO special_slots(group_id,position,content,price,section_link,origin,manual_locked,last_auto_value)
       SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]'),json_extract(value,'$[2]'),'','','automation',0,json_extract(value,'$[2]')
-      FROM json_each(?2) WHERE ${gate}`, token, JSON.stringify(newSlotRows)),
+      FROM json_each(?2) WHERE ${gate}`, token, JSON.stringify(newSlotRows.filter(row=>!retainedIds.includes(row[0])))),
     prepare(`INSERT INTO special_import_events(import_id,event_type,detail) SELECT ?2,'review',?3 WHERE ${gate}`,
       token, source.id, detail),
     prepare(`SELECT id FROM special_collections WHERE id='mexican-night' AND mutation_token=?1`, token),

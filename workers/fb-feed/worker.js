@@ -559,7 +559,8 @@ export function validateExtraction(extractedJson,reliable=false,window={}) {
       }
       return {candidateJson:JSON.stringify(validateMexicanNight(parsed)),validationResult:'ok',validationReason:'mexican night evidence'};
     }
-    catch (error) { return {candidateJson:null,validationResult:'rejected',validationReason:error.message}; }
+    catch (error) { return {candidateJson:null,validationResult:'rejected',validationReason:error.message,
+      ...(error.message==='Mexican Night size prices require explicit labels' ? {needsRepair:true,repairShape:'mexican-night'} : {})}; }
   }
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'offers' in parsed) {
     if(reliable || parsed.evidence_version===2) {

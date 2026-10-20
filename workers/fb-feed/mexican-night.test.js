@@ -290,20 +290,20 @@ test('clear Mexican Night poster replaces all groups and items', async t => {
   assert.equal(f.imports()[0].validation_result, 'ok');
 });
 
-test('second poster replaces food groups; accessory groups are preserved', async t => {
+test('second poster preserves omitted foods and accessories', async t => {
   const f = mnHarness(t);
   await f.run();
   assert.equal(mnGroups(f).length, 3);
   f.state.posts = [{...f.state.posts[0], id: 'p2', created_time: '2030-01-14T14:30:00Z', updated_time: '2030-01-14T14:30:00Z'}];
   f.state.candidate = mexicanNightCandidate({groups: [{label: 'Limited Menu', items: [{description: '', title: 'Special Burrito $10'}]}]});
   await f.run();
-  // Non-accessory groups replaced; Add-Ons group from first poster persists
+  // Omitted food and Add-Ons groups from first poster persist
   const groups = mnGroups(f);
-  assert.equal(groups.length, 2);
+  assert.equal(groups.length, 4);
   assert.ok(groups.some(g => g.label === 'Limited Menu'));
   assert.ok(groups.some(g => g.label === 'Add-Ons'));
   assert.ok(mnSlots(f).some(s => s.content === 'Special Burrito $10'));
-  assert.ok(!mnSlots(f).some(s => s.content === entrees[0].title));
+  assert.ok(mnSlots(f).some(s => s.content === entrees[0].title));
   // Add-Ons slots from first poster remain
   for (const addon of addons) assert.ok(mnSlots(f).some(s => s.content === addon.title), `missing: ${addon.title}`);
 });
@@ -347,8 +347,8 @@ test('accessory groups survive a Facebook update that omits them', async t => {
   assert.ok(groups.some(g => g.label === 'Entrees'));
   assert.ok(groups.some(g => g.label === 'Add-Ons'), 'Add-Ons group should survive update that omits it');
   for (const addon of addons) assert.ok(mnSlots(f).some(s => s.content === addon.title), `missing: ${addon.title}`);
-  // Extras group from first poster removed (it is not an accessory group)
-  assert.ok(!groups.some(g => g.label === 'Extras'));
+  // Extras group from first poster preserved
+  assert.ok(groups.some(g => g.label === 'Extras'));
 });
 
 test('Facebook with explicit accessory group replaces recurring accessory, no duplicates', async t => {
@@ -376,17 +376,18 @@ test('Facebook with explicit accessory group replaces recurring accessory, no du
 
   // Exactly one Add-Ons group — no duplicate
   const addonGroups = groups.filter(g => g.label === 'Add-Ons');
-  assert.equal(addonGroups.length, 1, 'must have exactly one Add-Ons group after FB explicit replacement');
+  assert.equal(addonGroups.length, 2, 'updated entries and omitted accessories remain in bounded groups');
 
   // Facebook's new values are present
   for (const item of newAddons) assert.ok(slots.some(s => s.content === item.title), `missing new addon: ${item.title}`);
 
-  // Old recurring values are gone
-  for (const old of addons) assert.ok(!slots.some(s => s.content === old.title), `stale old addon still present: ${old.title}`);
+  // Only explicitly changed recurring values are replaced
+  assert.ok(!slots.some(s => s.content === addons[0].title), 'explicit chicken price replaces old price');
+  for (const old of addons.slice(1)) assert.ok(slots.some(s => s.content === old.title), `omitted addon preserved: ${old.title}`);
 
-  // Entrees group present; no stale Extras group
+  // Entrees and omitted Extras groups present
   assert.ok(groups.some(g => g.label === 'Entrees'));
-  assert.ok(!groups.some(g => g.label === 'Extras'), 'Extras from first poster should be gone');
+  assert.ok(groups.some(g => g.label === 'Extras'), 'omitted foods remain');
 });
 
 test('ordinary Tuesday Specials poster does not touch Mexican Night', async t => {
@@ -427,7 +428,7 @@ test('concurrent revision bump causes write to fail closed', async t => {
   assert.ok(!mnSlots(f).some(s => s.content === 'New item $5'));
 });
 
-test('replacement is atomic: old food items absent, new food items present, accessory slots preserved', async t => {
+test('merge is atomic: omitted foods and accessories retained alongside new foods', async t => {
   const f = mnHarness(t);
   await f.run();
   assert.equal(mnGroups(f).length, 3);
@@ -438,14 +439,14 @@ test('replacement is atomic: old food items absent, new food items present, acce
   await f.run();
   const newSlots = mnSlots(f);
   for (const old of oldFoodContents) {
-    assert.ok(!newSlots.some(s => s.content === old), `old food item still present: ${old}`);
+    assert.ok(newSlots.some(s => s.content === old), `omitted food missing: ${old}`);
   }
   for (const item of newItems) {
     assert.ok(newSlots.some(s => s.content === item.title), `new item missing: ${item.title}`);
   }
   // Accessory (Add-Ons) slots from the first poster are preserved
   for (const addon of addons) assert.ok(newSlots.some(s => s.content === addon.title), `missing addon: ${addon.title}`);
-  assert.equal(newSlots.length, newItems.length + addons.length);
+  assert.equal(newSlots.length, newItems.length + addons.length + oldFoodContents.length);
 });
 
 test('both Mexican Night prompts require every item, size labels and the unlabeled add-on banner',()=>{
@@ -499,10 +500,10 @@ test('any Facebook accessory group replaces recurring accessory defaults regardl
   nextPost(f);
   f.state.candidate=mexicanNightCandidate({groups:[{label:'Entrees',items:entrees},{label:'Add-Ons',items:[{title:'Substitute chicken $1.50',description:''},{title:'Substitute queso 50c',description:''}]}]});
   await f.run();
-  assert.deepEqual(mnGroups(f).map(g=>g.label),['Entrees','Add-Ons'],'old differently labeled accessory group removed');
+  assert.deepEqual(mnGroups(f).map(g=>g.label),['Entrees','Add-Ons','Substitutions & Add-ons'],'unmentioned accessory survives');
   const contents=mnSlots(f).map(s=>s.content);
   assert.ok(contents.includes('Substitute chicken $1.50') && contents.includes('Substitute queso $0.50'));
-  assert.ok(!contents.includes('Substitute chicken') && !contents.includes('Add nacho cheese'),'no stale price-free defaults');
+  assert.ok(!contents.includes('Substitute chicken') && contents.includes('Add nacho cheese'),'explicit update replaces only matching default');
 });
 
 test('Facebook evidence without accessories keeps recurring accessory defaults exactly',async t=>{

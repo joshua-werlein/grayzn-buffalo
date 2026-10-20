@@ -1,4 +1,6 @@
 import {composeMexicanItem} from '../../src/lib/mexican-item.js';
+import {promotionalHeading} from './mexican-menu.js';
+import {labelBareSizePrices} from './evidence.js';
 import {standaloneSoup,hasStandaloneSoupLabel} from '../../src/lib/daily-soup.js';
 import {formatWingNight,validateWingNight} from './wing-night.js';
 import {planDailyEvidence} from './evidence.js';
@@ -259,12 +261,15 @@ export function validateMexicanNight(value) {
     const items = g.items.map((item, j) => {
       if (!item || typeof item !== 'object') throw Error(`Invalid Mexican Night: group ${i} item ${j} is not an object`);
       if (typeof item.title !== 'string' || !item.title.trim()) throw Error(`Invalid Mexican Night: group ${i} item ${j} title must be non-empty text`);
-      const content = composeMexicanItem(item.title, item.description);
+      const title = labelBareSizePrices(item.title, item.evidence ?? item.description);
+      if (/\$\s*\d+(?:\.\d{1,2})?\s*[|/•·,]\s*\$/.test(title)) throw Error('Mexican Night size prices require explicit labels');
+      const content = composeMexicanItem(title, item.description);
       if (containsConsumerAdvisory(content)) throw Error(`Invalid Mexican Night: consumer advisory in group ${i} item ${j}`);
-      return {title: item.title, description: item.description};
-    });
+      return {title, description: item.description};
+    }).filter(item => !promotionalHeading(item.title));
     return {label: g.label, items};
-  });
+  }).filter(g => g.items.length);
+  if (!groups.length) throw Error('Invalid Mexican Night: no menu items');
   return {type: 'mexican-night', poster_evidence: posterEvidence, schedule, groups};
 }
 function forToday(value,weekday,today) {

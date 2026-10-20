@@ -13,29 +13,28 @@ const itemsFor = (sections: SpecialGroup[]) => sections.flatMap(group => visible
 }));
 const foods = itemsFor(foodGroups);
 const extras = itemsFor(accessoryGroups);
-const times = [...new Set(foodGroups.map(group => group.service_time.trim()).filter(Boolean))];
-// Conflicting group times are not summarized into an invented shared schedule.
-const serviceTime = times.length === 1 ? times[0] : '';
 ---
 <div class="mexican-night-menu">
   {foods.length > 0 && <section aria-labelledby="mexican-favorites-heading">
-    <header class="menu-heading"><h3 id="mexican-favorites-heading">Mexican Night Favorites</h3>{serviceTime && <p>{serviceTime}</p>}</header>
+    <header class="menu-heading"><h3 id="mexican-favorites-heading">Mexican Night Favorites</h3></header>
     <ul class="menu-grid menu-grid--food">{foods.map(item => <li><strong class="menu-item-title">{item.title}</strong>{item.description && <p class="menu-item-description">{item.description}</p>}</li>)}</ul>
   </section>}
   {extras.length > 0 && <section class="menu-accessories" aria-labelledby="mexican-extras-heading">
     <header class="menu-heading"><h3 id="mexican-extras-heading">Substitutions &amp; Add-ons</h3></header>
     <ul class="menu-grid menu-grid--extras">{extras.map(item => <li><strong class="menu-item-title">{item.title}</strong>{item.description && <p class="menu-item-description">{item.description}</p>}</li>)}</ul>
   </section>}
+  <p class="consumer-advisory">* Consuming raw or undercooked meat, eggs, and seafood may cause foodborne illness.</p>
 </div>
 <style>
   .mexican-night-menu{color:var(--cream)}
   .menu-heading{text-align:center;margin:0 0 18px}
-  .menu-heading h3{margin:0;font:400 clamp(1.1rem,2vw,1.4rem) var(--display);color:var(--cream)}
+  .menu-heading h3{margin:0;font:700 clamp(1.1rem,2vw,1.4rem)/1.5 var(--label);color:var(--cream);overflow-wrap:anywhere}
   .menu-heading p{margin:5px 0 0;color:var(--ochre);font:600 .85rem var(--label);letter-spacing:.06em}
   .menu-grid{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr;gap:24px 28px}
   .menu-grid li{min-width:0;border-top:1px solid var(--rule-light);padding-top:16px;overflow-wrap:anywhere}
   .menu-item-title{display:block;font-size:1.1rem;line-height:1.4;white-space:pre-wrap}
   .menu-item-description{margin:8px 0 0;font-size:1rem;line-height:1.55;font-style:italic;opacity:.85;white-space:pre-wrap}
+  .consumer-advisory{margin:24px 0 0;padding-top:12px;border-top:1px solid var(--rule-light);font-size:.78rem;line-height:1.5}
   .menu-accessories{margin-top:26px;padding-top:20px;border-top:1px solid var(--ochre)}
   .menu-grid--extras{gap:12px 24px}
   .menu-grid--extras li{border-top:0;padding-top:0}

@@ -128,9 +128,11 @@ test('Mexican menu merges stored food groups, separates accessories and preserve
   assert.doesNotMatch(food,/Add cheese|Substitute chicken/);
   assert.match(extras,/&lt;script&gt;unsafe/);
   assert.doesNotMatch(extras,/<script>/);
-  assert.ok(html.indexOf('id="mexican-heading"')<html.indexOf('id="mexican-favorites-heading"'));
+  assert.ok(html.indexOf('id="mex-title"')<html.indexOf('id="mexican-favorites-heading"'));
   assert.ok(html.indexOf('menu-grid--food')<html.indexOf('id="mexican-extras-heading"'));
-  assert.match(html,/id="mexican-favorites-heading"[^>]*>Mexican Night Favorites<\/h3>.*?<p[^>]*>5–10 PM<\/p>/s);
+  assert.match(html,/id="mexican-favorites-heading"[^>]*>Mexican Night Favorites<\/h3>/);
+  assert.doesNotMatch(html,/<p[^>]*>5–10 PM<\/p>/);
+  assert.equal((html.match(/Consuming raw or undercooked/g)||[]).length,1);
   assert.deepEqual(await s.readCollection(f.env,'mexican-night'),before);
 });
 

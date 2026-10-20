@@ -1,0 +1,8 @@
+<!doctype html><title>Mexican Night layout checks</title><style>body{margin:0;font:14px sans-serif}iframe{border:0;transform-origin:top left}.mobile{height:1800px}.mobile iframe{width:375px;height:2400px;transform:scale(.75)}.desktop{height:500px}.desktop iframe{width:1440px;height:2400px;transform:scale(.19)}pre{white-space:pre-wrap}</style><h1>Layout checks</h1><pre id="results"></pre><h2>Desktop 1440px</h2><div class="desktop"><iframe title="Desktop" src="/menu.html#mexican-night"></iframe></div><h2>Mobile 375px</h2><div class="mobile"><iframe title="Mobile" src="/menu.html#mexican-night"></iframe></div><script>
+for(const f of document.querySelectorAll('iframe')) f.onload=async()=>{
+const d=f.contentDocument,w=f.contentWindow;await d.fonts.ready;
+const h=d.querySelector('#mexican-favorites-heading'),list=d.querySelector('.menu-grid--food');
+const result={viewport:w.innerWidth,headings:d.querySelectorAll('#mexican-favorites-heading').length,lineHeight:w.getComputedStyle(h).lineHeight,fontSize:w.getComputedStyle(h).fontSize,gap:list.getBoundingClientRect().top-h.getBoundingClientRect().bottom,columns:w.getComputedStyle(list).gridTemplateColumns,overflow:d.documentElement.scrollWidth>w.innerWidth,advisories:d.querySelectorAll('.consumer-advisory').length};
+result.pass=result.headings===1&&result.gap>=18&&!result.overflow&&result.advisories===1;
+document.querySelector('#results').textContent+=JSON.stringify(result,null,2)+'\n';
+};</script>

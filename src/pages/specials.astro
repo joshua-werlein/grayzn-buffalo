@@ -28,7 +28,7 @@ const mexicanGroups=mexican ? visibleGroups(mexican.groups) : [];
 // The recurring "Mexican Night" card stays visible all week regardless.
 const mexicanNightVisible = mexicanGroups.length > 0 && mexicanNightDetailVisible(mexican?.updated_at, (Astro.locals as any).runtime?.now ?? new Date());
 
-const recurring=[{name:'Lunch Specials',when:'11 AM – 1:30 PM'},{name:'Nightly Specials',when:'5 – 10 PM'},{name:'Friday Fish',when:'Fridays · 5 – 10 PM'},{name:'Happy Hour',when:'Mon–Fri · 5 – 6:30 PM'},{name:'Mexican Night',when:mexican?.schedule || 'Tuesdays · 5 – 10 PM'}];
+const recurring=[{name:'Lunch Specials',when:'11 AM – 1:30 PM'},{name:'Nightly Specials',when:'5 – 10 PM'},{name:'Friday Fish',when:'Fridays · 5 – 10 PM'},{name:'Happy Hour',when:'Mon–Fri · 5 – 6:30 PM'},{name:'Mexican Night',when:'Every Tuesday • 5–10 PM'}];
 
 // Helpers
 const cardDate = (dateStr: string) => new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',timeZone:'UTC'}).format(new Date(`${dateStr}T12:00:00Z`));
@@ -119,8 +119,8 @@ const PC = ['denim','brick','saddle'] as const;
     {mexicanNightVisible && (
       <article class="placard placard--mexican" aria-labelledby="mex-title">
         <div class="mex-hd">
-          <span class="mex-kicker">{mexican!.schedule || 'Tuesdays · 5 – 10 PM'}</span>
-          <h2 id="mex-title" class="mex-title">{mexican!.title}</h2>
+          <span class="mex-kicker">Every Tuesday • 5–10 PM</span>
+          <h2 id="mex-title" class="mex-title">Mexican Night</h2>
           <span class="mex-rule" aria-hidden="true"/>
         </div>
         <div class="mex-body">

@@ -90,12 +90,15 @@ test('following Sunday publishes a new Tuesday from the current stored template'
   assert.equal(collection(f).updated_at,'2030-01-21T01:00:00.000Z');assert.equal(slots(f)[0].content,'Updated recurring recipe');
   assert.equal(slots(f).length,4);
 });
-test('valid Facebook menu replaces unlocked defaults; repeats preserve Facebook content and timestamp',async t=>{
+test('valid Facebook menu patches unlocked defaults; repeats preserve Facebook content and timestamp',async t=>{
   const f=facebookHarness(t);await ensureAutomaticWeek(f.env,sunday);const template=slots(f,'mexican-night-defaults');
+  const seeded=slots(f);
   setMondayPoster(f);await f.run();
   assert.equal(collection(f).section_source,'facebook');assert.equal(collection(f).section_week_start,'2030-01-14');
-  assert.equal(collection(f).section_service_date,'2030-01-15');assert.equal(slots(f)[0].origin,'automation');
-  assert.equal(slots(f)[0].content,slots(f)[0].last_auto_value);assert.match(slots(f)[0].content,/Facebook burrito/);
+  assert.equal(collection(f).section_service_date,'2030-01-15');
+  const imported=slots(f).find(s=>s.content.includes('Facebook burrito'));
+  assert.ok(imported);assert.equal(imported.origin,'automation');assert.equal(imported.content,imported.last_auto_value);
+  assert.deepEqual(slots(f).filter(s=>seeded.some(old=>old.group_id===s.group_id)),seeded);
   const before=snapshot(f);await ensureAutomaticWeek(f.env,sunday);assert.equal(snapshot(f),before);
   assert.deepEqual(slots(f,'mexican-night-defaults'),template);
   f.state.now=Date.parse('2030-01-21T01:00:00Z');await ensureAutomaticWeek(f.env,following);
@@ -206,7 +209,7 @@ for(const source of ['manual','facebook']) test(`next Sunday replaces expired ${
     const edit=await store.readCollection(f.env,'mexican-night');
     edit.groups[0].slots[0].content='Current-week staff correction';
     // The editor submits four positions even when a poster supplied fewer items.
-    for(let position=2;position<=4;position++) edit.groups[0].slots.push({
+    for(const group of edit.groups) for(let position=1;position<=4;position++) if(!group.slots.some(s=>s.position===position)) group.slots.push({
       position,content:'',price:'',section_link:'',origin:'legacy',manual_locked:0,last_auto_value:null,
     });
     await store.saveCollection(f.env,edit);
