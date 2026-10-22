@@ -1,0 +1,32 @@
+{
+  "type": "weekly-lunch",
+  "poster_evidence": "THURSDAY LUNCH SPECIALS",
+  "date_range": "",
+  "service_time": "11-1:30",
+  "entries": [
+    {
+      "day_of_week": 4,
+      "content": "Pulled Pork with Tots and a Drink $9.75",
+      "evidence": "Pulled Pork with Tots and a Drink $9.75 (11-1:30)",
+      "uncertainties": []
+    },
+    {
+      "day_of_week": 4,
+      "content": "BLT Wrap with Side Salad, Soup or Coleslaw $10.25",
+      "evidence": "BLT Wrap with Side Salad, Soup or Coleslaw $10.25",
+      "uncertainties": []
+    },
+    {
+      "day_of_week": 4,
+      "content": "Grilled Ham and Cheese with Cup of Soup or Coleslaw $7.25",
+      "evidence": "Grilled Ham and Cheese with Cup of Soup or Coleslaw $7.25",
+      "uncertainties": []
+    },
+    {
+      "day_of_week": 4,
+      "content": "Soup: Chicken Noodle or Chili",
+      "evidence": "Soup: Chicken Noodle or Chili",
+      "uncertainties": []
+    }
+  ]
+}

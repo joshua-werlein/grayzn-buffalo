@@ -3,6 +3,27 @@ import {validateCurrentDay,validateWeeklyLunch,hasWeeklyLunchEvidence} from './r
 import {normalizeWeeklyRange} from './evidence.js';
 import {parserVersionFor} from './classify.js';
 
+export function completeDeliveryReading(d) {
+  return !!d && ['available','cancelled','ambiguous','none'].includes(d.status)
+    && typeof d.evidence==='string' && d.evidence.length<=600
+    && typeof d.date_evidence==='string' && d.date_evidence.length<=600
+    && Array.isArray(d.uncertainties) && d.uncertainties.length<=8
+    && d.uncertainties.every(v=>typeof v==='string' && v.length<=300);
+}
+
+// Application-owned candidate metadata; never substitute the reread's food.
+export function recoveredDeliveryReading(raw,window) {
+  if (!raw || 'type' in raw || !Array.isArray(raw.offers)
+    || !completeDeliveryReading(raw.delivery) || raw.day_of_week!==window.weekday
+    || typeof raw.day_evidence!=='string' || raw.day_evidence.length>600
+    || typeof raw.poster_evidence!=='string' || raw.poster_evidence.length>2400) return null;
+  try {
+    if(!validateCurrentDay({...raw,poster_evidence:`${raw.poster_evidence} ${raw.delivery.date_evidence} ${raw.delivery.evidence}`},window.weekday,window.day)) return null;
+  } catch { return null; }
+  return {day_of_week:raw.day_of_week,day_evidence:raw.day_evidence,
+    poster_evidence:raw.poster_evidence,delivery:raw.delivery,offers:[]};
+}
+
 // A model label alone is not sufficient. Accept only a complete affirmative
 // sentence with optional today, city-limit qualifier and the known lunch window.
 export function deliveryEvidence(raw, window) {
@@ -55,6 +76,11 @@ export async function reconcileDelivery(env,{sourceIds,observedAt}) {
         continue;
       }
       if (candidate?.delivery_blocked) {blocked=true;continue;}
+      if (candidate?.delivery_recovery) {
+        const recovered=recoveredDeliveryReading(candidate.delivery_recovery,w);
+        if(!recovered) {blocked=true;continue;}
+        raw=recovered;
+      }
     } catch {blocked=true;continue;}
     const evidence=deliveryEvidence(raw,w);
     available ||= evidence==='available';

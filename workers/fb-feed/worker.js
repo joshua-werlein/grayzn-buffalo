@@ -6,7 +6,8 @@ import {ensureAutomaticWeek} from './auto-week.js';
 import {MAX_IMPORT_ATTEMPTS,OWNS_ATTEMPT_SQL,isTransientFailure,claimImportAttempt,attemptEvent,saveAttemptImage,finishImportAttempt,retireImportAttempts} from './recovery.js';
 import {validateEvidence, validateWeeklyLunch, validateMexicanNight, singleDayLunchEvidence, singleDayLunchEvidenceV2, validateCurrentDay, hasWeeklyLunchEvidence, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR, WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
 import {WEBHOOK_PATH, handleFacebookWebhook} from './webhook.js';
-import {expireDelivery,reconcileDelivery} from './delivery.js';
+import {expireDelivery,reconcileDelivery,completeDeliveryReading,recoveredDeliveryReading} from './delivery.js';
+import {deliveryWindow} from '../../src/lib/delivery.js';
 
 const TIME_ZONE = 'America/Chicago';
 const GRAPH_API_VERSION = 'v26.0';
@@ -386,10 +387,12 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
   const reliable=env.SPECIALS_EVIDENCE_VERSION==='2';
   const strategy=['single','always'].includes(env.SPECIALS_VERIFICATION_STRATEGY)?env.SPECIALS_VERIFICATION_STRATEGY:'conditional';
   let priorValidation=null,priorRaw='',priorOutcome=null;
+  let deliveryRecovery=false;
   // Tracks whether a Tuesday empty-offers result has armed the Mexican Night targeted retry.
   let needsMexicanNightRetry = false;
   for (let attempt=0;attempt<2;attempt++) {
     const now = new Date(Date.now());
+    if(deliveryRecovery && !deliveryWindow(now).open) return {...priorOutcome,deliveryConflict:true};
     if (!isWithinProcessingHours(now) || chicagoDate(now)!==budget.window.today) return outcome;
     const reservation = await env.DB.prepare(`INSERT INTO special_import_events(import_id,event_type,detail,occurred_at)
       SELECT ?3,'extract',?4,?5 WHERE (${AI_COUNT_SQL})<?6
@@ -400,10 +403,10 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
       ${reliable ? "AND (SELECT count(*) FROM special_import_events WHERE import_id=?3 AND event_type='extract')<3" : ''}`).bind(
       new Date(budget.window.since*1000).toISOString(),new Date(budget.window.until*1000).toISOString(),
       budget.importId,modelId,now.toISOString(),budget.dailyLimit,budget.record.attempt_token).run();
-    if (reservation.meta?.changes!==1) return attempt ? (reliable && strategy==='always'?{...outcome,verificationConflict:true}:outcome) : {extractedJson:null,budgetExceeded:true};
+    if (reservation.meta?.changes!==1) return deliveryRecovery ? {...priorOutcome,deliveryConflict:true} : attempt ? (reliable && strategy==='always'?{...outcome,verificationConflict:true}:outcome) : {extractedJson:null,budgetExceeded:true};
     if (attempt) {
       // Select the most informative retry description and the focused schema.
-      const retryDetail = lastValidationReason === WEEKLY_LUNCH_SHAPE_ERROR
+      const retryDetail = deliveryRecovery ? 'Daily-schema delivery reread after single-day shape recovery' : lastValidationReason === WEEKLY_LUNCH_SHAPE_ERROR
         ? 'Weekly-lunch-specific retry: forcing weekly-lunch shape and schema'
         : (needsMexicanNightRetry || lastValidationReason === MEXICAN_NIGHT_SHAPE_ERROR)
           ? 'Mexican Night targeted retry: determining from image whether poster is Mexican Night'
@@ -412,7 +415,7 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
             : 'One retry with identical extraction instructions and schema';
       await attemptEvent(env,budget.record,'retry',retryDetail);
     }
-    const request = reliable ? buildReliableExtractionRequest(caption,image,{reason:attempt?lastValidationReason:'',previous:priorRaw,verify:attempt>0,shape:attempt?priorValidation?.repairShape:undefined})
+    const request = reliable ? buildReliableExtractionRequest(caption,image,{reason:attempt?lastValidationReason:'',previous:priorRaw,verify:attempt>0,shape:deliveryRecovery?'daily-delivery':attempt?priorValidation?.repairShape:undefined})
       : lastValidationReason === WEEKLY_LUNCH_SHAPE_ERROR
       ? buildWeeklyLunchExtractionRequest(caption,image)
       : (needsMexicanNightRetry || lastValidationReason === MEXICAN_NIGHT_SHAPE_ERROR)
@@ -421,6 +424,7 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
     // A reservation may outlive a review change or lease while waiting on D1.
     // Keep it charged conservatively, but do not invoke AI without ownership.
     const callNow=new Date(Date.now());
+    if(deliveryRecovery && !deliveryWindow(callNow).open) return {...priorOutcome,deliveryConflict:true};
     if (!isWithinProcessingHours(callNow) || chicagoDate(callNow)!==budget.window.today ||
       !await env.DB.prepare(`SELECT 1 WHERE ${OWNS_ATTEMPT_SQL}`)
         .bind(budget.importId,budget.record.attempt_token,callNow.toISOString()).first()) return {cancelled:true};
@@ -433,6 +437,7 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
         attempt,latency_ms:Date.now()-started,usage:result?.usage??null,raw:outcome.extractedJson.slice(0,64000)}));
     } catch(error) {
       const aiError = safeAiError(error,env);
+      if(deliveryRecovery) return {...priorOutcome,deliveryConflict:true};
       outcome = {extractedJson:null,aiError,transient:isTransientFailure(error),processedAt:now.toISOString()};
       // A failed repair/verification call never discards the first reading. It
       // keeps its own per-offer issues; "always" requires a completed second read.
@@ -440,7 +445,26 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
       if (!/json[ _]mode|json[ _]schema/i.test(aiError)) return outcome;
       continue;
     }
+    if(deliveryRecovery) {
+      let recovered=null;
+      try { recovered=recoveredDeliveryReading(JSON.parse(outcome.extractedJson),{day:budget.window.today,weekday:budget.window.weekday}); } catch { /* Inconclusive reread stays hidden. */ }
+      // Missing schema coverage is not a conflicting reading. Any actual first
+      // delivery object, however incomplete, retains the conservative veto.
+      const conflict=!recovered || JSON.parse(priorRaw).delivery!==undefined;
+      await attemptEvent(env,budget.record,'validate',conflict?'Delivery reread inconclusive; food retained':'Delivery reread retained separately; food unchanged');
+      return {...priorOutcome,deliveryRecovery:recovered,deliveryConflict:conflict};
+    }
     const validation = validateExtraction(outcome.extractedJson,reliable,budget.window);
+    if(reliable && attempt===0 && validation.validationResult==='ok' && !validation.needsRepair && deliveryWindow(now).open) {
+      try {
+        const original=JSON.parse(outcome.extractedJson);
+        deliveryRecovery=!!singleDayLunchEvidenceV2(original) && !completeDeliveryReading(original.delivery);
+      } catch { /* Ordinary validation owns invalid shapes. */ }
+      if(deliveryRecovery) {
+        priorValidation=validation;priorRaw=outcome.extractedJson;priorOutcome=outcome;
+        continue;
+      }
+    }
     // Delivery disagreement must fail closed without changing specials validation.
     if (attempt && priorRaw) {
       try {
@@ -696,6 +720,9 @@ async function processImportAttempt(env, record, raw, {window,modelId,dailyLimit
     // Preserve raw AI output for audit; a separate candidate flag fences delivery.
     if (result.deliveryConflict && validation.candidateJson) {
       validation.candidateJson=JSON.stringify({...JSON.parse(validation.candidateJson),delivery_blocked:true});
+    }
+    if (result.deliveryRecovery && validation.candidateJson) {
+      validation.candidateJson=JSON.stringify({...JSON.parse(validation.candidateJson),delivery_recovery:result.deliveryRecovery});
     }
     await finishImportAttempt(env,record,{
       status:validation.validationResult==='ok' ? 'staged' : 'failed',

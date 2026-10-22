@@ -323,3 +323,45 @@ For an immediate operational stop, select Hidden in Staff Settings; automation c
 Rollback order after authorization: (1) save Hidden with the new admin UI, (2) use Cloudflare's `grayzn-fb-feed` deployment history to roll back to the recorded pre-release Worker version, (3) use the `grayzn-buffalo` Pages deployment history to roll back to the recorded pre-release production deployment, (4) verify the public site and the deliberate staff choice, and (5) coordinate a reviewed source revert before any later push to main can redeploy this feature. Do not guess rollback version IDs or revert unrelated work. An operational Hidden override alone is sufficient to stop the automatic banner without rolling back code.
 
 Leave the additive table in place; old code ignores it. No destructive schema rollback is required. Do not reset parser versions, replay historical imports, change specials rows, or drop the table as part of routine rollback.
+
+## October 22: delivery coverage after single-day shape recovery
+
+The October 22 image explicitly printed `DELIVERY AVAILABLE 11-1:30`, but the model
+returned a weekly-lunch object with four Thursday entries and no delivery field.
+The October 21 adapter recovered all food offers. Conditional verification then
+stopped after one call, leaving delivery inactive despite `delivery_display=auto`.
+The archived image, raw extraction and local reproduction established this as
+incomplete extraction coverage, not a phrase, rendering, manual-setting or cutoff
+problem. The original response and its audit history are preserved.
+
+New eligible current-day imports now use the existing second AI-call allowance
+for a daily-schema reread when otherwise valid recovered single-day evidence has
+no complete delivery reading. This is limited to before the automatic 3 PM cutoff.
+It uses the existing daily budget, per-import reservation limit, lease, ownership,
+parser and current-day fences. It does not add a third call or change parser IDs.
+
+Food remains based on the first validated extraction, even if the delivery reread
+fails or changes/omits food. The reread's full raw response is retained in the
+existing validation audit. Only its independently date-validated delivery fields
+are stored under application-owned `candidate_json.delivery_recovery`; delivery
+reconciliation explicitly reads and revalidates these fields. The original
+`extracted_json` is unchanged. Failed/incomplete recovery, or an existing partial
+delivery object that cannot safely be superseded, sets `delivery_blocked`.
+Cancellation, uncertainty, conditional wording and genuine existing cross-reading
+conflicts remain fail-closed. A missing field in a weekly schema is not treated
+as affirmative evidence or as a completed negative reading.
+
+Completed imports remain completed. Repeated cron scans consume persisted evidence
+without another AI call. In particular, deployment does not reread the already
+processed October 22 poster. No replay, staff-setting edit, schema migration,
+delivery-hour change or Lunch-capacity change is part of this repair. Exactly one
+Lunch and two All Day offers remain the established three-meal mapping.
+
+Permanent coverage: `workers/fb-feed/oct22-delivery.test.js` and the public-text-only
+`tests/fixtures/oct22-delivery.json`, alongside the existing delivery/D1, October 21,
+Mexican Night and application suites. The new tests cover exact shape recovery,
+affirmative/absent/cancelled/uncertain delivery, dates, failed calls/budgets,
+retained food, one Lunch, staff overrides, idempotency, real local D1 consumption,
+staff exclusion, the 3 PM cutoff and next-day expiration. Deployment validation
+and live activation are distinct: if no eligible fresh poster arrives, activation
+remains proven by tests only and awaits a future eligible source.
