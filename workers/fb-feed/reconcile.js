@@ -180,6 +180,21 @@ export function singleDayLunchEvidence(value) {
     poster_evidence:value.poster_evidence,
     offers:value.entries.map((e,i)=>({content:e.content,evidence:e.content,service_time:i===0 ? (value.service_time ?? '') : ''}))});
 }
+// Contract 2 shape recovery must preserve verbatim evidence and uncertainty.
+// Never reuse the legacy converter, which synthesizes evidence from content.
+export function singleDayLunchEvidenceV2(value) {
+  if (value?.type !== 'weekly-lunch' || 'offers' in value || value.date_range
+    || !Array.isArray(value.entries) || !value.entries.length || value.entries.length>48
+    || typeof value.poster_evidence!=='string' || hasWeeklyLunchEvidence(value.poster_evidence)
+    || /\bweekly\b/i.test(value.poster_evidence)) return null;
+  const days=DAYS.flatMap((day,i)=>new RegExp(`\\b${day}\\b`,'i').test(value.poster_evidence)?[i]:[]);
+  if(days.length!==1 || serviceOf(value.poster_evidence)!=='lunch'
+    || !value.entries.every(e=>e?.day_of_week===days[0])) return null;
+  if(typeof value.service_time!=='string' || value.service_time.length>240) throw Error('Invalid single-day service evidence');
+  return {evidence_version:2,day_of_week:days[0],day_evidence:DAYS[days[0]],
+    poster_evidence:[value.poster_evidence,value.service_time].filter(Boolean).join(' '),
+    offers:value.entries.map(e=>({...e,service_time:e.service_time??'',service_evidence:e.service_evidence??''}))};
+}
 export function hasWeeklyLunchEvidence(text) {
   const normalized = text.toLowerCase().replace(/[–—]/g, '-');
   const schedule = /\bweekly\b/.test(normalized)
@@ -330,6 +345,11 @@ export function reconcilePosters(candidates,weekday,existingAllDay=[]) {
   return reconcilePosterEvidence(candidates,weekday,existingAllDay).targets;
 }
 export function reconcilePosterEvidence(candidates,weekday,existingAllDay=[],{today,slotLayout=[],verifiedSameDaySources=new Set()}={}) {
+  // The same adapter serves fresh validation and persisted failed evidence.
+  candidates=candidates.map(c=>{
+    if(!Array.isArray(c?.entries) || !c.entries.some(e=>e && typeof e==='object' && 'evidence' in e)) return c;
+    try { return singleDayLunchEvidenceV2(c)??c; } catch { return c; }
+  });
   if(candidates.some(c=>c?.evidence_version===2)) return planDailyEvidence(candidates,weekday,{
     today,existingAllDay,slotLayout,verifiedSameDaySources,validateDay:validateCurrentDay,canonicalize:canonicalizeSlotContent});
   const rejectedSources=[],validIndices=[];

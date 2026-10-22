@@ -4,10 +4,10 @@ import {automaticWeekRange} from './auto-week.js';
 import {composeMexicanItem,normalizeMexicanPrices} from '../../src/lib/mexican-item.js';
 // The Worker owns only automatic writes. Manual saves remain in specials-store.ts.
 // Every write, revision bump and acceptance audit commits in one D1 batch.
-import {reconcilePosterEvidence,validateWeeklyLunch,validateMexicanNight,canonicalizeSlotContent,singleDayLunchEvidence} from './reconcile.js';
+import {reconcilePosterEvidence,validateWeeklyLunch,validateMexicanNight,canonicalizeSlotContent,singleDayLunchEvidence,singleDayLunchEvidenceV2} from './reconcile.js';
 import {parserVersionFor} from './classify.js';
 import {soupGroupId,blankSoupGroup} from '../../src/lib/daily-soup.js';
-import {normalizeWeeklyRange,factKey} from './evidence.js';
+import {normalizeWeeklyRange,factKey,analyzeDailyEvidence} from './evidence.js';
 
 export async function reconcileToday(env,{sourceIds,today,weekday}) {
   const stage=reason=>({written:false,reason});
@@ -69,8 +69,13 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
     const c=candidates[index];
     let recoveredDaily=false;
     try { recoveredDaily=!!singleDayLunchEvidence(c); } catch { /* Reconciler already records invalid evidence. */ }
+    let recoveredReliable=false;
+    try {
+      const daily=singleDayLunchEvidenceV2(c);
+      recoveredReliable=!!daily && !analyzeDailyEvidence(daily).issues.some(i=>i.reason!=='Service not established by evidence');
+    } catch { /* Invalid original evidence remains rejected. */ }
     const dedicated=['weekly-lunch','mexican-night'].includes(c?.type) && !('offers' in c) && !recoveredDaily;
-    if (s.processing_status==='failed' && !dedicated && !rejected.some(r=>r.index===index)) {
+    if (s.processing_status==='failed' && !dedicated && !recoveredReliable && !rejected.some(r=>r.index===index)) {
       rejected.push({index,reason:s.validation_reason || 'Rejected extracted evidence'});
     }
   });

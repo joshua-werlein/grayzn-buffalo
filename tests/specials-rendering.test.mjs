@@ -15,6 +15,29 @@ const homePage=(await import('../dist/_worker.js/pages/index.astro.mjs')).page()
 const adminPage=(await import('../dist/_worker.js/pages/admin/specials.astro.mjs')).page().default;
 const container=await AstroContainer.create();
 
+test('October 21 repaired records render identical meals and wing prices on both public pages',async t=>{
+  const {reconcilePosterEvidence}=await import('../workers/fb-feed/reconcile.js');
+  const rows=JSON.parse(readFileSync('tests/fixtures/oct21-production.json','utf8'))[0].results;
+  const candidates=rows.map(r=>r.candidate_json?JSON.parse(r.candidate_json):JSON.parse(r.extracted_json));
+  const plan=reconcilePosterEvidence(candidates,3,[],{today:'2026-10-21'});
+  const f=fixture(t),today=dates.chicagoCalendarDate(),start=dates.mondayForIsoDate(today);
+  f.sql("UPDATE special_slots SET content='',price='',section_link=''");
+  const collection=s.newWeekFromDefaults(await s.readCollection(f.env,'defaults'));
+  collection.groups=plan.targets.map((target,i)=>{
+    const g=s.blankGroup(dates.calendarDayOfWeek(today),i);g.service='custom';g.label=target.role??target.service;
+    target.items.forEach(item=>g.slots[item.position-1].content=item.content);return g;
+  });
+  await s.saveCollection(f.env,collection,{start,end:dates.standardWeekEndDate(start)});
+  const before=f.sql('SELECT * FROM special_slots ORDER BY group_id,position');
+  for(const [component,path] of [[publicPage,'/specials'],[homePage,'/']]) {
+    const html=await container.renderToString(component,{request:new Request('http://localhost'+path),locals:{runtime:{env:f.env}}});
+    for(const text of ['French Dip','Pizza Burger','Grilled Ham','$9.75','$10.25','$7.25','$.89','$.99','Chicken Noodle']) assert.ok(html.includes(text),text);
+    assert.ok(!html.includes('Chicken Salad Sandwich'));
+    assert.ok(!html.includes('Add Fries'));
+  }
+  assert.deepEqual(f.sql('SELECT * FROM special_slots ORDER BY group_id,position'),before);
+});
+
 test('October 15–16 accepted production evidence displays every meal price and choice',async()=>{
   const {reconcilePosterEvidence}=await import('../workers/fb-feed/reconcile.js');
   const evidence=JSON.parse(readFileSync('tests/fixtures/oct15-16-production.json','utf8')).imports[0].results;

@@ -4,7 +4,7 @@ import { classifyCaption, parserVersionFor } from './classify.js';
 import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexicanNight } from './guarded-auto.js';
 import {ensureAutomaticWeek} from './auto-week.js';
 import {MAX_IMPORT_ATTEMPTS,OWNS_ATTEMPT_SQL,isTransientFailure,claimImportAttempt,attemptEvent,saveAttemptImage,finishImportAttempt,retireImportAttempts} from './recovery.js';
-import {validateEvidence, validateWeeklyLunch, validateMexicanNight, singleDayLunchEvidence, validateCurrentDay, hasWeeklyLunchEvidence, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR, WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
+import {validateEvidence, validateWeeklyLunch, validateMexicanNight, singleDayLunchEvidence, singleDayLunchEvidenceV2, validateCurrentDay, hasWeeklyLunchEvidence, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR, WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
 import {WEBHOOK_PATH, handleFacebookWebhook} from './webhook.js';
 import {expireDelivery,reconcileDelivery} from './delivery.js';
 
@@ -518,6 +518,10 @@ export function validateExtraction(extractedJson,reliable=false,window={}) {
   } catch {
     return { candidateJson: null, validationResult: 'rejected', validationReason: 'response is not valid JSON' };
   }
+  if(reliable) {
+    try { parsed=singleDayLunchEvidenceV2(parsed)??parsed; }
+    catch(error) {return {candidateJson:null,validationResult:'rejected',validationReason:error.message,needsRepair:true};}
+  }
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.type === 'weekly-lunch') {
     try {
       const unresolved=[];
@@ -766,7 +770,17 @@ export async function runImportPipeline(env) {
   if (mode==='GUARDED_AUTO' && isWithinProcessingHours(writeNow) && chicagoDate(writeNow)===window.today) {
     try { await reconcileDelivery(env,{sourceIds,observedAt:now.toISOString()}); }
     catch (err) { console.error('Delivery reconcile error',String(err)); }
-    await reconcileToday(env,{sourceIds,today:window.today,weekday:window.weekday});
+    const dailyResult=await reconcileToday(env,{sourceIds,today:window.today,weekday:window.weekday});
+    // A successful cron is not proof that all specials published. Emit only
+    // counts/status, never poster contents, identifiers or provider responses.
+    if(dailyResult.blocked?.length || dailyResult.rejectedSources?.length
+      || ['Current sources awaiting recovery','No extracted evidence','No unique current saved week','Concurrent change; nothing written'].includes(dailyResult.reason)) {
+      console.warn('Specials import requires attention',{
+        date:window.today,sourceCount:sourceIds.length,written:dailyResult.written,
+        blockedCount:dailyResult.blocked?.length??0,rejectedCount:dailyResult.rejectedSources?.length??0,
+        status:dailyResult.blocked?.length || dailyResult.rejectedSources?.length ? 'review_required' : dailyResult.reason,
+      });
+    }
     try { await reconcileWeeklyLunch(env,window.today); }
     catch(err) { console.error('Weekly lunch reconcile error',String(err)); }
     try { await reconcileMexicanNight(env); }
