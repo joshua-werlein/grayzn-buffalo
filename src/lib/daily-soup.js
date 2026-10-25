@@ -19,7 +19,10 @@ export function withSoupControls(collection) {
 export const hasStandaloneSoupLabel = text => /^\s*Soups?\s*:/i.test(text);
 
 export function standaloneSoup(offer) {
-  const read=text=>/^\s*Soups?\s*:\s*([^\r\n]+?)\s*$/i.exec(text)?.[1];
+  // One sentence-ending period or exclamation mark is presentation
+  // ("Soups: Chicken Noodle or Chili." on the October 25 poster); every word,
+  // connector and inner punctuation must still match exactly.
+  const read=text=>/^\s*Soups?\s*:\s*([^\r\n]+?)\s*[.!]?\s*$/i.exec(text)?.[1];
   const content=read(offer.content), evidence=read(offer.evidence);
   // Never split an included side from a meal, or accept an empty/generic label.
   const ambiguous=/\b(?:sandwich|burger|with|cup\s+of|side|included|coleslaw|special|available|ask|today|tbd)\b|\bw\s*\/|[<>:;]|\$/i;

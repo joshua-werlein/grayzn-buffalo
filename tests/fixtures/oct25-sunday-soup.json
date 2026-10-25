@@ -1,0 +1,68 @@
+{
+  "sunday_specials": {
+    "day_of_week": 0,
+    "day_evidence": "SUNDAY",
+    "poster_evidence": "SUNDAY SPECIALS",
+    "delivery": {
+      "status": "none",
+      "evidence": "",
+      "date_evidence": "",
+      "uncertainties": []
+    },
+    "offers": [
+      {
+        "content": "16” 3-TOPPING PIZZA & 12 WINGS $30",
+        "evidence": "16” 3-TOPPING PIZZA + 12 WINGS – $30",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "HANG OVER BURGER w/ SIDE SALAD, SOUP OR COLESLAW $10.25",
+        "evidence": "HANG OVER BURGER W/ SIDE SALAD, SOUP OR COLESLAW – $10.25",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "GRILLED HAM AND CHEESE w/ CUP OF SOUP OR COLESLAW $7.25",
+        "evidence": "GRILLED HAM AND CHEESE W/ CUP OF SOUP OR COLESLAW – $7.25",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Soups: Chicken Noodle or Chili",
+        "evidence": "Soups: Chicken Noodle or Chili.",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      }
+    ]
+  },
+  "packers_event": {
+    "day_of_week": 0,
+    "day_evidence": "Sunday",
+    "poster_evidence": "Sunday Special",
+    "delivery": {
+      "status": "none",
+      "evidence": "",
+      "date_evidence": "",
+      "uncertainties": []
+    },
+    "offers": [
+      {
+        "content": "PULLED PORK SANDWICH W/ CHIPS - $4",
+        "evidence": "PULLED PORK SANDWICH W/ CHIPS - $4",
+        "service_time": "",
+        "service_evidence": "Sunday Special",
+        "date_evidence": "",
+        "uncertainties": []
+      }
+    ]
+  }
+}

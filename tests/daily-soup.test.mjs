@@ -59,6 +59,28 @@ test('homepage and Specials render Soup once outside meal sections; absent/disab
     assert.doesNotMatch(html,/class="daily-soup"|French Onion or Chili/);
   }
 });
+test('October 25 Sunday poster: Soups render once in the Soup line beside every food special on both public pages',async t=>{
+  const {reconcilePosterEvidence}=await import('../workers/fb-feed/reconcile.js');
+  const {analyzeDailyEvidence}=await import('../workers/fb-feed/evidence.js');
+  const posters=JSON.parse(readFileSync('tests/fixtures/oct25-sunday-soup.json','utf8'));
+  const plan=reconcilePosterEvidence([posters.sunday_specials,posters.packers_event].map(analyzeDailyEvidence),0,[],
+    {today:'2026-10-25',verifiedSameDaySources:new Set([0,1])});
+  const f=fixture(t);f.sql("UPDATE special_slots SET content='',price='',section_link=''");
+  const w=await weekFor(f),c=withSoupControls(w.collection),day=dates.calendarDayOfWeek(dates.chicagoCalendarDate());
+  for(const target of plan.targets) {
+    const g=c.groups.find(g=>g.day_of_week===day && (target.role==='soup'?isSoupGroup(g):!isSoupGroup(g) && g.service===target.service));
+    target.items.forEach(item=>{g.slots[item.position-1].content=item.content;});
+  }
+  await save(f,w,c);
+  for(const [page,path] of [[homePage,'/'],[publicPage,'/specials']]) {
+    const html=await container.renderToString(page,{request:new Request('http://localhost'+path),locals:{runtime:{env:f.env}}});
+    assert.equal((html.match(/class="daily-soup"/g)||[]).length,1,path);
+    assert.match(html,/<p class="daily-soup"[^>]*><strong[^>]*>Soup:<\/strong> Chicken Noodle or Chili<\/p>/,path);
+    for(const text of ['3-topping pizza','$30','hang over burger','$10.25','grilled ham and cheese','$7.25']) assert.ok(html.toLowerCase().includes(text),`${path} ${text}`);
+    assert.doesNotMatch(html,/pulled pork/i,`${path} special event stays out`);
+  }
+});
+
 test('admin adds seven weekly and recurring optional controls without read-time writes or extra Soup slots',async t=>{
   const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};const w=await weekFor(f);const before=f.sql('SELECT * FROM special_groups ORDER BY id');
   const html=await container.renderToString(adminPage,{request:new Request('http://localhost/admin/specials?week='+w.id,{headers:{cookie:'gb_session='+'a'.repeat(32)}}),locals:{runtime:{env:f.env}}});
