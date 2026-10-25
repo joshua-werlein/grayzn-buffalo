@@ -9,12 +9,25 @@ import {parserVersionFor} from './classify.js';
 import {soupGroupId,blankSoupGroup} from '../../src/lib/daily-soup.js';
 import {normalizeWeeklyRange,factKey,analyzeDailyEvidence} from './evidence.js';
 
-export async function reconcileToday(env,{sourceIds,today,weekday}) {
+export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=false}) {
   const stage=reason=>({written:false,reason});
   if (!sourceIds.length) return stage('No current sources');
   const unresolved=`EXISTS(SELECT 1 FROM special_imports WHERE id IN (SELECT value FROM json_each(?1))
     AND review_status='pending' AND processing_status IN ('pending','processing'))`;
   if (await env.DB.prepare(`SELECT 1 WHERE ${unresolved}`).bind(JSON.stringify(sourceIds)).first()) {
+    // In observation mode, a current retry pauses an older queued incident.
+    // Failure to obtain monitoring context must not affect reconciliation.
+    if(env.SPECIALS_ALERT_MODE==='OBSERVE') try {
+      const {results:sources}=await env.DB.prepare(`SELECT * FROM special_imports
+        WHERE id IN (SELECT value FROM json_each(?1)) AND parser_version=?2`)
+        .bind(JSON.stringify(sourceIds),parserVersionFor(env)).all();
+      const {results:weeks}=await env.DB.prepare(`SELECT c.id,c.revision FROM weekly_specials w
+        JOIN special_collections c ON c.weekly_special_id=w.id AND c.kind='week'
+        WHERE w.week_start_date<=?1 AND w.week_end_date>=?1`).bind(today).all();
+      if(weeks.length===1) return {...stage('Current sources awaiting recovery'),alertSnapshot:{
+        sources,sourceIds,currentSourceIds:sourceIds,parser:parserVersionFor(env),
+        collectionId:weeks[0].id,revision:weeks[0].revision}};
+    } catch { console.error('Daily pending observation unavailable'); }
     return stage('Current sources awaiting recovery');
   }
   const {results:storedSources}=await env.DB.prepare(`SELECT * FROM special_imports WHERE id IN (SELECT value FROM json_each(?1))
@@ -122,14 +135,30 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
   }
   const conflictDetail=blocked.length || rejectedSources.length
     ? `GUARDED_AUTO_CONFLICT: ${today}; blocked proposals: ${JSON.stringify(blocked)}${rejectedSources.length ? `; rejected sources: ${JSON.stringify(rejectedSources)}` : ''}` : null;
+  // Only evaluated daily proposals/rejections establish publication coverage.
+  // Dedicated weekly/Mexican no-ops must not resolve daily incidents.
+  const withOutcome=(result,revision=week.revision)=>({...result,
+    ...(targets.length || blocked.length || rejectedSources.length ? {alertSnapshot:{
+      sources,sourceIds:sources.map(s=>s.id),currentSourceIds:sourceIds,
+      parser:parserVersionFor(env),collectionId:week.collection_id,revision,
+      intentionalBlockedIndices:blocked.flatMap((b,index)=>{
+        const destinations=groups.filter(g=>g.service===b.service);
+        const disabled=b.reason==='Missing, disabled or ambiguous destination' && destinations.length===1 && destinations[0].enabled===0;
+        const protectedExtras=b.reason==='Additional existing slots prevent replacement'
+          && slots.some(s=>s.group_id===b.group_id && s.manual_locked===1);
+        return disabled || protectedExtras ? [index] : [];
+      })}} : {})});
+  // Monitoring uses the same proposal rules, without publication or audit writes.
+  if (inspectOnly) return withOutcome({written:false,reason:rows.length?'Publication incomplete':'No unambiguous eligible changes',
+    blocked,rejectedSources,requiresWrite:rows.length>0,excludedSourceIds:excludedSources.map(s=>sources[s.index].id)});
   if (!rows.length) {
-    if (!conflictDetail) return stage('No unambiguous eligible changes');
+    if (!conflictDetail) return withOutcome(stage('No unambiguous eligible changes'));
     // Avoid revision/audit churn when a cron sees the same unresolved conflict.
     const {results:audited}=await env.DB.prepare(`SELECT import_id FROM special_import_events e
       WHERE import_id IN (SELECT value FROM json_each(?1)) AND event_type='review' AND detail=?2
       AND id=(SELECT MAX(id) FROM special_import_events WHERE import_id=e.import_id AND event_type='review')`)
       .bind(JSON.stringify(sources.map(s=>s.id)),conflictDetail).all();
-    if (sources.every(s=>audited.some(e=>e.import_id===s.id))) return {written:false,reason:conflictDetail,blocked,rejectedSources};
+    if (sources.every(s=>audited.some(e=>e.import_id===s.id))) return withOutcome({written:false,reason:conflictDetail,blocked,rejectedSources});
   }
   const token=crypto.randomUUID();
   const prepare=(sql,...args)=>env.DB.prepare(sql).bind(...args);
@@ -183,7 +212,7 @@ export async function reconcileToday(env,{sourceIds,today,weekday}) {
     ...(conflictDetail ? sources.map(s=>prepare(`INSERT INTO special_import_events(import_id,event_type,detail) SELECT ?3,'review',?4 WHERE ${gate}`,week.collection_id,token,s.id,conflictDetail)) : []),
     prepare('SELECT id FROM special_collections WHERE id=?1 AND mutation_token=?2',week.collection_id,token),
   ]);
-  return results.at(-1)?.results?.length ? {written:rows.length>0,reason:detail,blocked,rejectedSources} : stage('Concurrent change; nothing written');
+  return results.at(-1)?.results?.length ? withOutcome({written:rows.length>0,reason:detail,blocked,rejectedSources},week.revision+1) : stage('Concurrent change; nothing written');
 }
 
 function chicagoYearOf(isoString) {

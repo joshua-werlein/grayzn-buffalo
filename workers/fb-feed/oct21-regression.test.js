@@ -5,11 +5,59 @@ import {validateExtraction} from './worker.js';
 import {reconcilePosterEvidence,singleDayLunchEvidenceV2} from './reconcile.js';
 import {reconcileToday} from './guarded-auto.js';
 import {harness} from './test-fixture.js';
+import {observeDailyOutcome} from './alert-outcomes.js';
+import {dispatchAlert,ALERT_GRACE_MS} from './alert-store.js';
 
 const snapshot=JSON.parse(readFileSync(new URL('../../tests/fixtures/oct21-production.json',import.meta.url),'utf8'));
 const rows=snapshot[0].results;
 const raw=i=>JSON.parse(rows[i].extracted_json);
 const validate=p=>validateExtraction(JSON.stringify(p),true,{today:'2026-10-21',weekday:3});
+
+function enableObservations(f) {
+  const sql=readFileSync(new URL('../../migrations/0023_facebook_alert_incidents.sql',import.meta.url),'utf8');
+  for(const statement of sql.split(';').map(s=>s.trim()).filter(Boolean)) f.sql(statement);
+  f.env.SPECIALS_ALERT_MODE='OBSERVE';
+}
+
+test('October 21: current rejection opens daily incident; recovered historical failure resolves it and preserves one Lunch',async t=>{
+  const f=setup(t);enableObservations(f);f.env.SPECIALS_IMPORT_MODE='DRY_RUN';await f.run();
+  const bad=raw(0);bad.entries[1].content=bad.entries[1].content.replace('10.25','11.25');
+  f.sql("UPDATE special_imports SET processing_status='failed',validation_result='rejected',candidate_json=NULL,extracted_json=?",JSON.stringify(bad));
+  f.env.SPECIALS_IMPORT_MODE='GUARDED_AUTO';await f.run();
+  assert.equal(f.sql("SELECT state FROM facebook_alert_incidents WHERE scope='daily'")[0].state,'attention');
+  // A retry beginning after the failure must pause the already queued incident.
+  f.sql("UPDATE special_imports SET processing_status='pending'");f.state.now+=1000;
+  const pending=await reconcileToday(f.env,{sourceIds:f.imports().map(s=>s.id),today:'2026-10-21',weekday:3});
+  await observeDailyOutcome(f.env,pending,{day:'2026-10-21',observedAt:new Date(f.state.now).toISOString()});
+  assert.equal(f.sql("SELECT state FROM facebook_alert_incidents WHERE scope='daily'")[0].state,'pending');
+  f.state.now+=ALERT_GRACE_MS;
+  assert.equal((await dispatchAlert(f.env.DB,async()=>assert.fail('retry pending'),{enabled:true,now:()=>f.state.now})).status,'idle');
+  f.sql("UPDATE special_imports SET processing_status='failed'");
+  f.sql('UPDATE special_imports SET extracted_json=?',JSON.stringify(raw(0)));f.state.now+=1000;await f.run();
+  assert.equal(f.imports()[0].processing_status,'failed');
+  assert.equal(f.sql("SELECT state FROM facebook_alert_incidents WHERE scope='daily'")[0].state,'resolved');
+  assert.equal(f.slots(3,'lunch').filter(s=>s.content).length,1);
+  assert.match(f.slots(3,'lunch')[0].content,/\$9.75/);
+});
+
+test('daily alert rejects an outcome superseded by a staff collection revision',async t=>{
+  const f=setup(t);enableObservations(f);f.env.SPECIALS_IMPORT_MODE='DRY_RUN';await f.run();
+  const r=await reconcileToday(f.env,{sourceIds:f.imports().map(s=>s.id),today:'2026-10-21',weekday:3});
+  assert.ok(r.alertSnapshot);
+  f.sql('UPDATE special_collections SET revision=revision+1 WHERE id=?',r.alertSnapshot.collectionId);
+  await observeDailyOutcome(f.env,r,{day:'2026-10-21',observedAt:new Date(f.state.now).toISOString()});
+  assert.equal(f.sql('SELECT * FROM facebook_alert_incidents').length,0);
+});
+
+for(const choice of ['disabled','locked']) test(`daily observation respects staff ${choice} Lunch without an actionable incident`,async t=>{
+  const f=setup(t);enableObservations(f);
+  const group=f.slots(3,'lunch')[0].group_id;
+  if(choice==='disabled') f.sql('UPDATE special_groups SET enabled=0 WHERE id=?',group);
+  else f.sql("UPDATE special_slots SET content='Staff lunch',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",group);
+  await f.run();
+  assert.equal(f.sql("SELECT state FROM facebook_alert_incidents WHERE scope='daily'").length,0);
+  if(choice==='locked') assert.equal(f.slots(3,'lunch')[0].content,'Staff lunch');
+});
 test('production confirms discovery, complete extraction, global rejection and unlocked defaults',()=>{
   assert.ok(snapshot.every(s=>s.success && s.meta.rows_written===0));
   assert.equal(raw(0).entries.length,4);

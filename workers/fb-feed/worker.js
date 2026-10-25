@@ -7,6 +7,8 @@ import {MAX_IMPORT_ATTEMPTS,OWNS_ATTEMPT_SQL,isTransientFailure,claimImportAttem
 import {validateEvidence, validateWeeklyLunch, validateMexicanNight, singleDayLunchEvidence, singleDayLunchEvidenceV2, validateCurrentDay, hasWeeklyLunchEvidence, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR, WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
 import {WEBHOOK_PATH, handleFacebookWebhook} from './webhook.js';
 import {expireDelivery,reconcileDelivery,completeDeliveryReading,recoveredDeliveryReading} from './delivery.js';
+import {observeDeliveryOutcome,observeDailyOutcome} from './alert-outcomes.js';
+import {beginAlertScan,finishAlertScan} from './alert-runtime.js';
 import {deliveryWindow} from '../../src/lib/delivery.js';
 
 const TIME_ZONE = 'America/Chicago';
@@ -739,7 +741,7 @@ async function processImportAttempt(env, record, raw, {window,modelId,dailyLimit
   }
 }
 
-export async function runImportPipeline(env) {
+export async function runImportPipeline(env,alertOptions={}) {
   // Expiration runs even outside processing hours or when imports are disabled.
   // Keep delivery storage failures independent of existing specials processing.
   if (env.DB) {
@@ -762,6 +764,7 @@ export async function runImportPipeline(env) {
   if (!isWithinProcessingHours(now)) return;
   if (mode === 'GUARDED_AUTO' && !(window.weekday===0 && chicagoHour(now)>=19)) await ensureAutomaticWeek(env,{...window,hour:chicagoHour(now)});
   const sourceIds=[], work=[];
+  const alertScan=await beginAlertScan(env,window.today,now.getTime());
   const rawPosts = await fetchScanPosts(env, now, window);
   // Register the COMPLETE scan before processing, so recovery never publishes a
   // single new poster while another known current source is still pending.
@@ -795,9 +798,18 @@ export async function runImportPipeline(env) {
   // A complete today-only Graph scan supplies the current versions for this Page.
   const writeNow=new Date(Date.now());
   if (mode==='GUARDED_AUTO' && isWithinProcessingHours(writeNow) && chicagoDate(writeNow)===window.today) {
-    try { await reconcileDelivery(env,{sourceIds,observedAt:now.toISOString()}); }
+    try {
+      const deliveryResult=await reconcileDelivery(env,{sourceIds,observedAt:now.toISOString()});
+      if(!alertScan) await observeDeliveryOutcome(env,deliveryResult);
+    }
     catch (err) { console.error('Delivery reconcile error',String(err)); }
-    const dailyResult=await reconcileToday(env,{sourceIds,today:window.today,weekday:window.weekday});
+    let dailyResult;
+    try { dailyResult=await reconcileToday(env,{sourceIds,today:window.today,weekday:window.weekday}); }
+    catch(error) {
+      await finishAlertScan(env,alertScan,sourceIds,alertOptions);
+      throw error; // Preserve existing queue retry/fatal-error behavior.
+    }
+    if(!alertScan) await observeDailyOutcome(env,dailyResult,{day:window.today,observedAt:now.toISOString()});
     // A successful cron is not proof that all specials published. Emit only
     // counts/status, never poster contents, identifiers or provider responses.
     if(dailyResult.blocked?.length || dailyResult.rejectedSources?.length
@@ -812,6 +824,7 @@ export async function runImportPipeline(env) {
     catch(err) { console.error('Weekly lunch reconcile error',String(err)); }
     try { await reconcileMexicanNight(env); }
     catch(err) { console.error('Mexican Night reconcile error',String(err)); }
+    await finishAlertScan(env,alertScan,sourceIds,alertOptions);
   }
   try { await pruneImportImages(env); }
   catch { console.error('Import pipeline: unable to prune old import images'); }

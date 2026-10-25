@@ -37,6 +37,25 @@ function food(f) {
   assert.match(f.slots(4,'all-day')[1].content,/Grilled Ham.*\$7.25/);
   assert.ok(f.sql("SELECT content FROM special_slots WHERE content LIKE 'Chicken Noodle%'").length);
 }
+
+test('October 22: delivery persistence failure records observation while food publishes; later recovery resolves without AI replay',async t=>{
+  const f=setup(t);
+  const alertSql=readFileSync(new URL('../../migrations/0023_facebook_alert_incidents.sql',import.meta.url),'utf8');
+  for(const statement of alertSql.split(';').map(s=>s.trim()).filter(Boolean)) f.sql(statement);
+  f.sql('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT)');
+  f.sql("INSERT OR REPLACE INTO settings(key,value) VALUES('delivery_display','auto')");
+  f.env.SPECIALS_ALERT_MODE='OBSERVE';
+  const db=f.env.DB;let fail=true;
+  f.env.DB={...db,prepare(sql){
+    if(fail && sql.startsWith('INSERT INTO delivery_automation')) return {bind(){return {async run(){throw Error('mock delivery write failure');}};}};
+    return db.prepare(sql);
+  }};
+  await f.run();food(f);assert.equal(f.state.aiCalls,2);
+  assert.equal(f.sql('SELECT state FROM facebook_alert_incidents')[0].state,'attention');
+  f.state.now+=1000;fail=false;await f.run();food(f);
+  assert.equal(f.row().active,1);assert.equal(f.state.aiCalls,2);
+  assert.equal(f.sql('SELECT state FROM facebook_alert_incidents')[0].state,'resolved');
+});
 test('October 22 exact weekly response gets one daily reread; persists delivery while preserving original food and audit',async t=>{
   const f=setup(t);await f.run();food(f);
   assert.equal(f.state.aiCalls,2);

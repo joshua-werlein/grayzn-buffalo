@@ -48,18 +48,19 @@ export async function expireDelivery(env, now = new Date(Date.now())) {
     .bind(now.toISOString(),w.day,w.open?1:0).run();
 }
 
-export async function reconcileDelivery(env,{sourceIds,observedAt}) {
+export async function reconcileDelivery(env,{sourceIds,observedAt,inspectOnly=false}) {
   const now=new Date(Date.now()), w=deliveryWindow(now);
-  if (!w.open || deliveryWindow(new Date(observedAt)).day!==w.day) return;
+  if (!w.open || deliveryWindow(new Date(observedAt)).day!==w.day) return {status:'expired',day:w.day,observedAt};
   const ids=JSON.stringify(sourceIds), parser=parserVersionFor(env);
   const {results:sources}=await env.DB.prepare(`SELECT * FROM special_imports
     WHERE id IN (SELECT value FROM json_each(?1)) AND parser_version=?2`).bind(ids,parser).all();
-  let available=false, blocked=sources.length!==sourceIds.length;
+  let available=false, blocked=sources.length!==sourceIds.length, pending=false;
+  const sourceOutcomes=[];
   for (const source of sources) {
-    if (deliveryWindow(new Date(source.fb_created_time)).day!==w.day) continue;
-    if (['pending','processing'].includes(source.processing_status)) {blocked=true;continue;}
+    if (deliveryWindow(new Date(source.fb_created_time)).day!==w.day) {sourceOutcomes.push({id:source.id,status:'other_day'});continue;}
+    if (['pending','processing'].includes(source.processing_status)) {blocked=true;pending=true;sourceOutcomes.push({id:source.id,status:'pending'});continue;}
     if (source.processing_status!=='staged' || source.validation_result!=='ok'
-      || !source.image_r2_key || !['pending','accepted'].includes(source.review_status)) {blocked=true;continue;}
+      || !source.image_r2_key || !['pending','accepted'].includes(source.review_status)) {blocked=true;sourceOutcomes.push({id:source.id,status:'ineligible'});continue;}
     let raw;
     try {
       raw=JSON.parse(source.extracted_json);
@@ -73,24 +74,30 @@ export async function reconcileDelivery(env,{sourceIds,observedAt}) {
         && !['offers','day_of_week','day_evidence','delivery','unresolved_days'].some(key=>key in raw || key in candidate)) {
         validateWeeklyLunch(normalizeWeeklyRange(raw));
         validateWeeklyLunch(candidate);
+        sourceOutcomes.push({id:source.id,status:'weekly'});
         continue;
       }
-      if (candidate?.delivery_blocked) {blocked=true;continue;}
+      if (candidate?.delivery_blocked) {blocked=true;sourceOutcomes.push({id:source.id,status:'withheld'});continue;}
       if (candidate?.delivery_recovery) {
         const recovered=recoveredDeliveryReading(candidate.delivery_recovery,w);
-        if(!recovered) {blocked=true;continue;}
+        if(!recovered) {blocked=true;sourceOutcomes.push({id:source.id,status:'withheld'});continue;}
         raw=recovered;
       }
-    } catch {blocked=true;continue;}
+    } catch {blocked=true;sourceOutcomes.push({id:source.id,status:'withheld'});continue;}
     const evidence=deliveryEvidence(raw,w);
+    sourceOutcomes.push({id:source.id,status:evidence});
     available ||= evidence==='available';
     blocked ||= evidence==='cancelled' || evidence==='ambiguous';
   }
   // Snapshot fencing includes staff review and newer versions of the same post.
   // A slower scan cannot overwrite a later cancellation or expiration.
   const writeWindow=deliveryWindow(new Date(Date.now()));
-  if (!writeWindow.open || writeWindow.day!==w.day) return;
-  await env.DB.prepare(`INSERT INTO delivery_automation(id,day,active,expires_at,observed_at,source_ids)
+  if (!writeWindow.open || writeWindow.day!==w.day) return {status:'expired',day:w.day,observedAt};
+  const outcome={day:w.day,observedAt,expectedActive:available&&!blocked,sourceOutcomes,
+    snapshot:{sources,sourceIds,parser,expiresAt:w.expiresAt}};
+  if (inspectOnly) return {...outcome,status:available&&!blocked?'expected':pending?'pending':blocked?'withheld':'hidden'};
+  try {
+    const result=await env.DB.prepare(`INSERT INTO delivery_automation(id,day,active,expires_at,observed_at,source_ids)
     SELECT 1,?1,?2,?3,?4,?5 WHERE NOT EXISTS(
       SELECT 1 FROM json_each(?6) j WHERE NOT EXISTS(
         SELECT 1 FROM special_imports i WHERE i.id=json_extract(j.value,'$.id')
@@ -107,4 +114,9 @@ export async function reconcileDelivery(env,{sourceIds,observedAt}) {
       expires_at=excluded.expires_at,observed_at=excluded.observed_at,source_ids=excluded.source_ids
     WHERE excluded.observed_at>delivery_automation.observed_at`)
     .bind(w.day,available&&!blocked?1:0,w.expiresAt,observedAt,ids,JSON.stringify(sources),parser).run();
+    return {...outcome,status:result.meta?.changes!==1?'superseded':available&&!blocked?'published':pending?'pending':blocked?'withheld':'hidden'};
+  } catch {
+    console.error('Delivery reconcile persistence error');
+    return {...outcome,status:'failed'};
+  }
 }
