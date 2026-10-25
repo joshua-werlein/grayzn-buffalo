@@ -17,8 +17,8 @@ const night=()=>poster(5,'Friday Night Specials 5-10pm',[
 ]);
 const expected=[
   '1) Fish Sandwich w/ Fries + Drink $9.75',
-  '2) Cheeseburger Or Fish Sandwich w/ Side Salad, Soup Or Coleslaw $10.25',
-  '3) Chicken Salad Sandwich w/ Cup Of Soup Or Coleslaw $7.25',
+  '2) Cheeseburger or Fish Sandwich w/ Side Salad, Soup or Coleslaw $10.25',
+  '3) Chicken Salad Sandwich w/ Cup of Soup or Coleslaw $7.25',
 ];
 const setup=(t,candidate=lunch())=>{
   const f=harness(t,{now:'2026-10-09T23:00:00Z',caption:'',candidate});
@@ -36,7 +36,7 @@ test('exact October 9 weekly-shaped lunch response becomes daily evidence, prese
   const result=reconcilePosters([input],5);
   assert.equal(result.find(g=>g.service==='lunch').items[0].content,expected[0]);
   assert.deepEqual(result.find(g=>g.service==='all-day').items.map(o=>o.content),expected.slice(1));
-  assert.equal(result.find(g=>g.role==='soup').items[0].content,'French Onion Or Chili');
+  assert.equal(result.find(g=>g.role==='soup').items[0].content,'French Onion or Chili');
 });
 
 test('daily lunch heading with untimed meals and Soup uses the same mapping',()=>{
@@ -135,7 +135,7 @@ test('exact lunch pipeline replaces unlocked recurring defaults, keeps prices, a
   assert.equal(f.slots(5,'lunch')[0].content,expected[0]);
   assert.deepEqual(f.slots(5,'all-day').map(s=>s.content),[...expected.slice(1),'','']);
   const soup=f.sql("SELECT s.content FROM special_slots s WHERE group_id='soup:auto-week:5' AND position=1");
-  assert.equal(soup[0].content,'French Onion Or Chili');
+  assert.equal(soup[0].content,'French Onion or Chili');
   assert.equal(f.slots(5,'nightly')[0].content,'Recurring value');
 });
 

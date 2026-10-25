@@ -25,13 +25,18 @@ export function canonicalizeSlotContent(content, weekday, service) {
   // ALL CAPS Facebook poster text → title case before publication.
   // Only fires when every Unicode letter in the string is uppercase; prices
   // ($9.75, $.89), punctuation (—, &), and non-letter characters are untouched.
+  // A standalone "w/" abbreviation is ignored by the check, so posters typed
+  // as "HANG OVER BURGER w/ SIDE SALAD" are still recognized as ALL CAPS.
   // Explicit allowlist — only known specials abbreviations stay ALL-CAPS.
+  // Connectors (and/or/of) stay lowercase unless they begin the content.
   const ABBREVS = new Set(['BLT', 'BBQ', 'FF']);
-  const letters = content.replace(/\P{L}/gu, '');
+  const CONNECTORS = new Set(['AND', 'OR', 'OF']);
+  const letters = content.replace(/(?<!\p{L})w(?=\/)/gu, '').replace(/\P{L}/gu, '');
   if (letters.length > 0 && letters === letters.toUpperCase()) {
     content = content.replace(/\p{L}+/gu, (word, offset, str) => {
       if (word.toUpperCase() === 'W' && str[offset + word.length] === '/') return 'w';
       if (ABBREVS.has(word.toUpperCase())) return word.toUpperCase();
+      if (CONNECTORS.has(word) && /\p{L}/u.test(str.slice(0, offset))) return word.toLowerCase();
       return word[0].toUpperCase() + word.slice(1).toLowerCase();
     });
   }

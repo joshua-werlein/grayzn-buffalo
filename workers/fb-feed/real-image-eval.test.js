@@ -53,7 +53,7 @@ test('Oct 10 Saturday (real reading): Saturday Special, both All Day meals and t
 test('Oct 11 Sunday (real reading): pizza-and-wings bundle, both All Day meals and the Soups list, one AI call',async t=>{
   const f=setup(t,'2026-10-11',readings('oct11-sun-daily'));await f.run();
   assert.equal(content(f,0,'lunch')[0],'16” 3-Topping Pizza & 12 Wings $30');
-  assert.deepEqual(content(f,0,'all-day').slice(0,2),['Olive Burger w/ Side Salad, Soup Or Coleslaw $10.25','Chicken Salad Sandwich w/ Cup Of Soup Or Coleslaw $7.25']);
+  assert.deepEqual(content(f,0,'all-day').slice(0,2),['Olive Burger w/ Side Salad, Soup or Coleslaw $10.25','Chicken Salad Sandwich w/ Cup of Soup or Coleslaw $7.25']);
   assert.equal(soup(f,0),'Beer Cheese, French Onion or Chili');
   assert.equal(f.state.aiCalls,1);
 });

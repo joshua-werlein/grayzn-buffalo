@@ -301,6 +301,65 @@ test('ALL CAPS: FF stays FF (explicit allowlist)', () => {
   );
 });
 
+// ALL CAPS posters typed with a lowercase "w/" (October 25 production values)
+test('ALL CAPS with lowercase w/: exact October 25 Hang Over Burger', () => {
+  assert.equal(
+    canonicalizeSlotContent('HANG OVER BURGER w/ SIDE SALAD, SOUP OR COLESLAW $10.25', 0, 'all-day'),
+    'Hang Over Burger w/ Side Salad, Soup or Coleslaw $10.25'
+  );
+});
+
+test('ALL CAPS with lowercase w/: exact October 25 Grilled Ham and Cheese', () => {
+  assert.equal(
+    canonicalizeSlotContent('GRILLED HAM AND CHEESE w/ CUP OF SOUP OR COLESLAW $7.25', 0, 'all-day'),
+    'Grilled Ham and Cheese w/ Cup of Soup or Coleslaw $7.25'
+  );
+});
+
+test('ALL CAPS: and/or/of connectors are lowercase except as the first word', () => {
+  assert.equal(
+    canonicalizeSlotContent('2) CHEESEBURGER OR FISH SANDWICH W/ SIDE SALAD OR COLESLAW $10.25', 5, 'lunch'),
+    '2) Cheeseburger or Fish Sandwich w/ Side Salad or Coleslaw $10.25'
+  );
+  assert.equal(canonicalizeSlotContent('OR CHILI', 1, 'custom'), 'Or Chili');
+});
+
+test('lowercase w/ never makes otherwise mixed-case text eligible for title case', () => {
+  for (const content of [
+    'Hang Over Burger w/ Side Salad, Soup Or Coleslaw $10.25',
+    'McRib Style BBQ Sandwich w/ FF $9.75',
+    'Philly cheesesteak w/ fries $11',
+    'w/ fries',
+    'Chili w/o onions',
+  ]) assert.equal(canonicalizeSlotContent(content, 2, 'all-day'), content);
+});
+
+test('ALL CAPS night specials with lowercase w/ keep prices and abbreviations', () => {
+  assert.equal(
+    canonicalizeSlotContent('16" 3-TOPPING PIZZA w/ 12 WINGS $30', 4, 'nightly'),
+    '16" 3-Topping Pizza w/ 12 Wings $30'
+  );
+  assert.equal(
+    canonicalizeSlotContent('CHICKEN STIR FRY w/ RICE $12.99 / STEAK STIR FRY w/ RICE $13.99', 5, 'nightly'),
+    'Chicken Stir Fry w/ Rice $12.99\nSteak Stir Fry w/ Rice $13.99'
+  );
+  assert.equal(
+    canonicalizeSlotContent('BLT w/ FF $8.50', 2, 'lunch'),
+    'BLT w/ FF $8.50'
+  );
+});
+
+test('Mexican Night and Wing Night slot text is unaffected', () => {
+  assert.equal(
+    canonicalizeSlotContent('Mexican Night! Ask to see our Menu!', 2, 'nightly'),
+    'Mexican Night! Ask to see our Menu!'
+  );
+  assert.equal(
+    canonicalizeSlotContent('WING NIGHT w/ $.89 BONELESS', 3, 'nightly'),
+    canonicalizeSlotContent('WING NIGHT W/ $.89 BONELESS', 3, 'nightly')
+  );
+});
+
 // Existing multiline canonicals are not damaged by the new path
 test('Wing Night ALL CAPS with missing prices stays unresolved', () => {
   assert.equal(

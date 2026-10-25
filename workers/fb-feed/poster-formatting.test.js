@@ -57,8 +57,8 @@ test('clearly grouped October 11-style extraction produces the desired bundle an
   const result=reconcilePosterEvidence([p],0,[],{today:'2026-10-11'});
   assert.equal(result.targets.find(g=>g.service==='lunch').items[0].content,'16" 3-Topping Pizza & 12 Wings $30');
   assert.deepEqual(result.targets.find(g=>g.service==='all-day').items.map(i=>i.content),[
-    'Olive Burger w/ Side Salad, Soup Or Coleslaw $10.25',
-    'Chicken Salad Sandwich w/ Cup Of Soup Or Coleslaw $7.25',
+    'Olive Burger w/ Side Salad, Soup or Coleslaw $10.25',
+    'Chicken Salad Sandwich w/ Cup of Soup or Coleslaw $7.25',
   ]);
   assert.equal(result.targets.find(g=>g.role==='soup').items[0].content,'Beer Cheese, French Onion or Chili');
   assert.deepEqual(result.rejectedSources,[]);

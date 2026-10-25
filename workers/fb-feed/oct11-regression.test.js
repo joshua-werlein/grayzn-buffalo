@@ -10,7 +10,7 @@ import {soupGroupId} from '../../src/lib/daily-soup.js';
 const exact=JSON.parse(readFileSync(new URL('../../tests/fixtures/oct11-sunday.json',import.meta.url),'utf8'));
 const clone=()=>structuredClone(exact);
 const names=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-const meals=['16" 3-Topping Pizza 12 Wings $30','Olive Burger w/ Side Salad, Soup Or Coleslaw $10.25','Chicken Salad Sandwich w/ Cup Of Soup Or Coleslaw $7.25'];
+const meals=['16" 3-Topping Pizza 12 Wings $30','Olive Burger w/ Side Salad, Soup or Coleslaw $10.25','Chicken Salad Sandwich w/ Cup of Soup or Coleslaw $7.25'];
 const soups='Beer Cheese, French Onion or Chili';
 const expected=day=>[
   {day_of_week:day,service:'lunch',items:[{content:meals[0]}]},

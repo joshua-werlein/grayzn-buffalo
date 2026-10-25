@@ -35,7 +35,7 @@ test('October 10 Saturday poster without a soup list: same meal mapping, no Soup
 test('October 11 Sunday poster (weekday only in the heading): Sunday Special, two All Day meals and the Soups list',()=>{
   assert.deepEqual(services(route({...OCT11,evidence_version:2})),[
     ['lunch',['16" 3-Topping Pizza 12 Wings $30']],
-    ['all-day',['Olive Burger w/ Side Salad, Soup Or Coleslaw $10.25','Chicken Salad Sandwich w/ Cup Of Soup Or Coleslaw $7.25']],
+    ['all-day',['Olive Burger w/ Side Salad, Soup or Coleslaw $10.25','Chicken Salad Sandwich w/ Cup of Soup or Coleslaw $7.25']],
     ['soup',['Beer Cheese, French Onion or Chili']]]);
 });
 test('October 11 Sunday poster without a soup list: same meal mapping, no Soup target',()=>{
@@ -141,7 +141,7 @@ test('integration October 11: Sunday Special and All Day publish, a staff-locked
   await f.run();
   assert.equal(f.slots(0,'lunch')[0].content,'16" 3-Topping Pizza 12 Wings $30');
   const [one,two]=f.slots(0,'all-day');
-  assert.deepEqual([one.content,one.origin],['Olive Burger w/ Side Salad, Soup Or Coleslaw $10.25','automation']);
+  assert.deepEqual([one.content,one.origin],['Olive Burger w/ Side Salad, Soup or Coleslaw $10.25','automation']);
   assert.deepEqual([two.content,two.origin,two.manual_locked],['Staff Reuben $11','manual',1]);
   assert.ok(f.slots(0,'nightly').every(s=>!s.content));
   const soup=f.sql("SELECT s.content FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='auto-week' AND g.day_of_week=0 AND g.label='Soup' AND s.position=1");

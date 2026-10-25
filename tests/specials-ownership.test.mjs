@@ -7,7 +7,7 @@ const s=loadTs('src/lib/specials-store.ts');
 const dates={start:'2030-01-07',end:'2030-01-13'};
 const recurring="Crispy Grayz'n Chicken Sandwich w/Side Salad, Chili or Coleslaw $10.25";
 const facebook='GRILLED CHICKEN SANDWICH W/ SIDE SALAD OR COLESLAW $10.25';
-const publishedFacebook='Grilled Chicken Sandwich w/ Side Salad Or Coleslaw $10.25';
+const publishedFacebook='Grilled Chicken Sandwich w/ Side Salad or Coleslaw $10.25';
 const saturday=c=>c.groups.find(g=>g.day_of_week===6 && g.service==='all-day');
 function formFor(collection) {
   const form=new FormData();

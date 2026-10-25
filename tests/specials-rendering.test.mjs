@@ -95,7 +95,7 @@ test('October 15–16 accepted production evidence displays every meal price and
     }
     for(const price of ['$9.75','$10.25','$7.25']) assert.ok(html.includes(price));
     assert.match(html,/French Onion [Oo]r Chili/);
-    if(i===1) assert.match(html,/Cheeseburger Or Fish Sandwich/);
+    if(i===1) assert.match(html,/Cheeseburger or Fish Sandwich/);
   }
 });
 

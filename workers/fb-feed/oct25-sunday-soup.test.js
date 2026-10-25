@@ -15,7 +15,7 @@ const {sunday_specials:sundayRaw,packers_event:packersRaw}=JSON.parse(readFileSy
 const stored=(raw,edit=p=>p)=>{const p=structuredClone(raw);edit(p);return analyzeDailyEvidence(p);};
 const SOUP='Chicken Noodle or Chili';
 const FOOD={lunch:['16” 3-Topping Pizza & 12 Wings $30'],
-  'all-day':['HANG OVER BURGER w/ SIDE SALAD, SOUP OR COLESLAW $10.25','GRILLED HAM AND CHEESE w/ CUP OF SOUP OR COLESLAW $7.25']};
+  'all-day':['Hang Over Burger w/ Side Salad, Soup or Coleslaw $10.25','Grilled Ham and Cheese w/ Cup of Soup or Coleslaw $7.25']};
 const route=(candidates,{day=0,today='2026-10-25'}={})=>reconcilePosterEvidence(candidates,day,[],{today,verifiedSameDaySources:new Set(candidates.map((_,i)=>i))});
 const items=(r,service)=>r.targets.find(t=>(t.role??t.service)===service)?.items.map(i=>i.content);
 
@@ -111,4 +111,20 @@ test('pipeline: staff-locked Sunday soup is never replaced; the block is audited
   assert.equal(f.soupRows(0)[0].content,'Staff: Beef Barley');
   assert.deepEqual(f.food(),FOOD);
   assert.ok(f.sql("SELECT detail FROM special_import_events WHERE event_type='review'").some(e=>e.detail.includes('GUARDED_AUTO_CONFLICT')));
+});
+
+// Rows published before the capitalization fix: an untouched automation row is
+// corrected by a later same-day scan; a staff-locked row is never rewritten.
+const UPPER=['HANG OVER BURGER w/ SIDE SALAD, SOUP OR COLESLAW $10.25','GRILLED HAM AND CHEESE w/ CUP OF SOUP OR COLESLAW $7.25'];
+for(const locked of [false,true]) test(`pipeline: previously published uppercase All Day rows ${locked?'stay when staff-locked':'are corrected when untouched'}`,async t=>{
+  const f=setup(t);await f.run();
+  f.slots(0,'all-day').slice(0,2).forEach((s,i)=>locked
+    ? f.sql("UPDATE special_slots SET content=?,origin='manual',manual_locked=1 WHERE group_id=? AND position=?",UPPER[i],s.group_id,s.position)
+    : f.sql('UPDATE special_slots SET content=?,last_auto_value=? WHERE group_id=? AND position=?',UPPER[i],UPPER[i],s.group_id,s.position));
+  const calls=f.state.aiCalls;
+  f.state.now+=30*60000;await f.run();
+  assert.equal(f.state.aiCalls,calls);
+  const rows=f.slots(0,'all-day').slice(0,2);
+  assert.deepEqual(rows.map(s=>s.content),locked?UPPER:FOOD['all-day']);
+  assert.deepEqual(rows.map(s=>[s.origin,s.manual_locked]),locked?[['manual',1],['manual',1]]:[['automation',0],['automation',0]]);
 });

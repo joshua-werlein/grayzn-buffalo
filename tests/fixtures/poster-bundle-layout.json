@@ -18,7 +18,7 @@
       "evidence": "2 WRAPS\n1 ORDER OF FRIES\n$19",
       "service_time": ""
     },
-    "expectedDisplay": "2 Wraps & 1 Order Of Fries $19"
+    "expectedDisplay": "2 Wraps & 1 Order of Fries $19"
   },
   "unrelated": {
     "layout": "Consecutive lines with independently associated prices; no common offer box or bundle heading.",

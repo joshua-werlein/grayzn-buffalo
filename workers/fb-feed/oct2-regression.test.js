@@ -13,8 +13,8 @@ const expected=oct2().offers.map((o,i)=>`${o.content} ${['$9.75','$10.25','$7.25
 // Publication-layer output: canonicalizeSlotContent title-cases ALL CAPS content before writing to slots
 const titleCased=[
   '1) Fish Sandwich w/ Fries + Drink $9.75',
-  '2) Cheeseburger Or Fish Sandwich w/ Side Salad Or Coleslaw $10.25',
-  '3) Chicken Salad Sandwich w/ Cup Of Coleslaw $7.25',
+  '2) Cheeseburger or Fish Sandwich w/ Side Salad or Coleslaw $10.25',
+  '3) Chicken Salad Sandwich w/ Cup of Coleslaw $7.25',
 ];
 const setup=t=>{
   const f=harness(t,{now:'2026-10-02T15:00:00Z',caption:'Friday Lunch Specials',candidate:oct2()});
