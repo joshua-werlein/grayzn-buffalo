@@ -24,16 +24,35 @@ export function recoveredDeliveryReading(raw,window) {
     poster_evidence:raw.poster_evidence,delivery:raw.delivery,offers:[]};
 }
 
+// The established weekday DAILY SPECIALS template prints no weekday at all.
+// Food already trusts the stored Facebook timestamp for exactly that layout
+// (evidence.js houseLayout); delivery applies the same narrow gate. Every
+// printed field must still pass the date validator: any weekday, calendar date
+// or future reference that is not today keeps the notice hidden.
+function undatedDailyTemplate(raw,d,window) {
+  if (!raw || 'type' in raw || !Array.isArray(raw.offers) || raw.day_of_week!==-1
+    || typeof raw.day_evidence!=='string' || raw.day_evidence.trim()
+    || typeof raw.poster_evidence!=='string' || !/^\s*daily\s+specials\s*$/i.test(raw.poster_evidence)
+    || window.weekday<1 || window.weekday>5) return false;
+  const printed=[raw.poster_evidence,d.date_evidence,d.evidence,...raw.offers.flatMap(o=>
+    [o?.content,o?.evidence,o?.service_time,o?.service_evidence,o?.date_evidence])].filter(s=>typeof s==='string' && s.trim());
+  try { return validateCurrentDay({...raw,poster_evidence:printed.join(' ')},window.weekday,window.day)===false; }
+  catch { return false; }
+}
+
 // A model label alone is not sufficient. Accept only a complete affirmative
 // sentence with optional today, city-limit qualifier and the known lunch window.
-export function deliveryEvidence(raw, window) {
+// trustedSameDay comes from the source's stored Facebook creation time, never
+// from extracted JSON, and only admits the undated DAILY SPECIALS template.
+export function deliveryEvidence(raw, window, {trustedSameDay=false}={}) {
   const d=raw?.delivery;
   if (!d || typeof d.evidence!=='string' || d.evidence.length>600
     || typeof d.date_evidence!=='string' || d.date_evidence.length>600
     || !Array.isArray(d.uncertainties)) return 'none';
   if (d.uncertainties.length) return 'ambiguous';
   try {
-    if (!validateCurrentDay({...raw,poster_evidence:`${raw.poster_evidence ?? ''} ${d.date_evidence} ${d.evidence}`},window.weekday,window.day)) return 'none';
+    if (!validateCurrentDay({...raw,poster_evidence:`${raw.poster_evidence ?? ''} ${d.date_evidence} ${d.evidence}`},window.weekday,window.day)
+      && !(trustedSameDay && undatedDailyTemplate(raw,d,window))) return 'none';
   } catch { return 'none'; }
   const text=d.evidence.normalize('NFKC').toLowerCase().replace(/[–—]/g,'-').replace(/\s+/g,' ').trim();
   if (d.status==='cancelled' || /\b(?:no|not|unavailable|cancelled|canceled|suspended|paused)\b/.test(text)) return 'cancelled';
@@ -61,6 +80,11 @@ export async function reconcileDelivery(env,{sourceIds,observedAt,inspectOnly=fa
     if (['pending','processing'].includes(source.processing_status)) {blocked=true;pending=true;sourceOutcomes.push({id:source.id,status:'pending'});continue;}
     if (source.processing_status!=='staged' || source.validation_result!=='ok'
       || !source.image_r2_key || !['pending','accepted'].includes(source.review_status)) {blocked=true;sourceOutcomes.push({id:source.id,status:'ineligible'});continue;}
+    // Same timestamp trust as guarded food publication: finite, not in the
+    // future and on today's Chicago date (checked above). A reread recovery
+    // already required its own printed weekday and does not use this trust.
+    const created=Date.parse(source.fb_created_time);
+    let trustedSameDay=Number.isFinite(created) && created<=now.getTime();
     let raw;
     try {
       raw=JSON.parse(source.extracted_json);
@@ -81,10 +105,10 @@ export async function reconcileDelivery(env,{sourceIds,observedAt,inspectOnly=fa
       if (candidate?.delivery_recovery) {
         const recovered=recoveredDeliveryReading(candidate.delivery_recovery,w);
         if(!recovered) {blocked=true;sourceOutcomes.push({id:source.id,status:'withheld'});continue;}
-        raw=recovered;
+        raw=recovered;trustedSameDay=false;
       }
     } catch {blocked=true;sourceOutcomes.push({id:source.id,status:'withheld'});continue;}
-    const evidence=deliveryEvidence(raw,w);
+    const evidence=deliveryEvidence(raw,w,{trustedSameDay});
     sourceOutcomes.push({id:source.id,status:evidence});
     available ||= evidence==='available';
     blocked ||= evidence==='cancelled' || evidence==='ambiguous';

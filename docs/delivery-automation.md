@@ -207,7 +207,7 @@ Parser identities remain 18/19: the change is an additive, independently validat
 ## Known limitations for review
 
 - Already-processed posters without the new evidence field do not become eligible automatically, including the October 13 poster if it was processed before rollout. No backfill or forced AI replay is implemented.
-- Detection intentionally accepts a narrow affirmative sentence beginning with “Delivery [is] available,” with optional “today,” city-limit qualifier and the known lunch window. Other affirmative phrasing can remain hidden for safety. A matching printed weekday in the extracted day/heading/delivery evidence is required; posting time alone cannot enable it.
+- Detection intentionally accepts a narrow affirmative sentence beginning with “Delivery [is] available,” with optional “today,” city-limit qualifier and the known lunch window. Other affirmative phrasing can remain hidden for safety. A matching printed weekday in the extracted day/heading/delivery evidence is required; posting time alone cannot enable it. *Superseded narrowly on October 25 (see "October 23" below): the undated weekday DAILY SPECIALS template may use its verified same-day Facebook timestamp.*
 - Only daily poster extraction supplies delivery evidence. Weekly schedules and recurring Mexican Night menus do not enable it. No live October 13 image/model call was made during this task.
 - Current manual Available stays visible past 3 PM by design, because staff overrides win. The 3 PM deadline applies to Automatic. Existing installations must deliberately opt in; older migrations may have initialized the manual value to Available.
 - Server rendering and no-store headers protect subsequent requests; an already-open page is not updated by a client timer. Banner visibility does not track the 1:30 PM service-end time; the requested expiration is 3 PM.
@@ -365,3 +365,50 @@ retained food, one Lunch, staff overrides, idempotency, real local D1 consumptio
 staff exclusion, the 3 PM cutoff and next-day expiration. Deployment validation
 and live activation are distinct: if no eligible fresh poster arrives, activation
 remains proven by tests only and awaits a future eligible source.
+
+## October 23: undated DAILY SPECIALS delivery (local fix, not deployed)
+
+The October 23 poster used the established weekday template headed only
+`DAILY SPECIALS`. It printed `DELIVERY AVAILABLE 11-1:30` and no weekday or
+date anywhere. The model read it completely and correctly (status `available`,
+empty date evidence), and food published through the existing timestamp-trusted
+DAILY SPECIALS house layout. Delivery stayed hidden: `deliveryEvidence()`
+required `validateCurrentDay()` to find a printed weekday, so the reading
+became `none` and `delivery_automation` stayed `active=0` all day while
+`delivery_display=auto`. Discovery, extraction, the October 22 reread path,
+rendering and staff settings were not involved.
+
+`deliveryEvidence(raw, window, {trustedSameDay})` now accepts a missing printed
+weekday only when all of these hold:
+
+- `reconcileDelivery()` supplies the trust from the stored `fb_created_time`:
+  finite, not in the future and on today's Chicago date. Extracted JSON cannot
+  grant it, and a reread `delivery_recovery` reading never receives it.
+- The original daily shape has `day_of_week=-1`, empty `day_evidence` and a
+  heading that is exactly `DAILY SPECIALS` (case-insensitive).
+- The delivery window is Monday–Friday.
+- The heading, delivery notice, delivery date evidence and every offer field
+  together pass `validateCurrentDay()` without naming any weekday. Any other
+  weekday, any calendar date other than today, or any tomorrow/next/upcoming
+  reference keeps delivery hidden. A matching printed date stays acceptable.
+
+Unchanged: the exact affirmative wording rule, cancellation, conditional and
+uncertain wording (all fail closed across the scan), staff Available/Unavailable/
+Hidden precedence, the 3 PM deadline and next-day expiration, snapshot fencing,
+parser identities and AI call counts. Food reconciliation is untouched. Earlier
+days are not replayed.
+
+Alerts (`SPECIALS_ALERT_MODE` remains unset/OFF): the October 23 scan now
+returns `published`, which `deliveryAlertObservation()` maps to `resolved`.
+Before the fix it returned `hidden`, which maps to `suppressed`, so the failure
+was invisible to alerts. Remaining gap, deliberately not broadened here: any
+other affirmative reading that fails date validation is still reported as
+`hidden`/`suppressed` rather than as attention.
+
+Coverage: `workers/fb-feed/oct23-delivery.test.js` with the public-text fixture
+`tests/fixtures/oct23-delivery.json` (production publication, idempotency,
+untrusted path unchanged, other weekday/past/future date/tomorrow/next week in
+every printed field, other headings and shapes, weekend windows, cancellation,
+conditional and uncertain wording, future timestamp, staff overrides, 3 PM
+expiry, after-cutoff processing and alert outcome). Disabling the trust path
+fails four of these tests.
