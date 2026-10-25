@@ -32,7 +32,8 @@ const offerKey = (text: string) => text.replace(/\s+/g,' ').trim().toLowerCase()
 export function specialInputCount(group: Pick<SpecialGroup,'service'|'day_of_week'>): number {
   if (group.service === 'lunch') return 1;
   if (group.service === 'all-day') return 2;
-  if (group.service === 'nightly') return [0,6].includes(group.day_of_week) ? 0 : [1,5].includes(group.day_of_week) ? 2 : 1;
+  // Friday Nightly shows up to four specials; Monday two; other weeknights one.
+  if (group.service === 'nightly') return [0,6].includes(group.day_of_week) ? 0 : group.day_of_week === 5 ? 4 : group.day_of_week === 1 ? 2 : 1;
   return group.day_of_week === -1 ? 4 : 1;
 }
 export const visibleGroups = (groups: SpecialGroup[], day?: number) => groups

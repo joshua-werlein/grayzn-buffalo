@@ -118,7 +118,8 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
     }
     const proposed=target.items.map((item,i)=>({group_id:dest.id,position:item.position??i+1,content:item.content,old:slots.find(s=>s.group_id===dest.id && s.position===(item.position??i+1))}));
     // Never leave a third/fourth existing value alongside a complete new group.
-    const capacity=target.service==='lunch'?1:target.service==='all-day'?2:target.service==='nightly'?([1,5].includes(weekday)?2:1):1;
+    // Same service capacities as the planner and staff editor (Friday Nightly: four).
+    const capacity=target.service==='lunch'?1:target.service==='all-day'?2:target.service==='nightly'?(weekday===5?4:weekday===1?2:1):1;
     if (slots.some(s=>s.group_id===dest.id && s.position>(target.partial?capacity:proposed.length) && s.content)) {
       proposed.forEach(r=>block(r,r.position,'Additional existing slots prevent replacement',dest.id));
       continue;

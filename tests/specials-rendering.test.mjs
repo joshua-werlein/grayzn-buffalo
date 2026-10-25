@@ -59,6 +59,28 @@ test('October 22 Pizza Night renders one combined special with both sizes and pr
   }
 });
 
+test('October 23 Friday Night renders three Nightly specials beside the $10.25 All Day price on both public pages',async t=>{
+  const {reconcilePosterEvidence}=await import('../workers/fb-feed/reconcile.js');
+  const {analyzeDailyEvidence}=await import('../workers/fb-feed/evidence.js');
+  const posters=JSON.parse(readFileSync('tests/fixtures/oct23-friday-night.json','utf8'));
+  const candidates=[JSON.parse(readFileSync('tests/fixtures/oct23-delivery.json','utf8')),posters.friday_night,posters.brewers_event].map(analyzeDailyEvidence);
+  const plan=reconcilePosterEvidence(candidates,5,[],{today:'2026-10-23',verifiedSameDaySources:new Set([0,1,2])});
+  const f=fixture(t),today=dates.chicagoCalendarDate(),start=dates.mondayForIsoDate(today);
+  f.sql("UPDATE special_slots SET content='',price='',section_link=''");
+  const collection=s.newWeekFromDefaults(await s.readCollection(f.env,'defaults'));
+  collection.groups=plan.targets.map((target,i)=>{
+    const g=s.blankGroup(dates.calendarDayOfWeek(today),i);g.service='custom';g.label=target.role??target.service;
+    target.items.forEach(item=>g.slots[item.position-1].content=item.content);return g;
+  });
+  await s.saveCollection(f.env,collection,{start,end:dates.standardWeekEndDate(start)});
+  for(const [component,path] of [[publicPage,'/specials'],[homePage,'/']]) {
+    const html=await container.renderToString(component,{request:new Request('http://localhost'+path),locals:{runtime:{env:f.env}}});
+    assert.match(html,/Chicken Stir Fry \$12\.99\nSteak Stir Fry \$13\.99</,path);
+    for(const text of ['3 Jumbo Shrimp','$12.99/$13.99','$10.75','$10.25','$7.25','$9.75','Chicken Noodle']) assert.ok(html.includes(text),`${path} ${text}`);
+    assert.doesNotMatch(html,/pulled pork sandwich/i,`${path} special event stays out of daily specials`);
+  }
+});
+
 test('October 15–16 accepted production evidence displays every meal price and choice',async()=>{
   const {reconcilePosterEvidence}=await import('../workers/fb-feed/reconcile.js');
   const evidence=JSON.parse(readFileSync('tests/fixtures/oct15-16-production.json','utf8')).imports[0].results;
@@ -241,7 +263,7 @@ test('compiled simple editor has service-specific inputs, inline prices and no d
   for(const [,attrs,body] of fields) {
     const day=Number(attrs.match(/data-group-day="([^"]*)"/)[1]);
     const service=attrs.match(/data-service="([^"]*)"/)[1];
-    const expected=service==='custom'?1:service==='lunch'?1:service==='all-day'?2:[0,6].includes(day)?0:[1,5].includes(day)?2:1;
+    const expected=service==='custom'?1:service==='lunch'?1:service==='all-day'?2:[0,6].includes(day)?0:day===5?4:day===1?2:1;
     assert.equal((body.match(/<textarea /g)||[]).length,expected,`${day} ${service}`);
   }
   assert.match(form,/>Pizza Bread \$9.75<\/textarea>/);

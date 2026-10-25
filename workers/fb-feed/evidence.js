@@ -132,8 +132,9 @@ export function analyzeDailyEvidence(value) {
     poster_evidence:value.poster_evidence,offers,issues};
 }
 
+// Friday Nightly displays up to four specials (October 23 approval); Monday two.
 const capacityOf=(service,weekday)=>service==='lunch'||service==='soup'?1:service==='all-day'?2
-  :[0,2,6].includes(weekday)?0:[1,5].includes(weekday)?2:1;
+  :[0,2,6].includes(weekday)?0:weekday===5?4:weekday===1?2:1;
 // Printed evidence positively placing a whole poster on another day. Such a
 // post cannot conflict with today's offers, so it is excluded rather than
 // blocking them. Unreadable or self-contradictory day evidence still blocks.
@@ -243,14 +244,27 @@ function houseLayout(p,isExplicitToday,weekday,known,explicit,verifiedSameDay=fa
     // Repeats are recognized only by IDENTICAL facts (dish, description, price).
     const repeat=meals.map(i=>known.some(k=>factKey(k)===factKey(p.offers[i].content)));
     const repeats=meals.filter((_,k)=>repeat[k]);
-    if(repeats.length && meals.length-repeats.length===capacity)
+    // Friday Night Specials (October 16 and 23 template): every priced meal
+    // under the printed "Friday Night" heading is a Nightly special, including
+    // a night-priced version of an All Day dish, except an identical repeat of
+    // today's verified All Day offer. Today's All Day evidence is required so a
+    // repeat can be recognized; more Nightly specials than Friday's four slots
+    // hold the whole poster rather than dropping any.
+    if(weekday===5 && isExplicitToday===true && known.length && headingNames(p,/\bfriday\s+night\b/i)) {
+      const night=meals.filter((_,k)=>!repeat[k]).length;
+      return night && night<=capacity ? agree(meals.map((_,k)=>repeat[k]?'all-day':'nightly')) : null;
+    }
+    // The established Monday/Friday layouts below pair exactly two night meals.
+    const pair=[1,5].includes(weekday)?2:capacity;
+    if(repeats.length && meals.length-repeats.length===pair)
       return agree(meals.map((_,k)=>repeat[k]?'all-day':'nightly'));
     // Monday/Friday four-offer night poster with no known All Day pair: two
-    // night meals, then the two All Day meals.
-    if([1,5].includes(weekday) && meals.length===4 && !known.length
+    // night meals, then the two All Day meals. Only as printed: after variants
+    // were joined, the last two meals are not known to be the All Day pair.
+    if([1,5].includes(weekday) && meals.length===4 && !known.length && !p.joined_offers
       && headingNames(p,new RegExp(String.raw`\b${weekday===1?'monday':'friday'}\s+night\b`,'i')))
       return agree(['nightly','nightly','all-day','all-day']);
-    if(!repeats.length && meals.length===capacity) return agree(meals.map(()=>'nightly'));
+    if(!repeats.length && meals.length===pair) return agree(meals.map(()=>'nightly'));
     return null;
   }
   // A single-service heading covering no more meals than that service holds.
@@ -266,26 +280,26 @@ function houseLayout(p,isExplicitToday,weekday,known,explicit,verifiedSameDay=fa
 // night poster. Content and evidence are joined verbatim, one size per line,
 // so every printed size and price survives and nothing is invented. Any other
 // shape is left untouched for the ordinary checks.
-const SIZE=String.raw`(\d{1,2})\s*(?:-\s*)?(?:inch(?:es)?\b|in\.|"|”|″|'')`;
-function pizzaSize(o) {
+// A complete, certain, singly priced offer whose printed text starts with a
+// variant label: {variant, dish, service}, or null.
+function variantOffer(o,pattern) {
   if(!o || typeof o.content!=='string' || typeof o.evidence!=='string' || typeof o.service_time!=='string'
     || (o.uncertainties?.length) || (o.date_evidence??'').trim()) return null;
   let cp,ep;
   try { cp=priceFacts(o.content);ep=priceFacts(o.evidence); } catch { return null; }
   if(cp.length!==1 || ep.length!==1 || cp[0].cents!==ep[0].cents) return null;
-  const m=new RegExp(String.raw`^\s*${SIZE}\s+(.+?)\s*$`,'iu').exec(clean(o.content).replace(pricePattern(),'').trim());
-  if(!m || !/\bpizza\b/i.test(m[2])) return null;
-  return {size:Number(m[1]),dish:factKey(m[2]),service:factKey(`${o.service_time}|${o.service_evidence??''}`)};
+  const m=pattern.exec(clean(o.content).replace(pricePattern(),'').trim());
+  return m?{variant:m[1].toLowerCase(),dish:factKey(m[2]),service:factKey(`${o.service_time}|${o.service_evidence??''}`)}:null;
 }
-export function joinPizzaSizes(value) {
+function joinVariants(value,variantOf) {
   if(!value || !Array.isArray(value.offers) || serviceFromEvidence(`${value.day_evidence??''} ${value.poster_evidence??''}`)!=='nightly') return value;
   const offers=[];
   for(let i=0;i<value.offers.length;) {
-    const first=pizzaSize(value.offers[i]);let j=i+1;
+    const first=variantOf(value.offers[i]);let j=i+1;
     while(first && j<value.offers.length) {
-      const next=pizzaSize(value.offers[j]);
+      const next=variantOf(value.offers[j]);
       if(!next || next.dish!==first.dish || next.service!==first.service
-        || value.offers.slice(i,j).some(o=>pizzaSize(o).size===next.size)) break;
+        || value.offers.slice(i,j).some(o=>variantOf(o).variant===next.variant)) break;
       j++;
     }
     if(j-i<2) {offers.push(value.offers[i]);i++;continue;}
@@ -293,8 +307,24 @@ export function joinPizzaSizes(value) {
     offers.push({...run[0],content:run.map(o=>clean(o.content)).join('\n'),evidence:run.map(o=>o.evidence).join('\n'),uncertainties:[]});
     i=j;
   }
-  return offers.length===value.offers.length?value:{...value,offers};
+  return offers.length===value.offers.length?value:{...value,offers,joined_offers:true};
 }
+const SIZE=String.raw`(\d{1,2})\s*(?:-\s*)?(?:inch(?:es)?\b|in\.|"|”|″|'')`;
+const pizzaSize=o=>{
+  const v=variantOffer(o,new RegExp(String.raw`^\s*${SIZE}\s+(.+?)\s*$`,'iu'));
+  return v && /\bpizza\b/.test(v.dish)?v:null;
+};
+export const joinPizzaSizes=value=>joinVariants(value,pizzaSize);
+// The same dish printed once per protein ("Chicken Stir Fry $12.99", "Steak
+// Stir Fry $13.99") is ONE special with its labelled prices, under the same
+// rules. The shared dish name must be at least two words, so unrelated
+// one-word dishes ("Chicken Wrap", "Steak Wrap") are not drawn together merely
+// by a shared noun. Nothing is joined to fit capacity: unrelated offers stay apart.
+const proteinVariant=o=>{
+  const v=variantOffer(o,/^\s*(chicken|steak|beef|pork|shrimp)\s+(.+?)\s*$/iu);
+  return v && v.dish.split(' ').length>=2?v:null;
+};
+export const joinProteinVariants=value=>joinVariants(value,proteinVariant);
 
 export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,today,existingAllDay=[],slotLayout=[],verifiedSameDaySources=new Set()}) {
   const rejectedSources=[],excludedSources=[],unresolvedTargets=[],blocked=new Set();
@@ -304,7 +334,8 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
     try {
       const raw=candidates[source];
       if (['weekly-lunch','mexican-night'].includes(raw?.type) && !('offers' in raw)) continue;
-      p=analyzeDailyEvidence(joinPizzaSizes(raw));
+      const joined=joinProteinVariants(joinPizzaSizes(raw));
+      p={...analyzeDailyEvidence(joined),joined_offers:joined.joined_offers===true};
       if(!p.offers.length && !/\bspecials?|menu|lunch|night|soup\b/i.test(`${p.day_evidence} ${p.poster_evidence}`)) continue;
       isExplicitToday=validateDay(p,weekday,today);
     } catch(error) {
@@ -334,6 +365,10 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
       if(service==='unknown' && layout?.has(i)) return layout.get(i);
       // Established automation may identify an exact repeat; defaults never establish facts.
       if(service==='unknown' && !contentIssue(s.p,i) && knownFrom(s.source).some(k=>factKey(k)===factKey(s.p.offers[i].content))) return 'all-day';
+      // Friday's four Nightly slots never repeat an identical All Day offer,
+      // even one labelled with night evidence: All Day already covers the night.
+      if(weekday===5 && service==='nightly' && !contentIssue(s.p,i)
+        && knownFrom(s.source).some(k=>factKey(k)===factKey(s.p.offers[i].content))) return 'all-day';
       return service;
     });
   };

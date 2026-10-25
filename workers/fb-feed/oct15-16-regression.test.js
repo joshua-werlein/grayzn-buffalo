@@ -91,12 +91,20 @@ test('conflicting price or lost alternatives hold the affected meal',()=>{
     assert.ok(!r.targets.flatMap(t=>t.items).some(x=>x.content.includes('$10.75')));
   }
 });
-test('Friday evening alone stays held; two same-day posters preserve Lunch and Soup independently',()=>{
+// October 25 approval: Friday Night Specials publish up to four Nightly
+// specials. Without today's All Day evidence the evening poster still holds.
+test('Friday evening alone stays held; with the daytime poster three Nightly specials publish and All Day keeps $10.25',()=>{
   assert.equal(route([candidate(2)]).targets.length,0);
-  const r=route([candidate(1),candidate(2)]);
-  assert.deepEqual(r.targets.map(t=>t.role??t.service),['lunch','soup']);
-  assert.ok(r.unresolvedTargets.some(x=>x.reason==='Unresolved offer could contradict this offer'));
-  assert.ok(!r.targets.some(t=>t.service==='nightly'));
+  for(const order of [[1,2],[2,1]]) {
+    const r=route(order.map(candidate));
+    assert.deepEqual(r.unresolvedTargets,[]);
+    const by=service=>r.targets.find(t=>(t.role??t.service)===service).items.map(i=>i.content);
+    assert.deepEqual(by('nightly'),['1 or 2 Piece Fish + 3 Jumbo Shrimp + Fries & Coleslaw or Side Salad $12.99/$13.99',
+      'Chicken Stir Fry $12.99\nSteak Stir Fry $13.99','Cheeseburger or Fish Sandwich w/Side Salad, Soup or Coleslaw $10.75']);
+    assert.match(by('all-day')[0],/\$10\.25$/);assert.match(by('all-day')[1],/^Chicken Salad.*\$7\.25$/);
+    assert.ok(!by('all-day').some(c=>c.includes('$10.75')));
+    assert.ok(!by('nightly').some(c=>/Chicken Salad/.test(c)),'identical All Day repeat is not duplicated at night');
+  }
 });
 function setup(t,i=1) {
   const day=i===0?4:5,date=i===0?'15':'16';
@@ -135,15 +143,16 @@ test('concurrent staff edit fences the entire proposed write',async t=>{
   };
   await f.run();assert.ok(injected);assert.equal(f.slots(5,'all-day')[0].content,'Staff wins');assert.equal(f.slots(5,'lunch')[0].content,'');
 });
-test('evening arrival keeps published daytime values and records independent conflicts',async t=>{
+test('evening arrival keeps published daytime values and publishes the Friday Nightly specials',async t=>{
   const f=setup(t);await f.run();
   const before=[...f.slots(5,'lunch'),...f.slots(5,'all-day')];
   f.state.now=Date.parse('2026-10-16T22:00:00Z');f.state.candidate=raw(2);
   f.state.posts.push({...f.state.posts[0],id:rows[2].fb_post_id,created_time:rows[2].fb_created_time,updated_time:rows[2].fb_created_time});
   await f.run();
   assert.deepEqual([...f.slots(5,'lunch'),...f.slots(5,'all-day')],before);
-  assert.ok(f.slots(5,'nightly').every(s=>!s.content));
-  assert.ok(f.sql("SELECT detail FROM special_import_events WHERE event_type='review'").some(e=>e.detail.includes('Unresolved offer could contradict')));
+  assert.deepEqual(f.slots(5,'nightly').map(s=>s.content),['1 or 2 Piece Fish + 3 Jumbo Shrimp + Fries & Coleslaw or Side Salad $12.99/$13.99',
+    'Chicken Stir Fry $12.99\nSteak Stir Fry $13.99','Cheeseburger or Fish Sandwich w/Side Salad, Soup or Coleslaw $10.75','']);
+  assert.ok(!f.sql("SELECT detail FROM special_import_events WHERE event_type='review'").some(e=>e.detail.includes('GUARDED_AUTO_CONFLICT')));
 });
 for(const time of ['invalid','2026-10-15T14:00:00Z','2026-10-16T23:00:00Z']) test(`stored timestamp ${time} cannot authorize fallback`,async t=>{
   const f=setup(t);f.env.SPECIALS_IMPORT_MODE='DRY_RUN';await f.run();

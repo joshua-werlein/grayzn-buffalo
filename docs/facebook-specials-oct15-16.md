@@ -52,6 +52,10 @@ extracted successfully and staged.
   held. Together, Lunch and Soup publish independently; the conflicting All Day
   service and unresolved evening offers stay held. Already published daytime
   values remain unchanged. No broader evening publication policy is introduced.
+  *Superseded on October 25 by the approved Friday Night policy
+  (`docs/facebook-specials-oct23-friday-night.md`): with the daytime poster,
+  the three Nightly specials now publish (stir fries as one special) and All
+  Day keeps $10.25; the evening poster alone still holds.*
 
 ## Precise boundaries
 

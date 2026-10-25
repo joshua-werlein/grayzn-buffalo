@@ -1,0 +1,76 @@
+{
+  "friday_night": {
+    "day_of_week": 5,
+    "day_evidence": "Friday",
+    "poster_evidence": "Friday Night Specials 5-10pm",
+    "delivery": {
+      "status": "none",
+      "evidence": "",
+      "date_evidence": "",
+      "uncertainties": []
+    },
+    "offers": [
+      {
+        "content": "1 or 2 Piece Fish + 3 Jumbo Shrimp + Fries & Coleslaw or Side Salad $12.99/$13.99",
+        "evidence": "1 or 2 Piece Fish + 3 Jumbo Shrimp + Fries & Coleslaw or Side Salad $12.99/$13.99",
+        "service_time": "5-10pm",
+        "service_evidence": "Friday Night Specials 5-10pm",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Chicken Stir Fry $12.99",
+        "evidence": "Chicken Stir Fry $12.99",
+        "service_time": "5-10pm",
+        "service_evidence": "Friday Night Specials 5-10pm",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Steak Stir Fry $13.99",
+        "evidence": "Steak Stir Fry $13.99",
+        "service_time": "5-10pm",
+        "service_evidence": "Friday Night Specials 5-10pm",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Cheeseburger or Fish Sandwich w/Side Salad, Soup or Coleslaw $10.75",
+        "evidence": "Cheeseburger or Fish Sandwich w/Side Salad, Soup or Coleslaw $10.75",
+        "service_time": "5-10pm",
+        "service_evidence": "Friday Night Specials 5-10pm",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Grilled Ham and Cheese w/cup of Soup or Coleslaw $7.25",
+        "evidence": "Grilled Ham and Cheese w/cup of Soup or Coleslaw $7.25",
+        "service_time": "5-10pm",
+        "service_evidence": "Friday Night Specials 5-10pm",
+        "date_evidence": "",
+        "uncertainties": []
+      }
+    ]
+  },
+  "brewers_event": {
+    "day_of_week": -1,
+    "day_evidence": "",
+    "poster_evidence": "TONIGHT'S BREWERS GAME SPECIAL",
+    "delivery": {
+      "status": "none",
+      "evidence": "",
+      "date_evidence": "",
+      "uncertainties": []
+    },
+    "offers": [
+      {
+        "content": "PULLED PORK SANDWICH WITH CHIPS AND SIDE OF COLESLAW $7.25",
+        "evidence": "PULLED PORK SANDWICH WITH CHIPS AND SIDE OF COLESLAW $7.25",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      }
+    ]
+  }
+}
