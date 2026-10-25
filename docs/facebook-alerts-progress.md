@@ -366,3 +366,78 @@ Changed-file summary remains the eleven files listed above: three alert implemen
 Remaining risks/limits: external acceptance cannot be transacted with D1 or recalled after authorization; an uncertain attempt can represent an accepted email OR an attempt that never reached the provider. It stays quarantined until evidence-backed, separately authorized operator action; exactly-once inbox delivery is not promised. A total D1 outage needs independent detection. Atomic snapshot comparison covers full selected rowsets and should be measured against production-sized restored data before rollout; unrelated edits may conservatively defer notification. Dedicated weekly/Mexican per-offer completeness and unknown-image omission coverage remain outside scope. Independent monitoring, verified recipient/sender/binding, real receipt testing and backup/restore rehearsal remain outstanding.
 
 **Next step: user review of final code, conservative uncertainty recovery policy, and revised 0023/0024 definitions.** Renew the production preflight and migration rehearsal only under separate authorization. If any earlier migration definition has since been applied, stop and design a forward migration. Do not deploy or begin the separate October 22–23 incident work automatically.
+
+## Backup verification and local migration rehearsal — October 25, 2026
+
+**PASS: existing backup verification and direct-SQLite migration rehearsal. BLOCKED: production rollout pending review and the Wrangler recovery-path limitation below.** This entry supersedes earlier statements that no backup or rehearsal exists. Alerts remain OFF. Source checkpoint is codex/facebook-automation-alerts at 6d91ffed4a6c52b1505a575bf734ea0c4666b9ce; local origin/main remains ae2d8add8c6b76445adfd0e6c2b02891058ae63d (not freshly fetched in this local resumption). Working tree was clean on resume. No implementation or migration files changed.
+
+### Backup and protection evidence
+
+Exactly one authorized export of grayzn-db (c998bfd4-7031-4ae2-9eea-df86f16ddb15) completed October 25 01:56:40–01:56:43 UTC (October 24, 20:56 Chicago), approximately 2.8 seconds. No export was repeated. Size: **639,855 bytes**. SHA-256: **0D31559282BB3E5964D7A222875DC79897CF4CA358FC034BFC97F15FF0988C2F**, reverified against the privately recorded export result.
+
+User verified BitLocker 100%, XTS-AES128, protection ON. Backup root inheritance is disabled; recursive inspection of 35 existing artifacts found zero unexpected allow rules (only the user and SYSTEM). Permissions were not weakened. Files remain under the approved private AppData/Local/GrayznBuffalo/D1Backups directory; exact location is in ignored .wrangler/alerts6-private-path.txt. Backup, baseline, manifests and logs must remain private and retained pending an explicit retention decision.
+
+At the export gate, D1 analytics showed zero reads/writes in the preceding five minutes. Website traffic analytics lacked entitlement; the gate used D1 workload telemetry, which is delayed evidence, not a zero-disruption guarantee. Post-export production reads succeeded; all 17 source-table counts were stable. Production ledger had 23 entries including filenames 0020–0022; exactly 0023/0024 were pending. These are export-time observations, not a claim about current production state.
+
+### Restore, migrations and unchanged data
+
+The complete, unmodified SQL export restored successfully through node:sqlite inside the protected folder. All 17 tables, original schema and 23 ledger entries matched saved source manifests. Unsafe-integer checks before export found zero rows outside exact JavaScript integer range. Baseline and final SQLite integrity_check returned ok; foreign_key_check returned zero violations. This is a faithful SQLite recovery test of the saved SQL and its recorded schema/counts, not a production D1 restoration test. Source manifests were not a transactionally frozen full-content digest of production; full typed row digests establish preservation across the LOCAL migration steps, not independent byte-for-byte proof against live production.
+
+0023 was already completed before interruption; it was not replayed. 0024 was completed on resume after checking the existing ledger. Each exact committed migration ran in its own local SQLite transaction with a corresponding local ledger insert; Wrangler migration bookkeeping itself was NOT exercised. Both migration file hashes remain the reviewed values in the private plan. Original 23 ledger rows are unchanged; local ledger now has 25 rows. No production ledger was changed.
+
+All **16 pre-existing business tables** retain identical counts and canonical full typed-row digests. Existing schema/indexes/triggers and non-ledger sequences remain unchanged. Final alert schema matches execution of the exact committed SQL: incidents has 16 columns including proof_json; scans has 9; due index columns are day/state/sent_ms/due_ms. Both alert tables remain empty. Eleven synthetic default/state/error/uniqueness checks passed and were rolled back; final contents were reverified. A separate in-memory check confirms 0024 fails without 0023.
+
+### Wrangler limitation and regression results
+
+The original local Wrangler restore failed before populating its D1 file with an internal runtime error. A fresh, empty local persistence directory in the SAME protected folder also fails on SELECT 1 with an internal error. This isolates the failure from production SQL content, but does not establish its root cause. Do not relax ACLs or move production records into ordinary workspace/temp directories to bypass it. Installed Wrangler is 4.148.0. Direct SQLite passed; protected-path Wrangler/Miniflare recovery and normal Wrangler migration tracking remain unverified. Resolve this with synthetic data first before any approved full D1 recovery-path rehearsal.
+
+Focused command: node --test workers/fb-feed/alerts.test.js workers/fb-feed/alerts-d1.test.js workers/fb-feed/alert-outcomes.test.js workers/fb-feed/alert-runtime.test.js
+Result: **93/93 passed**, zero failures/cancelled/skipped, including disposable local D1 coverage and mocked email. Log: .wrangler/alerts6-focused-resume.log. These passing synthetic D1 tests do not negate the protected-path restore failure. No runtime source changed, so full Worker 1,162/application 150/build/check/dry-run results remain the previous checkpoint evidence, not newly rerun results.
+
+### Durable artifacts, next gate and scope
+
+Ignored scripts: alerts6-local-rehearsal.mjs (restore/per-migration checks), alerts6-final-verify.mjs (hash, baseline/final contents, exact schema, dependency and rolled-back constraints), alerts6-inspect.mjs and alerts6-traffic.mjs (prior read-only source/traffic evidence). Private reports include export-verification.json, before/after-source-manifest.json, baseline-manifest.json, 0023/0024-verified-manifest.json and final-verification.json. Original SQL and verified-baseline.sqlite are preserved. Private runtime-probe logs preserve the reproducible Wrangler limitation. Do not rerun restore or migration phases against existing files; final-verify is the safe recheck. Never repeat the production export under this authorization.
+
+Only the three existing alert documentation files were modified during resumption, plus ignored local diagnostics/plan. No commit, push, merge, deployment, production D1 write/migration, Cloudflare configuration, email or activation occurred.
+
+**Next step: review these results and resolve the protected-path Wrangler issue using synthetic data. No production operation is recommended while that recovery-path limitation is unresolved.** The next production-changing operation requiring separate explicit authorization is applying exactly migrations 0023 then 0024, only after fresh read-only identity/schema/pending-list/reconciliation checks and backup freshness/recovery review. Stop on drift or unexpected pending files; never replay 0020–0022 or blindly rerun non-idempotent 0024. No new export is authorized by this checkpoint. Subsequent Worker OFF deployment, OBSERVE validation, restricted sender/recipient configuration, controlled receipt testing, independent monitoring (prior visibility 403), and EMAIL activation each retain their separate approval gates. Ordinary rollback retains additive tables and history; whole-database restore could destroy newer writes and requires its own authorization.
+
+## Synthetic Wrangler investigation — October 25, 2026 (latest readiness decision)
+
+**Local investigation PASS; the protected-path failure is no longer a demonstrated blocker to remote production migration. Production changes remain unauthorized, and activation remains BLOCKED by the rollout gates below.** This supersedes the preceding requirement to resolve the local failure before considering any production migration. No production calls, export/restore, dependency upgrades or application changes were made during this investigation.
+
+### Evidence and limits
+
+Node is v24.19.0; Wrangler is 4.148.0. Tests import top-level Miniflare 4.20260114.0; Wrangler imports its separate Miniflare 5.20261006.0-alpha. Ten synthetic runtime cases were exercised:
+
+| Location/control | Miniflare v4 | Wrangler's Miniflare v5 |
+| --- | --- | --- |
+| Ordinary workspace path | PASS | PASS |
+| Longer path inside protected backup root | SQLITE_CANTOPEN/internal error | Internal error |
+| Workspace path with copied user/SYSTEM-only restricted ACL | PASS | PASS |
+| Longer ordinary workspace path | SQLITE_CANTOPEN/internal error | Internal error |
+| Short path inside unchanged protected backup root | PASS | PASS |
+
+The same restrictions work at short paths. Long-path controls fail outside the protected folder too. This establishes a local path-dependent runtime/filesystem problem and a working short-path mitigation, not an alert migration SQL defect or a need to weaken ACLs. Exact Windows/workerd path handling and its threshold were NOT established; do not assert a specific MAX_PATH limit or attribute the failure to BitLocker. The old failure directories/logs remain intact.
+
+Installed Wrangler code distinguishes executeLocally (Miniflare/local persistence) from executeRemotely (authenticated Cloudflare D1 API). The migrations apply handler forwards the selected local/remote flag into executeSql. Therefore the local persistence failure is not on the remote migration execution path. This is source-inspection evidence, NOT a remote write test or a guarantee of remote availability, authorization or migration success.
+
+### Successful synthetic CLI rehearsal
+
+A fresh short protected subdirectory w7 contains only invented records, copied reviewed migrations and a local-only config. Installed Wrangler imported synthetic.sql with --local, then applied 0023 and 0024 using normal migrations apply tracking. Subsequent SELECTs preserved the synthetic business row and returned exactly both ledger filenames; migrations list reported no pending migrations. A read-only node:sqlite check of that synthetic database matched the exact committed alert schema, returned integrity ok and zero foreign-key violations. The combined CLI PRAGMA verification attempt returned SQLITE_AUTH; it is retained as a diagnostic, not hidden. Supported D1 SELECTs passed, and offline read-only SQLite performed the restricted integrity/schema checks. No application schema was altered to bypass the authorizer.
+
+Evidence: ignored .wrangler/alerts7-runtime-matrix.mjs and matrix/isolate/short logs; alerts7-cli-synthetic-restore.log; alerts7-cli-migrations.log; alerts7-cli-verification.log (rejected PRAGMA batch); alerts7-cli-data-verified.log; alerts7-cli-pending.log; alerts7-verify-synthetic.mjs and alerts7-synthetic-verified.log. All existing alerts6 artifacts and the verified backup remain preserved; original backup SHA-256 was checked again and is unchanged. This task did NOT restore production data into Wrangler. The earlier full-data SQLite recovery/preservation verification plus this synthetic Wrangler import/tracking test are complementary evidence; full-data Wrangler recovery remains unexercised.
+
+No application tests were rerun for documentation-only changes. Previous focused 93/93, Worker 1,162/1,162 and application 150/150 results retain their original dates/scope. Synthetic expected failures above are environment controls, not new application regressions.
+
+### Remaining gates and exact next handoff
+
+1. Read this latest section, the preceding backup report, and the maintenance backlog in POST_LAUNCH_CHECKLIST.md. Inspect branch/HEAD/status and preserve current uncommitted documentation and ignored/private evidence. Expected source is codex/facebook-automation-alerts at 6d91ffed4a6c52b1505a575bf734ea0c4666b9ce. Do not rerun export or migrations against an existing rehearsal state. To recheck the synthetic result, run node .wrangler/alerts7-verify-synthetic.mjs with access to the private folder; it performs read-only database checks and writes no backup data.
+2. Verify/update the vulnerable local/CI Node toolchain under a separate maintenance task before release operations; record executable/version and rerun applicable validation after any runtime change. No Node upgrade occurred here.
+3. Refresh production identity, schema, migration ledger, exact pending files (only 0023/0024), current Worker/version/config, reconciliation-workstream status and backup freshness through read-only inspection. The earlier ledger/traffic observations are historical. Any new export, copy of production data into a different recovery environment, or production restore needs its own approval; a repeat export is not authorized. Review whether the existing verified recovery evidence meets the operator's recovery requirements; if a full-data Wrangler restore is required, obtain authorization for that specific protected short-path rehearsal.
+4. **Next production-changing operation requiring explicit authorization: apply exactly 0023 then 0024 to the verified production D1 using normal remote migration tracking, after the preceding gates pass.** Local path mitigation is not authorization. Stop for unexpected pending files, drift, concurrent reconciliation, failed checks or ambiguous partial application. Never replay 0020–0022 or blindly rerun 0024. Plan for possible migration availability impact.
+5. Separately authorize reviewed Worker deployment with alerts OFF, after a current dry run and Wrangler source-map policy review. Then separately authorize OBSERVE validation through eligible Chicago cycles/grace periods. Preserve existing publication/staff protections.
+6. Resolve restricted sender/recipient/binding configuration, controlled real-email receipt testing and independent failure monitoring (prior visibility 403) under separate approvals. Review fresh candidates and uncertain attempts before separate EMAIL activation. None is authorized now.
+7. Rollback should disable alerts/restore the reviewed prior Worker while retaining additive schema and incident history. Whole-D1 restore risks overwriting newer business writes and requires a separate recovery decision. Unknown email acceptance cannot be safely retried without evidence.
+
+Only documentation and ignored synthetic diagnostics changed in this investigation. No production writes/migrations, deployment, push, merge, commit, email, Cloudflare configuration, dependency change or unrelated incident work occurred. Stop for review.
