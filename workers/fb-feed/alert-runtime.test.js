@@ -309,6 +309,35 @@ test('email adapter uses fixed plain text and validated configuration, with mock
   await assert.rejects(emailTransport({...env,ALERT_EMAIL:{send:async()=>({})}})({day:'2030-01-09',code:'import_failed'}));
 });
 
+// Fake credentials only; the example recipient is deliberately not approved.
+const resendEnv={SPECIALS_ALERT_MODE:'EMAIL',SPECIALS_ALERT_EMAIL_APPROVED:'true',SPECIALS_ALERT_PROVIDER:'RESEND',
+  SPECIALS_ALERT_FROM:'alerts@grayznbuffalo.com',SPECIALS_ALERT_TO:'owner@example.com',ALERT_RESEND_API_KEY:'re_fakeTestKey_000000000000'};
+for(const [name,overrides] of [
+  ['unapproved recipient',{}],
+  ['missing API key',{ALERT_RESEND_API_KEY:undefined}],
+  ['unapproved sender',{SPECIALS_ALERT_FROM:'noreply@grayznbuffalo.com'}],
+  ['unknown provider',{SPECIALS_ALERT_PROVIDER:'SENDGRID'}],
+]) test(`Resend ${name} is unconfigured before any incident is claimed, with no fallback`,async t=>{
+  const f=await failure(t);f.advance(ALERT_GRACE_MS);let native=0;
+  const fetch=t.mock.method(globalThis,'fetch',async()=>{throw Error('network disabled');});
+  Object.assign(f.env,resendEnv,overrides,{ALERT_EMAIL:{send:async()=>{native++;return {messageId:'native'};}}});
+  assert.deepEqual(await dispatchVerifiedAlerts(f.env),{status:'unconfigured'});
+  assert.equal(fetch.mock.callCount(),0);assert.equal(native,0);
+  assert.equal(f.row().dispatch_state,'ready');assert.equal(f.row().attempts,0);assert.equal(f.row().authorized_ms,null);
+});
+
+test('alerts OFF and OBSERVE with complete Resend configuration never reach the provider',async t=>{
+  const f=await failure(t);f.advance(ALERT_GRACE_MS);
+  const fetch=t.mock.method(globalThis,'fetch',async()=>{throw Error('network disabled');});
+  for(const mode of [undefined,'OFF','OBSERVE']) {
+    Object.assign(f.env,resendEnv,{SPECIALS_ALERT_MODE:mode});
+    assert.deepEqual(await dispatchVerifiedAlerts(f.env),{status:'disabled'});
+  }
+  Object.assign(f.env,{SPECIALS_ALERT_MODE:'EMAIL',SPECIALS_ALERT_EMAIL_APPROVED:'false'});
+  assert.deepEqual(await dispatchVerifiedAlerts(f.env),{status:'unconfigured'});
+  assert.equal(fetch.mock.callCount(),0);assert.equal(f.row().dispatch_state,'ready');assert.equal(f.row().attempts,0);
+});
+
 // Interleave a committed business edit after hashing/reassessment, immediately
 // before the final atomic authorization statement (the original preflight race).
 function beforeAuthorization(f,action) {

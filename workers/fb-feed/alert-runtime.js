@@ -5,7 +5,7 @@ import {validateCurrentDay} from './reconcile.js';
 import {deliveryWindow} from '../../src/lib/delivery.js';
 import {dailyPublicationObservation,importAlertObservation} from './alert-policy.js';
 import {ALERT_GRACE_MS,dispatchAlert,alertEvidenceFence} from './alert-store.js';
-import {emailTransport} from './alert-email.js';
+import {alertTransport} from './alert-email.js';
 
 const MODES=['OBSERVE','MOCK','EMAIL'];
 const FRESH_MS=90*60*1000;
@@ -161,7 +161,8 @@ export async function revalidateAlert(env,row,{withEvidence=false}={}) {
 export async function dispatchVerifiedAlerts(env,{send,timeoutMs}={}) {
   if(!active(env)) return {status:'disabled'};
   // Mock transport is a function injected by tests, never an environment URL.
-  const transport=env.SPECIALS_ALERT_MODE==='MOCK'?send:emailTransport(env);
+  // Provider configuration is resolved before any incident is claimed or fenced.
+  const transport=env.SPECIALS_ALERT_MODE==='MOCK'?send:await alertTransport(env);
   if(typeof transport!=='function') return {status:env.SPECIALS_ALERT_MODE==='EMAIL'?'unconfigured':'disabled'};
   try {
     const counts={sent:0,uncertain:0,superseded:0};
