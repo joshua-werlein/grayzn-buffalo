@@ -1,0 +1,75 @@
+---
+import EventFields from './EventFields.astro';
+import { eventState, formatEventDate, formatEventTime, type EventInput, type SpecialEvent } from '../lib/special-events';
+interface Props { event: SpecialEvent; values: EventInput; now: Date; error?: string }
+const { event, values, now, error = '' } = Astro.props;
+const STATUS: Record<string, string> = { review: 'Needs review', published: 'Published', disabled: 'Hidden', rejected: 'Removed', cancelled: 'Cancelled' };
+const STATE: Record<string, string> = { upcoming: 'Upcoming', active: 'Showing today', expired: 'Expired' };
+let evidence: any = null;
+try { evidence = JSON.parse(event.evidence_json ?? 'null'); } catch { /* No evidence shown. */ }
+const imageUrl = typeof evidence?.image_key === 'string' && /^special-imports\/[\w.-]+$/.test(evidence.image_key) ? `/admin/img/${evidence.image_key}` : '';
+const facebookUrl = /^https:\/\/(?:www\.|m\.)?facebook\.com\//.test(event.source_permalink) ? event.source_permalink : '';
+const fromFacebook = event.origin === 'automation';
+const slug = event.id.replace(/[^\w-]/g, '-');
+const actions = [
+  event.status === 'review' && { op: 'reject', label: 'Reject' },
+  event.status === 'published' && { op: 'disable', label: 'Hide' },
+  ['disabled', 'rejected', 'cancelled'].includes(event.status) && event.offers.length > 0 && { op: 'enable', label: 'Publish' },
+  event.status === 'published' && fromFacebook && { op: 'reject', label: 'Remove' },
+  fromFacebook && event.manual_locked === 1 && ['review', 'published'].includes(event.status) && { op: 'allow-automation', label: 'Allow Facebook updates' },
+].filter(Boolean) as { op: string; label: string }[];
+---
+<article class="event-editor" id={event.id} aria-labelledby={`${slug}-heading`}>
+  <header class="event-editor__head">
+    <h4 id={`${slug}-heading`}>{event.title}</h4>
+    <p class="event-editor__meta">
+      <span class={`event-status event-status--${event.status}`}>{STATUS[event.status]}</span>
+      <span>{STATE[eventState(event, now)]} · {formatEventDate(event.event_date, 'long')}{formatEventTime(event) && ` · ${formatEventTime(event)}`}</span>
+      <span>{fromFacebook ? (event.manual_locked ? 'From Facebook · staff-protected' : 'From Facebook · follows post updates') : 'Created by staff'}</span>
+    </p>
+    {event.review_reason && <p class="event-editor__reason"><strong>Why:</strong> {event.review_reason}</p>}
+  </header>
+  {error && <p class="error" role="alert">{error}</p>}
+  {(evidence || facebookUrl) && <details class="event-evidence">
+    <summary>Facebook evidence</summary>
+    {evidence?.heading && <p><strong>Poster heading:</strong> {evidence.heading}</p>}
+    {Array.isArray(evidence?.offers) && evidence.offers.length > 0 && <p><strong>Printed offers:</strong> {evidence.offers.join(' / ')}</p>}
+    {evidence?.date && <p><strong>Date:</strong> {evidence.date}</p>}
+    {evidence?.caption && <p><strong>Caption:</strong> {evidence.caption}</p>}
+    <p class="event-evidence__links">{imageUrl && <a href={imageUrl} target="_blank" rel="noopener">View poster</a>}{facebookUrl && <a href={facebookUrl} target="_blank" rel="noopener noreferrer">Open on Facebook</a>}</p>
+  </details>}
+  <form method="post" class="event-form">
+    <input type="hidden" name="id" value={event.id}/><input type="hidden" name="revision" value={event.revision}/>
+    <EventFields prefix={slug} values={values}/>
+    <div class="event-editor__buttons">
+      {event.status === 'review' && <button class="btn btn-primary" type="submit" name="op" value="save-approve">Approve and publish “{event.title}”</button>}
+      <button class:list={['btn', event.status === 'review' ? 'btn-ghost' : 'btn-primary']} type="submit" name="op" value="save">Save changes to “{event.title}”</button>
+    </div>
+  </form>
+  {(actions.length > 0 || event.origin === 'manual') && <div class="event-editor__actions">
+    {actions.map(action => <form method="post"><input type="hidden" name="id" value={event.id}/><input type="hidden" name="revision" value={event.revision}/>
+      <button class="btn btn-ghost" type="submit" name="op" value={action.op}>{action.label}<span class="visually-hidden"> “{event.title}”</span></button></form>)}
+    {event.origin === 'manual' && <details class="event-delete"><summary>Delete permanently</summary>
+      <form method="post"><input type="hidden" name="id" value={event.id}/><input type="hidden" name="revision" value={event.revision}/>
+        <button class="btn btn-ghost" type="submit" name="op" value="delete">Delete “{event.title}”</button></form></details>}
+  </div>}
+  <p class="event-editor__note">Hide, Remove and Publish ignore unsaved edits above. Save changes first.</p>
+</article>
+<style>
+  .event-editor{margin:12px 0;padding:16px;background:#fff;border:1px solid rgba(36,22,16,.18);border-radius:10px;box-shadow:0 6px 16px rgba(36,22,16,.08);min-width:0}
+  .event-editor h4{margin:0;font:400 1.15rem var(--display);overflow-wrap:anywhere}
+  .event-editor__meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin:6px 0 0;color:var(--ink-2)}
+  .event-status{padding:1px 8px;border:1px solid currentColor;border-radius:3px;font:700 .75rem/1.4 var(--label);letter-spacing:.1em;text-transform:uppercase;color:var(--ink)}
+  .event-status--review{background:#f3e2b8}
+  .event-editor__reason{margin:8px 0 0;padding:8px 10px;border-left:4px solid var(--gold);background:var(--surface-parchment)}
+  .event-evidence{margin:10px 0;padding:8px 12px;border:1px dashed rgba(36,22,16,.3);border-radius:8px}
+  .event-evidence summary{cursor:pointer;font:700 .8rem var(--label);letter-spacing:.08em;text-transform:uppercase}
+  .event-evidence p{margin:6px 0;overflow-wrap:anywhere}
+  .event-evidence__links{display:flex;gap:14px;flex-wrap:wrap}
+  .event-editor__buttons,.event-editor__actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px}
+  .event-editor__buttons .btn,.event-editor__actions .btn{margin:0}
+  .event-delete summary{cursor:pointer;color:var(--crimson);font-weight:700}
+  .event-delete form{margin-top:8px}
+  .event-editor__note{margin:8px 0 0;font-size:.85rem;color:var(--ink-2)}
+  .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+</style>

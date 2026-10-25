@@ -2,6 +2,8 @@
 import Base from '../layouts/Base.astro';
 import SpecialGroup from '../components/SpecialGroup.astro';
 import DailySoup from '../components/DailySoup.astro';
+import EventSpecials from '../components/EventSpecials.astro';
+import { readVisibleEvents } from '../lib/special-events';
 import {isSoupGroup} from '../lib/daily-soup.js';
 import { visibleGroups, getMexicanNight } from '../lib/specials-store';
 import { getMenu, getWeeklySpecialsForDateRange, getWelcomePhotos, thumbKey, type Item, type WelcomePhoto } from '../lib/db';
@@ -15,6 +17,9 @@ const weeklySpecials = upcomingDates.length
   ? await getWeeklySpecialsForDateRange(env, upcomingDates[0], upcomingDates[upcomingDates.length - 1])
   : [];
 const mexican = await getMexicanNight(env);
+// Special events sit above the day cards; never inside them. At most three here.
+const eventNow = (Astro.locals as any).runtime?.now ?? new Date();
+const homeEvents = (await readVisibleEvents(env, eventNow)).slice(0, 3);
 const mexicanAvailable = !!mexican && visibleGroups(mexican.groups).length > 0;
 const weeklyHomeDays = upcomingDates.flatMap(date => {
   const week = weeklySpecials.find(special => special.week_start_date <= date && special.week_end_date >= date);
@@ -119,6 +124,7 @@ const welcomeHolderAssets = [
 <section class="home-weekly" aria-labelledby="home-weekly-title">
   <div class="home-weekly__card reveal">
     <p class="home-weekly__label"><span aria-hidden="true">★</span> THIS WEEK AT GRAYZ'N <span aria-hidden="true">★</span></p>
+    <EventSpecials events={homeEvents} now={eventNow} headingId="home-events-title"/>
     {weeklyHomeDays.length > 0 ? (
       <><h2 id="home-weekly-title">Specials</h2><div class="home-weekly__days">{weeklyHomeDays.map(({ date, groups }) => {
         return <article class:list={['home-weekly__day', { 'is-today': date === today }]}>{date === today && <span class="home-weekly__today">TODAY</span>}<h3><span class="home-weekly__date-long">{formatWeeklyBoardDate(date)}</span><span class="home-weekly__date-compact">{formatWeeklyBoardDate(date, true)}</span></h3><div class="home-weekly__groups"><div class="home-weekly__food">{groups.filter(group=>!isSoupGroup(group)).map(group => <SpecialGroup group={group} showTime={false} mexicanAvailable={mexicanAvailable}/>)}</div><DailySoup groups={groups}/></div></article>;

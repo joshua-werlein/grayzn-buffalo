@@ -7,7 +7,7 @@ import {loadTs} from './load-ts.mjs';
 import {withSoupControls,isSoupGroup,soupGroupId,blankSoupGroup} from '../src/lib/daily-soup.js';
 const s=loadTs('src/lib/specials-store.ts');
 const dates=loadTs('src/lib/weekly-specials.ts');
-const rendererModule=await import('../dist/_worker.js/chunks/'+readdirSync('dist/_worker.js/chunks').find(n=>n.startsWith('DailySoup_') || n.startsWith('SpecialGroup_')));
+const rendererModule=await import('../dist/_worker.js/chunks/'+readdirSync('dist/_worker.js/chunks').find(n=>/^(?:DailySoup|SpecialGroup|EventSpecials)_/.test(n) && readFileSync('dist/_worker.js/chunks/'+n,'utf8').includes('/DailySoup.astro')));
 const soupModule={$:Object.values(rendererModule).find(component=>component.moduleId?.endsWith('/DailySoup.astro'))};
 const publicPage=(await import('../dist/_worker.js/pages/specials.astro.mjs')).page().default;
 const homePage=(await import('../dist/_worker.js/pages/index.astro.mjs')).page().default;
@@ -41,6 +41,26 @@ test('reserved Soup renderer emits no placeholder and escapes one compact line',
   group.enabled=1;group.slots[0].content='<img src=x onerror=alert(1)>';
   assert.match(await container.renderToString(soupModule.$,{props:{groups:[group]}}),/&lt;img/);
   assert.match(readFileSync('src/components/DailySoup.astro','utf8'),/overflow-wrap:anywhere/);
+});
+// Soup text follows the card's own special-text token (dark-blue Today card on
+// /specials: --sg-text #f0ddb8), never the page's dark ink.
+test('Soup text uses each card text token and meets WCAG AA on every /specials card and the homepage',()=>{
+  assert.match(readFileSync('src/components/DailySoup.astro','utf8'),/\.daily-soup\{[^}]*color:var\(--sg-text,inherit\)/);
+  const luminance=hex=>{
+    const [r,g,b]=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255).map(c=>c<=.04045?c/12.92:((c+.055)/1.055)**2.4);
+    return .2126*r+.7152*g+.0722*b;
+  };
+  const contrast=(a,b)=>{const [x,y]=[luminance(a),luminance(b)].sort((p,q)=>q-p);return (x+.05)/(y+.05);};
+  const specials=readFileSync('src/pages/specials.astro','utf8');
+  for(const variant of ['today','denim','brick','saddle']){
+    const rule=specials.match(new RegExp(String.raw`\.placard--${variant}\{([^}]*)\}`))[1];
+    const background=rule.match(/background:(#[0-9a-f]{6})/i)[1],text=rule.match(/--sg-text:(#[0-9a-f]{6})/i)[1];
+    assert.ok(contrast(text,background)>=4.5,`${variant}: ${text} on ${background} is ${contrast(text,background).toFixed(2)}:1`);
+  }
+  // Homepage: the Specials card already sets --sg-text to its cream text color.
+  const home=readFileSync('src/pages/index.astro','utf8').match(/\.home-weekly__card\{([^}]*)\}/)[1];
+  assert.match(home,/--sg-text:var\(--cream\)/);assert.match(home,/(?:^|;)color:var\(--cream\)/);
+  assert.ok(contrast('#eee0c4','#183e50')>=4.5);   // --cream on --denim
 });
 test('homepage and Specials render Soup once outside meal sections; absent/disabled hides completely',async t=>{
   const f=fixture(t);f.sql("UPDATE special_slots SET content='',price='',section_link=''");

@@ -8,6 +8,7 @@ import {reconcilePosterEvidence,validateWeeklyLunch,validateMexicanNight,canonic
 import {parserVersionFor} from './classify.js';
 import {soupGroupId,blankSoupGroup} from '../../src/lib/daily-soup.js';
 import {normalizeWeeklyRange,factKey,analyzeDailyEvidence} from './evidence.js';
+import {eventSourceIndexes} from './event-store.js';
 
 export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=false}) {
   const stage=reason=>({written:false,reason});
@@ -37,8 +38,12 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
   const dateOf = value => new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
   // Keep excluded sources in the guarded audit instead of silently dropping them.
   // Publication below fails closed if any source timestamp is ineligible.
-  const sources=storedSources;
-  if (!sources.length) return stage('No extracted evidence');
+  // Whole-poster special events (SPECIAL_EVENTS_MODE REVIEW/AUTO) belong to the
+  // event reconciler. They never block, join or alert on the daily specials.
+  const events=await eventSourceIndexes(env,storedSources,today);
+  const eventSourceIds=storedSources.filter((_,i)=>events.has(i)).map(s=>s.id);
+  const sources=storedSources.filter((_,i)=>!events.has(i));
+  if (!sources.length) return {...stage('No extracted evidence'),...(eventSourceIds.length?{eventSourceIds,excludedSourceIds:eventSourceIds}:{})};
   const {results:weeks}=await env.DB.prepare(`SELECT w.id,c.id collection_id,c.revision FROM weekly_specials w
     LEFT JOIN special_collections c ON c.weekly_special_id=w.id AND c.kind='week'
     WHERE w.week_start_date<=?1 AND w.week_end_date>=?1`).bind(today).all();
@@ -151,7 +156,7 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
       })}} : {})});
   // Monitoring uses the same proposal rules, without publication or audit writes.
   if (inspectOnly) return withOutcome({written:false,reason:rows.length?'Publication incomplete':'No unambiguous eligible changes',
-    blocked,rejectedSources,requiresWrite:rows.length>0,excludedSourceIds:excludedSources.map(s=>sources[s.index].id)});
+    blocked,rejectedSources,requiresWrite:rows.length>0,excludedSourceIds:[...excludedSources.map(s=>sources[s.index].id),...eventSourceIds]});
   if (!rows.length) {
     if (!conflictDetail) return withOutcome(stage('No unambiguous eligible changes'));
     // Avoid revision/audit churn when a cron sees the same unresolved conflict.

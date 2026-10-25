@@ -7,7 +7,7 @@ import {fixture} from './specials-fixture.mjs';
 import {loadTs} from './load-ts.mjs';
 const s=loadTs('src/lib/specials-store.ts');
 const dates=loadTs('src/lib/weekly-specials.ts');
-const rendererChunk=readdirSync('dist/_worker.js/chunks').find(name=>name.startsWith('SpecialGroup_') || name.startsWith('DailySoup_'));
+const rendererChunk=readdirSync('dist/_worker.js/chunks').find(name=>/^(?:SpecialGroup|DailySoup|EventSpecials)_/.test(name) && readFileSync('dist/_worker.js/chunks/'+name,'utf8').includes('/SpecialGroup.astro'));
 const rendererModule=await import('../dist/_worker.js/chunks/'+rendererChunk);
 const groupModule={$:Object.values(rendererModule).find(component=>component.moduleId?.endsWith('/SpecialGroup.astro'))};
 const publicPage=(await import('../dist/_worker.js/pages/specials.astro.mjs')).page().default;

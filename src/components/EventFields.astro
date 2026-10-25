@@ -1,0 +1,38 @@
+---
+import { EVENT_DETAILS_LIMIT, EVENT_OFFER_COUNT, EVENT_OFFER_LIMIT, EVENT_TIME_LIMIT, EVENT_TITLE_LIMIT, type EventInput } from '../lib/special-events';
+interface Props { prefix: string; values: EventInput }
+const { prefix, values } = Astro.props;
+const offers = Array.from({ length: EVENT_OFFER_COUNT }, (_, i) => values.offers[i] ?? '');
+---
+<div class="event-fields">
+  <label for={`${prefix}-title`}>Event name</label>
+  <input id={`${prefix}-title`} name="title" required maxlength={EVENT_TITLE_LIMIT} value={values.title} placeholder="e.g. Packers Game Day Special"/>
+  <div class="event-fields__row">
+    <div><label for={`${prefix}-date`}>Date</label><input id={`${prefix}-date`} name="event_date" type="date" required value={values.event_date}/></div>
+    <div><label for={`${prefix}-start`}>Starts <span>(optional)</span></label><input id={`${prefix}-start`} name="start_time" type="time" value={values.start_time ?? ''}/></div>
+    <div><label for={`${prefix}-end`}>Ends <span>(optional; otherwise at midnight)</span></label><input id={`${prefix}-end`} name="end_time" type="time" value={values.end_time ?? ''}/></div>
+  </div>
+  <label for={`${prefix}-time-text`}>Time label <span>(optional, shown when no start time, e.g. "Kickoff 12 PM")</span></label>
+  <input id={`${prefix}-time-text`} name="time_text" maxlength={EVENT_TIME_LIMIT} value={values.time_text}/>
+  <fieldset class="event-fields__offers">
+    <legend>Offers <span>(include each price; up to {EVENT_OFFER_LIMIT} characters)</span></legend>
+    {offers.map((offer, i) => <>
+      <label class="visually-hidden-label" for={`${prefix}-offer-${i + 1}`}>Offer {i + 1}</label>
+      <input id={`${prefix}-offer-${i + 1}`} name={`offer_${i + 1}`} maxlength={EVENT_OFFER_LIMIT} value={offer} placeholder={i === 0 ? 'e.g. Pulled Pork Sandwich w/ Chips $4' : ''} required={i === 0}/>
+    </>)}
+  </fieldset>
+  <label for={`${prefix}-details`}>Details <span>(optional)</span></label>
+  <textarea id={`${prefix}-details`} name="details" rows="2" maxlength={EVENT_DETAILS_LIMIT}>{values.details}</textarea>
+</div>
+<style>
+  .event-fields{display:grid;gap:6px;min-width:0}
+  .event-fields label,.event-fields legend{font:700 .78rem var(--label);letter-spacing:.08em;text-transform:uppercase;margin-top:6px}
+  .event-fields label span,.event-fields legend span{font-weight:400;letter-spacing:0;text-transform:none;color:var(--ink-2)}
+  .event-fields input,.event-fields textarea{box-sizing:border-box;width:100%;min-width:0;padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit}
+  .event-fields input:focus-visible,.event-fields textarea:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+  .event-fields__row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .event-fields__row>div{display:grid;gap:6px;align-content:start}
+  .event-fields__offers{display:grid;gap:8px;margin:6px 0 0;padding:10px 12px;border:1px solid rgba(36,22,16,.16);border-radius:8px;min-width:0}
+  .visually-hidden-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;margin:0}
+  @media(max-width:680px){.event-fields__row{grid-template-columns:1fr}}
+</style>

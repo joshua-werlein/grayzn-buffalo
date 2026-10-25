@@ -28,6 +28,12 @@ SPECIALS_VERIFICATION_STRATEGY = "conditional"
 # RUN = enqueue a complete current-day refresh/import. The cron stays the fallback.
 # FB_APP_SECRET and FB_WEBHOOK_VERIFY_TOKEN are Worker secrets, never set here.
 WEBHOOK_TRIGGER_MODE = "RUN"
+# Special events (game days, holidays, one-time promotions), migration 0025:
+# OFF = current behavior, no routing; REVIEW = route event posters out of the
+# daily specials and hold them for staff approval; AUTO = also publish events
+# with printed offers, a resolved date and a team/holiday cue. A missing
+# special_events table always behaves as OFF.
+SPECIAL_EVENTS_MODE = "OFF"
 
 # Webhook trigger queue. One consumer at a time; failed batches retry, then dead-letter.
 [[queues.producers]]

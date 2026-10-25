@@ -9,6 +9,7 @@ import {WEBHOOK_PATH, handleFacebookWebhook} from './webhook.js';
 import {expireDelivery,reconcileDelivery,completeDeliveryReading,recoveredDeliveryReading} from './delivery.js';
 import {observeDeliveryOutcome,observeDailyOutcome} from './alert-outcomes.js';
 import {beginAlertScan,finishAlertScan} from './alert-runtime.js';
+import {reconcileEvents} from './event-store.js';
 import {deliveryWindow} from '../../src/lib/delivery.js';
 
 const TIME_ZONE = 'America/Chicago';
@@ -820,6 +821,9 @@ export async function runImportPipeline(env,alertOptions={}) {
         status:dailyResult.blocked?.length || dailyResult.rejectedSources?.length ? 'review_required' : dailyResult.reason,
       });
     }
+    // Special events use their own table and revisions; failures stay isolated.
+    try { await reconcileEvents(env,{sourceIds,today:window.today}); }
+    catch(err) { console.error('Special events reconcile error',String(err)); }
     try { await reconcileWeeklyLunch(env,window.today); }
     catch(err) { console.error('Weekly lunch reconcile error',String(err)); }
     try { await reconcileMexicanNight(env); }

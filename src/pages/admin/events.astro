@@ -1,0 +1,141 @@
+---
+import Base from '../../layouts/Base.astro';
+import EventFields from '../../components/EventFields.astro';
+import EventEditor from '../../components/EventEditor.astro';
+import { isAuthed } from '../../lib/auth';
+import { chicagoCalendarDate } from '../../lib/weekly-specials';
+import {
+  EventConflict, applyEventAction, createEvent, eventDraftFromForm, eventInputFromForm, formatEventDate, readAdminEvents, readEvent,
+  readPostSuggestions, saveEvent, type EventAction, type EventInput, type PostSuggestion, type SpecialEvent,
+} from '../../lib/special-events';
+const env = (Astro.locals as any).runtime?.env ?? {};
+if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
+const now = (Astro.locals as any).runtime?.now ?? new Date();
+const NOTICES: Record<string, string> = { created: 'Event created and published.', saved: 'Event saved. Facebook will not change it.',
+  approve: 'Event approved and published.', reject: 'Event removed. Facebook will not recreate it.', disable: 'Event hidden.',
+  enable: 'Event published.', 'allow-automation': 'Facebook updates to this event are allowed again.', delete: 'Event deleted.' };
+const ACTIONS: EventAction[] = ['approve', 'reject', 'disable', 'enable', 'allow-automation', 'delete'];
+let error = '', errorFor = '', draft: (EventInput & { source_post_id?: string }) | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const op = String(form.get('op') ?? '');
+  const id = String(form.get('id') ?? '');
+  errorFor = op === 'create' ? 'create' : id;
+  try {
+    // Same explicit origin check as the specials editor.
+    if (Astro.request.headers.get('origin') !== Astro.url.origin) throw new Error('Invalid request origin. Reload this page before saving.');
+    const revision = Number(form.get('revision'));
+    if (op !== 'create' && (!Number.isSafeInteger(revision) || revision < 0)) throw new Error('Invalid saved revision.');
+    if (op === 'create') {
+      draft = { ...eventInputFromForm(form), source_post_id: String(form.get('source_post_id') ?? '') };
+      const createdId = await createEvent(env, draft, draft.source_post_id);
+      return Astro.redirect(`/admin/events?done=created#${encodeURIComponent(createdId)}`, 303);
+    } else if (op === 'save' || op === 'save-approve') {
+      draft = eventInputFromForm(form);
+      if (!(await readEvent(env, id))) throw new Error('That event no longer exists.');
+      await saveEvent(env, id, revision, draft, { approve: op === 'save-approve' });
+      return Astro.redirect(`/admin/events?done=${op === 'save' ? 'saved' : 'approve'}#${encodeURIComponent(id)}`, 303);
+    } else if ((ACTIONS as string[]).includes(op)) {
+      await applyEventAction(env, id, revision, op as EventAction);
+      return Astro.redirect(`/admin/events?done=${op}${op === 'delete' ? '' : `#${encodeURIComponent(id)}`}`, 303);
+    } else throw new Error('Invalid form action.');
+  } catch (caught) {
+    error = caught instanceof Error ? caught.message : 'Could not save the event.';
+    // Keep what staff typed, even when it failed validation.
+    if (['create', 'save', 'save-approve'].includes(op)) draft = { ...eventDraftFromForm(form), ...(op === 'create' ? { source_post_id: String(form.get('source_post_id') ?? '') } : {}) };
+    if (caught instanceof EventConflict) Astro.response.status = 409;
+    else Astro.response.status = 400;
+  }
+}
+
+const notice = NOTICES[Astro.url.searchParams.get('done') ?? ''] ?? '';
+let events = { review: [] as SpecialEvent[], current: [] as SpecialEvent[], inactive: [] as SpecialEvent[], expired: [] as SpecialEvent[] };
+let unavailable = '';
+try { events = await readAdminEvents(env, now); }
+catch { unavailable = 'Special events are unavailable until the special events database update is installed.'; }
+const suggestions: PostSuggestion[] = unavailable ? [] : await readPostSuggestions(env, now);
+const fromPost = suggestions.find(s => s.fb_post_id === Astro.url.searchParams.get('from'));
+const createValues: EventInput & { source_post_id?: string } = errorFor === 'create' && draft ? draft : fromPost
+  ? { title: '', event_date: fromPost.event_date, time_text: '', start_time: null, end_time: null, details: '', offers: fromPost.offers, source_post_id: fromPost.fb_post_id }
+  : { title: '', event_date: chicagoCalendarDate(now), time_text: '', start_time: null, end_time: null, details: '', offers: [] };
+const createOpen = !!fromPost || errorFor === 'create';
+const linkedPost = createValues.source_post_id ? suggestions.find(s => s.fb_post_id === createValues.source_post_id) : null;
+
+const STATUS_LABEL: Record<string, string> = { review: 'Needs review', published: 'Published', disabled: 'Hidden', rejected: 'Removed', cancelled: 'Cancelled' };
+const facebookUrl = (url: string) => /^https:\/\/(?:www\.|m\.)?facebook\.com\//.test(url) ? url : '';
+const imageUrl = (key: unknown) => typeof key === 'string' && /^special-imports\/[\w.-]+$/.test(key) ? `/admin/img/${key}` : '';
+const valuesFor = (e: SpecialEvent): EventInput => errorFor === e.id && draft ? draft : e;
+const chicagoDay = (value: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date(value));
+const sections = [
+  { key: 'review', heading: 'Needs review', empty: 'Nothing is waiting for review.', items: events.review },
+  { key: 'current', heading: 'Today and upcoming', empty: 'No published events today or later.', items: events.current },
+  { key: 'inactive', heading: 'Hidden, removed and cancelled', empty: 'No hidden, removed or cancelled events.', items: events.inactive },
+];
+---
+<Base title="Admin · Special Events — Grayz'n Buffalo">
+<section class="events-admin">
+  <div class="section-head"><h2>Special Events</h2>
+    {notice && <p class="events-notice" role="status">{notice}</p>}
+    {error && <p class="error" role="alert">{error}</p>}
+  </div>
+  <p class="events-intro">Game days, holidays and other one-time promotions. They appear in gold above the regular specials on the homepage and the Specials page, from the day they are posted until their date ends. Saving an event protects it from Facebook changes.</p>
+  {unavailable ? <p class="error" role="alert">{unavailable}</p> : <>
+
+  <details class="events-panel" id="create-event" open={createOpen}>
+    <summary>Create an event</summary>
+    <form method="post" class="event-form">
+      <input type="hidden" name="op" value="create"/>
+      {createValues.source_post_id && <input type="hidden" name="source_post_id" value={createValues.source_post_id}/>}
+      {linkedPost && <p class="event-source">From the Facebook post of {formatEventDate(chicagoDay(linkedPost.fb_created_time))}: <strong>{linkedPost.heading || 'no printed heading'}</strong>. Name the event yourself and check every offer, price and the date. {linkedPost.date_note && <span>({linkedPost.date_note})</span>}</p>}
+      <EventFields prefix="new" values={createValues}/>
+      <button class="btn btn-primary" type="submit">Create and publish</button>
+    </form>
+  </details>
+
+  {sections.map(section => (
+    <section class="events-section" aria-labelledby={`events-${section.key}`}>
+      <h3 id={`events-${section.key}`}>{section.heading} <span class="events-count">({section.items.length})</span></h3>
+      {section.items.length ? section.items.map(e => <EventEditor event={e} values={valuesFor(e)} now={now} error={errorFor === e.id ? error : ''}/>) : <p class="events-empty">{section.empty}</p>}
+    </section>
+  ))}
+
+  {suggestions.length > 0 && <section class="events-section" aria-labelledby="events-posts">
+    <h3 id="events-posts">Recent Facebook posts</h3>
+    <p class="events-help">If a post is a game-day or other one-time promotion that was not recognized automatically, create its event here. The post's offers prefill the form; you name the event and confirm the date. When automatic event handling is on, a linked post no longer counts as a regular special.</p>
+    <ul class="post-list">{suggestions.map(post => <li class="post-card">
+      <p><strong>{post.heading || 'No printed heading'}</strong> <span class="post-meta">posted {formatEventDate(chicagoDay(post.fb_created_time))}</span></p>
+      <ul>{post.offers.map(offer => <li>{offer}</li>)}</ul>
+      {post.caption && <p class="post-caption">Caption: {post.caption.slice(0, 200)}</p>}
+      <p class="post-links"><a class="btn btn-ghost" href={`/admin/events?from=${encodeURIComponent(post.fb_post_id)}#create-event`}>Create event from this post</a>
+        {imageUrl(post.image_r2_key) && <a href={imageUrl(post.image_r2_key)} target="_blank" rel="noopener">View poster</a>}
+        {facebookUrl(post.permalink_url) && <a href={facebookUrl(post.permalink_url)} target="_blank" rel="noopener noreferrer">Open on Facebook</a>}</p>
+    </li>)}</ul>
+  </section>}
+
+  {events.expired.length > 0 && <details class="events-panel">
+    <summary>Expired events (last 60 days) <span class="events-count">({events.expired.length})</span></summary>
+    <ul class="expired-list">{events.expired.map(e => <li><strong>{e.title}</strong> · {formatEventDate(e.event_date)} · {STATUS_LABEL[e.status]} · {e.offers.join(' / ')}</li>)}</ul>
+  </details>}
+  </>}
+</section>
+</Base>
+
+<style>
+  .events-admin{width:100%;max-width:1100px;margin:0 auto;padding:28px 16px 40px}
+  .events-intro,.events-help{color:var(--ink-2);max-width:72ch}
+  .events-notice{margin:0;color:var(--denim);font-weight:700}
+  .events-panel,.event-editor,.post-card{background:#fff;border:1px solid rgba(36,22,16,.18);border-radius:10px;box-shadow:0 6px 16px rgba(36,22,16,.08)}
+  .events-panel{margin:18px 0}
+  .events-panel>summary{cursor:pointer;padding:14px 16px;font:700 .9rem var(--label);letter-spacing:.08em;text-transform:uppercase}
+  .events-panel>form,.events-panel>ul{padding:0 16px 16px}
+  .events-section{margin-top:28px}
+  .events-section h3{font:700 1rem var(--label);letter-spacing:.08em;text-transform:uppercase}
+  .events-count{font-weight:600;color:var(--ink-2)}
+  .events-empty{color:var(--ink-2)}
+  .post-list,.expired-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+  .post-card{padding:14px 16px}.post-card ul{margin:6px 0;padding-left:20px}
+  .post-meta,.post-caption{color:var(--ink-2)}
+  .post-links{display:flex;flex-wrap:wrap;gap:12px;align-items:center}.post-links .btn{margin:0}
+  .event-source{padding:10px 12px;border-left:4px solid var(--gold);background:var(--surface-parchment)}
+</style>

@@ -2,6 +2,8 @@
 import Base from '../layouts/Base.astro';
 import SpecialGroup from '../components/SpecialGroup.astro';
 import DailySoup from '../components/DailySoup.astro';
+import EventSpecials from '../components/EventSpecials.astro';
+import { readVisibleEvents } from '../lib/special-events';
 import {isSoupGroup} from '../lib/daily-soup.js';
 import MexicanNightMenu from '../components/MexicanNightMenu.astro';
 import { getSetting } from '../lib/db';
@@ -21,6 +23,8 @@ const weeks=weeklySpecials.flatMap(week=>{
   return days.length ? [{...week,days}] : [];
 });
 const mexicanGroups=mexican ? visibleGroups(mexican.groups) : [];
+const eventNow=(Astro.locals as any).runtime?.now ?? new Date();
+const events=await readVisibleEvents(env,eventNow);
 
 // Show the detailed Mexican Night section only when this week's menu has been
 // published (updated_at falls in the current Sun–Sat week) and it is still
@@ -59,6 +63,8 @@ const PC = ['denim','brick','saddle'] as const;
       <h1>Weekly Specials</h1>
       <span class="vintage-rule" aria-hidden="true"/>
     </div>
+
+    <EventSpecials events={events} now={eventNow} headingId="specials-events-title"/>
 
     {weeks.length ? weeks.map((week,wi)=>{
       const range=formatWeeklyDateRange(week.week_start_date,week.week_end_date);

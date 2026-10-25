@@ -1,0 +1,84 @@
+---
+// Special events above the ordinary specials on the homepage and /specials.
+// One antique-gold card style for every event type; no animation. Events are
+// never part of a day's specials card, so "Today" appears only on an active event.
+import { eventState, formatEventDate, formatEventTime, splitTrailingPrice, type SpecialEvent } from '../lib/special-events';
+interface Props { events: SpecialEvent[]; now?: Date; headingId: string }
+const { events, now = new Date(), headingId } = Astro.props;
+const cards = events.map(event => ({
+  event, active: eventState(event, now) === 'active',
+  when: formatEventTime(event),
+  datetime: event.start_time ? `${event.event_date}T${event.start_time}` : event.event_date,
+  offers: event.offers.map(splitTrailingPrice),
+}));
+---
+{cards.length > 0 && <section class="event-specials" aria-labelledby={headingId}>
+  <h2 class="event-specials__heading" id={headingId}>Special Events</h2>
+  <ul class="event-specials__list">
+    {cards.map(({ event, active, when, datetime, offers }) => (
+      <li>
+        <article class="event-card" aria-label={`${event.title}, ${formatEventDate(event.event_date, 'long')}`}>
+          <div class="event-card__name">
+            <span class:list={['event-card__badge', { 'event-card__badge--today': active }]}>{active ? 'Today' : 'Upcoming'}</span>
+            <h3 class="event-card__title">{event.title}</h3>
+          </div>
+          <p class="event-card__when">
+            <time datetime={datetime}>{formatEventDate(event.event_date)}</time>
+            {when && <span class="event-card__time">{when}</span>}
+          </p>
+          <div class="event-card__offers">
+            <ul>
+              {offers.map(offer => <li><span class="event-card__offer">{offer.text}</span>{offer.price && <span class="event-card__price">{offer.price}</span>}</li>)}
+            </ul>
+            {event.details && <p class="event-card__details">{event.details}</p>}
+          </div>
+        </article>
+      </li>
+    ))}
+  </ul>
+</section>}
+<style>
+  .event-specials{
+    --event-surface:#d6b878; --event-surface-2:#cfae6a; --event-edge:var(--gold,#b28a4f);
+    --event-ink:var(--ink,#261711); --event-price:var(--btn-crimson-hover,#632521);
+    margin:0 0 clamp(18px,2.4vw,28px);min-width:0;text-align:left;
+  }
+  .event-specials__heading{
+    margin:0 0 10px;font:700 .9rem/1.2 var(--label);letter-spacing:.15em;text-transform:uppercase;color:inherit;text-align:center;
+  }
+  .event-specials__list{display:grid;gap:10px;list-style:none;margin:0;padding:0;min-width:0}
+  .event-card{
+    display:grid;grid-template-columns:minmax(12rem,1.1fr) minmax(9rem,.7fr) minmax(0,2.4fr);
+    gap:6px clamp(16px,2vw,28px);align-items:center;min-width:0;
+    padding:clamp(12px,1.4vw,18px) clamp(14px,1.8vw,24px);
+    border:3px double var(--event-edge);border-radius:var(--panel-radius,6px);
+    background:linear-gradient(180deg,var(--event-surface),var(--event-surface-2));
+    box-shadow:var(--panel-shadow,0 3px 0 rgba(43,27,20,.12));color:var(--event-ink);
+  }
+  .event-card__name,.event-card__when,.event-card__offers{min-width:0}
+  .event-card__badge{
+    display:inline-block;margin:0 0 4px;padding:2px 8px;border:1px solid var(--event-ink);border-radius:3px;
+    font:700 .72rem/1.3 var(--label);letter-spacing:.14em;text-transform:uppercase;color:var(--event-ink);background:transparent;
+  }
+  .event-card__badge--today{background:var(--event-ink);color:var(--event-surface)}
+  .event-card__title{margin:0;font:400 clamp(1.1rem,1.6vw,1.35rem)/1.2 var(--display);color:var(--event-ink);overflow-wrap:anywhere}
+  .event-card__when{display:grid;gap:2px;margin:0;font:700 1rem/1.3 var(--label);letter-spacing:.06em;text-transform:uppercase;overflow-wrap:anywhere}
+  .event-card__time{font-weight:600;letter-spacing:.04em;text-transform:none}
+  .event-card__offers ul{display:grid;gap:6px;list-style:none;margin:0;padding:0}
+  .event-card__offers li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;align-items:baseline;
+    font:500 1.05rem/1.45 var(--body);white-space:pre-line}
+  .event-card__offer{min-width:0;overflow-wrap:anywhere}
+  .event-card__price{font:700 1.1rem/1.3 var(--label);letter-spacing:.03em;color:var(--event-price);white-space:nowrap}
+  .event-card__details{margin:6px 0 0;font-size:.95rem;line-height:1.4;overflow-wrap:anywhere}
+  @media (max-width:839px){
+    .event-card{grid-template-columns:minmax(0,1fr) auto;align-items:start}
+    .event-card__when{text-align:right}
+    .event-card__offers{grid-column:1 / -1;padding-top:8px;border-top:1px solid rgba(38,23,17,.25)}
+  }
+  @media (max-width:599px){
+    .event-card{grid-template-columns:minmax(0,1fr);gap:6px;padding:14px 16px}
+    .event-card__when{text-align:left;display:flex;flex-wrap:wrap;gap:0 10px}
+    .event-card__title{font-size:clamp(1.1rem,5vw,1.3rem)}
+    .event-card__offers li{font-size:1rem}
+  }
+</style>
