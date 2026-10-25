@@ -38,6 +38,27 @@ test('October 21 repaired records render identical meals and wing prices on both
   assert.deepEqual(f.sql('SELECT * FROM special_slots ORDER BY group_id,position'),before);
 });
 
+test('October 22 Pizza Night renders one combined special with both sizes and prices on both public pages',async t=>{
+  const {reconcilePosterEvidence,singleDayLunchEvidenceV2}=await import('../workers/fb-feed/reconcile.js');
+  const {analyzeDailyEvidence}=await import('../workers/fb-feed/evidence.js');
+  const morning=singleDayLunchEvidenceV2(JSON.parse(readFileSync('tests/fixtures/oct22-delivery.json','utf8')));
+  const evening=analyzeDailyEvidence(JSON.parse(readFileSync('tests/fixtures/oct22-pizza-night.json','utf8')));
+  const plan=reconcilePosterEvidence([morning,evening],4,[],{today:'2026-10-22',verifiedSameDaySources:new Set([0,1])});
+  const f=fixture(t),today=dates.chicagoCalendarDate(),start=dates.mondayForIsoDate(today);
+  f.sql("UPDATE special_slots SET content='',price='',section_link=''");
+  const collection=s.newWeekFromDefaults(await s.readCollection(f.env,'defaults'));
+  collection.groups=plan.targets.map((target,i)=>{
+    const g=s.blankGroup(dates.calendarDayOfWeek(today),i);g.service='custom';g.label=target.role??target.service;
+    target.items.forEach(item=>g.slots[item.position-1].content=item.content);return g;
+  });
+  await s.saveCollection(f.env,collection,{start,end:dates.standardWeekEndDate(start)});
+  for(const [component,path] of [[publicPage,'/specials'],[homePage,'/']]) {
+    const html=await container.renderToString(component,{request:new Request('http://localhost'+path),locals:{runtime:{env:f.env}}});
+    assert.match(html,/12 inch 3-Topping Pizza \$13\.50\n16 inch 3-Topping Pizza \$16</,path);
+    for(const text of ['Pulled Pork','$9.75','BLT Wrap','$10.25','Grilled Ham','$7.25','Chicken Noodle']) assert.ok(html.includes(text),`${path} ${text}`);
+  }
+});
+
 test('October 15–16 accepted production evidence displays every meal price and choice',async()=>{
   const {reconcilePosterEvidence}=await import('../workers/fb-feed/reconcile.js');
   const evidence=JSON.parse(readFileSync('tests/fixtures/oct15-16-production.json','utf8')).imports[0].results;

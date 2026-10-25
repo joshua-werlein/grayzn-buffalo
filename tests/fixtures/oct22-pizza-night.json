@@ -1,0 +1,45 @@
+{
+  "day_of_week": -1,
+  "day_evidence": "",
+  "poster_evidence": "TONIGHT IS PIZZA NIGHT SPECIAL IS 5-10PM",
+  "delivery": {
+    "status": "none",
+    "evidence": "",
+    "date_evidence": "",
+    "uncertainties": []
+  },
+  "offers": [
+    {
+      "content": "12 inch 3-Topping Pizza $13.50",
+      "evidence": "12 inch 3-Topping Pizza $13.50",
+      "service_time": "5-10PM",
+      "service_evidence": "SPECIAL IS 5-10PM",
+      "date_evidence": "",
+      "uncertainties": []
+    },
+    {
+      "content": "16 inch 3-Topping Pizza $16",
+      "evidence": "16 inch 3-Topping Pizza $16",
+      "service_time": "5-10PM",
+      "service_evidence": "SPECIAL IS 5-10PM",
+      "date_evidence": "",
+      "uncertainties": []
+    },
+    {
+      "content": "BLT Wrap with Side Salad Soup or Coleslaw $10.25",
+      "evidence": "BLT Wrap with Side Salad Soup or Coleslaw $10.25",
+      "service_time": "",
+      "service_evidence": "",
+      "date_evidence": "",
+      "uncertainties": []
+    },
+    {
+      "content": "Grilled Ham and Cheese with Cup of Soup or Coleslaw $7.25",
+      "evidence": "Grilled Ham and Cheese with Cup of Soup or Coleslaw $7.25",
+      "service_time": "",
+      "service_evidence": "",
+      "date_evidence": "",
+      "uncertainties": []
+    }
+  ]
+}

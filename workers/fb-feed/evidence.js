@@ -218,13 +218,20 @@ function houseLayout(p,isExplicitToday,weekday,known,explicit,verifiedSameDay=fa
     && /^\s*daily\s+specials\s*$/i.test(p.poster_evidence)
     && !p.day_evidence.trim() && p.day_of_week===-1 && meals.length===3
     && meals.every(i=>prices(p.offers[i].evidence??'').length===1);
-  if(isExplicitToday!==true && !sameDayLayout) return null;
+  // The same trusted timestamp also dates an undated "TONIGHT" night poster
+  // (October 22: "TONIGHT IS PIZZA NIGHT / SPECIAL IS 5-10PM"). It reaches only
+  // the night-heading layouts below, never Tuesday (Mexican Night owns that
+  // night) or weekends. planDailyEvidence has already checked every printed
+  // field of a trusted source for another weekday, date or future reference.
+  const sameDayNight=verifiedSameDay && [1,3,4,5].includes(weekday) && heading==='nightly'
+    && !p.day_evidence.trim() && p.day_of_week===-1 && /\btonight\b/i.test(p.poster_evidence);
+  if(isExplicitToday!==true && !sameDayLayout && !sameDayNight) return null;
   // Day poster: one Lunch/Day Special meal, then two All Day meals.
   if(meals.length===3 && headingNames(p,/\bspecials?\b/i) && ['unknown','lunch'].includes(heading) && !meals.some(nightText))
     return agree(['lunch','all-day','all-day']);
-  if(isExplicitToday!==true) return null;
+  if(isExplicitToday!==true && !sameDayNight) return null;
   // Wednesday Wing Night poster: the Wing Night offer plus two daytime meals.
-  if(weekday===3 && meals.length===3 && ['unknown','nightly'].includes(heading)) {
+  if(isExplicitToday===true && weekday===3 && meals.length===3 && ['unknown','nightly'].includes(heading)) {
     const wing=meals.filter(i=>/\bwing\s+night\b/i.test(`${p.offers[i].content} ${p.offers[i].evidence}`));
     const others=meals.filter(i=>!wing.includes(i));
     if(wing.length===1 && ['unknown','nightly'].includes(explicit[wing[0]]) && !others.some(nightText))
@@ -251,6 +258,44 @@ function houseLayout(p,isExplicitToday,weekday,known,explicit,verifiedSameDay=fa
   return null;
 }
 
+// One pizza printed in several sizes is ONE special (the house convention and
+// the Thursday recurring default: one slot, one size per line). The model may
+// read each size box as its own offer. Join only an adjacent run of complete,
+// certain, singly priced "<size> <same pizza>" offers with distinct sizes and
+// identical service fields, each price corroborated by its own evidence, on a
+// night poster. Content and evidence are joined verbatim, one size per line,
+// so every printed size and price survives and nothing is invented. Any other
+// shape is left untouched for the ordinary checks.
+const SIZE=String.raw`(\d{1,2})\s*(?:-\s*)?(?:inch(?:es)?\b|in\.|"|”|″|'')`;
+function pizzaSize(o) {
+  if(!o || typeof o.content!=='string' || typeof o.evidence!=='string' || typeof o.service_time!=='string'
+    || (o.uncertainties?.length) || (o.date_evidence??'').trim()) return null;
+  let cp,ep;
+  try { cp=priceFacts(o.content);ep=priceFacts(o.evidence); } catch { return null; }
+  if(cp.length!==1 || ep.length!==1 || cp[0].cents!==ep[0].cents) return null;
+  const m=new RegExp(String.raw`^\s*${SIZE}\s+(.+?)\s*$`,'iu').exec(clean(o.content).replace(pricePattern(),'').trim());
+  if(!m || !/\bpizza\b/i.test(m[2])) return null;
+  return {size:Number(m[1]),dish:factKey(m[2]),service:factKey(`${o.service_time}|${o.service_evidence??''}`)};
+}
+export function joinPizzaSizes(value) {
+  if(!value || !Array.isArray(value.offers) || serviceFromEvidence(`${value.day_evidence??''} ${value.poster_evidence??''}`)!=='nightly') return value;
+  const offers=[];
+  for(let i=0;i<value.offers.length;) {
+    const first=pizzaSize(value.offers[i]);let j=i+1;
+    while(first && j<value.offers.length) {
+      const next=pizzaSize(value.offers[j]);
+      if(!next || next.dish!==first.dish || next.service!==first.service
+        || value.offers.slice(i,j).some(o=>pizzaSize(o).size===next.size)) break;
+      j++;
+    }
+    if(j-i<2) {offers.push(value.offers[i]);i++;continue;}
+    const run=value.offers.slice(i,j);
+    offers.push({...run[0],content:run.map(o=>clean(o.content)).join('\n'),evidence:run.map(o=>o.evidence).join('\n'),uncertainties:[]});
+    i=j;
+  }
+  return offers.length===value.offers.length?value:{...value,offers};
+}
+
 export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,today,existingAllDay=[],slotLayout=[],verifiedSameDaySources=new Set()}) {
   const rejectedSources=[],excludedSources=[],unresolvedTargets=[],blocked=new Set();
   const sources=[];
@@ -259,7 +304,7 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
     try {
       const raw=candidates[source];
       if (['weekly-lunch','mexican-night'].includes(raw?.type) && !('offers' in raw)) continue;
-      p=analyzeDailyEvidence(raw);
+      p=analyzeDailyEvidence(joinPizzaSizes(raw));
       if(!p.offers.length && !/\bspecials?|menu|lunch|night|soup\b/i.test(`${p.day_evidence} ${p.poster_evidence}`)) continue;
       isExplicitToday=validateDay(p,weekday,today);
     } catch(error) {
