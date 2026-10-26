@@ -10,10 +10,10 @@ import {expireDelivery,reconcileDelivery,completeDeliveryReading,recoveredDelive
 import {observeDeliveryOutcome,observeDailyOutcome} from './alert-outcomes.js';
 import {beginAlertScan,finishAlertScan} from './alert-runtime.js';
 import {reconcileEvents} from './event-store.js';
+import {GRAPH_API_VERSION} from './graph.js';
 import {deliveryWindow} from '../../src/lib/delivery.js';
 
 const TIME_ZONE = 'America/Chicago';
-const GRAPH_API_VERSION = 'v26.0';
 const FEED_KEY = 'fb:feed';
 const MAX_POSTS = 4;
 // Retain retired media beyond the four-day public stale limit, plus a buffer

@@ -69,9 +69,9 @@ async function brewersDay(t,modes) {
   return f;
 }
 
-test('events REVIEW + alerts: the event-only Brewers poster is routed to review and raises no incident or email',async t=>{
-  const f=await brewersDay(t,{events:'REVIEW'});
-  assert.deepEqual(f.events(),[{status:'review',origin:'automation'}]);
+test('events AUTO + alerts: the Brewers poster publishes automatically and raises no incident or email',async t=>{
+  const f=await brewersDay(t,{events:'AUTO'});
+  assert.deepEqual(f.events(),[{status:'published',origin:'automation'}]);
   assert.deepEqual(f.attention(),[]);
   assert.equal(f.sent.length,0);
   // Friday's regular Nightly specials and the morning delivery evidence still publish.
@@ -84,14 +84,7 @@ test('events REVIEW + alerts: the event-only Brewers poster is routed to review 
   assert.ok(!f.incidents().some(r=>r.scope==='delivery' && r.state==='attention'));
 });
 
-test('events AUTO + alerts: a published event never produces a daily incident',async t=>{
-  const f=await brewersDay(t,{events:'AUTO'});
-  assert.equal(f.events().length,1);
-  assert.deepEqual(f.attention(),[]);
-  assert.equal(f.sent.length,0);
-});
-
-test('events OFF + alerts: without event routing the Brewers poster is a daily incident (REVIEW must precede EMAIL)',async t=>{
+test('events OFF + alerts: without event routing the Brewers poster is a daily incident (AUTO must precede EMAIL)',async t=>{
   const f=await brewersDay(t,{});
   assert.deepEqual(f.events(),[]);
   assert.deepEqual(f.attention(),[{scope:'daily',code:'publication_blocked'}]);
@@ -99,8 +92,20 @@ test('events OFF + alerts: without event routing the Brewers poster is a daily i
   assert.equal(f.sent.length,1);
 });
 
-test('events REVIEW + alerts: a genuine permanent extraction failure is still detected and sent once',async t=>{
-  const f=combined(t,{},{events:'REVIEW'});
+test('events AUTO + alerts: a withheld event (insufficient evidence) is recorded without any incident or email',async t=>{
+  const f=friday(t,{events:'AUTO'});
+  await f.run();f.addNight();await f.run();
+  const unpriced=structuredClone(brewersRaw);
+  unpriced.offers[0]={...unpriced.offers[0],content:'PULLED PORK SANDWICH WITH CHIPS AND SIDE OF COLESLAW',evidence:'PULLED PORK SANDWICH WITH CHIPS AND SIDE OF COLESLAW'};
+  f.state.now=Date.parse('2026-10-23T20:15:08.911Z');f.state.candidate=unpriced;
+  f.state.posts.push({...f.state.posts[0],id:'brewers',created_time:'2026-10-23T15:13:45-05:00',updated_time:'2026-10-23T15:13:45-05:00'});
+  await f.run();f.advance(ALERT_GRACE_MS+60000);await f.run();f.advance(60000);await f.run();
+  assert.deepEqual(f.events(),[{status:'review',origin:'automation'}]);
+  assert.deepEqual(f.attention(),[]);assert.equal(f.sent.length,0);
+});
+
+test('events AUTO + alerts: a genuine permanent extraction failure is still detected and sent once',async t=>{
+  const f=combined(t,{},{events:'AUTO'});
   f.env.AI.run=async()=>{throw Object.assign(Error('private-provider-detail'),{status:400});};
   await f.run();
   assert.deepEqual(f.attention(),[{scope:'daily',code:'publication_blocked'}]);
@@ -112,33 +117,58 @@ test('events REVIEW + alerts: a genuine permanent extraction failure is still de
   assert.deepEqual(f.events(),[]);
 });
 
-test('events REVIEW + alerts: a successful regular day is silent',async t=>{
-  const f=combined(t,{},{events:'REVIEW'});
+test('events AUTO + alerts: a removed event and a blocked replacement never raise daily incidents',async t=>{
+  const f=await brewersDay(t,{events:'AUTO'});
+  f.db.exec("UPDATE special_events SET status='rejected',manual_locked=1,revision=revision+1");
+  const before=f.q('SELECT * FROM special_events');
+  f.state.candidate=structuredClone(brewersRaw);
+  f.state.posts=f.state.posts.filter(p=>p.id!=='brewers');
+  f.state.posts.push({...f.state.posts[0],id:'brewers-replacement',created_time:'2026-10-23T16:30:00-05:00',updated_time:'2026-10-23T16:30:00-05:00'});
+  f.state.now=Date.parse('2026-10-23T21:35:00Z');
+  await f.run();f.advance(ALERT_GRACE_MS+60000);await f.run();
+  assert.deepEqual(f.q('SELECT * FROM special_events'),before);
+  assert.deepEqual(f.attention(),[]);assert.equal(f.sent.length,0);
+});
+
+test('events AUTO + alerts: a successful regular day is silent',async t=>{
+  const f=combined(t,{},{events:'AUTO'});
   await f.run();f.advance(ALERT_GRACE_MS);await f.run();
   assert.deepEqual(f.attention(),[]);assert.equal(f.sent.length,0);
 });
 
-test('October 25 Packers post (empty caption) is not misclassified as an event in any alerting mode',async t=>{
-  const outcome={};
-  for(const events of [undefined,'REVIEW','AUTO']) {
-    const f=combined(t,{now:'2026-10-25T14:29:01.923Z',candidate:structuredClone(sundayRaw)},{events});
-    f.db.exec("UPDATE weekly_specials SET week_start_date='2026-10-19',week_end_date='2026-10-25' WHERE id=9000");
-    Object.assign(f.state.posts[0],{id:'sunday',message:'',created_time:'2026-10-25T09:27:36-05:00',updated_time:'2026-10-25T09:27:36-05:00'});
-    await f.run();
-    f.state.now=Date.parse('2026-10-25T15:35:08.068Z');f.state.candidate=structuredClone(packersRaw);
+function sunday(t,events) {
+  const f=combined(t,{now:'2026-10-25T14:29:01.923Z',candidate:structuredClone(sundayRaw)},{events});
+  f.db.exec("UPDATE weekly_specials SET week_start_date='2026-10-19',week_end_date='2026-10-25' WHERE id=9000");
+  Object.assign(f.state.posts[0],{id:'sunday',message:'',created_time:'2026-10-25T09:27:36-05:00',updated_time:'2026-10-25T09:27:36-05:00'});
+  return {...f,addPackers:candidate=>{
+    f.state.now=Date.parse('2026-10-25T15:35:08.068Z');f.state.candidate=structuredClone(candidate);
     f.state.posts.push({...f.state.posts[0],id:'packers',created_time:'2026-10-25T10:33:50-05:00',updated_time:'2026-10-25T10:33:50-05:00'});
+  }};
+}
+
+test('October 25 Packers post as stored (empty caption, "Sunday Special") is not misclassified; alerting is unchanged by AUTO',async t=>{
+  const outcome={};
+  for(const events of [undefined,'AUTO']) {
+    const f=sunday(t,events);
+    await f.run();f.addPackers(packersRaw);
     await f.run();f.advance(ALERT_GRACE_MS+60000);await f.run();
     assert.deepEqual(f.events(),[],String(events));
     outcome[String(events)]={attention:f.attention(),sent:f.sent.map(m=>m.code)};
   }
   t.diagnostic(`Packers outcome=${JSON.stringify(outcome.undefined)}`);
-  // Event mode does not change alerting for a poster it does not route.
-  assert.deepEqual(outcome.REVIEW,outcome.undefined);
   assert.deepEqual(outcome.AUTO,outcome.undefined);
 });
 
-test('alerts OBSERVE with events REVIEW records incidents but never constructs a transport',async t=>{
-  const f=combined(t,{},{events:'REVIEW',alerts:'OBSERVE'});
+test('October 25 Packers poster read with its printed "LET\'S GO PACK!" headline: published event, no incident, no email',async t=>{
+  const f=sunday(t,'AUTO');
+  await f.run();f.addPackers({...structuredClone(packersRaw),poster_evidence:"LET'S GO PACK! Sunday Special"});
+  await f.run();f.advance(ALERT_GRACE_MS+60000);await f.run();f.advance(60000);await f.run();
+  assert.deepEqual(f.events(),[{status:'published',origin:'automation'}]);
+  assert.deepEqual(f.attention(),[]);assert.equal(f.sent.length,0);
+});
+
+test('alerts OBSERVE with events AUTO records incidents but never constructs a transport',async t=>{
+  const f=combined(t,{},{events:'AUTO',alerts:'OBSERVE'});
   Object.assign(f.env,{SPECIALS_ALERT_PROVIDER:'RESEND',SPECIALS_ALERT_EMAIL_APPROVED:'true',
     SPECIALS_ALERT_FROM:'alerts@grayznbuffalo.com',SPECIALS_ALERT_TO:'owner@example.com',ALERT_RESEND_API_KEY:'re_testonly_notreal'});
   f.env.AI.run=async()=>{throw Object.assign(Error('permanent'),{status:400});};

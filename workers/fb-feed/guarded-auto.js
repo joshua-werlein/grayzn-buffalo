@@ -38,7 +38,7 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
   const dateOf = value => new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
   // Keep excluded sources in the guarded audit instead of silently dropping them.
   // Publication below fails closed if any source timestamp is ineligible.
-  // Whole-poster special events (SPECIAL_EVENTS_MODE REVIEW/AUTO) belong to the
+  // Whole-poster special events (SPECIAL_EVENTS_MODE=AUTO) belong to the
   // event reconciler. They never block, join or alert on the daily specials.
   const events=await eventSourceIndexes(env,storedSources,today);
   const eventSourceIds=storedSources.filter((_,i)=>events.has(i)).map(s=>s.id);

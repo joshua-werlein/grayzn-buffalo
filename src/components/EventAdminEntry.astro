@@ -1,0 +1,66 @@
+---
+// One current or upcoming special event in the Special Events section of
+// /admin/specials. Only two staff controls: Edit (corrections that Facebook will
+// not overwrite) and Remove (a confirmed, permanent hide). Each control is its
+// own form; nothing here is nested inside another specials form.
+import EventFields from './EventFields.astro';
+import { formatEventDate, formatEventTime, splitTrailingPrice, type EventInput, type SpecialEvent } from '../lib/special-events';
+interface Props { event: SpecialEvent; values: EventInput; error?: string; editOpen?: boolean }
+const { event, values, error = '', editOpen = false } = Astro.props;
+const slug = event.id.replace(/[^\w-]/g, '-');
+const when = formatEventTime(event);
+---
+<li class="event-entry" id={event.id} aria-labelledby={`${slug}-name`}>
+  <div class="event-entry__summary">
+    <div class="event-entry__name">
+      <h4 id={`${slug}-name`}>{event.title}</h4>
+      <p class="event-entry__when"><time datetime={event.event_date}>{formatEventDate(event.event_date, 'long')}</time>{when && <span>{when}</span>}</p>
+    </div>
+    <ul class="event-entry__offers">
+      {event.offers.map(offer => { const { text, price } = splitTrailingPrice(offer); return <li><span>{text}</span>{price && <span class="event-entry__price">{price}</span>}</li>; })}
+    </ul>
+  </div>
+  {error && <p class="error" role="alert">{error}</p>}
+  <div class="event-entry__actions">
+    <details class="event-action event-action--edit" open={editOpen}>
+      <summary class="btn btn-ghost">Edit<span class="visually-hidden"> “{event.title}”</span></summary>
+      <form method="post" class="event-entry__form" action="/admin/specials#special-events">
+        <input type="hidden" name="action" value="save-event"/><input type="hidden" name="event_id" value={event.id}/><input type="hidden" name="event_revision" value={event.revision}/>
+        <EventFields prefix={slug} values={values}/>
+        <p class="event-entry__note">Saved changes are kept even if the Facebook post changes.</p>
+        <button class="btn btn-primary" type="submit">Save “{event.title}”</button>
+      </form>
+    </details>
+    <details class="event-action event-action--remove">
+      <summary class="btn btn-ghost">Remove<span class="visually-hidden"> “{event.title}”</span></summary>
+      <form method="post" class="event-entry__form" action="/admin/specials#special-events">
+        <input type="hidden" name="action" value="remove-event"/><input type="hidden" name="event_id" value={event.id}/><input type="hidden" name="event_revision" value={event.revision}/>
+        <p>Remove “{event.title}” from the website? It will not come back from Facebook.</p>
+        <button class="btn btn-primary" type="submit">Yes, remove “{event.title}”</button>
+      </form>
+    </details>
+  </div>
+</li>
+<style>
+  .event-entry{display:grid;gap:10px;min-width:0;padding:14px 16px;border:1px solid rgba(36,22,16,.16);border-radius:8px;background:#fff}
+  .event-entry__summary{display:grid;grid-template-columns:minmax(12rem,1fr) minmax(0,2fr);gap:6px 20px;align-items:start;min-width:0}
+  .event-entry__name{min-width:0}
+  .event-entry h4{margin:0;font:400 1.1rem/1.25 var(--display);overflow-wrap:anywhere}
+  .event-entry__when{display:flex;flex-wrap:wrap;gap:0 10px;margin:4px 0 0;font:700 .85rem/1.4 var(--label);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+  .event-entry__offers{display:grid;gap:4px;margin:0;padding:0;list-style:none;min-width:0}
+  .event-entry__offers li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:baseline;overflow-wrap:anywhere;white-space:pre-line}
+  .event-entry__price{font-weight:700;white-space:nowrap}
+  .event-entry__actions{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
+  .event-entry__actions .event-action[open]{flex-basis:100%}
+  .event-entry .event-action>summary.btn{display:inline-flex;align-items:center;margin:0;padding:8px 18px;border-bottom:2px solid currentColor;font:700 .9rem/1.2 var(--label);letter-spacing:.06em;text-transform:none;list-style:none;cursor:pointer}
+  .event-entry .event-action>summary::-webkit-details-marker{display:none}
+  .event-entry__form{display:grid;gap:10px;margin-top:10px;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px;background:var(--surface-parchment)}
+  .event-entry__form p{margin:0}
+  .event-entry__form .btn{justify-self:start;margin:0}
+  .event-entry__note{font-size:.9rem;color:var(--ink-2)}
+  .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  @media(max-width:680px){
+    .event-entry__summary{grid-template-columns:minmax(0,1fr)}
+    .event-entry .event-action>summary.btn{min-height:44px}
+  }
+</style>

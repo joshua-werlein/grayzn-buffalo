@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {harness} from './test-fixture.js';
 import {reconcileToday} from './guarded-auto.js';
+import {reconcileEvents} from './event-store.js';
 
 // Public poster transcriptions (stored extractions). Production captions for
 // these posts are empty (read-only D1 check, October 25), so every post below
@@ -66,7 +67,7 @@ test('OFF: the Worker never queries or writes any special-event table, even with
   assert.ok(off.length>20);
   assert.deepEqual(off.filter(q=>/special_event/i.test(q)),[]);
   // The same instrumentation does see event queries once the mode is on.
-  assert.ok((await recorded('REVIEW')).some(q=>/special_event/i.test(q)));
+  assert.ok((await recorded('AUTO')).some(q=>/special_event/i.test(q)));
 });
 
 test('AUTO: the October 23 Brewers poster publishes one event for tonight and no longer blocks Friday specials',async t=>{
@@ -107,12 +108,12 @@ test('AUTO: rescans are idempotent: no new row, revision, log entry, slot change
   assert.equal(f.sql('SELECT count(*) n FROM special_import_events')[0].n,before.audit);
 });
 
-test('REVIEW: the Brewers event is held for staff approval, never published',async t=>{
-  const f=await brewersDay(t,'REVIEW');
-  const [e]=f.events();
-  assert.equal(e.status,'review');assert.match(e.review_reason,/Review mode/);
+test('the retired REVIEW value behaves exactly like OFF: no event rows, the same daily specials',async t=>{
+  const review=await brewersDay(t,'REVIEW'),off=await brewersDay(t);
+  assert.deepEqual(review.events(),[]);assert.deepEqual(review.log(),[]);
+  const contents=x=>x.slots().map(s=>[s.group_id,s.position,s.content]);
+  assert.deepEqual(contents(review),contents(off));
 });
-
 test('a missing special_events table behaves exactly like OFF',async t=>{
   const f=friday(t,'AUTO');
   f.sql('DROP TABLE special_event_offers');f.sql('DROP TABLE special_event_log');f.sql('DROP TABLE special_events');
@@ -138,15 +139,15 @@ function sundaySetup(t,mode) {
   Object.assign(f.state.posts[0],{id:'sunday',message:'',created_time:'2026-10-25T09:27:36-05:00',updated_time:'2026-10-25T09:27:36-05:00'});
   Object.assign(f.env,{SPECIALS_EVIDENCE_VERSION:'2',SPECIALS_VERIFICATION_STRATEGY:'conditional'});
   if (mode) f.env.SPECIAL_EVENTS_MODE=mode;
-  return {...f,addPackers:()=>{
-    f.state.now=Date.parse('2026-10-25T15:35:08.068Z');f.state.candidate=structuredClone(packersRaw);
+  return {...f,addPackers:(candidate=packersRaw)=>{
+    f.state.now=Date.parse('2026-10-25T15:35:08.068Z');f.state.candidate=structuredClone(candidate);
     f.state.posts.push({...f.state.posts[0],id:'packers',message:'',created_time:'2026-10-25T10:33:50-05:00',updated_time:'2026-10-25T10:33:50-05:00'});
   }};
 }
 
 test('October 25 Packers post with its empty caption: no event is created in any mode and its regular warning is unchanged',async t=>{
   const outcomes=[];
-  for (const mode of [undefined,'REVIEW','AUTO']) {
+  for (const mode of [undefined,'AUTO']) {
     const f=sundaySetup(t,mode);await f.run();f.addPackers();await f.run();
     assert.deepEqual(f.sql('SELECT * FROM special_events'),[],String(mode));
     const ids=f.imports().map(i=>i.id);
@@ -156,30 +157,36 @@ test('October 25 Packers post with its empty caption: no event is created in any
   }
   // The unresolved "Sunday Special" offer remains a legitimate review condition.
   assert.ok(outcomes[0].blocked.length>=1);
-  assert.deepEqual(outcomes[1],outcomes[0]);assert.deepEqual(outcomes[2],outcomes[0]);
+  assert.deepEqual(outcomes[1],outcomes[0]);
 });
 
-test('October 25 Packers post identified by staff: with events on, its regular warning stops; with OFF nothing changes',async t=>{
+test('October 25 Packers poster read with its printed "LET\'S GO PACK!" headline publishes automatically and stops blocking Sunday',async t=>{
   const results={};
-  for (const mode of [undefined,'REVIEW']) {
-    const f=sundaySetup(t,mode);await f.run();f.addPackers();await f.run();
-    // What the admin "Create event from this post" action stores.
-    f.sql(`INSERT INTO special_events(id,title,event_date,status,origin,manual_locked,date_basis,source_post_id)
-      VALUES('evt:packers','Packers Game Day Special','2026-10-25','published','manual',1,'manual','packers')`);
-    f.sql("INSERT INTO special_event_offers VALUES('evt:packers',1,'Pulled Pork Sandwich w/ Chips $4')");
+  for (const mode of [undefined,'AUTO']) {
+    const f=sundaySetup(t,mode);await f.run();
+    // The contract-2 prompt now keeps printed banners in poster_evidence.
+    f.addPackers({...structuredClone(packersRaw),poster_evidence:"LET'S GO PACK! Sunday Special"});await f.run();
     const ids=f.imports().map(i=>i.id);
     const r=await reconcileToday(f.env,{sourceIds:ids,today:'2026-10-25',weekday:0,inspectOnly:true});
     const packersImport=f.imports().find(i=>i.fb_post_id==='packers').id;
-    results[String(mode)]={blocked:r.blocked.length,excluded:r.excludedSourceIds.includes(packersImport)};
-    const before=f.sql('SELECT * FROM special_events');
-    f.state.now+=30*60000;await f.run();
-    assert.deepEqual(f.sql('SELECT * FROM special_events'),before,'automation never edits the staff event');
+    results[String(mode)]={blocked:r.blocked.length,excluded:(r.excludedSourceIds??[]).includes(packersImport),
+      events:f.sql('SELECT status,origin,identity,event_date FROM special_events').map(e=>({...e}))};
   }
-  assert.deepEqual(results.undefined,{blocked:results.undefined.blocked,excluded:false});
-  assert.ok(results.undefined.blocked>=1);
-  assert.deepEqual(results.REVIEW,{blocked:0,excluded:true});
+  assert.ok(results.undefined.blocked>=1);assert.equal(results.undefined.excluded,false);assert.deepEqual(results.undefined.events,[]);
+  assert.deepEqual(results.AUTO,{blocked:0,excluded:true,events:[{status:'published',origin:'automation',identity:'packers',event_date:'2026-10-25'}]});
 });
 
+test('a removed event is a tombstone that also keeps its poster out of the daily specials',async t=>{
+  const f=sundaySetup(t,'AUTO');await f.run();
+  f.addPackers({...structuredClone(packersRaw),poster_evidence:"LET'S GO PACK! Sunday Special"});await f.run();
+  const sundaySlots=f.sql('SELECT group_id,position,content FROM special_slots ORDER BY group_id,position');
+  f.sql("UPDATE special_events SET status='rejected',manual_locked=1,revision=revision+1");
+  f.state.now+=30*60000;await f.run();
+  assert.deepEqual(f.sql('SELECT status FROM special_events').map(e=>e.status),['rejected']);
+  assert.deepEqual(f.sql('SELECT group_id,position,content FROM special_slots ORDER BY group_id,position'),sundaySlots);
+  const ids=f.imports().map(i=>i.id),packersImport=f.imports().find(i=>i.fb_post_id==='packers').id;
+  assert.ok((await reconcileToday(f.env,{sourceIds:ids,today:'2026-10-25',weekday:0,inspectOnly:true})).excludedSourceIds.includes(packersImport));
+});
 test('staff decisions win: a locked or edited event is never overwritten by an edited Facebook post',async t=>{
   const f=await brewersDay(t,'AUTO');
   const [e]=f.events();
@@ -218,6 +225,92 @@ test('a rejected (removed) automation event is a tombstone: rescans and edits ne
   assert.equal(f.events().length,1);assert.equal(f.events()[0].status,'rejected');
 });
 
+test('staff removal blocks identical and differing reposts while the original is in the feed',async t=>{
+  const f=await brewersDay(t,'AUTO');
+  const [e]=f.events();
+  f.sql("UPDATE special_events SET status='rejected',manual_locked=1,revision=revision+1 WHERE id=?",e.id);
+  const before=f.events();
+  f.addBrewers(brewersRaw,'brewers-repost','2026-10-23T21:00:00Z','2026-10-23T15:55:00-05:00');await f.run();
+  const other=structuredClone(brewersRaw);
+  other.offers[0]={...other.offers[0],content:'BRAT WITH CHIPS $5',evidence:'BRAT WITH CHIPS $5'};
+  f.addBrewers(other,'brewers-replacement','2026-10-23T22:00:00Z','2026-10-23T16:45:00-05:00');await f.run();
+  assert.deepEqual(f.events(),before);
+  assert.ok(f.log().some(l=>l.action==='protected' && l.source_post_id==='brewers-replacement'));
+});
+
+test('feed aging and nominal deletion errors never release a removed original, even after repeated scans',async t=>{
+  const f=await brewersDay(t,'AUTO');
+  const [e]=f.events();
+  f.sql("UPDATE special_events SET status='rejected',manual_locked=1,revision=revision+1 WHERE id=?",e.id);
+  const before=f.events();
+  // Original disappeared from the limited feed. That cannot distinguish aging,
+  // deletion, hidden content or lost per-object access. Graph responses are mocked.
+  f.state.posts=f.state.posts.filter(p=>p.id!=='brewers');
+  const previousFetch=globalThis.fetch;
+  t.mock.method(globalThis,'fetch',async (input,options)=>{
+    const url=new URL(input);
+    if(url.hostname==='graph.facebook.com' && !url.pathname.endsWith('/posts'))
+      return Response.json({error:{code:100,error_subcode:33}},{status:400});
+    return previousFetch(input,options);
+  });
+  f.addBrewers(brewersRaw,'brewers-replacement','2026-10-23T21:00:00Z','2026-10-23T15:55:00-05:00');
+  for(let i=0;i<3;i++) { await f.run();f.state.now+=31*60000; }
+  assert.deepEqual(f.events(),before);
+  assert.ok(f.log().some(l=>l.action==='protected' && /no verified deletion authority/.test(l.detail)));
+});
+
+test('legacy two-error deletion markers are not trusted as permission to resurrect an event',async t=>{
+  const f=await brewersDay(t,'AUTO');
+  const [e]=f.events();
+  const evidence={...JSON.parse(e.evidence_json),source_missing_at:f.state.now-3600000,source_deleted_at:f.state.now-1800000};
+  f.sql("UPDATE special_events SET status='rejected',manual_locked=1,evidence_json=? WHERE id=?",JSON.stringify(evidence),e.id);
+  const before=f.events();
+  f.state.posts=f.state.posts.filter(p=>p.id!=='brewers');
+  f.addBrewers(brewersRaw,'brewers-replacement','2026-10-23T21:00:00Z','2026-10-23T15:55:00-05:00');await f.run();
+  assert.deepEqual(f.events(),before);
+});
+
+test('a staff date edit followed by removal also blocks a repost of the original event date',async t=>{
+  const f=await brewersDay(t,'AUTO');
+  const [e]=f.events();
+  f.sql("UPDATE special_events SET event_date='2026-10-24',status='rejected',manual_locked=1,revision=revision+1 WHERE id=?",e.id);
+  const other=structuredClone(brewersRaw);
+  other.offers[0]={...other.offers[0],content:'BRAT WITH CHIPS $5',evidence:'BRAT WITH CHIPS $5'};
+  f.addBrewers(other,'brewers-repost','2026-10-23T21:00:00Z','2026-10-23T15:55:00-05:00');await f.run();
+  assert.equal(f.events().length,1);assert.equal(f.events()[0].status,'rejected');
+});
+
+test('concurrent different posts for the same event create only one card atomically',async t=>{
+  const f=await brewersDay(t,'AUTO');
+  f.addBrewers(brewersRaw,'brewers-repost','2026-10-23T21:00:00Z','2026-10-23T15:55:00-05:00');await f.run();
+  const rows=f.imports().filter(r=>r.fb_post_id.startsWith('brewers'));
+  f.sql('DELETE FROM special_event_offers');f.sql('DELETE FROM special_event_log');f.sql('DELETE FROM special_events');
+  await Promise.all(rows.map(r=>reconcileEvents(f.env,{sourceIds:[r.id],today:'2026-10-23'})));
+  assert.equal(f.events().length,1);
+  assert.equal(f.log().filter(l=>l.action==='created').length,1);
+});
+
+test('a tombstone arriving between the duplicate read and insert blocks the new post',async t=>{
+  const f=await brewersDay(t,'AUTO');
+  const [original]=f.events();
+  f.addBrewers(brewersRaw,'brewers-repost','2026-10-23T21:00:00Z','2026-10-23T15:55:00-05:00');await f.run();
+  const row=f.imports().find(r=>r.fb_post_id==='brewers-repost');
+  f.sql('DELETE FROM special_event_offers');f.sql('DELETE FROM special_event_log');f.sql('DELETE FROM special_events');
+  const batch=f.env.DB.batch.bind(f.env.DB);let inserted=false;
+  f.env.DB.batch=async statements=>{
+    if(!inserted && statements.some(s=>/INSERT INTO special_events\(/.test(s.sql))) {
+      inserted=true;
+      f.sql(`INSERT INTO special_events(id,title,event_date,status,origin,manual_locked,date_basis,source_post_id,fingerprint,identity,last_auto_json)
+        VALUES(?,?,?,'rejected','automation',1,'relative',?,?,?,?)`,original.id,original.title,original.event_date,
+        original.source_post_id,original.fingerprint,original.identity,original.last_auto_json);
+    }
+    return batch(statements);
+  };
+  await reconcileEvents(f.env,{sourceIds:[row.id],today:'2026-10-23'});
+  assert.equal(inserted,true);assert.deepEqual(f.events().map(e=>[e.id,e.status]),[[original.id,'rejected']]);
+  assert.deepEqual(f.offers(original.id),[]);assert.deepEqual(f.log(),[]);
+});
+
 test('an identical reminder post never creates a second card',async t=>{
   const f=await brewersDay(t,'AUTO');
   f.addBrewers(brewersRaw,'brewers-reminder','2026-10-23T22:00:00Z','2026-10-23T16:45:00-05:00');await f.run();
@@ -225,29 +318,55 @@ test('an identical reminder post never creates a second card',async t=>{
   assert.ok(f.log().some(l=>l.action==='duplicate' && l.source_post_id==='brewers-reminder'));
 });
 
-test('a conflicting second post for the same event fails closed: both are held for review',async t=>{
+test('a differing second post for the same event never creates a second card; the first stays published',async t=>{
   const f=await brewersDay(t,'AUTO');
   const other=structuredClone(brewersRaw);
   other.offers[0]={...other.offers[0],content:'BRAT WITH CHIPS $5',evidence:'BRAT WITH CHIPS $5'};
   f.addBrewers(other,'brewers-2','2026-10-23T22:00:00Z','2026-10-23T16:45:00-05:00');await f.run();
   const events=f.events();
-  assert.equal(events.length,2);
-  assert.deepEqual(events.map(e=>e.status),['review','review']);
-  assert.ok(f.log().some(l=>l.action==='conflict'));
+  assert.equal(events.length,1);assert.equal(events[0].source_post_id,'brewers');assert.equal(events[0].status,'published');
+  assert.ok(f.log().some(l=>l.action==='conflict' && l.source_post_id==='brewers-2'));
+  // Repeated crons record that decision once.
+  f.state.now+=30*60000;await f.run();
+  assert.equal(f.log().filter(l=>l.source_post_id==='brewers-2').length,1);
 });
-
-test('a conflicting post never changes a staff-locked event; only the new one is held',async t=>{
+test('a differing post never changes a staff-edited event and creates nothing beside it',async t=>{
   const f=await brewersDay(t,'AUTO');
   const [e]=f.events();
   f.sql('UPDATE special_events SET manual_locked=1,revision=revision+1 WHERE id=?',e.id);
   const other=structuredClone(brewersRaw);
   other.offers[0]={...other.offers[0],content:'BRAT WITH CHIPS $5',evidence:'BRAT WITH CHIPS $5'};
   f.addBrewers(other,'brewers-2','2026-10-23T22:00:00Z','2026-10-23T16:45:00-05:00');await f.run();
-  const byId=Object.fromEntries(f.events().map(x=>[x.source_post_id,x.status]));
-  assert.deepEqual(byId,{brewers:'published','brewers-2':'review'});
+  assert.deepEqual(f.events().map(x=>[x.source_post_id,x.status,x.revision]),[['brewers','published',e.revision+1]]);
 });
 
-test('manual events are never touched by automation',async t=>{
+test('insufficient evidence is withheld internally: never shown, never an approval task, no daily-special block',async t=>{
+  const f=friday(t,'AUTO');
+  await f.run();f.addNight();await f.run();
+  const unpriced=structuredClone(brewersRaw);
+  unpriced.offers[0]={...unpriced.offers[0],content:'PULLED PORK SANDWICH WITH CHIPS AND SIDE OF COLESLAW',evidence:'PULLED PORK SANDWICH WITH CHIPS AND SIDE OF COLESLAW'};
+  const warn=t.mock.method(console,'warn',()=>{});
+  f.addBrewers(unpriced);await f.run();
+  const [e]=f.events();
+  assert.equal(e.status,'review');assert.match(e.review_reason,/^Withheld: .*Missing meal price/);
+  assert.ok(warn.mock.calls.some(c=>c.arguments[0]==='Special event withheld'));
+  assert.ok(!warn.mock.calls.some(c=>c.arguments[0]==='Specials import requires attention'));
+  assert.deepEqual(f.conflicts(),[]);
+  // A corrected Facebook post publishes the same event automatically.
+  f.addBrewers(brewersRaw,'brewers','2026-10-23T21:00:00Z','2026-10-23T15:55:00-05:00');await f.run();
+  assert.deepEqual(f.events().map(x=>[x.id,x.status,x.review_reason]),[[e.id,'published','']]);
+  assert.deepEqual(f.offers(e.id),[BREWERS_OFFER]);
+});
+
+test('an automation event is withdrawn when its own Facebook post no longer shows an event',async t=>{
+  const f=await brewersDay(t,'AUTO');
+  const [e]=f.events();
+  const plain={...structuredClone(brewersRaw),poster_evidence:'Friday Night Specials 5-10pm',day_of_week:5,day_evidence:'Friday'};
+  f.addBrewers(plain,'brewers','2026-10-23T21:00:00Z','2026-10-23T15:55:00-05:00');await f.run();
+  const [after]=f.events();
+  assert.equal(after.id,e.id);assert.equal(after.status,'review');assert.match(after.review_reason,/no longer shows an event/);
+});
+test('staff-controlled events with the same identity are never touched, and no second card is created',async t=>{
   const f=friday(t,'AUTO');
   f.sql(`INSERT INTO special_events(id,title,event_date,status,origin,manual_locked,date_basis,identity,fingerprint)
     VALUES('evt:manual','Brewers Watch Party','2026-10-23','published','manual',1,'manual','brewers','x')`);
@@ -256,10 +375,8 @@ test('manual events are never touched by automation',async t=>{
   const manual=f.sql("SELECT * FROM special_events WHERE id='evt:manual'")[0];
   assert.deepEqual([manual.title,manual.status,manual.revision],['Brewers Watch Party','published',0]);
   assert.deepEqual(f.offers('evt:manual'),['Brats $3']);
-  // The automated Brewers post differs from the staff event: held, not published beside it.
-  assert.equal(f.sql("SELECT status FROM special_events WHERE source_post_id='brewers'")[0].status,'review');
+  assert.equal(f.sql("SELECT count(*) n FROM special_events WHERE source_post_id='brewers'")[0].n,0);
 });
-
 test('a printed cancellation cancels the matching automation event; hypothetical cancellation poster',async t=>{
   const f=await brewersDay(t,'AUTO');
   // HYPOTHETICAL poster: not production evidence.

@@ -1,14 +1,24 @@
 // Special events (game days, holidays, one-time promotions): pure routing, date
 // resolution and offer validation. No database or AI access. Routing happens
-// after extraction, on stored evidence, so regular extraction is never changed.
+// after extraction, on stored evidence. Events publish automatically when the
+// evidence is sufficient; nothing waits for staff approval.
 import {analyzeDailyEvidence,factKey,serviceFromEvidence} from './evidence.js';
 
-export const EVENT_MODES=['OFF','REVIEW','AUTO'];
+// OFF is the emergency switch. Any other value, including the retired REVIEW, is OFF.
+export const EVENT_MODES=['OFF','AUTO'];
 export const eventsModeOf=env=>EVENT_MODES.includes(env?.SPECIAL_EVENTS_MODE) ? env.SPECIAL_EVENTS_MODE : 'OFF';
 
 const DAYS=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 const MONTHS=['january','february','march','april','may','june','july','august','september','october','november','december'];
-const TEAMS=['packers','brewers','badgers','bucks','vikings','bears'];
+// Team names and the printed cheers that name them (October 25: the poster
+// headline "LET'S GO PACK!"). A bare "pack" or an amount in "bucks" is not a team.
+const TEAMS=[['packers',/\bpackers\b|\bgo\s+pack\b|\bpack\s+attack\b/],['brewers',/\bbrewers\b|\bbrew\s+crew\b/],
+  ['badgers',/\bbadgers\b|\bon,?\s+wisconsin\b/],['bucks',/(?<![\d$][\d.]*\s?)\bbucks\b|\bfear\s+the\s+deer\b/],
+  ['vikings',/\bvikings\b|\bskol\b/],['bears',/\bbears\b/]];
+const TEAM_NAMES={packers:'Packers',brewers:'Brewers',badgers:'Badgers',bucks:'Bucks',vikings:'Vikings',bears:'Bears'};
+const HOLIDAY_NAMES={thanksgiving:'Thanksgiving',christmas:'Christmas','new-years':"New Year's",halloween:'Halloween',
+  'st-patricks':"St. Patrick's Day",easter:'Easter','memorial-day':'Memorial Day','labor-day':'Labor Day',
+  'independence-day':'Fourth of July',valentines:"Valentine's Day",'mothers-day':"Mother's Day",'fathers-day':"Father's Day",'super-bowl':'Super Bowl'};
 const HOLIDAYS=[
   ['thanksgiving',/\bthanksgiving\b/],['christmas',/\bchristmas\b/],['new-years',/\bnew\s+year'?s\b/],
   ['halloween',/\bhalloween\b/],['st-patricks',/\bst\.?\s+(?:patrick|paddy)'?s\b/],['easter',/\beaster\b/],
@@ -18,7 +28,7 @@ const HOLIDAYS=[
 const GAME=/\bgame\s*day\b|\bgame\s+specials?\b|\bkick\s*-?\s*off\b|\btailgate\b|\bwatch\s+party\b/;
 const GENERIC=/\bspecial\s+event\b|\bone\s+day\s+only\b|\bfundraiser\b|\bbenefit\b/;
 // Recurring house promotions and plural "<day>/<service> specials" templates are never events.
-const REGULAR=[/\bwing\s+night\b/,/\bpizza\s+night\b/,/\bfish\s+fry\b/,/\bmexican\s+night\b/,
+const REGULAR=[/\bwing\s+night\b/,/\bpizza\s+night\b/,/\bfish\s+fry\b/,/\bfriday\s+fish\b/,/\bmexican\s+night\b/,/\btaco\s+tuesday\b/,
   /\b(?:daily|lunch|night(?:ly)?|weekly|weekend|all[\s-]+day)\s+specials\b/,
   new RegExp(String.raw`\b(?:${DAYS.join('|')})(?:'s)?\s+(?:(?:lunch|night(?:ly)?|all[\s-]+day)\s+)?specials\b`)];
 const CANCELLED=/\bcancel+ed\b|\bpostponed\b|\bno\s+longer\b/;
@@ -28,7 +38,7 @@ const norm=s=>String(s??'').normalize('NFKC').replace(/[‘’]/g,"'").toLowerCa
 // specific enough to publish (a team or a holiday, not "game day" or "benefit").
 export function eventCue(text) {
   const t=norm(text);
-  const teams=TEAMS.filter(team=>new RegExp(`\\b${team}\\b`).test(t));
+  const teams=TEAMS.flatMap(([team,pattern])=>pattern.test(t)?[team]:[]);
   if (teams.length) return {identity:teams.sort().join('+'),kind:'team',specific:true};
   const holiday=HOLIDAYS.find(([,pattern])=>pattern.test(t));
   if (holiday) return {identity:holiday[0],kind:'holiday',specific:true};
@@ -113,8 +123,9 @@ export function eventTime(...texts) {
 }
 
 const stripEmoji=s=>String(s??'').replace(/[\p{Extended_Pictographic}️‍]/gu,'').replace(/#\w+/g,'').replace(/\s+/g,' ').trim();
-function eventTitle(heading,caption,cue,canonicalize) {
-  // A title names the event; relative date words and prices belong elsewhere.
+function eventTitle(heading,cue,canonicalize) {
+  // A printed heading names the event; relative date words and prices belong
+  // elsewhere. Otherwise the title only restates the recognized identity.
   const fromText=text=>{
     if (text.includes('$')) return null;
     const title=canonicalize(stripEmoji(text).replace(/^\s*(?:tonight|today)'?s\s+/i,'')
@@ -122,18 +133,19 @@ function eventTitle(heading,caption,cue,canonicalize) {
     return title && title.length<=80 && eventCue(title) ? title : null;
   };
   if (eventCue(heading)) { const title=fromText(heading); if (title) return title; }
-  for (const line of String(caption??'').split(/\n|(?<=[!.?])\s+/)) {
-    if (eventCue(line)) { const title=fromText(line); if (title) return title; break; }
-  }
-  return cue.kind==='holiday' ? 'Holiday Special' : cue.kind==='event' ? 'Special Event' : 'Game Day Special';
+  if (cue.kind==='team') return `${cue.identity.split('+').map(team=>TEAM_NAMES[team]).join(' & ')} Game Day Special`;
+  if (cue.kind==='holiday') return `${HOLIDAY_NAMES[cue.identity] ?? 'Holiday'} Special`;
+  return cue.kind==='event' ? 'Special Event' : 'Game Day Special';
 }
 
 const offerText=o=>[o?.content,o?.evidence,o?.service_evidence,o?.service_time].filter(Boolean).join(' ');
 const isSoup=o=>/^\s*soups?\b/i.test(o?.content??'');
 
-// Classify one stored source. "event": the whole poster is a promotion and is
-// skipped by regular planning. "mixed": an event line inside a regular poster;
-// regular planning is unchanged and the event is held for review.
+// Classify one stored source. "event": the whole poster is a one-time
+// promotion, so regular planning skips it, and the draft publishes unless its
+// review_reasons (insufficient or contradictory evidence) withhold it.
+// "mixed": event wording inside a regular poster; regular planning is unchanged
+// and no event is created. Nothing here asks staff to approve anything.
 export function routeEventSource({candidate,caption='',postDate,canonicalize}) {
   if (!candidate || typeof candidate!=='object' || !Array.isArray(candidate.offers)) return {route:'regular'};
   const heading=`${candidate.day_evidence??''} ${candidate.poster_evidence??''}`;
@@ -144,31 +156,24 @@ export function routeEventSource({candidate,caption='',postDate,canonicalize}) {
   const regular=regularHeading(heading) || offers.some(isSoup)
     || offers.some(o=>serviceFromEvidence(`${o?.service_time??''} ${o?.service_evidence??''}`)!=='unknown');
   const cue=imageCue ?? (captionCue?.specific ? captionCue : null);
-  // Only a printed cue may cancel automatically; a caption cue asks staff.
+  // Only a printed cue may cancel automatically; a caption cue is only logged.
   if (cue && !regular && CANCELLED.test(norm(`${heading} ${caption}`)))
     return {route:'event',cancellation:true,verified:!!imageCue,cue,date:resolveEventDate({image:heading,caption,postDate})};
   if (regular) {
-    const lines=offers.flatMap((o,i)=>offerCues[i]?[i]:[]);
-    if (!headingCue && !lines.length) return {route:'regular'};
-    const draft=buildEventDraft({candidate,caption,postDate,cue:headingCue ?? offerCues[lines[0]],indices:lines.length?lines:offers.map((_,i)=>i),canonicalize});
-    return {route:'mixed',tier:'review',draft:{...draft,review_reasons:['Event offer printed on a regular specials poster',...draft.review_reasons]}};
+    if (!headingCue && !offerCues.some(Boolean)) return {route:'regular'};
+    return {route:'mixed',reason:'Event wording on a regular specials poster; published as regular specials only'};
   }
   if (!offers.length) return {route:'regular'};
-  // Automatic publication needs a team or holiday printed on the poster image
-  // (October 23: "TONIGHT'S BREWERS GAME SPECIAL"). A generic printed phrase
-  // ("Game Day Special") or a specific caption cue is routed for staff review.
-  // A generic caption phrase alone never reroutes anything. Production captions
-  // were empty on October 23 and 25, and a generic "Sunday Special" poster
-  // (October 25 Packers promotion) carries no event evidence, so it stays on the
-  // regular path; staff identify such promotions in the event admin.
-  let tier,reason;
-  if (imageCue && offers.length<=4) [tier,reason]=imageCue.specific ? ['A'] : ['review','Generic event phrase; confirm the event'];
-  // A caption alone never reroutes a full poster: one or two meals, no soup.
-  else if (captionCue?.specific && offers.length<=2) [tier,reason]=['review','Event named only in the Facebook caption, not on the poster'];
-  else return {route:'regular'};
+  // A cue printed on the poster image (October 23: "TONIGHT'S BREWERS GAME
+  // SPECIAL") routes up to four offers. A team or holiday named only in the
+  // Facebook caption routes a small poster: one or two meals, no soup. A generic
+  // caption phrase alone never reroutes anything, and a plain "Sunday Special"
+  // poster with no cue stays a regular special.
+  // A printed event with too many offers is withheld by buildEventDraft, never
+  // sent back into daily planning as a misleading ordinary-specials failure.
+  if (!imageCue && !(captionCue?.specific && offers.length<=2)) return {route:'regular'};
   const draft=buildEventDraft({candidate,caption,postDate,cue,indices:offers.map((_,i)=>i),canonicalize});
-  if (reason) draft.review_reasons.unshift(reason);
-  return {route:'event',tier,draft};
+  return {route:'event',publish:!draft.review_reasons.length,draft};
 }
 
 export function buildEventDraft({candidate,caption,postDate,cue,indices,canonicalize}) {
@@ -189,11 +194,11 @@ export function buildEventDraft({candidate,caption,postDate,cue,indices,canonica
   if (date.review) review_reasons.push(date.review);
   const event_date=date.date ?? postDate;
   const time=eventTime(heading,...chosen.map(i=>analyzed.offers[i]?.service_time),caption);
-  return {title:eventTitle(candidate.poster_evidence??'',caption,cue,canonicalize),event_date,...time,details:'',offers,
+  return {title:eventTitle(candidate.poster_evidence??'',cue,canonicalize),event_date,...time,details:'',offers,
     identity:cue.identity,date_basis:date.basis ?? 'publication-date',review_reasons,
     fingerprint:`${event_date}|${offers.map(factKey).sort().join('|')}`,
     evidence:{heading:heading.trim(),offers:chosen.map(i=>String(candidate.offers[i]?.evidence ?? candidate.offers[i]?.content ?? '')),
-      date:date.review ? `needs review: ${date.review}` : date.note,caption:String(caption??'').slice(0,600)}};
+      date:date.review ? `withheld: ${date.review}` : date.note,caption:String(caption??'').slice(0,600)}};
 }
 
 // Stored import rows (current scan only). Event routing applies to today's

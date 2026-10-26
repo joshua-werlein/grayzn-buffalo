@@ -1,192 +1,244 @@
-# Special events (local implementation, not deployed)
+# Special events (automatic publishing)
 
-Game-day, holiday and other one-time promotions are stored and shown separately
-from the regular Lunch, All Day, Nightly and Soup specials. Base: `main` at
-`b277ffa` (includes the capitalization fix). Nothing here is committed,
-migrated or deployed.
+Game-day, holiday and other one-time promotions are published automatically
+from Facebook and shown separately from the regular Lunch, All Day, Nightly and
+Soup specials. Nobody approves events. Staff can only correct (Edit) or take
+down (Remove) an event, in the Special Events section of `/admin/specials`.
+Base: `main` at `5abd91f`. Migration 0025 is already applied in production;
+this work needs no new migration.
 
 ## What it does
 
-- **Public pages.** Published events from today through the next six days
-  appear as one antique-gold card style above the ordinary specials: inside
-  the homepage Specials card (up to three) and above the weekly sections on
-  `/specials` (all). Desktop shows name, date/time and offers with prices in
-  one row; 600–839 px uses two rows; under 600 px stacks. An event never
-  appears inside a day's specials card. "Today" marks an active event;
-  later ones say "Upcoming" with their date. No animation or team colors.
-- **Expiry** is computed when a page is read: an event ends at its end time,
-  otherwise at Chicago midnight after its date. Nothing is deleted on a schedule.
-  Chicago wall-clock comparisons (no fixed offsets) keep daylight-saving days correct.
-- **Staff administration** at `/admin/events` (desktop admin navigation, and a
-  link with the review count on `/admin/specials`): create, edit, approve,
-  reject (a tombstone for Facebook events), hide/publish, delete (staff events
-  only), and "Allow Facebook updates" to unlock a Facebook event. Any staff
-  save or decision locks the event against automation. Saves are fenced by a
-  revision and a per-save token; a stale save returns 409 and keeps the draft.
-  Existing session authentication and the explicit Origin check apply; all
-  fields are validated server-side and all output is escaped.
-- **Recent Facebook posts** on the admin page lists stored posts from the last
-  seven days with printed, priced offers that no event claims. "Create event
-  from this post" prefills the offers and resolved date; staff must name the
-  event. The event links that post (`source_post_id`).
+- **Public pages.** Every published event that has not expired, today and
+  upcoming (shown before its date), earliest first, as one antique-gold card
+  style above the ordinary specials: inside the homepage Specials card (up to
+  three) and above the weekly sections on `/specials` (all). Desktop shows name,
+  date/time and offers with prices in one row; 600–839 px uses two rows; under
+  600 px stacks. "Today" marks an active event; later ones say "Upcoming".
+- **Expiry** is computed when a page is read (America/Chicago wall clock, so
+  daylight-saving days are correct): an event ends at its verified end time,
+  otherwise at the start of the next Chicago calendar day. Expired events
+  disappear from the homepage, `/specials` and the admin list automatically.
+  Rows stay internally for audit and duplicate prevention; nothing is deleted.
+- **Administration** is the fourth collapsible section of `/admin/specials`,
+  after Recurring Defaults, Recurring Mexican Night Defaults and This Week's
+  Mexican Night, with the same white container and cream heading, collapsed by
+  default. It lists exactly what the public sees (current and upcoming published
+  events, earliest first). Each entry shows name, date, time, offers and prices
+  with two controls:
+  - **Edit** opens a form for name, date, start/end time, time label and up to
+    four offers with prices. Saving locks the event: later Facebook changes never
+    overwrite it.
+  - **Remove** asks for confirmation, then hides the event everywhere. The row
+    stays as a locked tombstone with its Facebook post id, so rescans or edits of
+    that post never recreate it, and its poster never falls back into the daily
+    specials.
+
+  Each control is its own form (no nesting with the Specials editors). Session
+  authentication, the explicit Origin check, server-side validation and a
+  per-event revision (stale saves return 409 and keep the typed draft) apply.
+  `/admin/events` is retired: it redirects signed-in staff to
+  `/admin/specials#special-events` and others to sign-in. There is no Events
+  navigation item, review queue, approve/reject/hide control, manual creation
+  form, recent-posts list or expired list.
 
 ## Facebook automation (`SPECIAL_EVENTS_MODE`)
 
-`workers/fb-feed/wrangler.toml` sets `SPECIAL_EVENTS_MODE = "OFF"`.
-
-| Mode | Behavior |
+| Value | Behavior |
 |---|---|
-| `OFF` (default) | Exactly the current behavior: no routing and no event writes. Proven by the full existing suites plus explicit OFF-versus-AUTO comparisons. |
-| `REVIEW` | Event posters are routed out of the daily specials and stored as review items; nothing is published automatically. Staff-linked posts stop counting as regular specials. |
-| `AUTO` | As REVIEW, but an event with a team or holiday printed on the poster image, complete printed prices and an unambiguous date is published. |
+| `AUTO` | Normal workflow. Event posters are routed out of the daily specials and published automatically when the evidence is sufficient. |
+| `OFF` (anything else, including the retired `REVIEW`) | Emergency switch: no routing and no event-table SQL at all. |
 
-A missing `special_events` table behaves as OFF in the Worker, and public
-pages show no events.
+`workers/fb-feed/wrangler.toml` sets `"AUTO"` for the owner-authorized release,
+with Resend EMAIL alerts. A missing `special_events` table behaves as OFF.
 
-Routing (`workers/fb-feed/events.js`) runs after extraction on stored evidence.
-There is no prompt, schema or parser-version change, and no extra AI call.
+### Recognition (`workers/fb-feed/events.js`, stored evidence)
 
-- **Printed specific cue** (team or holiday on the image heading, or on every
-  offer), no regular template heading, no Soup line, no offer with lunch/night/
-  all-day evidence, at most four offers: event, eligible for AUTO.
-- **Printed generic cue** ("Game Day Special", "Special Event"): event, review only.
-- **Specific cue only in the Facebook caption**, poster with at most two
-  offers: event, review only.
-- **Generic caption phrase only**: not an event (regular path unchanged).
-- **Event line inside a regular poster**: regular planning unchanged; event
-  created for review.
-- Regular templates are never events: plural `<day>/daily/lunch/night/weekly
-  specials`, Wing Night, Pizza Night, Fish Fry, Mexican Night.
+- **Cues.** Teams by name or printed cheer (Packers / "Go Pack" / "Let's Go
+  Pack" / "Pack Attack"; Brewers / "Brew Crew"; Badgers / "On Wisconsin"; Bucks
+  / "Fear the Deer", never an amount such as "5 bucks"; Vikings / "Skol";
+  Bears), holidays, and generic phrases ("Game Day", "Special Event",
+  "Fundraiser", "Benefit").
+- **Whole-poster event:** a cue printed on the poster heading (or on every
+  offer), at most four offers, no regular template, no Soup line, no offer with
+  lunch/night/all-day evidence. Or a team/holiday named in the Facebook caption
+  for a poster with one or two offers. A generic caption phrase alone never
+  reroutes anything; a plain "Sunday Special" poster with no cue stays regular.
+- **Regular specials are never events:** plural day/daily/lunch/night/weekly
+  specials headings, Wing Night, Pizza Night, Fish Fry, Friday Fish, Mexican
+  Night, Taco Tuesday, Soup lines, delivery/weekly-lunch/Mexican Night shapes.
+- **Mixed poster** (event wording inside a regular poster): the regular
+  specials publish unchanged; no event is created; one log entry.
+- **Title:** the printed heading when it names the event (e.g. "Brewers Game
+  Special"); otherwise "<Team> Game Day Special", "<Holiday> Special", "Game Day
+  Special" or "Special Event". Nothing else is invented.
+- **Date:** a printed date, an unambiguous printed weekday (next occurrence),
+  or tonight/today/tomorrow; with no date words, the verified post date.
+- **Offers and prices** come only from printed offer evidence (up to four).
 
-Dates: a printed date, or an unambiguous printed weekday (the next occurrence
-within six days of the post), or tonight/today/tomorrow; with no date words, the
-verified Facebook post date. Next/last weekday, recurring weekdays, several
-weekdays, a date before the post, a weekday/date mismatch or image/caption
-disagreement go to review. Prices come only from printed offer evidence; a
-missing, uncertain or mismatched price goes to review. Nothing is invented.
+### Insufficient or contradictory evidence
 
-Reconciliation (`workers/fb-feed/event-store.js`) has its own D1 batches and
-revisions and never touches the weekly collection fence:
+Missing, uncertain or mismatched prices, more than four offers, relative or
+contradictory dates (next/last weekday, recurring weekdays, image/caption
+disagreement, a date before the post) **withhold** the event. It is stored with
+status `review` and a `Withheld: …` reason, never shown publicly or in the
+admin, and is not an approval task. Staff see nothing to act on, and one
+`console.warn('Special event withheld', {reasonCount})` is emitted. A
+corrected Facebook post publishes it automatically. The poster still stays out
+of the daily specials, so it never produces a misleading daily-specials
+failure alert.
 
-- One event per Facebook post. An edited post updates its event only while the
-  event is unlocked and still exactly what automation wrote.
-- An identical reminder post is a duplicate: no second card.
-- A different post for the same event and date with different offers fails
-  closed: both go to review (a staff-locked event is never changed).
-- A printed cancellation cancels exactly one matching unlocked automation
-  event; a caption-only or ambiguous cancellation asks staff.
-- Decisions are logged in `special_event_log`, de-duplicated across scans.
+### Reconciliation (`workers/fb-feed/event-store.js`)
 
-Effect on the daily publisher (`reconcileToday`): routed event sources are
-removed before planning, so they no longer produce `GUARDED_AUTO_CONFLICT`
-audits, the "Specials import requires attention" warning, or alert-monitor
-`publication_blocked` observations. Alert inspection receives them as
-`excludedSourceIds`. Every non-event condition still blocks exactly as before.
+Own D1 batches and per-event revisions; the weekly collection fence is never
+touched.
 
-## October 23 and 25 evidence and the Packers limitation
+- One event per Facebook post. An edited post updates its event while the event
+  is still exactly what automation wrote; a staff-edited, removed or cancelled
+  event is never changed (logged `protected`).
+- A post that no longer shows an event withdraws the automation event it created
+  (unless staff edited it).
+- Another post with the same offers on the same date is a duplicate; another
+  post for the same event and date with different offers is logged as a
+  conflict. Neither creates a second card; the first event stays.
+- **Removal and replacement safety:** identical and differing reposts of a
+  removed event stay blocked. The same original Facebook post stays blocked
+  through reprocessing and edits, including when staff corrected the event's
+  date before removing it. Duplicate/tombstone checks also run atomically in
+  the insert statement, so concurrent posts and a newly arrived tombstone
+  cannot create a second card. The original automation date remains part of
+  matching after a staff date edit.
+  Legacy removals created by the retired manual workflow may have no event
+  identity. Without enough identity to distinguish a repost, these conservatively
+  block all new automatic event cards on the tombstone's known date. They do not
+  block other dates; no identity is invented or backfilled from ambiguous text.
+- A printed cancellation cancels exactly one matching unlocked automation event;
+  a caption-only or ambiguous cancellation is logged only (staff can Remove).
+- Decisions are logged once in `special_event_log`.
 
-A read-only production query (October 25) confirmed that the stored captions
-for the October 23 posts (ending 400745, 040200, 372743) and the October 25
-Packers post (ending 860310) are **empty**.
+### Verified deletion versus inaccessible content
 
-- **Brewers, October 23**: the poster image prints "TONIGHT'S BREWERS GAME
-  SPECIAL". This printed team cue alone is sufficient. In AUTO it becomes a
-  published event for October 23 ("Tonight", ends at midnight), the Friday
-  Nightly specials are unchanged, and the daily conflict/warning disappears.
-- **Packers, October 25**: the stored extraction has only the heading "Sunday
-  Special" and "PULLED PORK SANDWICH W/ CHIPS - $4", with an empty caption.
-  Nothing establishes a game-day promotion, and "Sunday Special" is also the
-  regular weekend label. **It is deliberately not recognized automatically**:
-  it stays on the regular path in every mode and its existing review warning
-  remains, because suppressing it would hide a legitimate unresolved offer.
-  Staff identify it from "Recent Facebook posts" on `/admin/events`. With
-  REVIEW or AUTO enabled, that staff link also stops the post from counting
-  as a regular special. With OFF, staff can still publish the event, but the
-  regular warning is unchanged.
+**Automatic publication of a replacement after deletion is not implemented.**
+The current Graph GET can establish that the exact original post is readable
+(`exists`); failures are `unknown`. Code 100/subcode 33 is ambiguous: absent
+objects, permissions and unsupported operations share it. A successful Page
+scan, two identical errors thirty minutes apart, a 404, or aging out of the
+limited current-day feed does not resolve that ambiguity. No such response
+releases a removal tombstone. Legacy `source_missing_at`/`source_deleted_at`
+fields from the unfinished two-error implementation are not trusted or changed.
 
-Automatic recognition of a poster like the Packers one would need actual
-evidence, any of:
+The current webhook verifies signatures but queues only a general rescan; it
+does not persist authenticated, per-post deletion evidence. No supported,
+positive deletion authority has been validated or integrated in this change.
+Meta's documentation endpoints returned HTTP 429 during this review, so this is
+not a claim that no future supported mechanism exists. Adding one would require
+separate specification, identity/order/replay validation and tests. Until then,
+even a genuinely deleted original cannot automatically release the same-event
+replacement. Removal is preserved; do not manually delete tombstones or infer
+deletion from Graph errors to work around it.
 
-1. The event printed on the poster image (team name, "Game Day", holiday), as
-   on the Brewers poster; or
-2. A Facebook caption naming the team or holiday (this routes to review only); or
-3. A future extraction field that records a printed logo or other visual event
-   marker as verbatim evidence. That would be a prompt, schema and parser-version
-   change with real-image evaluation, deliberately not part of this work.
+Effect on the daily publisher and alerts: routed event sources (and posts whose
+event staff edited or removed) are removed before daily planning, so they never
+produce `GUARDED_AUTO_CONFLICT`, "Specials import requires attention", or a
+`publication_blocked` alert observation. Genuine import, publication and
+delivery failures are still detected (`events-alerts.test.js`). Do not set
+events to OFF while alerts send email: event posters would then alert as daily
+specials.
 
-No regression fixture invents a Packers caption. Rule tests that need a caption
-or a printed team use clearly labelled hypothetical posters (Badgers).
+## October 23 and 25 evidence
 
-## Database: migration 0025 (local only)
+- **Brewers, October 23**: the poster prints "TONIGHT'S BREWERS GAME SPECIAL".
+  It publishes automatically for October 23 ("Tonight", until midnight); the
+  Friday Nightly specials are unchanged.
+- **Packers, October 25**: the stored caption is empty and the stored
+  extraction kept only the "Sunday Special" ribbon and "PULLED PORK SANDWICH W/
+  CHIPS - $4". The original image (read-only R2 check) also prints a large
+  **"LET'S GO PACK!"** headline that the extraction dropped. Two changes follow
+  from that evidence:
+  1. "Go Pack" / "Let's Go Pack" are now Packers cues.
+  2. The contract-2 extraction prompt now asks for large promotional banners or
+     headlines to be copied verbatim into `poster_evidence` (no schema or
+     parser-version change). A real-image evaluation remains outstanding; the
+     owner authorized this release with validation against future actual posts.
 
-`migrations/0025_special_events.sql` is additive: `special_events`,
-`special_event_offers`, `special_event_log`, and their indexes. Plain `CREATE`,
-so an accidental replay fails loudly. `schema.sql` carries the same definitions
-for new databases, and the test fixture applies 0025.
+  With the headline captured, such a poster publishes "LET'S GO PACK! Sunday
+  Special" automatically and no longer blocks Sunday. The already stored
+  October 25 extraction has no cue, so it stays a regular special (and its one
+  `publication_blocked` alert remains legitimate). A plain "Sunday Special"
+  poster is never treated as a Packers event.
 
-Sequencing: `wrangler d1 migrations apply` applies **all** pending migrations,
-and production still has `0023_facebook_alert_incidents.sql` and
-`0024_facebook_alert_evidence.sql` pending. 0025 must not be applied before
-them, and tracking must not be bypassed with `d1 execute --file`. Order:
+## Database
 
-1. 0023 then 0024 under their own approval (already rehearsed).
-2. A fresh `wrangler d1 export` and Time Travel bookmark (the October 25
-   01:56 UTC export is stale for this).
-3. Rehearse 0025 on the restored copy; confirm business-table counts and ledger.
-4. Confirm `migrations list` shows exactly `0025` pending; apply under approval.
+Migration 0025 (already applied) is unchanged. The new code writes only the
+statuses `published`, `review` (withheld), `rejected` (removed) and `cancelled`,
+and the log actions `created`, `updated`, `duplicate`, `protected`, `conflict`,
+`cancelled` and `cancellation-review`, all allowed by the existing CHECK
+constraints. Compiled-route and pipeline tests use local production-schema
+fixtures; a separate Miniflare test executes event reconciliation against
+unchanged 0025 in local D1, including concurrent inserts and retained legacy
+tombstones. This continuation did not access or mutate the production database.
 
 ## Rollout and rollback
 
-1. After migrations: deploy Pages (push to `main`). With an empty table nothing
-   public changes; verify `/admin/events`.
-2. Deploy the Worker with `SPECIAL_EVENTS_MODE=OFF` (no behavior change), then
-   `REVIEW`, observing game-day posts become review items without daily warnings.
-3. `AUTO` under separate approval.
+1. Build and release Pages from the reviewed `main` commit: the admin section
+   and `/admin/events` redirect. Verify the production deployment succeeds.
+2. Dry-run and deploy the Worker with events and alerts OFF; verify the release.
+3. Deploy the same Worker with `SPECIAL_EVENTS_MODE=AUTO`,
+   `SPECIALS_ALERT_PROVIDER=RESEND`, `SPECIALS_ALERT_MODE=EMAIL`,
+   `SPECIALS_ALERT_EMAIL_APPROVED=true` and the approved sender, preserving the
+   existing recipient/API-key secrets and automation settings. Verify live
+   configuration and 100% traffic before reporting activation.
 
-Rollback: set `SPECIAL_EVENTS_MODE=OFF` (restores current routing) or roll back
-the Worker version; roll back the Pages deployment. Leave the additive tables in
-place; never restore the whole shared database to undo this.
+Rollback: deploy with `SPECIAL_EVENTS_MODE=OFF` or roll back the Worker
+version; roll back the Pages deployment. Leave the tables in place.
 
-## Not included
-
-- Extraction prompt or parser changes (see the Packers section).
-- An alert code for events awaiting review.
-- Events running past midnight (end time must be after start time on the same day).
-- Detecting deletion of an announcement posted on an earlier day (the scan
-  reads only today's posts); staff control covers this.
-- Skipping the extra verification AI call for advance announcements: the
-  extraction loop always rereads rejected results, and changing that loop is
-  outside this work.
-- The mobile admin bar is unchanged; Events is reachable from the desktop
-  navigation and from `/admin/specials`.
+The owner explicitly authorized commit, push, Pages/Worker release and final
+AUTO/EMAIL activation after local validation, accepting the conservative
+replacement limitation and deferring real-image evaluation to actual posts.
+Keep the Resend integration and all existing Facebook fixes. If alerts are
+already emailing, disable their dispatch before turning event routing OFF to
+avoid reclassifying event posters as daily failures. If email activation fails,
+revert alert mode to OFF. Independent dead-man monitoring remains future work.
 
 ## Tests
 
-- `workers/fb-feed/events.test.js` (20): cues, templates, all 49 weekday
-  pairs, dates, review conditions, times, Brewers, empty-caption Packers,
-  caption-only and generic cues, mixed posters, prices, cancellation,
-  stored-row dating, daylight-saving boundaries.
-- `workers/fb-feed/events-d1.test.js` (19): real SQLite pipeline in OFF (no event-table SQL at all), REVIEW
-  and AUTO; Brewers publication with Friday specials unchanged; daily conflict
-  and warning removed only when on; idempotent rescans with no AI calls;
-  missing table; alert inspection; Packers unchanged in every mode; staff-linked
-  Packers post; locks, edits, tombstones, duplicates, conflicts, manual events,
-  cancellation; schema constraints.
-- `tests/special-events.test.mjs` (19): Chicago expiry including daylight-saving
-  days, display helpers, the visible window, missing table, compiled homepage and
-  `/specials` placement and badges, homepage limit, escaping, card CSS, and admin
-  authentication, Origin, validation with draft retention, locks, 409 conflicts,
-  actions, deletion rules, unlocking, and Packers post linking.
-- `tests/daily-soup.test.mjs` and `tests/specials-rendering.test.mjs` now find
-  their shared renderer chunk by content instead of by its Vite file name.
+- `workers/fb-feed/events.test.js`: cues and cheers, templates, weekday pairs,
+  dates, withholding conditions, times, Brewers, stored and banner Packers,
+  caption cues, generic cues, upcoming events, regular specials never events,
+  mixed posters, prices, cancellation, stored-row dating, daylight saving.
+- `workers/fb-feed/events-d1.test.js`: real SQLite pipeline in OFF (no event
+  SQL), retired REVIEW (= OFF) and AUTO; Brewers publication; idempotent
+  rescans; missing table; alert inspection; Packers stored and banner; removal
+  tombstones keep posters out of daily specials; edits; staff locks;
+  duplicates; differing reposts; withheld and withdrawn events; cancellation;
+  schema.
+- `workers/fb-feed/events-alerts.test.js`: events and failure alerts together.
+- `tests/special-events.test.mjs`: Chicago expiry and daylight saving, display,
+  visibility, page placement, escaping, card CSS, the retired route, navigation,
+  accordion order and default state, no nested forms, listing and sorting,
+  Edit/Remove, authentication, Origin, validation, 409 conflicts, accessibility.
 
-## Included fix: Soup text contrast on /specials
+## Soup text contrast on /specials
 
-`src/components/DailySoup.astro` used `color:inherit`, so on `/specials` the
-Soup line took the page's dark ink on the dark-blue Today card. It now uses the
-card's own special-text token, `color:var(--sg-text,inherit)`: #f0ddb8 on
-#1a3d50 (about 8.6:1) on Today and denim cards, #f0e0c4 on brick (about 8.0:1)
-and #1a0e06 on saddle (about 5.1:1), all WCAG AA. The homepage Specials card
-already sets `--sg-text` to its cream text color, so it renders unchanged. The
-label, placement and layout are untouched. Coverage: the token/contrast test in
-`tests/daily-soup.test.mjs`.
+`src/components/DailySoup.astro` uses the card's special-text token,
+`color:var(--sg-text,inherit)`, so the Soup line is light on the dark-blue
+Today card (WCAG AA on every card). Unchanged by this work.
+
+## Local completion validation — October 25, 2026
+
+Using the existing portable Node 24.22.1, the final Worker suite passed
+1,313 tests and the full website suite passed 186 tests, with no failures or
+skips. Production build passed; Astro check reported zero errors, zero warnings
+and six hints. Local Miniflare D1 exercised unchanged migration 0025, concurrent
+publication and retained removal tombstones. The final Wrangler deployment
+dry run passed with events OFF (271.96 KiB, 67.17 KiB gzip). No deployment,
+production writes, emails or live AI calls were performed.
+
+The compiled admin preview was checked at desktop and mobile widths: four
+accordions in the required order, Edit/Remove only, no horizontal overflow,
+and an edit form that fits the mobile viewport. Authentication and mutation
+behavior are covered separately by compiled-route tests. Complete local logs,
+the exact file list and original review instructions are in the ignored
+`.wrangler/events-completion-report.md`. The later owner authorization above
+supersedes that report's original deployment hold; live release results must be
+verified separately.

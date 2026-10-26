@@ -13,11 +13,17 @@ const {packers_event:packers,sunday_specials:sunday}=read('oct25-sunday-soup.jso
 const route=(candidate,caption='',postDate='2026-10-25')=>routeEventSource({candidate:structuredClone(candidate),caption,postDate,canonicalize});
 const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
-test('mode defaults to OFF for missing or unknown values',()=>{
+test('mode: AUTO publishes automatically; OFF, missing, unknown and the retired REVIEW value are all OFF',()=>{
   assert.equal(eventsModeOf({}),'OFF');assert.equal(eventsModeOf({SPECIAL_EVENTS_MODE:'on'}),'OFF');
-  assert.equal(eventsModeOf({SPECIAL_EVENTS_MODE:'REVIEW'}),'REVIEW');assert.equal(eventsModeOf({SPECIAL_EVENTS_MODE:'AUTO'}),'AUTO');
+  assert.equal(eventsModeOf({SPECIAL_EVENTS_MODE:'REVIEW'}),'OFF');assert.equal(eventsModeOf({SPECIAL_EVENTS_MODE:'AUTO'}),'AUTO');
 });
 
+test('team cheers name the team; amounts, packs and look-alike words do not',()=>{
+  for(const text of ["LET'S GO PACK!",'Go Pack Go','Pack Attack Sunday']) assert.equal(eventCue(text)?.identity,'packers',text);
+  assert.equal(eventCue('Brew Crew watch party').identity,'brewers');
+  assert.equal(eventCue('Fear the Deer').identity,'bucks');assert.equal(eventCue('Go Bucks!').identity,'bucks');
+  for(const text of ['6 pack of wings','12 PACK $15','5 bucks off','$5 bucks','Six-pack Sunday','Sunday Special']) assert.equal(eventCue(text),null,text);
+});
 test('event cues: teams and holidays are specific; game and generic phrases are not; recurring house nights are not events',()=>{
   assert.deepEqual(eventCue("TONIGHT'S BREWERS GAME SPECIAL"),{identity:'brewers',kind:'team',specific:true});
   assert.deepEqual(eventCue('Go Pack! Packers game day'),{identity:'packers',kind:'team',specific:true});
@@ -94,40 +100,50 @@ test('event times: printed windows become Chicago wall-clock times; otherwise on
   assert.deepEqual(eventTime('9pm-1am'),{time_text:'9pm-1am',start_time:null,end_time:null});
 });
 
-test('October 23 Brewers poster: Tier A event from the printed heading, dated tonight, price verbatim',()=>{
+test('October 23 Brewers poster: published automatically from the printed heading, dated tonight, price verbatim',()=>{
   const r=route(brewers,'','2026-10-23');
-  assert.equal(r.route,'event');assert.equal(r.tier,'A');
+  assert.equal(r.route,'event');assert.equal(r.publish,true);
   assert.equal(r.draft.event_date,'2026-10-23');assert.equal(r.draft.date_basis,'relative');
   assert.equal(r.draft.identity,'brewers');assert.equal(r.draft.title,'Brewers Game Special');
   assert.deepEqual(r.draft.offers,['Pulled Pork Sandwich With Chips and Side of Coleslaw $7.25']);
   assert.equal(r.draft.time_text,'Tonight');assert.deepEqual(r.draft.review_reasons,[]);
 });
-
-test('October 25 Packers poster with its empty production caption is NOT recognized as an event',()=>{
-  // Verified production evidence: caption empty; image heading "Sunday Special".
-  // Nothing establishes a Packers promotion, so it stays on the regular path
-  // (its existing review warning stands) and staff add the event manually.
+test('October 25 Packers poster: the stored extraction ("Sunday Special", empty caption) is NOT an event',()=>{
+  // Verified production evidence: caption empty; the stored extraction kept only
+  // the "Sunday Special" ribbon. Nothing stored establishes a Packers promotion,
+  // so it stays on the regular path. Every Sunday Special is not a Packers event.
   assert.equal(route(packers,'').route,'regular');
   assert.equal(route(packers,'   ').route,'regular');
   assert.equal(route(packers,'Come watch with us!').route,'regular');
 });
 
+test('October 25 Packers poster: its printed "LET\'S GO PACK!" headline, once extracted, publishes a Packers event',()=>{
+  // The original R2 image prints "LET'S GO PACK!" above the offer. The contract-2
+  // prompt now asks for such banners in poster_evidence; this is that reading.
+  const banner={...structuredClone(packers),poster_evidence:"LET'S GO PACK! Sunday Special"};
+  const r=route(banner,'');
+  assert.equal(r.route,'event');assert.equal(r.publish,true);
+  assert.equal(r.draft.identity,'packers');assert.equal(r.draft.event_date,'2026-10-25');
+  assert.equal(r.draft.title,"LET'S GO PACK! Sunday Special"); // Printed wording; only all-caps text is title-cased.
+  assert.deepEqual(r.draft.offers,['Pulled Pork Sandwich w/ Chips - $4']);
+  // A genuine Packers caption is also verified evidence for this small poster.
+  const captioned=route(packers,'Packers kickoff at noon! Come watch with us.');
+  assert.equal(captioned.route,'event');assert.equal(captioned.publish,true);assert.equal(captioned.draft.title,'Packers Game Day Special');
+});
 test('empty captions: the Brewers image cue alone is sufficient; the regular October 23 and 25 posters stay regular',()=>{
-  assert.equal(route(brewers,'','2026-10-23').tier,'A');
+  assert.equal(route(brewers,'','2026-10-23').publish,true);
   assert.equal(route(fridayNight,'','2026-10-23').route,'regular');
   assert.equal(route(sunday,'').route,'regular');
 });
-
 // HYPOTHETICAL posters below (not production evidence) exercise the rules.
 const poster=(heading,content,day=-1,day_evidence='')=>({day_of_week:day,day_evidence,poster_evidence:heading,
   delivery:{status:'none',evidence:'',date_evidence:'',uncertainties:[]},
   offers:[{content,evidence:content,service_time:'',service_evidence:'',date_evidence:'',uncertainties:[]}]});
 
-test('caption-only cues: a specific team or holiday caption routes a small poster to review, never to automatic publication',()=>{
+test('caption-only cues: a specific team or holiday caption publishes a small poster; generic captions and larger posters stay regular',()=>{
   const p=poster('Saturday Special','BRAT & CHIPS $5',6,'Saturday');
   const r=route(p,'Badgers kickoff at 11!','2026-10-24');
-  assert.equal(r.route,'event');assert.equal(r.tier,'review');
-  assert.match(r.draft.review_reasons[0],/only in the Facebook caption/);
+  assert.equal(r.route,'event');assert.equal(r.publish,true);assert.equal(r.draft.title,'Badgers Game Day Special');
   // Generic caption phrases never reroute.
   assert.equal(route(p,'Game day special!','2026-10-24').route,'regular');
   // Caption cues never reroute a larger poster.
@@ -135,36 +151,63 @@ test('caption-only cues: a specific team or holiday caption routes a small poste
   big.offers.push(...['BURGER $6','WRAP $7'].map(c=>({...big.offers[0],content:c,evidence:c})));
   assert.equal(route(big,'Badgers game!','2026-10-24').route,'regular');
 });
-
-test('generic printed event phrases are routed for review; specific printed cues may publish',()=>{
-  assert.equal(route(poster('GAME DAY SPECIAL','PULLED PORK SANDWICH $4'),'','2026-10-25').tier,'review');
-  assert.equal(route(poster('BADGERS GAME DAY SPECIAL','PULLED PORK SANDWICH $4'),'','2026-10-25').tier,'A');
+test('printed event phrases publish: generic ones under a generic title, specific ones under the printed heading',()=>{
+  const generic=route(poster('GAME DAY SPECIAL','PULLED PORK SANDWICH $4'),'','2026-10-25');
+  assert.equal(generic.publish,true);assert.equal(generic.draft.title,'Game Day Special');
+  assert.equal(route(poster('BADGERS GAME DAY SPECIAL','PULLED PORK SANDWICH $4'),'','2026-10-25').draft.title,'Badgers Game Day Special');
+  assert.equal(route(poster('Happy Thanksgiving!','TURKEY DINNER $12'),'','2026-11-26').draft.title,'Happy Thanksgiving');
 });
-
-test('advance announcement: a printed-weekday event posted Friday is scheduled for Sunday, not Friday',()=>{
+test('upcoming events: a printed weekday or date after the post date schedules the event ahead',()=>{
   const r=route(poster('BADGERS GAME DAY SPECIAL','PULLED PORK SANDWICH $4',0,'SUNDAY'),'','2026-10-23');
-  assert.equal(r.tier,'A');assert.equal(r.draft.event_date,'2026-10-25');assert.equal(r.draft.date_basis,'printed-weekday');
+  assert.equal(r.publish,true);assert.equal(r.draft.event_date,'2026-10-25');assert.equal(r.draft.date_basis,'printed-weekday');
+  const dated=route(poster('Thanksgiving Eve Special 11/25','PRIME RIB $19.99'),'','2026-10-26');
+  assert.equal(dated.publish,true);assert.equal(dated.draft.event_date,'2026-11-25');assert.equal(dated.draft.date_basis,'printed-date');
 });
 
+test('regular specials are never events: lunch, nightly, all-day, delivery, Mexican, Pizza, Wing, Fish and Soup posters',()=>{
+  const regular=[
+    poster('Monday Lunch Specials 11-1:30','CHICKEN WRAP $8',1,'Monday'),poster('Thursday Night Specials 5-10pm','PRIME RIB $19',4,'Thursday'),
+    poster('Pizza Night','16" PIZZA $14 / 12" PIZZA $10',4,'Thursday'),poster('Wing Night','WINGS $.89 EACH',3,'Wednesday'),
+    poster('Friday Fish Fry','1 OR 2 PIECE FISH $9/$12',5,'Friday'),poster('Taco Tuesday','TACOS $2',2,'Tuesday'),
+    poster('Daily Specials','BURGER $9'),poster('SUNDAY SPECIALS','HANG OVER BURGER $10.25',0,'Sunday'),
+  ];
+  for(const p of regular) assert.equal(route(p,'','2026-10-26').route,'regular',p.poster_evidence);
+  // A poster with a Soup line, delivery notice or service evidence stays regular even beside a team caption.
+  const soup=poster('Sunday Special','BRAT $5',0,'Sunday');soup.offers.push({...soup.offers[0],content:'Soup: Chili',evidence:'Soup: Chili'});
+  assert.equal(route(soup,'Packers kickoff at noon!').route,'regular');
+  const delivery=poster('Monday Lunch Specials','WRAP $8',1,'Monday');delivery.delivery={status:'available',evidence:'Delivery available 11-1:30',date_evidence:'',uncertainties:[]};
+  assert.equal(route(delivery,'Go Pack Go!','2026-10-26').route,'regular');
+  // Mexican Night and weekly-lunch shapes have no daily offers and are never routed.
+  assert.equal(route({type:'mexican-night',poster_evidence:'Mexican Night',groups:[]},'Packers').route,'regular');
+  assert.equal(route({type:'weekly-lunch',poster_evidence:'Weekly Lunch Specials',entries:[]},'Packers').route,'regular');
+});
 test('regular posters never reroute because of a caption, and stay regular with a cue only in the caption',()=>{
   assert.equal(route(sunday,'Go Badgers!').route,'regular');
   assert.equal(route(fridayNight,'Brewers game tonight!','2026-10-23').route,'regular');
 });
 
-test('mixed poster: an event line inside a regular poster keeps regular planning and creates a review draft',()=>{
+test('mixed poster: an event line inside a regular poster keeps regular planning and creates no event',()=>{
   const p=structuredClone(sunday);
   p.offers.push({content:'BADGERS GAME: PULLED PORK SANDWICH $4',evidence:'BADGERS GAME: PULLED PORK SANDWICH $4',service_time:'',service_evidence:'',date_evidence:'',uncertainties:[]});
   const r=route(p);
-  assert.equal(r.route,'mixed');assert.equal(r.tier,'review');
-  assert.match(r.draft.review_reasons[0],/regular specials poster/);
-  assert.deepEqual(r.draft.offers,['Badgers Game: Pulled Pork Sandwich $4']);
+  assert.equal(r.route,'mixed');assert.equal(r.draft,undefined);
+  assert.match(r.reason,/regular specials poster/);
+  const banner=structuredClone(sunday);banner.poster_evidence="GO PACK GO! SUNDAY SPECIALS";
+  assert.equal(route(banner).route,'mixed');
 });
 
-test('offers: missing price, caption-only price and uncertain offers are held; prices are never added',()=>{
+test('a printed event exceeding four offers is withheld, rather than routed into daily specials',()=>{
+  const p=structuredClone(brewers);
+  p.offers=Array.from({length:5},()=>structuredClone(brewers.offers[0]));
+  const r=route(p,'','2026-10-23');
+  assert.equal(r.route,'event');assert.equal(r.publish,false);
+  assert.ok(r.draft.review_reasons.includes('More than four event offers'));
+});
+test('offers: missing price, caption-only price and uncertain offers withhold the event; prices are never added',()=>{
   const unpriced=structuredClone(brewers);unpriced.offers[0]={...unpriced.offers[0],content:'PULLED PORK SANDWICH WITH CHIPS',evidence:'PULLED PORK SANDWICH WITH CHIPS'};
   const r1=route(unpriced,'Brewers special $7.25','2026-10-23');
   assert.ok(r1.draft.review_reasons.some(r=>/Missing meal price/.test(r)));
-  assert.deepEqual(r1.draft.offers,[]);
+  assert.deepEqual(r1.draft.offers,[]);assert.equal(r1.publish,false);
   const uncertain=structuredClone(brewers);uncertain.offers[0].uncertainties=['price partly hidden'];
   assert.ok(route(uncertain,'','2026-10-23').draft.review_reasons.some(r=>/Uncertain/.test(r)));
   const mismatch=structuredClone(brewers);mismatch.offers[0].evidence='PULLED PORK SANDWICH WITH CHIPS AND SIDE OF COLESLAW $7.50';

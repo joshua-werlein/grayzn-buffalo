@@ -1,8 +1,10 @@
 ---
 import Base from '../../layouts/Base.astro';
 import GroupFields from '../../components/SpecialGroupFields.astro';
+import EventAdminEntry from '../../components/EventAdminEntry.astro';
 import { isAuthed } from '../../lib/auth';
-import { chicagoCalendarDate, isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from '../../lib/weekly-specials';
+import { isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from '../../lib/weekly-specials';
+import { EventConflict, eventDraftFromForm, eventInputFromForm, readAdminEvents, readEvent, removeEvent, saveEvent, type EventInput, type SpecialEvent } from '../../lib/special-events';
 import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, readCollection, readWeek, currentSavedWeekId, collectionFromForm, saveCollection, SpecialConflict, type SpecialCollection } from '../../lib/specials-store';
 import {withSoupControls} from '../../lib/daily-soup.js';
 const env = (Astro.locals as any).runtime?.env ?? {};
@@ -13,6 +15,8 @@ let mexicanDefaultsError='';
 let weekly = empty('week'), weekStart='', weekEnd='', editingId='', notice='', error='', recurringError='';
 let activeDay=0, weeklyDirty=false, weeklySaveAttempted=false, weeklyScrollY=0, weeklySaveError='';
 let ready=true;
+// Special Events section: corrections only (Facebook automation publishes events).
+let eventError='', eventErrorFor='', eventDraft: EventInput | null = null;
 try { defaults=withSoupControls(await readCollection(env,'defaults')); } catch { recurringError='Recurring defaults are unavailable. New weeks cannot be initialized.'; }
 try { mexican=await readCollection(env,'mexican-night'); } catch { /* Weekly editing does not depend on section availability. */ }
 try { mexicanDefaults=await readCollection(env,'mexican-night-defaults'); } catch { mexicanDefaultsError='Recurring Mexican Night Defaults are unavailable. Reload or contact support before changing future menus.'; }
@@ -58,16 +62,35 @@ if (Astro.request.method==='POST') {
       const saved=await saveCollection(env,next);
       if (json) return Response.json({ok:true,message:'Saved.',revision:saved.revision,groupIds:saved.groupIds});
       return Astro.redirect('/admin/specials?saved=1',303);
+    } else if (action==='save-event' || action==='remove-event') {
+      eventErrorFor=String(form.get('event_id') ?? '');
+      const rawRevision=String(form.get('event_revision') ?? '');
+      const revision=Number(rawRevision);
+      if (!/^(0|[1-9]\d*)$/.test(rawRevision) || !Number.isSafeInteger(revision)) throw new Error('Invalid saved revision.');
+      if (action==='save-event') eventDraft=eventInputFromForm(form);
+      if (!(await readEvent(env,eventErrorFor))) throw new Error('That event no longer exists.');
+      if (eventDraft) await saveEvent(env,eventErrorFor,revision,eventDraft);
+      else await removeEvent(env,eventErrorFor,revision);
+      return Astro.redirect(`/admin/specials?event=${eventDraft ? 'saved' : 'removed'}#special-events`,303);
     } else throw new Error('Invalid form action.');
   } catch (caught) {
     const message=caught instanceof Error ? caught.message : 'Could not save specials.';
-    if (json) return Response.json({ok:false,error:message},{status:caught instanceof SpecialConflict ? 409 : 400});
-    error=message; if (weeklySaveAttempted) weeklySaveError=message;
+    if (json) return Response.json({ok:false,error:message},{status:caught instanceof SpecialConflict || caught instanceof EventConflict ? 409 : 400});
+    if (['save-event','remove-event'].includes(String(form.get('action')))) {
+      // Shown inside the Special Events section; staff keep what they typed.
+      eventError=message;
+      if (form.get('action')==='save-event') eventDraft=eventDraftFromForm(form);
+      Astro.response.status=caught instanceof EventConflict ? 409 : 400;
+    } else { error=message; if (weeklySaveAttempted) weeklySaveError=message; }
   }
 }
 if (Astro.url.searchParams.get('saved')) notice='Specials saved.';
-let eventsAwaitingReview=0;
-try { eventsAwaitingReview=Number((await env.DB.prepare("SELECT count(*) n FROM special_events WHERE status='review' AND event_date>=?1").bind(chicagoCalendarDate()).first())?.n ?? 0); } catch { /* Events are optional. */ }
+const EVENT_NOTICES: Record<string,string>={saved:'Event saved. Facebook will not change it.',removed:'Event removed. Facebook will not recreate it.'};
+const eventNotice=EVENT_NOTICES[Astro.url.searchParams.get('event') ?? ''] ?? '';
+let adminEvents: SpecialEvent[]=[], eventsUnavailable='';
+try { adminEvents=await readAdminEvents(env,(Astro.locals as any).runtime?.now ?? new Date()); }
+catch { eventsUnavailable='Special events are unavailable right now. Reload the page to try again.'; }
+const eventsOpen=!!(eventError || eventNotice);
 const savedWeeks: any[] = [];
 try {
   const weeksResult = await env.DB.prepare('SELECT ws.id,ws.week_start_date,ws.week_end_date,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id ORDER BY ws.week_start_date DESC').all();
@@ -99,7 +122,16 @@ const mexicanEditors=[
       <p id={`${prefix}-status`} data-editor-status role="status"/><button class="btn btn-primary" type="submit">{save}</button>
     </div></details>
   </form>)}
-  <p class="events-link"><a href="/admin/events">Special events (game days, holidays and one-time promotions){eventsAwaitingReview>0 && ` · ${eventsAwaitingReview} awaiting review`} →</a></p>
+  <section id="special-events" class="recurring-defaults-form special-events-admin" aria-label="Special Events">
+    <details class="recurring-defaults" open={eventsOpen}><summary>Special Events</summary><div class="recurring-defaults__content">
+      <p>Game days, holidays and other one-time promotions are published automatically from Facebook and shown above the regular specials until their date has passed. Edit an event to correct it; your changes are kept. Remove an event to take it off the website.</p>
+      {eventNotice && <p class="event-admin-notice" role="status">{eventNotice}</p>}
+      {eventError && !adminEvents.some(e=>e.id===eventErrorFor) && <p class="error" role="alert">{eventError}</p>}
+      {eventsUnavailable ? <p class="error" role="alert">{eventsUnavailable}</p> : adminEvents.length
+        ? <ul class="event-admin-list">{adminEvents.map(event=><EventAdminEntry event={event} values={eventErrorFor===event.id && eventDraft ? eventDraft : event} error={eventErrorFor===event.id ? eventError : ''} editOpen={eventErrorFor===event.id && !!eventDraft}/>)}</ul>
+        : <p class="event-admin-empty">No current or upcoming special events.</p>}
+    </div></details>
+  </section>
   <div class="weekly-section-head"><h3>Weekly Specials</h3></div>
   <div class="week-picker"><label for="saved-week">Saved week to edit</label><select id="saved-week"><option value="">Select a saved week...</option>{savedWeeks.map((week,index)=><option value={week.id} data-older-week={index>=4 ? 'true' : undefined} hidden={index>=4 && !savedWeeksExpanded} selected={String(week.id)===editingId}>{week.week_start_date} – {week.week_end_date}</option>)}</select>{savedWeeks.length>4 && <button id="saved-weeks-toggle" type="button" class="btn btn-ghost week-picker__action" aria-expanded={savedWeeksExpanded}>View {savedWeeksExpanded ? 'fewer' : 'more'} weeks</button>}<a class="btn btn-ghost week-picker__action" href="/admin/specials?new=1">Create new week</a>
   </div>
@@ -456,7 +488,7 @@ const mexicanEditors=[
 
 </script>
 <style>
-  .week-picker,.weekly-form,.recurring-defaults-form{width:100%;max-width:1440px;margin:0 auto;background:#fff;border-radius:12px;padding:20px;box-shadow:0 6px 16px rgba(36,22,16,.1)}.week-picker{background:var(--surface-parchment);border:1px solid rgba(36,22,16,.16);display:flex;align-items:end;gap:12px;margin-bottom:18px;flex-wrap:wrap}.week-picker label{width:100%}.week-picker select{width:320px;min-width:0;white-space:nowrap;box-shadow:0 0 0 5px #fff,0 0 0 6px rgba(36,22,16,.16)}.week-picker .btn{margin:0;white-space:nowrap}.week-picker__action{box-sizing:border-box;width:210px;height:48px;min-height:48px;padding:12px 24px;border-width:2px;border-radius:var(--control-radius);font-size:1rem;font-weight:700;line-height:20px}.recurring-defaults-form{margin:0 auto 18px}.recurring-defaults{margin:0;border:1px solid rgba(36,22,16,.2);border-radius:10px;background:var(--surface-parchment)}.recurring-defaults summary{cursor:pointer;padding:14px 16px;font-family:var(--label);font-size:.9rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.recurring-defaults[open] summary{border-bottom:1px solid rgba(36,22,16,.16)}.recurring-defaults__content{padding:16px}.recurring-defaults__intro{margin:0 0 16px;color:var(--ink-2);font-weight:700}.recurring-defaults__error{margin:0 0 16px}.recurring-defaults__shared{margin:0;padding:14px;border:1px solid rgba(36,22,16,.16);border-radius:8px;background:#fff;display:grid;gap:6px}.recurring-defaults__shared legend{padding:0 5px;font-size:.78rem}.recurring-defaults__preset{display:grid;grid-template-columns:auto minmax(220px,420px);align-items:center;gap:8px;margin-bottom:6px}.recurring-defaults__preset select{width:100%}.recurring-defaults__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}.recurring-day-fields{min-width:0;margin:0;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px;background:#fff;display:grid;gap:12px}.recurring-day-fields legend{padding:0 5px;font-size:.78rem}.recurring-defaults__save{margin-top:16px}.week-dates{border:0}.week-date-controls{display:flex;align-items:center;gap:20px;flex-wrap:wrap}.week-date-group{display:grid;grid-template-columns:auto 230px;align-items:center;gap:8px}.week-date-group--end{grid-template-columns:auto 160px auto}.week-dates>p{margin:10px 0 0;color:var(--ink-2)}.week-dates input{width:230px;box-sizing:border-box;height:44px}.week-end-label{font-family:var(--label);font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.week-end-value{display:block;box-sizing:border-box;width:160px;height:44px;min-height:44px;padding:10px;overflow:hidden;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit;line-height:20px;white-space:nowrap}.week-end-helper{margin:0!important;color:var(--ink-2);font-size:.9rem;font-style:italic;font-weight:700;white-space:nowrap}legend,label{font-family:var(--label);font-weight:700;letter-spacing:.08em;text-transform:uppercase}.week-dates legend{margin-bottom:8px}label{font-size:.78rem}.day-fields label span,.recurring-defaults label span{text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-2)}input,select,textarea{padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit}textarea{width:100%;resize:vertical}.instructions{margin:18px 0;color:var(--ink-2)}.day-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.day-fields{min-width:0;border:1px solid rgba(36,22,16,.16);border-radius:10px;padding:16px;background:var(--surface-parchment);display:grid;gap:14px}.service-group,.all-day-group{display:grid;gap:6px;min-width:0}.day-fields>.service-group,.all-day-group{margin:0;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px;background:#fff}.all-day-group legend{padding:0 5px;font-size:.78rem}.count{justify-self:end;font-size:.75rem;color:var(--ink-2)}button{margin-top:20px}.error{color:var(--crimson)}.events-link{width:100%;max-width:1440px;margin:0 auto 18px;font-weight:700}.events-link a{color:var(--brick)}@media(min-width:1280px){.day-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(max-width:900px){.day-grid,.recurring-defaults__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:680px){.weekly-form,.recurring-defaults-form{padding:16px}.week-date-controls,.week-date-group,.week-date-group--end,.day-grid,.recurring-defaults__grid{grid-template-columns:1fr}.week-date-controls{display:grid}.week-date-group{gap:6px}.week-dates input,.week-end-value{width:100%}.week-end-helper{grid-column:1;white-space:normal}.week-picker select{width:100%}.recurring-defaults__content{padding:14px}.recurring-defaults__preset{grid-template-columns:1fr}.recurring-defaults__preset select{min-width:0}}
+  .week-picker,.weekly-form,.recurring-defaults-form{width:100%;max-width:1440px;margin:0 auto;background:#fff;border-radius:12px;padding:20px;box-shadow:0 6px 16px rgba(36,22,16,.1)}.week-picker{background:var(--surface-parchment);border:1px solid rgba(36,22,16,.16);display:flex;align-items:end;gap:12px;margin-bottom:18px;flex-wrap:wrap}.week-picker label{width:100%}.week-picker select{width:320px;min-width:0;white-space:nowrap;box-shadow:0 0 0 5px #fff,0 0 0 6px rgba(36,22,16,.16)}.week-picker .btn{margin:0;white-space:nowrap}.week-picker__action{box-sizing:border-box;width:210px;height:48px;min-height:48px;padding:12px 24px;border-width:2px;border-radius:var(--control-radius);font-size:1rem;font-weight:700;line-height:20px}.recurring-defaults-form{margin:0 auto 18px}.recurring-defaults{margin:0;border:1px solid rgba(36,22,16,.2);border-radius:10px;background:var(--surface-parchment)}.recurring-defaults summary{cursor:pointer;padding:14px 16px;font-family:var(--label);font-size:.9rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.recurring-defaults[open] summary{border-bottom:1px solid rgba(36,22,16,.16)}.recurring-defaults__content{padding:16px}.recurring-defaults__intro{margin:0 0 16px;color:var(--ink-2);font-weight:700}.recurring-defaults__error{margin:0 0 16px}.recurring-defaults__shared{margin:0;padding:14px;border:1px solid rgba(36,22,16,.16);border-radius:8px;background:#fff;display:grid;gap:6px}.recurring-defaults__shared legend{padding:0 5px;font-size:.78rem}.recurring-defaults__preset{display:grid;grid-template-columns:auto minmax(220px,420px);align-items:center;gap:8px;margin-bottom:6px}.recurring-defaults__preset select{width:100%}.recurring-defaults__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}.recurring-day-fields{min-width:0;margin:0;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px;background:#fff;display:grid;gap:12px}.recurring-day-fields legend{padding:0 5px;font-size:.78rem}.recurring-defaults__save{margin-top:16px}.week-dates{border:0}.week-date-controls{display:flex;align-items:center;gap:20px;flex-wrap:wrap}.week-date-group{display:grid;grid-template-columns:auto 230px;align-items:center;gap:8px}.week-date-group--end{grid-template-columns:auto 160px auto}.week-dates>p{margin:10px 0 0;color:var(--ink-2)}.week-dates input{width:230px;box-sizing:border-box;height:44px}.week-end-label{font-family:var(--label);font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.week-end-value{display:block;box-sizing:border-box;width:160px;height:44px;min-height:44px;padding:10px;overflow:hidden;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit;line-height:20px;white-space:nowrap}.week-end-helper{margin:0!important;color:var(--ink-2);font-size:.9rem;font-style:italic;font-weight:700;white-space:nowrap}legend,label{font-family:var(--label);font-weight:700;letter-spacing:.08em;text-transform:uppercase}.week-dates legend{margin-bottom:8px}label{font-size:.78rem}.day-fields label span,.recurring-defaults label span{text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-2)}input,select,textarea{padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit}textarea{width:100%;resize:vertical}.instructions{margin:18px 0;color:var(--ink-2)}.day-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.day-fields{min-width:0;border:1px solid rgba(36,22,16,.16);border-radius:10px;padding:16px;background:var(--surface-parchment);display:grid;gap:14px}.service-group,.all-day-group{display:grid;gap:6px;min-width:0}.day-fields>.service-group,.all-day-group{margin:0;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px;background:#fff}.all-day-group legend{padding:0 5px;font-size:.78rem}.count{justify-self:end;font-size:.75rem;color:var(--ink-2)}button{margin-top:20px}.error{color:var(--crimson)}.event-admin-list{display:grid;gap:12px;margin:0;padding:0;list-style:none}.event-admin-empty{margin:0;color:var(--ink-2)}.event-admin-notice{margin:0 0 12px;color:var(--denim);font-weight:700}@media(min-width:1280px){.day-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(max-width:900px){.day-grid,.recurring-defaults__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:680px){.weekly-form,.recurring-defaults-form{padding:16px}.week-date-controls,.week-date-group,.week-date-group--end,.day-grid,.recurring-defaults__grid{grid-template-columns:1fr}.week-date-controls{display:grid}.week-date-group{gap:6px}.week-dates input,.week-end-value{width:100%}.week-end-helper{grid-column:1;white-space:normal}.week-picker select{width:100%}.recurring-defaults__content{padding:14px}.recurring-defaults__preset{grid-template-columns:1fr}.recurring-defaults__preset select{min-width:0}}
 
   /* Phone workflow is scoped to this admin page; no shared/public chrome changes. */
   .day-fields[hidden],.day-navigation[hidden],.day-stepper[hidden]{display:none}
