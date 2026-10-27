@@ -160,8 +160,11 @@ export async function dispatchAlert(DB, send, {enabled = false, now = () => Date
   const attempt=(async()=>{
    try {
     const code=proof && Object.hasOwn(ALERT_CODES,proof.cause)?proof.cause:row.code;
+    // The diagnostic comes from the same revalidated evidence that authorized
+    // this send; it never affects the fence, deduplication or acknowledgement.
     await send({incidentKey:row.incident_key,day:row.day,code,
       message:ALERT_CODES[code],reviewUrl:'https://grayznbuffalo.com/admin',
+      detail:evidence?.detail ?? null,firstSeenMs:row.first_seen_ms,
       signal:AbortSignal.timeout(timeoutMs)});
     const acknowledged = await DB.prepare(`UPDATE facebook_alert_incidents SET sent_ms=?3,dispatch_state='sent',lease_until_ms=NULL,last_error=NULL
       WHERE incident_key=?1 AND lease_token=?2 AND dispatch_state='uncertain'`).bind(row.incident_key,token,timestamp(now())).run();

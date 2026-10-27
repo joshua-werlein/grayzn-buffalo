@@ -253,6 +253,37 @@ export function validateWeeklyLunch(value) {
   if (new Set(days).size !== days.length) throw Error('Invalid weekly lunch: duplicate day_of_week in entries');
   return {type: 'weekly-lunch', poster_evidence: posterEvidence, date_range: dateRange, service_time: serviceTime, entries};
 }
+export const SHARED_WEEKLY_PRICE_AMBIGUOUS = 'Ambiguous shared weekly lunch price';
+// One price printed in a weekly lunch heading ("WEEKLY LUNCH SPECIALS • $9.75")
+// covers every weekday meal on that poster. Only a single clean lunch price
+// qualifies; several amounts, add-on/discount wording or a non-lunch heading
+// are ambiguous and never guessed.
+export function sharedWeeklyLunchPrice(value) {
+  const heading = [value?.poster_evidence, value?.service_time].filter(s => typeof s === 'string').join(' ');
+  if (!heading.includes('$')) return {price: null, ambiguous: false};
+  const found = [...heading.matchAll(/(?<![\w$.,–—−+-])\$\s*(?:\d+(?:\.\d{2})?|\.\d{2})(?![\w.,%])/g)];
+  const cents = new Set(found.map(m => Math.round(Number(m[0].replace(/[$\s]/g, '')) * 100)));
+  if (!found.length || found.length !== heading.split('$').length - 1 || cents.size !== 1 || [...cents][0] <= 0
+    || /\b(?:add|extra|upgrade|sub(?:stitute)?s?|off|save|discount)\b|%|[+−]\s*\$/i.test(heading)
+    || serviceOf(heading) !== 'lunch') return {price: null, ambiguous: true};
+  return {price: found[0][0].replace(/\s/g, ''), ambiguous: false};
+}
+// Rows with their own printed price keep it. Rows without one receive the shared
+// heading price, or are held as unresolved when that price is ambiguous or the
+// priced content would exceed the 150-character limit. base_content records the
+// price-less reading so an untouched automation value from it can be upgraded.
+export function applySharedWeeklyLunchPrice(value) {
+  const {price, ambiguous} = sharedWeeklyLunchPrice(value);
+  const unresolved = [];
+  const entries = value.entries.flatMap(e => {
+    if (e.content.includes('$') || (!price && !ambiguous)) return [e];
+    if (ambiguous) { unresolved.push({day: e.day_of_week, reason: SHARED_WEEKLY_PRICE_AMBIGUOUS}); return []; }
+    const content = `${e.content.trim()} - ${price}`;
+    if (content.length > 150) { unresolved.push({day: e.day_of_week, reason: 'Weekly lunch with shared price exceeds 150 characters'}); return []; }
+    return [{...e, content, base_content: e.content}];
+  });
+  return {...value, entries, unresolved_days: [...(value.unresolved_days ?? []), ...unresolved]};
+}
 // Match warning phrases, never ordinary ingredient words. Normalization is for
 // detection only; accepted menu text is not stripped or rewritten.
 export function containsConsumerAdvisory(text) {

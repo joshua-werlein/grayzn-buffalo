@@ -507,6 +507,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   .admin-primary a[aria-current="page"],.admin-action-bar a[aria-current="page"]{background:var(--crimson);color:var(--cream);box-shadow:inset 0 -3px var(--gold)}
   .admin-primary a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
   .admin-shell .footer-composition--admin{display:none}
+  .admin-shell .admin-action-bar{grid-template-columns:repeat(4,minmax(0,1fr))}
   .admin-action-bar a>span:first-child{font-size:22px;line-height:1}
   .admin-shell main{padding-block-start:0}
   .admin-shell main>section{padding-block-start:16px}
@@ -544,6 +545,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
         <li><a href="/admin/specials" aria-current={path === '/admin/specials' ? 'page' : undefined}>Specials</a></li>
         <li><a href="/admin/menu" aria-current={path === '/admin/menu' ? 'page' : undefined}>Menu</a></li>
         <li><a href="/admin/welcome-photos" aria-current={path === '/admin/welcome-photos' ? 'page' : undefined}>Photos</a></li>
+        <li><a href="/admin/automation" aria-current={path === '/admin/automation' ? 'page' : undefined}>Automation Review</a></li>
         <li><a href="/admin/analytics" aria-current={path === '/admin/analytics' ? 'page' : undefined}>Analytics</a></li>
         <li><a href="/admin?settings=1" aria-current={path === '/admin' || path === '/admin/' ? 'page' : undefined}>Settings</a></li>
         <li><a href="/">View public site ↗</a></li>
@@ -581,6 +583,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 {isAdmin ? (
   <nav class="action-bar admin-action-bar" aria-label="Admin quick actions">
     <a href="/admin/specials" aria-current={path === '/admin/specials' ? 'page' : undefined}><span aria-hidden="true">▦</span><span>Specials</span></a>
+    <a href="/admin/automation" aria-current={path === '/admin/automation' ? 'page' : undefined}><span aria-hidden="true">↻</span><span>Automation Review</span></a>
     <a href="/admin/menu" aria-current={path === '/admin/menu' ? 'page' : undefined}><span aria-hidden="true">☷</span><span>Menu</span></a>
     <a href="/admin/welcome-photos" aria-current={path === '/admin/welcome-photos' ? 'page' : undefined}><span aria-hidden="true">▣</span><span>Photos</span></a>
   </nav>

@@ -4,7 +4,7 @@ import {automaticWeekRange} from './auto-week.js';
 import {composeMexicanItem,normalizeMexicanPrices} from '../../src/lib/mexican-item.js';
 // The Worker owns only automatic writes. Manual saves remain in specials-store.ts.
 // Every write, revision bump and acceptance audit commits in one D1 batch.
-import {reconcilePosterEvidence,validateWeeklyLunch,validateMexicanNight,canonicalizeSlotContent,singleDayLunchEvidence,singleDayLunchEvidenceV2} from './reconcile.js';
+import {reconcilePosterEvidence,validateWeeklyLunch,applySharedWeeklyLunchPrice,validateMexicanNight,canonicalizeSlotContent,singleDayLunchEvidence,singleDayLunchEvidenceV2} from './reconcile.js';
 import {parserVersionFor} from './classify.js';
 import {soupGroupId,blankSoupGroup} from '../../src/lib/daily-soup.js';
 import {normalizeWeeklyRange,factKey,analyzeDailyEvidence} from './evidence.js';
@@ -295,9 +295,13 @@ async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=
     const slot = slots.find(s => s.group_id === dest.id && s.position === 1);
     if (!slot) continue;
     const canonicalContent = canonicalizeSlotContent(entry.content, entry.day_of_week, 'lunch');
+    // An untouched automation value is the same poster row read without its
+    // shared heading price; adding that price is the only permitted upgrade.
+    const priceUpgrade = typeof entry.base_content === 'string' && slot.origin === 'automation' && slot.manual_locked === 0
+      && slot.content === slot.last_auto_value && slot.content === canonicalizeSlotContent(entry.base_content, entry.day_of_week, 'lunch');
     // Fill blanks or replace untouched recurring defaults. Preserve existing
     // Facebook evidence (including the more specific daily poster) and staff edits.
-    if (slot.content !== '' && slot.content !== null && !(slot.origin === 'manual' && slot.manual_locked === 0)) continue;
+    if (slot.content !== '' && slot.content !== null && !(slot.origin === 'manual' && slot.manual_locked === 0) && !priceUpgrade) continue;
     if (!safe(slot)) continue;
     if (slot.origin === 'automation' && slot.content === canonicalContent && slot.last_auto_value === canonicalContent) continue;
     rows.push({group_id: dest.id, position: 1, content: canonicalContent, old: slot});
@@ -359,8 +363,7 @@ export async function reconcileWeeklyLunch(env, today) {
       try {
         if(!Number.isFinite(Date.parse(source.fb_created_time)) || Date.parse(source.fb_created_time)>Date.now()) continue;
         const raw=JSON.parse(source.candidate_json);
-        const evidence=validateWeeklyLunch(normalizeWeeklyRange(raw));
-        evidence.unresolved_days=raw.unresolved_days??[];
+        const evidence=applySharedWeeklyLunchPrice({...validateWeeklyLunch(normalizeWeeklyRange(raw)),unresolved_days:raw.unresolved_days??[]});
         const week=await resolveWeeklyLunchTargetWeek(env,evidence,source.fb_created_time,today);
         if(week) plans.push({source,evidence,week});
       } catch { /* Unusable weekly scope cannot be rebound to an unrelated week. */ }
@@ -383,7 +386,7 @@ export async function reconcileWeeklyLunch(env, today) {
   const perSource = [];
   for (const source of sources) {
     let evidence;
-    try { evidence = validateWeeklyLunch(JSON.parse(source.candidate_json)); }
+    try { evidence = applySharedWeeklyLunchPrice(validateWeeklyLunch(JSON.parse(source.candidate_json))); }
     catch { perSource.push({written: false, reason: 'Invalid evidence'}); continue; }
     const week = await resolveWeeklyLunchTargetWeek(env, evidence, source.fb_created_time, today);
     if (!week) { perSource.push({written: false, reason: 'No matching saved week'}); continue; }

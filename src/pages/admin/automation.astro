@@ -1,0 +1,81 @@
+---
+import Base from '../../layouts/Base.astro';
+import { isAuthed } from '../../lib/auth';
+import { chicagoCalendarDate } from '../../lib/weekly-specials';
+import { readAutomationReview, reviewDate } from '../../lib/automation-review';
+const env = (Astro.locals as any).runtime?.env ?? {};
+if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
+Astro.response.headers.set('Cache-Control','no-store');
+if (Astro.request.method !== 'GET' && Astro.request.method !== 'HEAD') return new Response('Method not allowed',{status:405,headers:{Allow:'GET, HEAD','Cache-Control':'no-store'}});
+const now = (Astro.locals as any).runtime?.now ?? new Date();
+let date = chicagoCalendarDate(now), invalid = false, unavailable = false, review: Awaited<ReturnType<typeof readAutomationReview>> | null = null;
+try { date = reviewDate(Astro.url.searchParams.get('date'),now); } catch { invalid=true; Astro.response.status=400; }
+if (!invalid) try { review = await readAutomationReview(env,date,now); } catch { unavailable=true; Astro.response.status=503; }
+---
+<Base title="Automation Review — Grayz'n Buffalo Staff">
+  <section class="automation-review">
+    <h2>Automation Review</h2>
+    <p>Compare Facebook imports with saved website specials. Automation continues normally. Corrections are made in the specials editor.</p>
+    <form method="get" class="date-picker">
+      <label for="review-date">Chicago date <input id="review-date" type="date" name="date" value={date} max={chicagoCalendarDate(now)} required /></label>
+      <button class="btn btn-primary" type="submit">View imports</button>
+    </form>
+    <p class="hint">The last 30 days are available while import evidence is retained. Timestamps below are stored in UTC. Saved values are current, not historical snapshots of what visitors saw.</p>
+    {invalid && <p role="alert">Choose a valid date within the last 30 days.</p>}
+    {unavailable && <p role="alert">Automation history is temporarily unavailable. No data was changed. Reload to try again.</p>}
+    {review && <>
+      <h3>{review.dayName} · {review.day}</h3>
+      <a class="btn btn-ghost" href={review.editor}>Edit this day’s specials</a>
+      {review.ambiguousWeek && <p role="alert">Multiple saved weeks cover this date. Daily slot associations are unavailable until the saved weeks are corrected.</p>}
+      {review.truncated && <p role="status">Showing the latest 30 imports in this date’s week. Older imports may be omitted.</p>}
+      <div class="comparison">
+        <section aria-labelledby="imports-heading">
+          <h3 id="imports-heading">Facebook AI imports</h3>
+          {!review.history.length && <p>No retained imports are associated reliably with this date.</p>}
+          {review.history.map(item=><article class="review-card" id={`import-${item.id}`}>
+            <h4>{item.scope}</h4>
+            <p class="status">{item.status} <span>· audit evidence</span></p>
+            <p><strong>Facebook source:</strong> {item.source} {item.link && <a href={item.link} target="_blank" rel="noopener noreferrer">View Facebook post ↗</a>}</p>
+            <dl><dt>Posted (UTC)</dt><dd>{item.created || 'Unknown'}</dd><dt>Imported (UTC)</dt><dd>{item.fetched || 'Unknown'}</dd><dt>Processed (UTC)</dt><dd>{item.processed || 'Not recorded'}</dd></dl>
+            <p><strong>Reason:</strong> {item.reason}</p>
+            {item.values.length ? <ul class="offers">{item.values.map(offer=><li><strong>{offer.value}</strong><small>{offer.comparison}</small></li>)}</ul> : <p>Usable extracted items are unavailable. The source is retained in history.</p>}
+            <p class="hint">A matching description does not prove which import wrote a slot. Unidentified services are not assigned to a destination.</p>
+            <a href={item.editor}>Open the correction editor</a>
+            {!!item.audits.length && <details><summary>Recent import history</summary><ul>{item.audits.map(event=><li><time>{event.at} UTC</time> · {event.type}{event.type==='review' && <p>{event.detail}</p>}</li>)}</ul></details>}
+          </article>)}
+        </section>
+        <section aria-labelledby="website-heading">
+          <h3 id="website-heading">Current saved website values</h3>
+          <p class="hint">Compare these by service with the imports. Website display status is separate from the import’s processing or publication audit.</p>
+          {!review.groups.length && <p>No corresponding saved collection is available.</p>}
+          {review.groups.map(group=><article class="review-card">
+            <h4>{group.label || group.service}{group.collection_id==='mexican-night' && ' · Mexican Night'}</h4>
+            {group.time && <p>{group.time}</p>}
+            <p class="hint">{group.visibility}</p>
+            {group.slots.length ? <ul class="offers">{group.slots.map(slot=><li><strong>{slot.value}</strong><small>{slot.visibility}</small><small>Slot {slot.position} · {slot.owner}</small><small>Protected from automation: {slot.protection}</small></li>)}</ul> : <p>No saved values.</p>}
+          </article>)}
+          {review.eventsUnavailable && <p>Special-event history is unavailable. Daily and weekly comparisons remain available.</p>}
+          {review.specialEvents.map(event=><article class="review-card">
+            <h4>{event.title} · Special event</h4><p>{event.visibility} · {event.status}</p>
+            <p>{event.origin==='automation'?'Automation':'Staff'} · Protected: {event.manual_locked===1?'Yes — staff locked':'No staff lock'}</p>
+            {event.reason && <p>{event.reason}</p>}
+            <ul>{event.values.map(value=><li>{value}</li>)}</ul>
+            <a href={event.editor}>Edit special events</a>
+          </article>)}
+        </section>
+      </div>
+    </>}
+  </section>
+</Base>
+<style>
+  .automation-review{max-width:1120px;margin:auto;padding:1rem;overflow-wrap:anywhere}
+  .date-picker{display:flex;flex-wrap:wrap;gap:1rem;align-items:end;margin:1.5rem 0}
+  .date-picker label{display:grid;gap:.4rem}.date-picker input{min-height:44px;padding:.5rem;font:inherit}
+  .comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.5rem;margin-top:1.5rem}
+  .review-card{border:1px solid #847252;border-radius:8px;padding:1rem;margin:1rem 0;background:rgba(255,255,255,.04)}
+  h4{font-size:1.1rem;margin-top:0}.status{font-weight:700}.status span,.hint,small{font-size:.9rem;line-height:1.5}
+  .offers{padding-left:1.2rem}.offers li{margin:.8rem 0}.offers small{display:block;margin-top:.25rem}
+  dl{font-size:.9rem;display:grid;grid-template-columns:auto 1fr;gap:.3rem .75rem}dd{margin:0}
+  details{margin-top:1rem}summary{cursor:pointer;min-height:44px;padding:.5rem 0}
+  @media(max-width:720px){.comparison{grid-template-columns:1fr}.automation-review{padding:.75rem}dl{display:block}dd{margin-bottom:.5rem}}
+</style>

@@ -6,6 +6,7 @@ import {deliveryWindow} from '../../src/lib/delivery.js';
 import {dailyPublicationObservation,importAlertObservation} from './alert-policy.js';
 import {ALERT_GRACE_MS,dispatchAlert,alertEvidenceFence} from './alert-store.js';
 import {alertTransport} from './alert-email.js';
+import {dailyAlertDetail} from './alert-detail.js';
 
 const MODES=['OBSERVE','MOCK','EMAIL'];
 const FRESH_MS=90*60*1000;
@@ -115,7 +116,8 @@ async function assess(env,scan,snap) {
     if(expected.expectedActive) delivery.state=saved?.active===1 && saved.day===w.day && saved.expires_at===w.expiresAt?'resolved':'attention';
     else if(['pending','withheld'].includes(expected.status)) delivery.state='pending';
   }
-  return {daily:{state:food.state,cause},delivery};
+  // Diagnostics for the email only; never part of the state, cause or proof.
+  return {daily:{state:food.state,cause,detail:dailyAlertDetail(daily,snap.data,scan.day,w.weekday)},delivery};
 }
 
 function recordVerified(env,scan,scope,observation,evidence) {
@@ -155,7 +157,7 @@ export async function revalidateAlert(env,row,{withEvidence=false}={}) {
   const outcome=(await assess(env,scan,before))[row.scope];
   const after=await snapshot(env,scan);
   const valid=outcome?.state==='attention' && outcome.cause===proof.cause && after?.hash===proof.hash;
-  return valid && withEvidence?after:valid;
+  return valid && withEvidence?{...after,detail:outcome.detail ?? null}:valid;
 }
 
 export async function dispatchVerifiedAlerts(env,{send,timeoutMs}={}) {

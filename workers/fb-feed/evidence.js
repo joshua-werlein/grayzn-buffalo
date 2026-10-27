@@ -200,6 +200,20 @@ function pricedMeal(o) {
   try { return priceFacts(o?.evidence||o?.content||'').length>0; }
   catch { return false; }
 }
+// The same offer, allowing only the dish-name words to be read in another order
+// (October 26: "Grilled Honey Mustard Chicken Sandwich" in the morning,
+// "Grilled Chicken Honey Mustard Sandwich" at night). The dish name keeps its
+// first and last word; everything from the first "with" on (sides,
+// alternatives, connectors and every price) must match exactly and in order.
+export function sameOffer(a,b) {
+  const x=factKey(a),y=factKey(b);
+  if(x===y) return true;
+  const parts=s=>{const m=/^(.+?) with (.+)$/.exec(s);return m?[m[1].split(' '),m[2]]:null;};
+  const p=parts(x),q=parts(y);
+  if(!p || !q || p[1]!==q[1] || p[0].length<3 || p[0].length!==q[0].length
+    || p[0][0]!==q[0][0] || p[0].at(-1)!==q[0].at(-1) || !/\bprice\d+c\b/.test(p[1])) return false;
+  return [...p[0]].sort().join(' ')===[...q[0]].sort().join(' ');
+}
 const headingService=p=>serviceFromEvidence(`${p.day_evidence} ${p.poster_evidence}`);
 const headingNames=(p,pattern)=>pattern.test(`${p.day_evidence} ${p.poster_evidence}`);
 
@@ -242,7 +256,7 @@ function houseLayout(p,isExplicitToday,weekday,known,explicit,verifiedSameDay=fa
     const capacity=capacityOf('nightly',weekday);
     if(!capacity) return null;
     // Repeats are recognized only by IDENTICAL facts (dish, description, price).
-    const repeat=meals.map(i=>known.some(k=>factKey(k)===factKey(p.offers[i].content)));
+    const repeat=meals.map(i=>known.some(k=>sameOffer(k,p.offers[i].content)));
     const repeats=meals.filter((_,k)=>repeat[k]);
     // Friday Night Specials (October 16 and 23 template): every priced meal
     // under the printed "Friday Night" heading is a Nightly special, including
@@ -364,11 +378,11 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
       if(service==='soup') return 'soup';
       if(service==='unknown' && layout?.has(i)) return layout.get(i);
       // Established automation may identify an exact repeat; defaults never establish facts.
-      if(service==='unknown' && !contentIssue(s.p,i) && knownFrom(s.source).some(k=>factKey(k)===factKey(s.p.offers[i].content))) return 'all-day';
+      if(service==='unknown' && !contentIssue(s.p,i) && knownFrom(s.source).some(k=>sameOffer(k,s.p.offers[i].content))) return 'all-day';
       // Friday's four Nightly slots never repeat an identical All Day offer,
       // even one labelled with night evidence: All Day already covers the night.
       if(weekday===5 && service==='nightly' && !contentIssue(s.p,i)
-        && knownFrom(s.source).some(k=>factKey(k)===factKey(s.p.offers[i].content))) return 'all-day';
+        && knownFrom(s.source).some(k=>sameOffer(k,s.p.offers[i].content))) return 'all-day';
       return service;
     });
   };
@@ -412,22 +426,29 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
         // in the same service AHEAD of it while capacity remains. An identical
         // repeat of another post's verified All Day offer takes that post's slot,
         // so its own poster's layout cannot displace it.
-        const repeat=service==='all-day' && knownFrom(source).some(k=>factKey(k)===factKey(o.content));
+        const repeat=service==='all-day' && knownFrom(source).some(k=>sameOffer(k,o.content));
         if(!repeat && unresolved.some(u=>u<i && (positions.get(service)??0)<capacity)) {hold('Unresolved sibling could compete for this slot');continue;}
       }
       let content=service==='soup'?readSoup(o):o.content;
       if(weekday===3 && service==='nightly') content=validateWingNight(o.content,o.evidence);
       if(!content) {hold('Missing, malformed or ambiguous Wing Night prices');continue;}
       const items=sourceItems.get(service)??[];
-      items.push({position:pos,content:canonicalize(content,weekday,service==='soup'?'custom':service),source});sourceItems.set(service,items);
+      content=canonicalize(content,weekday,service==='soup'?'custom':service);
+      // An equivalent offer already displayed in canonical form keeps its
+      // wording, whichever post is read first: a reprint with other punctuation
+      // or dish-word order never rewrites it. A non-canonical display (such as
+      // an uppercase reading) is still corrected to the canonical text.
+      const svc=service==='soup'?'custom':service;
+      const shown=service==='soup'?null:slotLayout.find(s=>s.service===service && s.content && s.content!==content
+        && canonicalize(s.content,weekday,svc)===s.content && sameOffer(s.content,content));
+      items.push({position:pos,content:shown?.content??content,source});sourceItems.set(service,items);
     }
     // Separate posts must agree. Identical facts repeated on another post are
     // consistent; a subset is consistent; anything else (including the same dish
     // at another price) is a conflict for that service only.
     for(const [service,items] of sourceItems) {
       const existing=proposals.get(service);
-      const keys=list=>new Set(list.map(o=>factKey(o.content)));
-      const within=(a,b)=>[...keys(a)].every(k=>keys(b).has(k));
+      const within=(a,b)=>a.every(o=>b.some(e=>sameOffer(o.content,e.content)));
       if(!existing) proposals.set(service,items);
       else if(within(items,existing)) continue;
       else if(within(existing,items)) proposals.set(service,items);

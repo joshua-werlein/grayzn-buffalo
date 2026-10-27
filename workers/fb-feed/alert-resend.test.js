@@ -44,7 +44,9 @@ test('Resend success posts one fixed request and returns the provider message id
   assert.equal(init.headers['Idempotency-Key'],await resendIdempotencyKey(INCIDENT));
   assert.deepEqual(JSON.parse(init.body),{from:'alerts@grayznbuffalo.com',to:[RECIPIENT],
     subject:"Grayz'n Buffalo automation needs review — 2030-01-09",
-    text:'Available Facebook evidence could not be fully published.\nChicago date: 2030-01-09\nReview: https://grayznbuffalo.com/admin'});
+    text:'Available Facebook evidence could not be fully published.\nDate: 2030-01-09 (Chicago)\nStage: publication\n\n'
+      +'Automatic retry: none pending\nCorrection: needed. Edit and save in the specials editor; saved edits are protected from automation.\n'
+      +'Open: https://grayznbuffalo.com/admin/specials\nReview imports: https://grayznbuffalo.com/admin/automation?date=2030-01-09'});
   assert.ok(!init.body.includes('untrusted') && !init.body.includes('attacker'));
 });
 
