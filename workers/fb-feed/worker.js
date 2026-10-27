@@ -1,5 +1,5 @@
 import {buildExtractionRequest, buildWeeklyLunchExtractionRequest, buildMexicanNightExtractionRequest,buildReliableExtractionRequest} from './extraction.js';
-import {analyzeDailyEvidence,normalizeEvidenceOffer,factKey,serviceFromEvidence,normalizeWeeklyRange,weeklyEntryEvidence,sameMealFacts,sameMenuItemFacts,labelBareSizePrices} from './evidence.js';
+import {analyzeDailyEvidence,normalizeEvidenceOffer,factKey,serviceFromEvidence,normalizeWeeklyRange,weeklyEntryEvidence,sameMealFacts,sameMenuItemFacts} from './evidence.js';
 import { classifyCaption, parserVersionFor } from './classify.js';
 import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexicanNight } from './guarded-auto.js';
 import {ensureAutomaticWeek} from './auto-week.js';
@@ -582,8 +582,7 @@ export function validateExtraction(extractedJson,reliable=false,window={}) {
       if(reliable) {
         if(!Array.isArray(parsed.groups)) throw Error('Missing Mexican Night evidence groups');
         for(const group of parsed.groups) for(const item of group.items??[]) {
-          // Restore printed size labels only when the item's own evidence pairs them.
-          if(item && typeof item.title==='string') item.title=labelBareSizePrices(item.title,item.evidence);
+          // Compare original facts before moving printed size labels for display.
           if(typeof item.evidence!=='string'||!item.evidence.trim()||item.uncertainties?.length
             || !sameMenuItemFacts(item.title,item.description,item.evidence)) throw Error('Mexican Night item facts differ from original evidence');
         }
@@ -591,7 +590,7 @@ export function validateExtraction(extractedJson,reliable=false,window={}) {
       return {candidateJson:JSON.stringify(validateMexicanNight(parsed)),validationResult:'ok',validationReason:'mexican night evidence'};
     }
     catch (error) { return {candidateJson:null,validationResult:'rejected',validationReason:error.message,
-      ...(error.message==='Mexican Night size prices require explicit labels' ? {needsRepair:true,repairShape:'mexican-night'} : {})}; }
+      needsRepair:true,repairShape:'mexican-night'}; }
   }
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'offers' in parsed) {
     if(reliable || parsed.evidence_version===2) {

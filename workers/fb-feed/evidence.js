@@ -493,6 +493,34 @@ export function weeklyEntryEvidence(evidence,day) {
 // Same facts, ignoring service labels/windows and presentation punctuation.
 // Word ORDER is significant: a reordered meal can change sides or alternatives.
 export const sameMealFacts=(content,evidence)=>sameTokensAllowingBundleConnectors(withoutService(content),withoutService(evidence));
+
+// Presentation only, after the caller establishes the meal/price association.
+// Never reposition choices, modifiers, malformed prices or price ranges.
+export function trailingDailyPrice(content) {
+  const found=[...content.matchAll(pricePattern())];
+  if(found.length!==1 || content.replace(pricePattern(),'').includes('$')
+    || /[−+]\s*\$|[-–—]\$|\$\s*\d+(?:\.\d{2})?\s*[-–—/]\s*\d/.test(content)
+    || /\b(?:add|extra|upcharge|substitut\w*|discount|upgrade|optional|modifier)\b/i.test(content)) return content;
+  const price=found[0];
+  if(/^\s*(?:each\b|per\b|\/)/i.test(content.slice(price.index+price[0].length))) return content;
+  const meal=(content.slice(0,price.index)+content.slice(price.index+price[0].length)).replace(/\s+/g,' ').trim();
+  return meal ? `${meal} ${price[0].replace(/\s/g,'')}` : content;
+}
+
+// Recover size labels and move their already-printed run out of the description.
+// The raw item must pass factual comparison BEFORE this lossless presentation.
+export function normalizeMexicanSizeItem(item) {
+  const title=labelBareSizePrices(item.title,item.evidence??item.description);
+  let description=item.description;
+  const pairs=s=>[...String(s).matchAll(/\b(large|small|medium|mini)\s+(\$\s*(?:\d+(?:\.\d{2})?|\.\d{2}))/gi)];
+  const a=pairs(title),b=pairs(description);
+  if(a.length>1 && a.length===b.length && a.every((p,i)=>factKey(p[0])===factKey(b[i][0]))) {
+    const suffix=description.slice(b[0].index);
+    if(/^[\s|/•·,]*$/.test(suffix.replace(/\b(?:large|small|medium|mini)\s+\$\s*(?:\d+(?:\.\d{2})?|\.\d{2})/gi,'')))
+      description=description.slice(0,b[0].index).trimEnd();
+  }
+  return {...item,title,description};
+}
 // A title that lists BARE size prices ("Taco Salad ... $9.00 | $8.50 | $6.00")
 // while its own verbatim evidence prints exactly one LABELLED run with the same
 // amounts in the same order ("Large $9.00 • Small $8.50 • Mini $6.00") gets
@@ -524,12 +552,14 @@ export function labelBareSizePrices(title,evidence) {
 export function sameMenuItemFacts(title,description,evidence) {
   const isPrice=t=>/^price\d+c$/.test(t);
   const tokens=s=>factKey(s.replace(/\+\s*(?=\$)/g,'')).split(' ').filter(Boolean);
-  const item=tokens(`${title}\n${description??''}`),source=tokens(evidence);
+  const source=tokens(evidence);
   const words=list=>JSON.stringify(list.filter(t=>!isPrice(t)).sort());
   const amounts=list=>JSON.stringify([...new Set(list.filter(isPrice))].sort());
   const pairs=list=>new Set(list.flatMap((t,i)=>isPrice(t)?[`${list[i-1]??''}:${t}`]:[]));
   const printed=pairs(source);
-  return words(item)===words(source) && amounts(item)===amounts(source) && [...pairs(item)].every(p=>printed.has(p));
+  const matches=item=>words(item)===words(source) && amounts(item)===amounts(source) && [...pairs(item)].every(p=>printed.has(p));
+  return matches(tokens(`${title}\n${description??''}`))
+    || matches(tokens(`${labelBareSizePrices(title,evidence)}\n${description??''}`));
 }
 
 // Recover a printed overall weekly range without binding an old undated poster

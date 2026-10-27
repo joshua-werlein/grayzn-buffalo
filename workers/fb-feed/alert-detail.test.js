@@ -41,7 +41,7 @@ test('October 26 alert reports a classification failure without guessing slots',
     'Published by automation today: Lunch (1), All Day (2), Soup (1)',
     '',
     'Automatic retry: none pending',
-    'Correction: needed for Monday. Edit and save in the specials editor; saved edits are protected from automation.',
+    'Correction: needed for Monday. Review the held imports and use Approve & Publish; approved values are protected from automation. The specials editor is also available.',
     'Open: https://grayznbuffalo.com/admin/specials?week=77#weekly-day-0',
     'Review imports: https://grayznbuffalo.com/admin/automation?date=2026-10-26',
   ].join('\n'));
@@ -199,7 +199,8 @@ test('a genuine October 26 price conflict sends one detailed email with the Mond
   assert.match(subject,/— 2026-10-26 \(/);
   assert.match(text,/\nDate: Monday, 2026-10-26 \(Chicago\)\n/);
   assert.match(text,/\nHeld:\n- /);
-  assert.match(text,/\nOpen: https:\/\/grayznbuffalo\.com\/admin\/specials\?week=9000#weekly-day-0\nReview imports: https:\/\/grayznbuffalo\.com\/admin\/automation\?date=2026-10-26$/);
+  assert.match(text,/\nOpen: https:\/\/grayznbuffalo\.com\/admin\/specials\?week=9000#weekly-day-0\nReview imports: https:\/\/grayznbuffalo\.com\/admin\/automation\?date=2026-10-26\nPending import:/);
+  assert.equal((text.match(/Pending import: https:\/\/grayznbuffalo\.com\/admin\/automation\?date=2026-10-26#import-[a-f0-9]{32}/g)??[]).length,2);
   // The disputed evening reprint text is never copied into the email.
   assert.ok(!text.includes('$10.75'));
   // The morning All Day values stay published.

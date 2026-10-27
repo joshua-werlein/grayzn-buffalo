@@ -45,7 +45,7 @@ test('Resend success posts one fixed request and returns the provider message id
   assert.deepEqual(JSON.parse(init.body),{from:'alerts@grayznbuffalo.com',to:[RECIPIENT],
     subject:"Grayz'n Buffalo automation needs review — 2030-01-09",
     text:'Available Facebook evidence could not be fully published.\nDate: 2030-01-09 (Chicago)\nStage: publication\n\n'
-      +'Automatic retry: none pending\nCorrection: needed. Edit and save in the specials editor; saved edits are protected from automation.\n'
+      +'Automatic retry: none pending\nCorrection: needed. Review the held imports and use Approve & Publish; approved values are protected from automation. The specials editor is also available.\n'
       +'Open: https://grayznbuffalo.com/admin/specials\nReview imports: https://grayznbuffalo.com/admin/automation?date=2030-01-09'});
   assert.ok(!init.body.includes('untrusted') && !init.body.includes('attacker'));
 });

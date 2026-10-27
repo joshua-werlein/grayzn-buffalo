@@ -3,6 +3,8 @@ import Base from '../../layouts/Base.astro';
 import { isAuthed } from '../../lib/auth';
 import { chicagoCalendarDate } from '../../lib/weekly-specials';
 import { readAutomationReview, reviewDate } from '../../lib/automation-review';
+import {approvalModel,approvalPageContext} from '../../lib/automation-approval';
+import AutomationApproval from '../../components/AutomationApproval.astro';
 const env = (Astro.locals as any).runtime?.env ?? {};
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 Astro.response.headers.set('Cache-Control','no-store');
@@ -11,11 +13,19 @@ const now = (Astro.locals as any).runtime?.now ?? new Date();
 let date = chicagoCalendarDate(now), invalid = false, unavailable = false, review: Awaited<ReturnType<typeof readAutomationReview>> | null = null;
 try { date = reviewDate(Astro.url.searchParams.get('date'),now); } catch { invalid=true; Astro.response.status=400; }
 if (!invalid) try { review = await readAutomationReview(env,date,now); } catch { unavailable=true; Astro.response.status=503; }
+const approvalPanels=new Map<string,any>(),approvalErrors=new Map<string,string>();
+let approvalContext: Awaited<ReturnType<typeof approvalPageContext>>|undefined;
+if(review && date===chicagoCalendarDate(now)) try {approvalContext=await approvalPageContext(env,review.history.map((i: {id: string})=>i.id),date);} catch { /* Per-entry errors stay explicit below. */ }
+if(review && date===chicagoCalendarDate(now)) for(const item of review.history) {
+  try {if(!approvalContext)throw Error('Approval is temporarily unavailable. Reload before publishing.');approvalPanels.set(item.id,await approvalModel(env,item.id,date,now,approvalContext));}
+  catch(error) {approvalErrors.set(item.id,error instanceof Error && !/SQL|D1_|database|no such|sqlite/i.test(error.message)?error.message:'Approval is temporarily unavailable. The Specials editor is still available.');}
+}
 ---
 <Base title="Automation Review — Grayz'n Buffalo Staff">
   <section class="automation-review">
     <h2>Automation Review</h2>
-    <p>Compare Facebook imports with saved website specials. Automation continues normally. Corrections are made in the specials editor.</p>
+    <p>Review Facebook imports, correct selected values and approve them directly. Staff-approved destinations are protected from automation.</p>
+    {Astro.url.searchParams.get('approved')==='1' && <p role="status">Approval saved. The latest website values and import status are shown below.</p>}
     <form method="get" class="date-picker">
       <label for="review-date">Chicago date <input id="review-date" type="date" name="date" value={date} max={chicagoCalendarDate(now)} required /></label>
       <button class="btn btn-primary" type="submit">View imports</button>
@@ -41,6 +51,9 @@ if (!invalid) try { review = await readAutomationReview(env,date,now); } catch {
             {item.values.length ? <ul class="offers">{item.values.map(offer=><li><strong>{offer.value}</strong><small>{offer.comparison}</small></li>)}</ul> : <p>Usable extracted items are unavailable. The source is retained in history.</p>}
             <p class="hint">A matching description does not prove which import wrote a slot. Unidentified services are not assigned to a destination.</p>
             <a href={item.editor}>Open the correction editor</a>
+            {approvalPanels.has(item.id) && <AutomationApproval model={approvalPanels.get(item.id)}/>}
+            {approvalErrors.has(item.id) && <p class="hint">{approvalErrors.get(item.id)}</p>}
+            {date!==chicagoCalendarDate(now) && <p class="hint">Historical imports are read-only here. They cannot be published into today’s menu.</p>}
             {!!item.audits.length && <details><summary>Recent import history</summary><ul>{item.audits.map(event=><li><time>{event.at} UTC</time> · {event.type}{event.type==='review' && <p>{event.detail}</p>}</li>)}</ul></details>}
           </article>)}
         </section>

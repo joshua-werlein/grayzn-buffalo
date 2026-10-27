@@ -6,6 +6,7 @@ import { eventState } from './special-events';
 import { plainValue } from '../../workers/fb-feed/alert-detail.js';
 import { applySharedWeeklyLunchPrice, validateWeeklyLunch } from '../../workers/fb-feed/reconcile.js';
 import { normalizeWeeklyRange, factKey } from '../../workers/fb-feed/evidence.js';
+import {approvalEvents} from '../../workers/fb-feed/staff-review.js';
 
 const MAX_IMPORTS = 30, MAX_JSON = 24000;
 // Facebook stores offsets as +0000; SQLite date functions only accept +00:00, Z or no offset.
@@ -43,6 +44,7 @@ export function facebookLink(value: unknown): string | null {
 }
 export function reviewReason(value: unknown): string {
   const text = typeof value === 'string' ? value : '';
+  if(text.startsWith('STAFF_APPROVAL:')) return 'Staff-confirmed publication; approved values and prior values are retained in the import audit.';
   if (text.startsWith('GUARDED_AUTO_CONFLICT:')) {
     const reasons = new Map<string,number>();
     for (const match of text.slice(0,6000).matchAll(/"reason"\s*:\s*("(?:[^"\\]|\\.)*")/g)) {
@@ -54,6 +56,11 @@ export function reviewReason(value: unknown): string {
   return reviewText(text,600);
 }
 export function importOutcome(source: any, events: any[]) {
+  const approvals=approvalEvents(events);
+  if(approvals.some((a: any)=>a.complete)) return {status:'Staff Approved',reason:'Approved and published by staff. Saved destinations are protected from automation.'};
+  if(approvals.length) return {status:'Partially Staff Approved',reason:'Selected offers were published and protected. Remaining offers still need review.'};
+  const raw=parseReviewEvidence(source.extracted_json)??parseReviewEvidence(source.candidate_json);
+  if(['mexican-night','weekly-lunch'].includes(raw?.type)) events=events.filter(e=>!/^GUARDED_AUTO(?::|_CONFLICT:)/.test(e.detail??''));
   const latest = events.find(e => e.event_type === 'review');
   const detail = typeof latest?.detail === 'string' ? latest.detail : '';
   const publication = events.find(e => e.event_type === 'review' && /^GUARDED_(?:AUTO|WEEKLY_LUNCH|MEXICAN_NIGHT):/.test(e.detail));
@@ -109,13 +116,15 @@ export async function readAutomationReview(env: any, day: string, now = new Date
   const from = new Date(mondayForIsoDate(day) + 'T12:00:00Z'); from.setUTCDate(from.getUTCDate()-1);
   const until = calendarDatesFrom(day,2)[1];
   const imports = await query(`SELECT id,fb_post_id,fb_created_time,fetched_at,processed_at,permalink_url,target_collection_id,
-    processing_status,validation_result,substr(validation_reason,1,600) validation_reason,substr(classification_reason,1,600) classification_reason,
+    processing_status,review_status,validation_result,substr(validation_reason,1,600) validation_reason,substr(classification_reason,1,600) classification_reason,
     CASE WHEN length(candidate_json)<=24000 THEN candidate_json END candidate_json,
     CASE WHEN length(extracted_json)<=24000 THEN extracted_json END extracted_json
     FROM special_imports WHERE julianday(${SQL_CREATED})>=julianday(?1) AND julianday(${SQL_CREATED})<julianday(?2) ORDER BY fetched_at DESC,id DESC LIMIT 31`,new Date(chicagoMidnight(from.toISOString().slice(0,10))).toISOString(),new Date(chicagoMidnight(until)).toISOString());
   const selected = imports.slice(0,MAX_IMPORTS);
   const ids = JSON.stringify(selected.map((i: any) => i.id));
-  const events = await query(`SELECT e.id,e.import_id,e.event_type,substr(e.detail,1,6000) detail,e.occurred_at
+  const events = await query(`SELECT e.id,e.import_id,e.event_type,
+    CASE WHEN e.detail LIKE 'STAFF_APPROVAL:%' THEN 'STAFF_APPROVAL:'||json_object('version',1,'complete',json_extract(substr(e.detail,16),'$.complete'),'rows',json('[]'))
+    ELSE substr(e.detail,1,6000) END detail,e.occurred_at
     FROM special_import_events e WHERE e.import_id IN (SELECT value FROM json_each(?1))
     AND e.id IN (SELECT h.id FROM special_import_events h WHERE h.import_id=e.import_id ORDER BY h.id DESC LIMIT 8)
     ORDER BY e.id DESC LIMIT 240`,ids);
@@ -155,7 +164,7 @@ export async function readAutomationReview(env: any, day: string, now = new Date
       : currentGroups.filter((g: any)=>g.collection_id===week?.collection_id && (extracted.scope!=='Weekly Lunch' || g.service==='lunch'));
     const current = linkedEvents.length ? linkedEvents.flatMap(e=>e.values) : website.flatMap((g: any)=>g.slots.map((s: any)=>s.value));
     return {id:source.id,source:reviewText(source.fb_post_id,90),created:reviewTimestamp(source.fb_created_time),fetched:reviewTimestamp(source.fetched_at),processed:reviewTimestamp(source.processed_at),link:facebookLink(source.permalink_url),...extracted,...importOutcome(source,audit),
-      values:extracted.values.map((value: string)=>({value,comparison:current.some((v: string)=>factKey(v)===factKey(value))?'Matching saved text':'No identical saved text — compare wording, price and service; this does not identify a destination slot'})),
+      values:extracted.values.map((value: string)=>({value,comparison:current.some((v: string)=>factKey(v)===factKey(value))?'Matching saved text — comparison only':'No identical saved text — comparison only; matching is not required to replace an unlocked recurring default'})),
       editor:linkedEvents.length?'/admin/specials#special-events':extracted.scope==='Mexican Night'?'/admin/specials#mexican-form':editor,
       audits:audit.slice(0,4).map((e: any)=>({type:reviewText(e.event_type,30),at:reviewTimestamp(e.occurred_at),detail:reviewReason(e.detail)})),
       relevant:extracted.relevant || linkedEvents.length>0};

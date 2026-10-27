@@ -1,0 +1,501 @@
+{
+  "sourceDate": "2026-10-27",
+  "daily": {
+    "day_of_week": 2,
+    "day_evidence": "TUESDAY",
+    "poster_evidence": "TUESDAY SPECIALS",
+    "delivery": {
+      "status": "ambiguous",
+      "evidence": "DINE IN OR TAKEOUT",
+      "date_evidence": "",
+      "uncertainties": []
+    },
+    "offers": [
+      {
+        "content": "Gyro Sandwich with Beer Fries & a Drink $9.75",
+        "evidence": "\u2022 Gyro Sandwich with Beer Fries & a Drink $9.75",
+        "service_time": "11-1:30",
+        "service_evidence": "11-1:30",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Bacon Cheeseburger with Side Salad, $10.25 Soup or Coleslaw",
+        "evidence": "\u2022 Bacon Cheeseburger with Side Salad, $10.25 Soup or Coleslaw",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": [
+          "The placement of '$10.25' between 'Side Salad,' and 'Soup or Coleslaw' makes it ambiguous whether the price applies to the burger meal or the soup/coleslaw."
+        ]
+      },
+      {
+        "content": "Grilled Ham and Cheese with a Cup of Soup or Coleslaw $7.25",
+        "evidence": "\u2022 Grilled Ham and Cheese with a Cup of $7.25 Soup or Coleslaw",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": [
+          "The printed text '$7.25' is inserted between 'Cup of' and 'Soup or Coleslaw', making the exact association of the price to the meal or the soup ambiguous."
+        ]
+      }
+    ]
+  },
+  "dailyCandidate": {
+    "evidence_version": 2,
+    "day_of_week": 2,
+    "day_evidence": "TUESDAY",
+    "poster_evidence": "TUESDAY SPECIALS",
+    "offers": [
+      {
+        "content": "Gyro Sandwich with Beer Fries & a Drink $9.75",
+        "service_time": "11-1:30",
+        "evidence": "\u2022 Gyro Sandwich with Beer Fries & a Drink $9.75",
+        "service_evidence": "11-1:30",
+        "uncertainties": []
+      },
+      {
+        "content": "Bacon Cheeseburger with Side Salad, $10.25 Soup or Coleslaw",
+        "evidence": "\u2022 Bacon Cheeseburger with Side Salad, $10.25 Soup or Coleslaw",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": [
+          "The placement of '$10.25' between 'Side Salad,' and 'Soup or Coleslaw' makes it ambiguous whether the price applies to the burger meal or the soup/coleslaw."
+        ]
+      },
+      {
+        "content": "Grilled Ham and Cheese with a Cup of Soup or Coleslaw $7.25",
+        "evidence": "\u2022 Grilled Ham and Cheese with a Cup of $7.25 Soup or Coleslaw",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": [
+          "The printed text '$7.25' is inserted between 'Cup of' and 'Soup or Coleslaw', making the exact association of the price to the meal or the soup ambiguous."
+        ]
+      }
+    ],
+    "issues": [
+      {
+        "index": 1,
+        "reason": "Uncertain extracted offer",
+        "service": "unknown"
+      },
+      {
+        "index": 2,
+        "reason": "Uncertain extracted offer",
+        "service": "unknown"
+      }
+    ]
+  },
+  "mexican": {
+    "type": "mexican-night",
+    "poster_evidence": "TONIGHT @ GRAYZ'N BUFFALO 5-10PM! LET'S GO BREWERS! MEXICAN NIGHT",
+    "schedule": "Every Tuesday Night 5-10pm",
+    "groups": [
+      {
+        "label": "Entrees",
+        "items": [
+          {
+            "title": "2 Soft Shell ... $7.75",
+            "description": "Meat, shredded cheese, lettuce, onion, tomato, and black olives",
+            "evidence": "2 Soft Shell ... $7.75 Meat, shredded cheese, lettuce, onion, tomato, and black olives",
+            "uncertainties": []
+          },
+          {
+            "title": "Enchilada ... $9.25",
+            "description": "Meat, refried beans, shredded cheese, and onion rolled up in a tortilla. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side",
+            "evidence": "Enchilada ... $9.25 Meat, refried beans, shredded cheese, and onion rolled up in a tortilla. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side",
+            "uncertainties": []
+          },
+          {
+            "title": "Burrito ... $10.25",
+            "description": "lettuce, onion, and tomato rolled up in a tortilla. Topped with shredded cheese, black olives, and enchilada sauce",
+            "evidence": "Burrito ... $10.25 lettuce, onion, and tomato rolled up in a tortilla. Topped with shredded cheese, black olives, and enchilada sauce",
+            "uncertainties": []
+          },
+          {
+            "title": "Nacho Deluxe ... $9.75",
+            "description": "Meat, lettuce, onion, tomato, black olives, and nacho cheese served on top of chips",
+            "evidence": "Nacho Deluxe ... $9.75 Meat, lettuce, onion, tomato, black olives, and nacho cheese served on top of chips",
+            "uncertainties": []
+          }
+        ]
+      },
+      {
+        "label": "Entrees",
+        "items": [
+          {
+            "title": "Chimichanga ... $12.25",
+            "description": "Meat, refried beans, shredded cheese, and onion rolled up in a tortilla and fried. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side",
+            "evidence": "Chimichanga ... $12.25 Meat, refried beans, shredded cheese, and onion rolled up in a tortilla and fried. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side",
+            "uncertainties": []
+          },
+          {
+            "title": "Taco Salad ... $9.00 | $8.50 | $6.00",
+            "description": "Meat, shredded cheese, lettuce, onion, tomato, and black olives served in a shell bowl Large $9.00 \u2022 Small $8.50 \u2022 Mini $6.00",
+            "evidence": "Taco Salad ... $9.00 | $8.50 | $6.00 Meat, shredded cheese, lettuce, onion, tomato, and black olives served in a shell bowl Large $9.00 \u2022 Small $8.50 \u2022 Mini $6.00",
+            "uncertainties": []
+          }
+        ]
+      },
+      {
+        "label": "Entrees",
+        "items": [
+          {
+            "title": "Chips & Salsa or Chips & Cheese ... $4.00",
+            "description": "",
+            "evidence": "Chips & Salsa or Chips & Cheese ... $4.00",
+            "uncertainties": []
+          }
+        ]
+      },
+      {
+        "label": "Substitutions & Add-ons",
+        "items": [
+          {
+            "title": "Substitute chicken $1.50",
+            "description": "",
+            "evidence": "Substitute chicken $1.50",
+            "uncertainties": []
+          },
+          {
+            "title": "Add Nacho Cheese $1.50",
+            "description": "",
+            "evidence": "Add Nacho Cheese $1.50",
+            "uncertainties": []
+          },
+          {
+            "title": "Substitute Queso 50c",
+            "description": "",
+            "evidence": "Substitute Queso 50c",
+            "uncertainties": []
+          },
+          {
+            "title": "Substitute Shredded Cheese for Nacho Cheese 50c",
+            "description": "",
+            "evidence": "Substitute Shredded Cheese for Nacho Cheese 50c",
+            "uncertainties": []
+          }
+        ]
+      },
+      {
+        "label": "Substitutions & Add-ons",
+        "items": [
+          {
+            "title": "Add nacho cheese or salsa +$1.50",
+            "description": "",
+            "evidence": "Add nacho cheese or salsa +$1.50",
+            "uncertainties": []
+          }
+        ]
+      }
+    ]
+  },
+  "readings": [
+    {
+      "kind": "daily",
+      "attempt": 0,
+      "raw": {
+        "day_of_week": 2,
+        "day_evidence": "TUESDAY",
+        "poster_evidence": "TUESDAY SPECIALS",
+        "delivery": {
+          "status": "ambiguous",
+          "evidence": "DINE IN OR TAKEOUT",
+          "date_evidence": "",
+          "uncertainties": []
+        },
+        "offers": [
+          {
+            "content": "Gyro Sandwich with Beer Fries & a Drink $9.75",
+            "evidence": "\u2022 Gyro Sandwich with Beer Fries & a Drink $9.75",
+            "service_time": "11-1:30",
+            "service_evidence": "11-1:30",
+            "date_evidence": "",
+            "uncertainties": []
+          },
+          {
+            "content": "Bacon Cheeseburger with Side Salad, $10.25 Soup or Coleslaw",
+            "evidence": "\u2022 Bacon Cheeseburger with Side Salad, $10.25 Soup or Coleslaw",
+            "service_time": "",
+            "service_evidence": "",
+            "date_evidence": "",
+            "uncertainties": []
+          },
+          {
+            "content": "Grilled Ham and Cheese with a Cup of $7.25 Soup or Coleslaw",
+            "evidence": "\u2022 Grilled Ham and Cheese with a Cup of $7.25 Soup or Coleslaw",
+            "service_time": "",
+            "service_evidence": "",
+            "date_evidence": "",
+            "uncertainties": [
+              "The phrase 'with a Cup of $7.25 Soup or Coleslaw' is syntactically ambiguous regarding whether the price applies to the meal or the cup of soup."
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "daily",
+      "attempt": 1,
+      "raw": {
+        "day_of_week": 2,
+        "day_evidence": "TUESDAY",
+        "poster_evidence": "TUESDAY SPECIALS",
+        "delivery": {
+          "status": "ambiguous",
+          "evidence": "DINE IN OR TAKEOUT",
+          "date_evidence": "",
+          "uncertainties": []
+        },
+        "offers": [
+          {
+            "content": "Gyro Sandwich with Beer Fries & a Drink $9.75",
+            "evidence": "\u2022 Gyro Sandwich with Beer Fries & a Drink $9.75",
+            "service_time": "11-1:30",
+            "service_evidence": "11-1:30",
+            "date_evidence": "",
+            "uncertainties": []
+          },
+          {
+            "content": "Bacon Cheeseburger with Side Salad, $10.25 Soup or Coleslaw",
+            "evidence": "\u2022 Bacon Cheeseburger with Side Salad, $10.25 Soup or Coleslaw",
+            "service_time": "",
+            "service_evidence": "",
+            "date_evidence": "",
+            "uncertainties": [
+              "The placement of '$10.25' between 'Side Salad,' and 'Soup or Coleslaw' makes it ambiguous whether the price applies to the burger meal or the soup/coleslaw."
+            ]
+          },
+          {
+            "content": "Grilled Ham and Cheese with a Cup of Soup or Coleslaw $7.25",
+            "evidence": "\u2022 Grilled Ham and Cheese with a Cup of $7.25 Soup or Coleslaw",
+            "service_time": "",
+            "service_evidence": "",
+            "date_evidence": "",
+            "uncertainties": [
+              "The printed text '$7.25' is inserted between 'Cup of' and 'Soup or Coleslaw', making the exact association of the price to the meal or the soup ambiguous."
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "mexican",
+      "attempt": 0,
+      "raw": {
+        "type": "mexican-night",
+        "poster_evidence": "TONIGHT @ GRAYZ'N BUFFALO 5-10PM! LET'S GO BREWERS! MEXICAN NIGHT",
+        "schedule": "Every Tuesday Night 5-10pm",
+        "groups": [
+          {
+            "label": "Entrees",
+            "items": [
+              {
+                "title": "2 Soft Shell ... $7.75",
+                "description": "Meat, shredded cheese, lettuce, onion, tomato, and black olives",
+                "evidence": "2 Soft Shell ... $7.75",
+                "uncertainties": []
+              },
+              {
+                "title": "Enchilada ... $9.25",
+                "description": "Meat, refried beans, shredded cheese, and onion rolled up in a tortilla. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side",
+                "evidence": "Enchilada ... $9.25",
+                "uncertainties": []
+              },
+              {
+                "title": "Burrito ... $10.25",
+                "description": "lettuce, onion, and tomato rolled up in a tortilla. Topped with shredded cheese, black olives, and enchilada sauce",
+                "evidence": "Burrito ... $10.25",
+                "uncertainties": []
+              },
+              {
+                "title": "Nacho Deluxe ... $9.75",
+                "description": "Meat, lettuce, onion, tomato, black olives, and nacho cheese served on top of chips",
+                "evidence": "Nacho Deluxe ... $9.75",
+                "uncertainties": []
+              }
+            ]
+          },
+          {
+            "label": "Entrees",
+            "items": [
+              {
+                "title": "Chimichanga ... $12.25",
+                "description": "Meat, refried beans, shredded cheese, and onion rolled up in a tortilla and fried. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side",
+                "evidence": "Chimichanga ... $12.25",
+                "uncertainties": []
+              },
+              {
+                "title": "Taco Salad ... $9.00 | $8.50 | $6.00",
+                "description": "Meat, shredded cheese, lettuce, onion, tomato, and black olives served in a shell bowl. Large $9.00 \u2022 Small $8.50 \u2022 Mini $6.00",
+                "evidence": "Taco Salad ... $9.00 | $8.50 | $6.00 Meat, shredded cheese, lettuce, onion, tomato, and black olives served in a shell bowl Large $9.00 \u2022 Small $8.50 \u2022 Mini $6.00",
+                "uncertainties": []
+              }
+            ]
+          },
+          {
+            "label": "Entrees",
+            "items": [
+              {
+                "title": "Chips & Salsa or Chips & Cheese ... $4.00",
+                "description": "",
+                "evidence": "Chips & Salsa or Chips & Cheese ... $4.00",
+                "uncertainties": []
+              }
+            ]
+          },
+          {
+            "label": "Substitutions & Add-ons",
+            "items": [
+              {
+                "title": "Substitute chicken $1.50",
+                "description": "",
+                "evidence": "Substitute chicken $1.50",
+                "uncertainties": []
+              },
+              {
+                "title": "Add Nacho Cheese $1.50",
+                "description": "",
+                "evidence": "Add Nacho Cheese $1.50",
+                "uncertainties": []
+              },
+              {
+                "title": "Substitute Queso 50c",
+                "description": "",
+                "evidence": "Substitute Queso 50c",
+                "uncertainties": []
+              },
+              {
+                "title": "Substitute Shredded Cheese for Nacho Cheese 50c",
+                "description": "",
+                "evidence": "Substitute Shredded Cheese for Nacho Cheese 50c",
+                "uncertainties": []
+              }
+            ]
+          },
+          {
+            "label": "Substitutions & Add-ons",
+            "items": [
+              {
+                "title": "Add nacho cheese or salsa +$1.50",
+                "description": "",
+                "evidence": "Add nacho cheese or salsa +$1.50",
+                "uncertainties": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "mexican",
+      "attempt": 1,
+      "raw": {
+        "type": "mexican-night",
+        "poster_evidence": "TONIGHT @ GRAYZ'N BUFFALO 5-10PM! LET'S GO BREWERS! MEXICAN NIGHT",
+        "schedule": "Every Tuesday Night 5-10pm",
+        "groups": [
+          {
+            "label": "Entrees",
+            "items": [
+              {
+                "title": "2 Soft Shell ... $7.75",
+                "description": "Meat, shredded cheese, lettuce, onion, tomato, and black olives",
+                "evidence": "2 Soft Shell ... $7.75 Meat, shredded cheese, lettuce, onion, tomato, and black olives",
+                "uncertainties": []
+              },
+              {
+                "title": "Enchilada ... $9.25",
+                "description": "Meat, refried beans, shredded cheese, and onion rolled up in a tortilla. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side",
+                "evidence": "Enchilada ... $9.25 Meat, refried beans, shredded cheese, and onion rolled up in a tortilla. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side",
+                "uncertainties": []
+              },
+              {
+                "title": "Burrito ... $10.25",
+                "description": "lettuce, onion, and tomato rolled up in a tortilla. Topped with shredded cheese, black olives, and enchilada sauce",
+                "evidence": "Burrito ... $10.25 lettuce, onion, and tomato rolled up in a tortilla. Topped with shredded cheese, black olives, and enchilada sauce",
+                "uncertainties": []
+              },
+              {
+                "title": "Nacho Deluxe ... $9.75",
+                "description": "Meat, lettuce, onion, tomato, black olives, and nacho cheese served on top of chips",
+                "evidence": "Nacho Deluxe ... $9.75 Meat, lettuce, onion, tomato, black olives, and nacho cheese served on top of chips",
+                "uncertainties": []
+              }
+            ]
+          },
+          {
+            "label": "Entrees",
+            "items": [
+              {
+                "title": "Chimichanga ... $12.25",
+                "description": "Meat, refried beans, shredded cheese, and onion rolled up in a tortilla and fried. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side",
+                "evidence": "Chimichanga ... $12.25 Meat, refried beans, shredded cheese, and onion rolled up in a tortilla and fried. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side",
+                "uncertainties": []
+              },
+              {
+                "title": "Taco Salad ... $9.00 | $8.50 | $6.00",
+                "description": "Meat, shredded cheese, lettuce, onion, tomato, and black olives served in a shell bowl Large $9.00 \u2022 Small $8.50 \u2022 Mini $6.00",
+                "evidence": "Taco Salad ... $9.00 | $8.50 | $6.00 Meat, shredded cheese, lettuce, onion, tomato, and black olives served in a shell bowl Large $9.00 \u2022 Small $8.50 \u2022 Mini $6.00",
+                "uncertainties": []
+              }
+            ]
+          },
+          {
+            "label": "Entrees",
+            "items": [
+              {
+                "title": "Chips & Salsa or Chips & Cheese ... $4.00",
+                "description": "",
+                "evidence": "Chips & Salsa or Chips & Cheese ... $4.00",
+                "uncertainties": []
+              }
+            ]
+          },
+          {
+            "label": "Substitutions & Add-ons",
+            "items": [
+              {
+                "title": "Substitute chicken $1.50",
+                "description": "",
+                "evidence": "Substitute chicken $1.50",
+                "uncertainties": []
+              },
+              {
+                "title": "Add Nacho Cheese $1.50",
+                "description": "",
+                "evidence": "Add Nacho Cheese $1.50",
+                "uncertainties": []
+              },
+              {
+                "title": "Substitute Queso 50c",
+                "description": "",
+                "evidence": "Substitute Queso 50c",
+                "uncertainties": []
+              },
+              {
+                "title": "Substitute Shredded Cheese for Nacho Cheese 50c",
+                "description": "",
+                "evidence": "Substitute Shredded Cheese for Nacho Cheese 50c",
+                "uncertainties": []
+              }
+            ]
+          },
+          {
+            "label": "Substitutions & Add-ons",
+            "items": [
+              {
+                "title": "Add nacho cheese or salsa +$1.50",
+                "description": "",
+                "evidence": "Add nacho cheese or salsa +$1.50",
+                "uncertainties": []
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

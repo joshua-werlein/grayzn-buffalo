@@ -1,0 +1,107 @@
+---
+interface Props { model: any }
+const {model}=Astro.props;
+const current=model.collection.groups.filter((g: any)=>g.enabled===1).flatMap((g: any)=>g.slots.filter((s: any)=>s.content).map((s: any)=>({label:g.label,position:s.position,content:[s.content,s.price].filter(Boolean).join(' ')})));
+---
+<details class="approval-panel">
+  <summary>Review &amp; approve {model.mexican?'complete Mexican Night menu':'selected offers'}</summary>
+  <form data-approval-form data-import-id={model.source.id} data-revision={model.collection.revision} data-day={model.day} data-evidence-hash={model.evidenceHash} data-request-id={model.requestId}>
+    <p>{model.mexican?'Approve the complete related menu. Correct individual titles and descriptions below; existing unadvertised items will be retained.':'Select offers, correct their text, and choose the service and position for each. Only selected destinations will change.'}</p>
+    {model.mexican && <details><summary>Current saved Mexican Night menu</summary><ul>{current.map((s: any)=><li><strong>{s.label} · {s.position}</strong><p class="menu-text">{s.content}</p></li>)}</ul></details>}
+    {model.entries.map((entry: any,index: number)=>{
+      const suggested=model.destinations.find((d: any)=>d.service===entry.suggestedService && d.position===entry.suggestedPosition);
+      const field=`approval-${model.source.id}-${index}`;
+      return <fieldset data-entry data-key={entry.key} disabled={entry.done}>
+        <legend>{model.mexican?entry.label:`Offer ${index+1}`}{entry.done?' · Already approved':''}</legend>
+        {!model.mexican && <label class="check"><input type="checkbox" data-selected/> Select this offer</label>}
+        {model.mexican?<>
+          <label for={`${field}-title`}>Item and prices<input id={`${field}-title`} data-title value={entry.title} maxlength="300" required/></label>
+          <label for={`${field}-description`}>Description<textarea id={`${field}-description`} data-description rows="4" maxlength="300">{entry.description}</textarea></label>
+          <input type="hidden" data-label value={entry.label}/>
+        </>:<>
+          <label for={`${field}-content`}>Complete special and price<textarea id={`${field}-content`} data-content rows="3" maxlength="150">{entry.content}</textarea></label>
+          <label for={`${field}-destination`}>Destination service and slot<select id={`${field}-destination`} data-destination>
+            <option value="" selected={!suggested}>Choose a destination</option>
+            {model.destinations.map((d: any)=><option value={d.id} selected={d.id===suggested?.id} data-current={d.current} data-protected={d.protected?'yes':'no'}>{d.label}{d.protected?' · protected':''}</option>)}
+          </select></label>
+          <p>Current destination: <span data-current-value class="menu-text">{suggested?.current||'(blank or not selected)'}</span></p>
+        </>}
+        {entry.uncertainties.length>0 && <div class="warning"><strong>AI uncertainty — verify against the source:</strong><ul>{entry.uncertainties.map((u: string)=><li>{u}</li>)}</ul></div>}
+        <details><summary>Original extracted evidence</summary><p class="menu-text">{entry.evidence||'No separate evidence text was retained. Verify the original Facebook image.'}</p></details>
+        <label class="check"><input type="checkbox" data-override/> Intentionally replace an existing protected correction for this item, if it differs. The confirmation will show its exact value.</label>
+      </fieldset>;
+    })}
+    <label class="check"><input type="checkbox" data-verified required/> I checked the selected descriptions, prices, portion labels and destinations against the original Facebook source.</label>
+    <p class="approval-status" data-approval-status role="status" aria-live="polite"></p>
+    <button type="submit" class="btn btn-primary">Review changes</button>
+    <noscript>JavaScript is required for the confirmation preview. You can also use the Specials editor.</noscript>
+    <dialog aria-label="Confirm approved specials">
+      <h3 tabindex="-1" data-dialog-heading>Confirm exactly what will change</h3><p>These values will be staff-confirmed and protected from later automation.</p>
+      <div data-confirmation-rows></div>
+      <div class="confirmation-actions"><button type="button" class="btn btn-ghost" data-cancel>Keep editing</button><button type="button" class="btn btn-primary" data-publish>Approve &amp; Publish</button></div>
+      <p data-dialog-status role="alert"></p>
+    </dialog>
+  </form>
+</details>
+<script>
+  document.querySelectorAll<HTMLFormElement>('[data-approval-form]').forEach(form=>{
+    const status=form.querySelector<HTMLElement>('[data-approval-status]')!;
+    const dialog=form.querySelector<HTMLDialogElement>('dialog')!;
+    const previewButton=form.querySelector<HTMLButtonElement>('[type=submit]')!;
+    const publish=form.querySelector<HTMLButtonElement>('[data-publish]')!;
+    const cancel=form.querySelector<HTMLButtonElement>('[data-cancel]')!;
+    let pending: any=null,busy=false;
+    const field=(entry: Element,name: string)=>(entry.querySelector(`[data-${name}]`) as HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|null)?.value??'';
+    const checked=(entry: Element,name: string)=>(entry.querySelector(`[data-${name}]`) as HTMLInputElement|null)?.checked===true;
+    const send=async(mode: string,input: any)=>{
+      const response=await fetch('/admin/automation/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,input})});
+      const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error??'Could not save. Your draft is preserved.');return result;
+    };
+    form.querySelectorAll<HTMLSelectElement>('[data-destination]').forEach(select=>select.addEventListener('change',()=>{
+      select.closest('[data-entry]')!.querySelector('[data-current-value]')!.textContent=select.selectedOptions[0]?.dataset.current||'(blank or not selected)';
+    }));
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();if(busy)return;
+      status.textContent='Checking the latest saved values…';busy=true;previewButton.disabled=true;
+      const rows=Array.from(form.querySelectorAll<HTMLFieldSetElement>('[data-entry]')).filter(e=>!e.disabled && (e.querySelector('[data-title]')||checked(e,'selected'))).map(e=>({key:e.dataset.key,
+        ...(e.querySelector('[data-title]')?{title:field(e,'title'),description:field(e,'description'),label:field(e,'label')}:{content:field(e,'content'),destination:field(e,'destination')}),override:checked(e,'override')}));
+      pending={importId:form.dataset.importId,revision:Number(form.dataset.revision),day:form.dataset.day,evidenceHash:form.dataset.evidenceHash,requestId:form.dataset.requestId,rows,confirmed:checked(form,'verified')};
+      try {
+        const result=await send('preview',pending);
+        if(result.duplicate){status.textContent='This request was already approved. Reload to see saved values.';return;}
+        const list=form.querySelector('[data-confirmation-rows]')!;list.replaceChildren();
+        for(const row of result.audit.rows){
+          const section=document.createElement('div');section.className='confirmation-row';
+          for(const value of [`${row.groupLabel} · slot ${row.position}`,`Current: ${[row.previous.content,row.previous.price].filter(Boolean).join(' ')||'(blank)'}`,`Replace with: ${row.content}`,row.override?'Protected replacement explicitly confirmed':'']) {
+            if(!value)continue;const p=document.createElement('p');p.className='menu-text';p.textContent=value;section.append(p);
+          }
+          list.append(section);
+        }
+        form.querySelector('[data-dialog-status]')!.textContent='';status.textContent='Review the confirmation before publishing.';dialog.showModal();
+        dialog.querySelector<HTMLElement>('[data-dialog-heading]')!.focus({preventScroll:true});dialog.scrollTop=0;
+      }catch(error){status.textContent=(error as Error).message;pending=null;}
+      finally{busy=false;previewButton.disabled=false;}
+    });
+    cancel.addEventListener('click',()=>{if(!busy){dialog.close();pending=null;}});
+    dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault();else pending=null;});
+    publish.addEventListener('click',async()=>{
+      if(busy||!pending)return;busy=true;publish.disabled=true;cancel.disabled=true;form.setAttribute('aria-busy','true');
+      const message=form.querySelector('[data-dialog-status]')!;message.textContent='Publishing confirmed values…';
+      try {await send('publish',pending);window.location.assign(`/admin/automation?date=${encodeURIComponent(form.dataset.day!)}&approved=1#import-${encodeURIComponent(form.dataset.importId!)}`);}
+      catch(error){message.textContent=(error as Error).message;}
+      finally{busy=false;publish.disabled=false;cancel.disabled=false;form.removeAttribute('aria-busy');}
+    });
+  });
+</script>
+<style>
+  .approval-panel{margin-top:1rem;border-top:1px solid #847252;padding-top:.5rem;min-width:0}
+  summary{cursor:pointer;min-height:44px;padding:.5rem 0;font-weight:700}
+  form,fieldset,label{display:grid;gap:.6rem;min-width:0}form{gap:1rem}fieldset{border:1px solid #847252;border-radius:6px;padding:.75rem;margin:0}legend{padding:0 .3rem;font-weight:700}
+  input:not([type=checkbox]),select,textarea{box-sizing:border-box;width:100%;min-width:0;max-width:100%;min-height:44px;padding:.65rem;font:inherit;font-size:16px;background:var(--cream);color:var(--ink);border:1px solid #847252;border-radius:5px}
+  textarea{resize:vertical}.check{display:flex;gap:.6rem;align-items:flex-start;font-size:.95rem;line-height:1.5;min-height:44px}.check input{flex:0 0 22px;width:22px;height:22px;margin-top:.2rem}
+  .menu-text{white-space:pre-wrap;overflow-wrap:anywhere}.warning{border-left:4px solid #a05c18;padding:.65rem;background:#fff3d6;color:#412b13}.warning ul{padding-left:1.1rem}
+  dialog{position:fixed;inset:0;margin:auto;box-sizing:border-box;width:calc(100% - 1rem);max-width:650px;max-height:85dvh;overflow:auto;border:2px solid #847252;border-radius:8px;background:var(--cream);color:var(--ink);padding:1rem}dialog::backdrop{background:rgba(0,0,0,.65)}
+  [data-confirmation-rows] :global(.confirmation-row){border-top:1px solid #847252;padding:.5rem 0}
+  [data-confirmation-rows] :global(p){white-space:pre-wrap;overflow-wrap:anywhere;margin:.4rem 0}
+  .confirmation-actions{display:flex;flex-wrap:wrap;gap:.75rem}.confirmation-actions button{flex:1;min-height:48px;margin:0;white-space:normal}.approval-status{margin:0;font-weight:600}
+</style>

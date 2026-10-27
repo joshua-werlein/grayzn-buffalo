@@ -1,6 +1,6 @@
 import {composeMexicanItem} from '../../src/lib/mexican-item.js';
 import {promotionalHeading} from './mexican-menu.js';
-import {labelBareSizePrices} from './evidence.js';
+import {trailingDailyPrice,normalizeMexicanSizeItem} from './evidence.js';
 import {standaloneSoup,hasStandaloneSoupLabel} from '../../src/lib/daily-soup.js';
 import {formatWingNight,validateWingNight} from './wing-night.js';
 import {planDailyEvidence} from './evidence.js';
@@ -22,6 +22,7 @@ export function canonicalizeSlotContent(content, weekday, service) {
   if (weekday === 3 && service === 'nightly' && /\bwing\s+night\b/i.test(content))
     return formatWingNight(content);
   content = normalizeInchMarks(content);
+  if(weekday>=0 && !(weekday===2 && service==='nightly')) content = trailingDailyPrice(content);
   // ALL CAPS Facebook poster text → title case before publication.
   // Only fires when every Unicode letter in the string is uppercase; prices
   // ($9.75, $.89), punctuation (—, &), and non-letter characters are untouched.
@@ -312,11 +313,12 @@ export function validateMexicanNight(value) {
     const items = g.items.map((item, j) => {
       if (!item || typeof item !== 'object') throw Error(`Invalid Mexican Night: group ${i} item ${j} is not an object`);
       if (typeof item.title !== 'string' || !item.title.trim()) throw Error(`Invalid Mexican Night: group ${i} item ${j} title must be non-empty text`);
-      const title = labelBareSizePrices(item.title, item.evidence ?? item.description);
+      const normalized = normalizeMexicanSizeItem(item);
+      const title = normalized.title;
       if (/\$\s*\d+(?:\.\d{1,2})?\s*[|/•·,]\s*\$/.test(title)) throw Error('Mexican Night size prices require explicit labels');
-      const content = composeMexicanItem(title, item.description);
+      const content = composeMexicanItem(title, normalized.description);
       if (containsConsumerAdvisory(content)) throw Error(`Invalid Mexican Night: consumer advisory in group ${i} item ${j}`);
-      return {title, description: item.description};
+      return {title, description: normalized.description};
     }).filter(item => !promotionalHeading(item.title));
     return {label: g.label, items};
   }).filter(g => g.items.length);

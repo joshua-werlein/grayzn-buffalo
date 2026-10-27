@@ -89,7 +89,9 @@ export function dailyAlertDetail(result, data, day, weekday) {
       current.push({category, values, empty: !values.length});
     }
     const index = EDITOR_DAY_ORDER.indexOf(weekday);
-    return {scope:'daily', day, weekday:DAY_NAMES[weekday], holds, protectedCount, published, current,
+    const reviewUrls=(data[0]??[]).filter(s=>/^[a-zA-Z0-9_-]{1,100}$/.test(s.id) && ['pending','accepted'].includes(s.review_status))
+      .slice(0,6).map(s=>`${SITE}/admin/automation?date=${day}#import-${s.id}`);
+    return {scope:'daily', day, weekday:DAY_NAMES[weekday], holds, protectedCount, published, current,reviewUrls,
       editorUrl: week ? `${SITE}/admin/specials?week=${week.id}#weekly-day-${index}` : `${SITE}/admin/specials`};
   } catch { return null; }
 }
@@ -120,10 +122,13 @@ export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
   if (code==='delivery_failed') {
     lines.push('Correction: check the Delivery display setting.', `Open: ${SITE}/admin#delivery-display`);
   } else {
-    lines.push(`Correction: needed${d ? ` for ${d.weekday}` : ''}. Edit and save in the specials editor; saved edits are protected from automation.`);
+    lines.push(`Correction: needed${d ? ` for ${d.weekday}` : ''}. Review the held imports and use Approve & Publish; approved values are protected from automation. The specials editor is also available.`);
     lines.push(`Open: ${d?.editorUrl ?? `${SITE}/admin/specials`}`);
   }
-  if (code!=='delivery_failed' && /^\d{4}-\d{2}-\d{2}$/.test(day)) lines.push(`Review imports: ${SITE}/admin/automation?date=${day}`);
+  if (code!=='delivery_failed' && /^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    lines.push(`Review imports: ${SITE}/admin/automation?date=${day}`);
+    for(const url of d?.reviewUrls??[]) if(new RegExp(`^${SITE.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/admin/automation\\?date=${day}#import-[a-zA-Z0-9_-]{1,100}$`).test(url)) lines.push(`Pending import: ${url}`);
+  }
   return lines.join('\n');
 }
 export function alertSubjectSuffix(detail) {

@@ -8,6 +8,7 @@ import {reconcilePosterEvidence,validateWeeklyLunch,applySharedWeeklyLunchPrice,
 import {parserVersionFor} from './classify.js';
 import {soupGroupId,blankSoupGroup} from '../../src/lib/daily-soup.js';
 import {normalizeWeeklyRange,factKey,analyzeDailyEvidence} from './evidence.js';
+import {approvalEvents,staffConfirmedCandidate} from './staff-review.js';
 import {eventSourceIndexes} from './event-store.js';
 
 export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=false}) {
@@ -63,9 +64,11 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
     (s.origin==='manual' && s.manual_locked===0));
   const allDayGroups=groups.filter(g=>g.service==='all-day' && g.enabled===1);
   const existing=allDayGroups.length===1 ? slots.filter(s=>s.group_id===allDayGroups[0].id && s.content && safe(s) && s.origin==='automation') : [];
+  const {results:staffEvents}=await env.DB.prepare(`SELECT import_id,event_type,detail FROM special_import_events
+    WHERE import_id IN (SELECT value FROM json_each(?1)) AND event_type='review' AND detail LIKE 'STAFF_APPROVAL:%' ORDER BY id DESC LIMIT 240`).bind(JSON.stringify(sources.map(s=>s.id))).all();
   const candidates=sources.map(s=>{
     const json=s.processing_status==='failed' ? s.extracted_json : s.candidate_json;
-    try { return JSON.parse(json.replace(/^```(?:json)?\n?|\n?```$/gm,'').trim()); }
+    try { return staffConfirmedCandidate(JSON.parse(json.replace(/^```(?:json)?\n?|\n?```$/gm,'').trim()),approvalEvents(staffEvents.filter(e=>e.import_id===s.id)),groups,slots); }
     catch { return null; }
   });
   const slotLayout=slots.map(s=>({...s,service:groups.find(g=>g.id===s.group_id)?.service}));
@@ -74,6 +77,7 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
     return Number.isFinite(created) && created<=Date.now() && dateOf(s.fb_created_time)===today ? [i] : [];
   }));
   const {targets:proposedTargets,rejectedSources:rejected,unresolvedTargets=[],excludedSources=[]}=reconcilePosterEvidence(candidates,weekday,existing,{today,slotLayout,verifiedSameDaySources});
+  const dailySourceIndices=new Set();
   sources.forEach((s,index)=>{
     // Contract 2 only: printed evidence placed this whole poster on another day.
     // Its stored import failure remains the audit record; it cannot block today.
@@ -93,7 +97,9 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
       recoveredReliable=!!daily && !analyzeDailyEvidence(daily).issues.some(i=>i.reason!=='Service not established by evidence');
     } catch { /* Invalid original evidence remains rejected. */ }
     const dedicated=['weekly-lunch','mexican-night'].includes(c?.type) && !('offers' in c) && !recoveredDaily;
-    if (s.processing_status==='failed' && !dedicated && !recoveredReliable && !rejected.some(r=>r.index===index)) {
+    if(!dedicated) dailySourceIndices.add(index);
+    const staffConfirmed=Array.isArray(c?.offers) && c.offers.length>0 && c.staff_confirmed_indices?.length===c.offers.length;
+    if (s.processing_status==='failed' && !dedicated && !recoveredReliable && !staffConfirmed && !rejected.some(r=>r.index===index)) {
       rejected.push({index,reason:s.validation_reason || 'Rejected extracted evidence'});
     }
   });
@@ -141,6 +147,7 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
   }
   const conflictDetail=blocked.length || rejectedSources.length
     ? `GUARDED_AUTO_CONFLICT: ${today}; blocked proposals: ${JSON.stringify(blocked)}${rejectedSources.length ? `; rejected sources: ${JSON.stringify(rejectedSources)}` : ''}` : null;
+  const dailySources=sources.filter((_,i)=>dailySourceIndices.has(i));
   // Only evaluated daily proposals/rejections establish publication coverage.
   // Dedicated weekly/Mexican no-ops must not resolve daily incidents.
   const withOutcome=(result,revision=week.revision)=>({...result,
@@ -163,8 +170,8 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
     const {results:audited}=await env.DB.prepare(`SELECT import_id FROM special_import_events e
       WHERE import_id IN (SELECT value FROM json_each(?1)) AND event_type='review' AND detail=?2
       AND id=(SELECT MAX(id) FROM special_import_events WHERE import_id=e.import_id AND event_type='review')`)
-      .bind(JSON.stringify(sources.map(s=>s.id)),conflictDetail).all();
-    if (sources.every(s=>audited.some(e=>e.import_id===s.id))) return withOutcome({written:false,reason:conflictDetail,blocked,rejectedSources});
+      .bind(JSON.stringify(dailySources.map(s=>s.id)),conflictDetail).all();
+    if (dailySources.every(s=>audited.some(e=>e.import_id===s.id))) return withOutcome({written:false,reason:conflictDetail,blocked,rejectedSources});
   }
   const token=crypto.randomUUID();
   const prepare=(sql,...args)=>env.DB.prepare(sql).bind(...args);
@@ -214,8 +221,8 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
       WHERE group_id=?4 AND position=?5 AND ${gate}`,week.collection_id,token,r.content,r.group_id,r.position)),
     ...(rows.length ? [prepare(`UPDATE weekly_specials SET updated_at=CURRENT_TIMESTAMP WHERE id=?3 AND ${gate}`,week.collection_id,token,week.id)] : []),
     // Evidence remains staged and reusable even after a partial publication.
-    ...sources.map(s=>prepare(`INSERT INTO special_import_events(import_id,event_type,detail) SELECT ?3,'review',?4 WHERE ${gate}`,week.collection_id,token,s.id,detail)),
-    ...(conflictDetail ? sources.map(s=>prepare(`INSERT INTO special_import_events(import_id,event_type,detail) SELECT ?3,'review',?4 WHERE ${gate}`,week.collection_id,token,s.id,conflictDetail)) : []),
+    ...dailySources.map(s=>prepare(`INSERT INTO special_import_events(import_id,event_type,detail) SELECT ?3,'review',?4 WHERE ${gate}`,week.collection_id,token,s.id,detail)),
+    ...(conflictDetail ? dailySources.map(s=>prepare(`INSERT INTO special_import_events(import_id,event_type,detail) SELECT ?3,'review',?4 WHERE ${gate}`,week.collection_id,token,s.id,conflictDetail)) : []),
     prepare('SELECT id FROM special_collections WHERE id=?1 AND mutation_token=?2',week.collection_id,token),
   ]);
   return results.at(-1)?.results?.length ? withOutcome({written:rows.length>0,reason:detail,blocked,rejectedSources},week.revision+1) : stage('Concurrent change; nothing written');
