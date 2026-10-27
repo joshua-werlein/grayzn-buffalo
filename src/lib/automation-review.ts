@@ -8,6 +8,9 @@ import { applySharedWeeklyLunchPrice, validateWeeklyLunch } from '../../workers/
 import { normalizeWeeklyRange, factKey } from '../../workers/fb-feed/evidence.js';
 
 const MAX_IMPORTS = 30, MAX_JSON = 24000;
+// Facebook stores offsets as +0000; SQLite date functions only accept +00:00, Z or no offset.
+const SQL_CREATED = `CASE WHEN fb_created_time GLOB '????-??-??[T ]??:??:??*[+-][0-9][0-9][0-9][0-9]'
+  THEN substr(fb_created_time,1,length(fb_created_time)-2)||':'||substr(fb_created_time,-2) ELSE fb_created_time END`;
 export const reviewText = (value: unknown, max = 180): string => plainValue(typeof value === 'string' ? value : '', max);
 export function reviewTimestamp(value: unknown): string {
   if(typeof value!=='string' || !/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/.test(value)) return '';
@@ -109,7 +112,7 @@ export async function readAutomationReview(env: any, day: string, now = new Date
     processing_status,validation_result,substr(validation_reason,1,600) validation_reason,substr(classification_reason,1,600) classification_reason,
     CASE WHEN length(candidate_json)<=24000 THEN candidate_json END candidate_json,
     CASE WHEN length(extracted_json)<=24000 THEN extracted_json END extracted_json
-    FROM special_imports WHERE julianday(fb_created_time)>=julianday(?1) AND julianday(fb_created_time)<julianday(?2) ORDER BY fetched_at DESC,id DESC LIMIT 31`,new Date(chicagoMidnight(from.toISOString().slice(0,10))).toISOString(),new Date(chicagoMidnight(until)).toISOString());
+    FROM special_imports WHERE julianday(${SQL_CREATED})>=julianday(?1) AND julianday(${SQL_CREATED})<julianday(?2) ORDER BY fetched_at DESC,id DESC LIMIT 31`,new Date(chicagoMidnight(from.toISOString().slice(0,10))).toISOString(),new Date(chicagoMidnight(until)).toISOString());
   const selected = imports.slice(0,MAX_IMPORTS);
   const ids = JSON.stringify(selected.map((i: any) => i.id));
   const events = await query(`SELECT e.id,e.import_id,e.event_type,substr(e.detail,1,6000) detail,e.occurred_at
