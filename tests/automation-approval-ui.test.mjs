@@ -62,6 +62,30 @@ test('unlocked recurring defaults need no override; the UI hint matches the serv
   assert.equal((await approveImport(f.env,value,now)).complete,true);
 });
 
+test('simplified page: one list, Review Specials action, no verification checkbox; publish still requires confirmation',async t=>{
+  const f=setup(t);const html=await render(f);
+  assert.match(html,/Review Specials/);assert.match(html,/What to do/);
+  assert.doesNotMatch(html,/data-verified|I checked the descriptions/);
+  assert.doesNotMatch(html,/What’s on the website now<\/h3>|class="comparison"/);
+  assert.match(html,/Troubleshooting details/);assert.match(html,/Posted \(UTC\)/);
+  assert.match(html,/Compare with what’s on the website now/);
+  const {value}=await dailyInput(f);delete value.confirmed;
+  assert.equal((await approveImport(f.env,value,now,{preview:true})).preview,true);
+  await assert.rejects(()=>approveImport(f.env,value,now),/Confirm/);
+  assert.equal(f.sql("SELECT COUNT(*) n FROM special_import_events WHERE detail LIKE 'STAFF_APPROVAL:%'")[0].n,0);
+});
+
+test('a protected spot that already holds the same text needs no replacement question',async t=>{
+  const f=setup(t);const {m,value}=await dailyInput(f);
+  const row=value.rows[0],dest=m.destinations.find(d=>d.id===row.destination);
+  const [groupId,position]=dest.id.split('~');
+  f.sql("UPDATE special_slots SET content=?,origin='manual',manual_locked=1 WHERE group_id=? AND position=?",row.content,groupId,Number(position));
+  assert.equal(visibleConfirms(await render(f)),0);
+  const fresh=await dailyInput(f);
+  assert.ok(fresh.m.destinations.find(d=>d.id===row.destination).protected);
+  assert.equal((await approveImport(f.env,fresh.value,now,{preview:true})).preview,true);
+});
+
 test('a staff-edited destination shows the plain warning and still requires the explicit override server-side',async t=>{
   const f=setup(t);staffLock(f);
   const html=await render(f);

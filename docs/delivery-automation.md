@@ -43,7 +43,7 @@ mocked two-image scan performs exactly three AI calls: initial weekly read,
 weekly shape repair and daily read. It verifies complete source IDs, activation,
 food-slot preservation, untouched Nightly default provenance, idempotent repeated
 scans without further inference, manual precedence and the actual October 19
-3 PM Chicago deadline (`2026-10-19T20:00:00Z`). Multi-post negative regressions
+1:30 PM Chicago deadline (`2026-10-19T18:30:00Z`). Multi-post negative regressions
 exercise cancellation, ambiguity, daily conflict, pending/processing/rejected
 sources, unresolved/malformed/hybrid weekly evidence and staff exclusions.
 
@@ -128,7 +128,7 @@ npx --no-install wrangler deploy --config workers/fb-feed/wrangler.toml --keep-v
 
 Do not deploy Pages, modify settings, reset import rows, apply any migration or
 replay October 19 posts. Normal future complete scans reuse durable evidence;
-Automatic remains hidden after 3 PM and on days without eligible evidence. Verify
+Automatic remains hidden after 1:30 PM and on days without eligible evidence. Verify
 the next naturally qualifying weekday scan, unchanged food content, staff override
 precedence and expiration using read-only observations. Any source-control push
 requires its own review because pushing main also triggers the Pages workflow.
@@ -184,7 +184,7 @@ Preserve any changes made after this checkpoint; do not reset or clean the repos
 - Human review and approval of production rollout, including the explicit Automatic opt-in and limitations below.
 - Push/merge, remote migration 0022, Pages deployment, Worker deployment, and any production setting changes.
 - Capture current production deployment/version IDs and the staff setting before rollout; these values have not been read or guessed for this handoff.
-- Live model/poster validation and post-deployment observation of activation and the 3 PM cutoff. Mocked tests do not establish real-image extraction accuracy.
+- Live model/poster validation and post-deployment observation of activation and the 1:30 PM cutoff. Mocked tests do not establish real-image extraction accuracy.
 
 ## Cause and behavior
 
@@ -192,13 +192,13 @@ The layout previously defaulted `delivery_display` to `available` and rendered i
 
 Daily poster extraction now includes a separate delivery status, complete verbatim notice, date evidence, and uncertainties in the existing AI request. The specials validators and mappings are unchanged. Weekly and Mexican Night response shapes are unchanged. Only explicit affirmative wording from an eligible, validated, current-day image can activate automatic delivery. Conditional wording, cancellation, conflicting readings, pending sources, staff-reviewed exclusions, wrong parser versions, and older source versions cannot enable it. Cancellation or ambiguity in an eligible source withholds availability across the scan. No delivery mention alone does not enable it; another confirmed poster from the same day can still qualify.
 
-The singleton `delivery_automation` row holds the Chicago day, active flag, exact 3 PM deadline, scan timestamp and source IDs. Snapshot checks protect against concurrent source edits and staff review. Older scans cannot replace newer decisions. The existing half-hour cron expires the row even when imports are OFF or outside their processing hours. The server checks the local day, weekday and deadline on each render and sends `Cache-Control: no-store`, so delayed cron execution cannot expose an expired automatic notice on a new page request. A page already open is not live-updated.
+The singleton `delivery_automation` row holds the Chicago day, active flag, exact 1:30 PM deadline, scan timestamp and source IDs. Snapshot checks protect against concurrent source edits and staff review. Older scans cannot replace newer decisions. The existing half-hour cron expires the row even when imports are OFF or outside their processing hours. The server checks the local day, weekday and deadline on each render and sends `Cache-Control: no-store`, so delayed cron execution cannot expose an expired automatic notice on a new page request. A page already open is not live-updated.
 
 Website text is fixed: **Delivery M–F 11 AM–1:30 PM, within Mondovi city limits.**
 
 ## Manual precedence and rollout choice
 
-The existing Available, Unavailable and Hidden settings remain persistent staff overrides, including after 3 PM. Automation never writes `settings.delivery_display`. A new Automatic option uses the expiring evidence; absent settings default to Automatic and hidden without evidence. Unknown setting values fail closed.
+The existing Available, Unavailable and Hidden settings remain persistent staff overrides, including after 1:30 PM. Automation never writes `settings.delivery_display`. A new Automatic option uses the expiring evidence; absent settings default to Automatic and hidden without evidence. Unknown setting values fail closed.
 
 **Existing saved settings are preserved.** Migration 0010 initialized some sites to Available without recording whether staff later chose it. There is no safe way to distinguish those defaults from intentional overrides. After approval, select **Automatic — follow today's poster** in Staff Settings to opt this existing site into automation. The migration does not silently reset any existing choice.
 
@@ -209,7 +209,7 @@ Parser identities remain 18/19: the change is an additive, independently validat
 - Already-processed posters without the new evidence field do not become eligible automatically, including the October 13 poster if it was processed before rollout. No backfill or forced AI replay is implemented.
 - Detection intentionally accepts a narrow affirmative sentence beginning with “Delivery [is] available,” with optional “today,” city-limit qualifier and the known lunch window. Other affirmative phrasing can remain hidden for safety. A matching printed weekday in the extracted day/heading/delivery evidence is required; posting time alone cannot enable it. *Superseded narrowly on October 25 (see "October 23" below): the undated weekday DAILY SPECIALS template may use its verified same-day Facebook timestamp.*
 - Only daily poster extraction supplies delivery evidence. Weekly schedules and recurring Mexican Night menus do not enable it. No live October 13 image/model call was made during this task.
-- Current manual Available stays visible past 3 PM by design, because staff overrides win. The 3 PM deadline applies to Automatic. Existing installations must deliberately opt in; older migrations may have initialized the manual value to Available.
+- Current manual Available stays visible past 1:30 PM by design, because staff overrides win. The 1:30 PM deadline applies to Automatic. Existing installations must deliberately opt in; older migrations may have initialized the manual value to Available.
 - Server rendering and no-store headers protect subsequent requests; an already-open page is not updated by a client timer. Banner visibility does not track the 1:30 PM service-end time; the requested expiration is 3 PM.
 - Missing database/table access hides the automatic notice; delivery storage failures do not abort the specials pipeline. Production rollout and observation remain necessary to validate deployed bindings and live extraction.
 
@@ -314,7 +314,7 @@ All commands in this section are future instructions, not commands already run. 
    npx wrangler d1 execute grayzn-db --remote --command "SELECT * FROM delivery_automation;" --config wrangler.toml
    ```
 
-   Verify disappearance on a new page request at 3 PM Chicago and the next cron's `active=0` state. Compare specials and Mexican Night with their pre-release values. No cron or queue configuration change is needed.
+   Verify disappearance on a new page request at 1:30 PM Chicago and the next cron's `active=0` state. Compare specials and Mexican Night with their pre-release values. No cron or queue configuration change is needed.
 
 ## Rollback
 
@@ -336,7 +336,7 @@ problem. The original response and its audit history are preserved.
 
 New eligible current-day imports now use the existing second AI-call allowance
 for a daily-schema reread when otherwise valid recovered single-day evidence has
-no complete delivery reading. This is limited to before the automatic 3 PM cutoff.
+no complete delivery reading. This is limited to before the automatic 1:30 PM cutoff.
 It uses the existing daily budget, per-import reservation limit, lease, ownership,
 parser and current-day fences. It does not add a third call or change parser IDs.
 
@@ -362,7 +362,7 @@ Permanent coverage: `workers/fb-feed/oct22-delivery.test.js` and the public-text
 Mexican Night and application suites. The new tests cover exact shape recovery,
 affirmative/absent/cancelled/uncertain delivery, dates, failed calls/budgets,
 retained food, one Lunch, staff overrides, idempotency, real local D1 consumption,
-staff exclusion, the 3 PM cutoff and next-day expiration. Deployment validation
+staff exclusion, the 1:30 PM cutoff and next-day expiration. Deployment validation
 and live activation are distinct: if no eligible fresh poster arrives, activation
 remains proven by tests only and awaits a future eligible source.
 
@@ -394,7 +394,7 @@ weekday only when all of these hold:
 
 Unchanged: the exact affirmative wording rule, cancellation, conditional and
 uncertain wording (all fail closed across the scan), staff Available/Unavailable/
-Hidden precedence, the 3 PM deadline and next-day expiration, snapshot fencing,
+Hidden precedence, the 1:30 PM deadline and next-day expiration, snapshot fencing,
 parser identities and AI call counts. Food reconciliation is untouched. Earlier
 days are not replayed.
 
@@ -409,6 +409,6 @@ Coverage: `workers/fb-feed/oct23-delivery.test.js` with the public-text fixture
 `tests/fixtures/oct23-delivery.json` (production publication, idempotency,
 untrusted path unchanged, other weekday/past/future date/tomorrow/next week in
 every printed field, other headings and shapes, weekend windows, cancellation,
-conditional and uncertain wording, future timestamp, staff overrides, 3 PM
+conditional and uncertain wording, future timestamp, staff overrides, 1:30 PM
 expiry, after-cutoff processing and alert outcome). Disabling the trust path
 fails four of these tests.

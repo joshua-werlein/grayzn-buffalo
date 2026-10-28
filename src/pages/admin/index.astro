@@ -71,7 +71,7 @@ const SETTINGS_MESSAGES: Record<string, string> = {
   'ann':     'Announcements saved.',
   'ann-err': 'Database not connected — see README.',
   'del-a':   'Delivery marked available.',
-  'del-auto': 'Delivery follows today’s confirmed Facebook poster until 3 PM.',
+  'del-auto': 'Delivery follows today’s confirmed Facebook poster until 1:30 PM.',
   'del-u':   'Delivery marked unavailable.',
   'del-h':   'Delivery announcement hidden.',
   'del-err': 'Database not connected — see README.',
@@ -115,7 +115,7 @@ const deliveryDisplay = authed ? await getSetting(env, 'delivery_display', 'auto
       <form method="post" class="delivery-form">
         <input type="hidden" name="action" value="save-delivery-status" />
         <p class="delivery-title">Delivery status</p>
-        <p class="hint">Automatic shows delivery only when today’s weekday Facebook poster confirms it, until 3 PM Chicago time. Available, Unavailable, and Hidden are staff overrides and remain in effect until changed.</p>
+        <p class="hint">Automatic shows delivery only when today’s weekday Facebook poster confirms it, until 1:30 PM Chicago time. Available, Unavailable, and Hidden are staff overrides and remain in effect until changed.</p>
         <label for="delivery-display">Delivery display</label>
         <select id="delivery-display" name="delivery_display">
           <option value="auto" selected={deliveryDisplay === 'auto'}>Automatic — follow today’s poster</option>

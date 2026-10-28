@@ -55,10 +55,10 @@ test('staff overrides retain precedence before/after expiration; missing and inv
   assert.equal(resolveDeliveryDisplay('invalid',row,now),'hidden');
 });
 
-test('3 PM rendering expires even with delayed cron; cron clears state and late retries cannot reactivate',async t=>{
+test('1:30 PM rendering expires even with delayed cron; cron clears state and late retries cannot reactivate',async t=>{
   const f=setup(t);await f.run();assert.equal(f.display(),'available');
-  f.state.now=Date.parse('2030-01-09T20:59:59Z');assert.equal(f.display(),'available');
-  f.state.now=Date.parse('2030-01-09T21:00:00Z');assert.equal(f.display(),'hidden');
+  f.state.now=Date.parse('2030-01-09T19:29:59Z');assert.equal(f.display(),'available');
+  f.state.now=Date.parse('2030-01-09T19:30:00Z');assert.equal(f.display(),'hidden');
   assert.equal(f.stateRow().active,1);await f.run();assert.equal(f.stateRow().active,0);
   const calls=f.state.aiCalls;await f.run();assert.equal(f.state.aiCalls,calls);assert.equal(f.stateRow().active,0);
 });
@@ -72,10 +72,10 @@ test('next-day reset and old source dates cannot enable delivery',async t=>{
 
 test('Chicago DST cutoff, UTC midnight and weekend handling',()=>{
   for(const [before,cutoff] of [
-    ['2026-03-06T20:59:59Z','2026-03-06T21:00:00Z'],
-    ['2026-03-09T19:59:59Z','2026-03-09T20:00:00Z'],
-    ['2026-10-30T19:59:59Z','2026-10-30T20:00:00Z'],
-    ['2026-11-02T20:59:59Z','2026-11-02T21:00:00Z'],
+    ['2026-03-06T19:29:59Z','2026-03-06T19:30:00Z'], // CST Friday before spring forward
+    ['2026-03-09T18:29:59Z','2026-03-09T18:30:00Z'], // CDT Monday after spring forward
+    ['2026-10-30T18:29:59Z','2026-10-30T18:30:00Z'], // CDT Friday before fall back
+    ['2026-11-02T19:29:59Z','2026-11-02T19:30:00Z'], // CST Monday after fall back
   ]) {assert.equal(deliveryWindow(new Date(before)).open,true);assert.equal(deliveryWindow(new Date(cutoff)).open,false);assert.equal(deliveryWindow(new Date(before)).expiresAt,new Date(cutoff).toISOString());}
   assert.equal(deliveryWindow(new Date('2026-10-14T00:00:00Z')).day,'2026-10-13');
   for(const day of ['2026-03-08T16:00:00Z','2026-11-01T17:00:00Z','2026-10-17T16:00:00Z']) assert.equal(deliveryWindow(new Date(day)).open,false);
@@ -155,10 +155,10 @@ test('parser mismatch and staff-reviewed sources cannot activate; manual review 
   await reconcileDelivery(f.env,{sourceIds:ids,observedAt:new Date(f.state.now).toISOString()});assert.equal(f.display(),'hidden');
 });
 
-test('AI completion crossing 3 PM cannot activate',async t=>{
-  const f=setup(t);f.state.now=Date.parse('2030-01-09T20:59:59Z');
+test('AI completion crossing 1:30 PM cannot activate',async t=>{
+  const f=setup(t);f.state.now=Date.parse('2030-01-09T19:29:59Z');
   const run=f.env.AI.run;
-  f.env.AI.run=async(...args)=>{f.state.now=Date.parse('2030-01-09T21:00:01Z');return run(...args);};
+  f.env.AI.run=async(...args)=>{f.state.now=Date.parse('2030-01-09T19:30:01Z');return run(...args);};
   await f.run();assert.equal(f.display(),'hidden');assert.notEqual(f.stateRow()?.active,1);
 });
 
@@ -240,8 +240,8 @@ test('October 19 weekly shape repair cannot veto the separate daily delivery pos
   assert.deepEqual(f.slots(),before);assert.equal(f.state.aiCalls,3);
   for(const manual of ['available','unavailable','hidden'])
     assert.equal(resolveDeliveryDisplay(manual,f.stateRow(),new Date(f.state.now)),manual);
-  f.state.now=Date.parse('2026-10-19T19:59:59Z');assert.equal(f.display(),'available');
-  f.state.now=Date.parse('2026-10-19T20:00:00Z');assert.equal(f.display(),'hidden');
+  f.state.now=Date.parse('2026-10-19T18:29:59Z');assert.equal(f.display(),'available');
+  f.state.now=Date.parse('2026-10-19T18:30:00Z');assert.equal(f.display(),'hidden');
   await f.run();assert.equal(f.stateRow().active,0);assert.equal(f.state.aiCalls,3);
   assert.deepEqual(f.slots(),before);
 });

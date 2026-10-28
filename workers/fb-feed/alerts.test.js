@@ -113,7 +113,7 @@ test('staff suppression cancels unsent incidents without success email',async t=
   const f=fixture(t);await f.record();f.advance(1);await f.record('suppressed');f.advance(ALERT_GRACE_MS);
   assert.equal((await dispatchAlert(f.DB,async()=>assert.fail('staff override'),{enabled:true,now:f.now})).status,'idle');
 });
-test('queued delivery incident expires at 3 PM Chicago instead of sending late',async t=>{
+test('queued delivery incident expires at 1:30 PM Chicago instead of sending late',async t=>{
   const f=fixture(t,'2026-10-22T19:40:00Z');await f.record('attention',{code:'delivery_failed'});f.advance(ALERT_GRACE_MS);
   assert.equal((await dispatchAlert(f.DB,async()=>assert.fail('expired delivery'),{enabled:true,now:f.now})).status,'idle');
 });

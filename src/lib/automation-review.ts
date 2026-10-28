@@ -19,6 +19,11 @@ export function reviewTimestamp(value: unknown): string {
   const time=new Date(iso);
   return Number.isFinite(time.getTime())?time.toISOString().slice(0,19).replace('T',' '):'';
 }
+// Staff-facing Chicago time for a reviewTimestamp() value (UTC stays in troubleshooting).
+export function reviewLocalTime(utc: string): string {
+  const time=new Date(utc.replace(' ','T')+'Z');
+  return utc && Number.isFinite(time.getTime()) ? time.toLocaleString('en-US',{timeZone:'America/Chicago',weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+}
 export function reviewServiceTime(value: unknown): string {
   return typeof value==='string' && value.length<=80 && /^[\d\sAPMapm:.–—-]+$/.test(value) ? value : reviewText(value,80);
 }
@@ -44,6 +49,8 @@ export function facebookLink(value: unknown): string | null {
 }
 export function reviewReason(value: unknown): string {
   const text = typeof value === 'string' ? value : '';
+  if(text.startsWith('STAFF_DISMISS:')) return 'Staff removed this post from the review list.';
+  if(text.startsWith('STAFF_RESTORE:')) return 'Staff restored this post to the review list.';
   if(text.startsWith('STAFF_APPROVAL:')) return 'Staff-confirmed publication; approved values and prior values are retained in the import audit.';
   if (text.startsWith('GUARDED_AUTO_CONFLICT:')) {
     const reasons = new Map<string,number>();
@@ -56,6 +63,8 @@ export function reviewReason(value: unknown): string {
   return reviewText(text,600);
 }
 export function importOutcome(source: any, events: any[]) {
+  // Dismiss/restore only change list membership, never publication status.
+  events=events.filter(e=>!/^STAFF_(?:DISMISS|RESTORE):/.test(e.detail??''));
   const approvals=approvalEvents(events);
   if(approvals.some((a: any)=>a.complete)) return {status:'Staff Approved',reason:'Approved and published by staff. Saved destinations are protected from automation.'};
   if(approvals.length) return {status:'Partially Staff Approved',reason:'Selected offers were published and protected. Remaining offers still need review.'};
@@ -182,7 +191,7 @@ export async function readAutomationReview(env: any, day: string, now = new Date
     const website=extracted.scope==='Mexican Night' ? currentGroups.filter((g: any)=>g.collection_id==='mexican-night')
       : currentGroups.filter((g: any)=>g.collection_id===week?.collection_id && (extracted.scope!=='Weekly Lunch' || g.service==='lunch'));
     const current = linkedEvents.length ? linkedEvents.flatMap(e=>e.values) : website.flatMap((g: any)=>g.slots.map((s: any)=>s.value));
-    return {id:source.id,source:reviewText(source.fb_post_id,90),created:reviewTimestamp(source.fb_created_time),fetched:reviewTimestamp(source.fetched_at),processed:reviewTimestamp(source.processed_at),link:facebookLink(source.permalink_url),...extracted,...importOutcome(source,audit),
+    return {id:source.id,source:reviewText(source.fb_post_id,90),created:reviewTimestamp(source.fb_created_time),fetched:reviewTimestamp(source.fetched_at),processed:reviewTimestamp(source.processed_at),link:facebookLink(source.permalink_url),reviewStatus:source.review_status,dismissed:source.review_status==='dismissed',...extracted,...importOutcome(source,audit),
       values:extracted.values.map((value: string)=>({value,onWebsite:current.some((v: string)=>factKey(v)===factKey(value))})),
       editor:linkedEvents.length?'/admin/specials#special-events':extracted.scope==='Mexican Night'?'/admin/specials#mexican-form':editor,
       audits:audit.slice(0,4).map((e: any)=>({type:reviewText(e.event_type,30),at:reviewTimestamp(e.occurred_at),detail:reviewReason(e.detail)})),

@@ -109,16 +109,16 @@ test('wrong-day source is not eligible for delivery shape recovery',async t=>{
   assert.equal(f.row().active,0);
 });
 test('cutoff avoids delivery reread; recovered food still publishes',async t=>{
-  const f=setup(t,{start:'2026-10-22T20:01:00Z'});await f.run();food(f);assert.equal(f.state.aiCalls,1);
+  const f=setup(t,{start:'2026-10-22T18:31:00Z'});await f.run();food(f);assert.equal(f.state.aiCalls,1);
   assert.equal(resolveDeliveryDisplay('auto',f.row(),new Date(f.state.now)),'hidden');
 });
-test('recovered delivery expires exactly at 3 PM and cannot carry into tomorrow',async t=>{
+test('recovered delivery expires exactly at 1:30 PM and cannot carry into tomorrow',async t=>{
   const f=setup(t);await f.run();const row=f.row();
   assert.equal(row.expires_at,deliveryWindow(new Date(now)).expiresAt);
-  assert.equal(resolveDeliveryDisplay('auto',row,new Date('2026-10-22T19:59:59Z')),'available');
-  assert.equal(resolveDeliveryDisplay('auto',row,new Date('2026-10-22T20:00:00Z')),'hidden');
+  assert.equal(resolveDeliveryDisplay('auto',row,new Date('2026-10-22T18:29:59Z')),'available');
+  assert.equal(resolveDeliveryDisplay('auto',row,new Date('2026-10-22T18:30:00Z')),'hidden');
   assert.equal(resolveDeliveryDisplay('auto',row,new Date('2026-10-23T14:00:00Z')),'hidden');
-  f.state.now=Date.parse('2026-10-22T20:00:00Z');await f.run();assert.equal(f.row().active,0);assert.equal(f.state.aiCalls,2);
+  f.state.now=Date.parse('2026-10-22T18:30:00Z');await f.run();assert.equal(f.row().active,0);assert.equal(f.state.aiCalls,2);
 });
 test('real local D1 consumes persisted delivery recovery and preserves staff exclusion fence',async t=>{
   const f=setup(t);await f.run();

@@ -2,9 +2,11 @@
 import Base from '../../layouts/Base.astro';
 import { isAuthed } from '../../lib/auth';
 import { chicagoCalendarDate } from '../../lib/weekly-specials';
-import { readAutomationReview, reviewDate, statusBadge, protectionLabel } from '../../lib/automation-review';
+import { readAutomationReview, reviewDate, statusBadge, protectionLabel, reviewLocalTime } from '../../lib/automation-review';
 import {approvalModel,approvalPageContext} from '../../lib/automation-approval';
 import AutomationApproval from '../../components/AutomationApproval.astro';
+import ImportDismiss from '../../components/ImportDismiss.astro';
+import ImportOffers from '../../components/ImportOffers.astro';
 const env = (Astro.locals as any).runtime?.env ?? {};
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 Astro.response.headers.set('Cache-Control','no-store');
@@ -13,93 +15,192 @@ const now = (Astro.locals as any).runtime?.now ?? new Date();
 let date = chicagoCalendarDate(now), invalid = false, unavailable = false, review: Awaited<ReturnType<typeof readAutomationReview>> | null = null;
 try { date = reviewDate(Astro.url.searchParams.get('date'),now); } catch { invalid=true; Astro.response.status=400; }
 if (!invalid) try { review = await readAutomationReview(env,date,now); } catch { unavailable=true; Astro.response.status=503; }
+const today = date===chicagoCalendarDate(now);
 const approvalPanels=new Map<string,any>(),approvalErrors=new Map<string,string>();
 let approvalContext: Awaited<ReturnType<typeof approvalPageContext>>|undefined;
-if(review && date===chicagoCalendarDate(now)) try {approvalContext=await approvalPageContext(env,review.history.map((i: {id: string})=>i.id),date);} catch { /* Per-entry errors stay explicit below. */ }
-if(review && date===chicagoCalendarDate(now)) for(const item of review.history) {
+// Dismissed posts leave the staff list; they stay viewable and restorable below.
+const active=review?.history.filter(item=>!item.dismissed) ?? [],dismissed=review?.history.filter(item=>item.dismissed) ?? [];
+if(review && today) try {approvalContext=await approvalPageContext(env,active.map((i: {id: string})=>i.id),date);} catch { /* Per-entry errors stay explicit below. */ }
+if(review && today) for(const item of active) {
   try {if(!approvalContext)throw Error('Approval is temporarily unavailable. Reload before publishing.');approvalPanels.set(item.id,await approvalModel(env,item.id,date,now,approvalContext));}
   catch(error) {approvalErrors.set(item.id,error instanceof Error && !/SQL|D1_|database|no such|sqlite/i.test(error.message)?error.message:'Approval is temporarily unavailable. The Specials editor is still available.');}
 }
+// A panel whose specials are all approved already has nothing left to do.
+const openPanel=(id: string)=>approvalPanels.has(id) && approvalPanels.get(id).entries.some((e: any)=>!e.done);
+const needsAttention=(tone: string)=>tone==='review' || tone==='failed';
+const attentionCount=active.filter(item=>needsAttention(statusBadge(item.status).tone)).length;
 ---
 <Base title="Automation Review — Grayz'n Buffalo Staff">
-  <section class="automation-review">
+<section class="automation-review">
+  <div class="section-head">
     <h2>Automation Review</h2>
-    <p>Compare what was posted on Facebook with what’s on the website. If a post needs review, check it and approve it here. Specials you approve are protected — automation won’t change them.</p>
-    <ul class="legend" aria-label="Status meanings">
-      <li><span class="badge published">Published</span> Automation put it on the website.</li>
-      <li><span class="badge review">Needs Review</span> Staff should check it.</li>
-      <li><span class="badge failed">Failed</span> Automation couldn’t handle it.</li>
-      <li><span class="badge approved">Staff Approved</span> Staff checked and published it.</li>
-    </ul>
-    {Astro.url.searchParams.get('approved')==='1' && <p role="status">Approved and published. The updated website values are shown below.</p>}
-    <form method="get" class="date-picker">
-      <label for="review-date">Date <input id="review-date" type="date" name="date" value={date} max={chicagoCalendarDate(now)} required /></label>
-      <button class="btn btn-primary" type="submit">View imports</button>
-    </form>
-    <p class="hint">You can look back up to 30 days. Times are shown in UTC. The website column shows what is saved now, not what visitors saw on past dates.</p>
-    {invalid && <p role="alert">Choose a valid date within the last 30 days.</p>}
-    {unavailable && <p role="alert">Automation history is temporarily unavailable. No data was changed. Reload to try again.</p>}
-    {review && <>
+    <p>Facebook posts that automation put on the website.</p>
+  </div>
+
+  <div class="review-panel how-to">
+    <h3>What to do</h3>
+    <ol>
+      <li>Look for posts marked <span class="badge review">Needs Review</span> or <span class="badge failed">Failed</span>.</li>
+      <li>Choose <strong>Review Specials</strong>, fix any wording, and check each special is going to the right spot.</li>
+      <li>Choose <strong>Review changes</strong>, then <strong>Approve &amp; Publish</strong>.</li>
+    </ol>
+    <p class="hint">Posts marked <span class="badge published">Published</span> or <span class="badge approved">Staff Approved</span> are done — nothing to do. If a post is wrong, a duplicate, or already fixed, choose <strong>Dismiss</strong> to remove it from this list.</p>
+  </div>
+
+  {Astro.url.searchParams.get('approved')==='1' && <p class="notice ok" role="status">Approved and published. The website is updated.</p>}
+  {Astro.url.searchParams.get('dismissed')==='1' && <p class="notice ok" role="status">Post removed from your review list. Nothing on the website changed.</p>}
+  {Astro.url.searchParams.get('restored')==='1' && <p class="notice ok" role="status">Post restored to your review list.</p>}
+
+  <form method="get" class="review-panel date-picker">
+    <label for="review-date">Day to check<input id="review-date" type="date" name="date" value={date} max={chicagoCalendarDate(now)} required /></label>
+    <button class="btn btn-ghost" type="submit">Show posts</button>
+    <p class="hint">You can look back up to 30 days. Only today’s posts can be approved here.</p>
+  </form>
+  {invalid && <p class="notice bad" role="alert">Choose a valid date within the last 30 days.</p>}
+  {unavailable && <p class="notice bad" role="alert">Automation history is temporarily unavailable. No data was changed. Reload to try again.</p>}
+
+  {review && <>
+    <div class="list-head">
       <h3>{review.dayName} · {review.day}</h3>
-      <a class="btn btn-ghost" href={review.editor}>Edit this day’s specials</a>
-      {review.ambiguousWeek && <p role="alert">More than one saved week covers this date. Fix the saved weeks in the Specials editor before approving daily specials.</p>}
-      {review.truncated && <p role="status">Showing the latest 30 Facebook posts for this week. Older posts may be left out.</p>}
-      <div class="comparison">
-        <section aria-labelledby="imports-heading">
-          <h3 id="imports-heading">What Facebook posted</h3>
-          {!review.history.length && <p>No Facebook posts were found for this date.</p>}
-          {review.history.map(item=>{const badge=statusBadge(item.status);return <article class="review-card" id={`import-${item.id}`}>
-            <h4>{item.scope}</h4>
-            <p class="status-line"><span class={`badge ${badge.tone}`}>{badge.label}</span>{badge.label!==item.status && <span class="hint">{item.status}</span>}</p>
-            <p>{badge.help}</p>
-            {badge.tone==='review' || badge.tone==='failed' ? <p><strong>Why:</strong> {item.reason}</p> : <details class="compact"><summary>Details</summary><p>{item.reason}</p></details>}
-            <p><strong>Facebook post:</strong> {item.link ? <a href={item.link} target="_blank" rel="noopener noreferrer">View on Facebook ↗</a> : 'Link unavailable'} <span class="hint">({item.source})</span></p>
-            <dl><dt>Posted (UTC)</dt><dd>{item.created || 'Unknown'}</dd><dt>Picked up (UTC)</dt><dd>{item.fetched || 'Unknown'}</dd><dt>Processed (UTC)</dt><dd>{item.processed || 'Not recorded'}</dd></dl>
-            <p class="subhead">Specials read from the post</p>
-            {item.values.length ? <ul class="offers">{item.values.map(offer=><li><strong>{offer.value}</strong>{offer.onWebsite ? <small class="match">✓ Matches the website</small> : <small>Not on the website</small>}</li>)}</ul> : <p>No specials could be read from this post. Check the Facebook post directly.</p>}
-            <a href={item.editor}>Fix this day in the Specials editor</a>
-            {approvalPanels.has(item.id) && <AutomationApproval model={approvalPanels.get(item.id)}/>}
-            {approvalErrors.has(item.id) && <p class="hint">{approvalErrors.get(item.id)}</p>}
-            {date!==chicagoCalendarDate(now) && <p class="hint">Past posts can’t be approved here. Use the Specials editor for corrections.</p>}
-            {!!item.audits.length && <details><summary>History</summary><ul>{item.audits.map(event=><li><time>{event.at} UTC</time> · {event.type}{event.type==='review' && <p>{event.detail}</p>}</li>)}</ul></details>}
-          </article>;})}
-        </section>
-        <section aria-labelledby="website-heading">
-          <h3 id="website-heading">What’s on the website now</h3>
-          {!review.groups.length && <p>No saved specials for this date.</p>}
-          {review.groups.map(group=><article class="review-card">
-            <h4>{group.label || group.service}{group.collection_id==='mexican-night' && ' · Mexican Night'}</h4>
-            {group.time && <p>{group.time}</p>}
-            <p class="hint">{group.visibility}</p>
-            {group.slots.length ? <ul class="offers">{group.slots.map(slot=>{const lock=protectionLabel(slot.protection);return <li><strong>{slot.value}</strong><small>Slot {slot.position} · {slot.owner} · {slot.visibility}</small><small class={lock.startsWith('Protected')?'lock':''}>{lock}</small></li>;})}</ul> : <p>Nothing saved.</p>}
-          </article>)}
-          {review.eventsUnavailable && <p>Special events couldn’t be loaded. Daily and weekly specials are still shown.</p>}
-          {review.specialEvents.map(event=><article class="review-card">
-            <h4>{event.title} · Special event</h4><p>{event.visibility} · {event.status}</p>
-            <p>{event.origin==='automation'?'Added by automation':'Added by staff'} · {event.manual_locked===1?'Protected — edited by staff':'Automation can update'}</p>
-            {event.reason && <p>{event.reason}</p>}
-            <ul>{event.values.map(value=><li>{value}</li>)}</ul>
-            <a href={event.editor}>Edit special events</a>
-          </article>)}
-        </section>
-      </div>
-    </>}
-  </section>
+      <a class="btn btn-ghost" href={review.editor}>Open Specials editor</a>
+    </div>
+    {review.ambiguousWeek && <p class="notice bad" role="alert">More than one saved week covers this date. Fix the saved weeks in the Specials editor before approving daily specials.</p>}
+    {review.truncated && <p class="notice" role="status">Showing the latest 30 Facebook posts for this week. Older posts may be left out.</p>}
+    {!active.length ? <p class="review-panel">{dismissed.length?'No posts left to review for this day.':'No Facebook posts were found for this day.'}</p>
+      : <p class="summary-line">{attentionCount ? `${attentionCount} ${attentionCount===1?'post needs':'posts need'} your attention.` : 'Nothing needs your attention.'}</p>}
+
+    <ul class="import-list">
+      {active.map(item=>{
+        const badge=statusBadge(item.status),attention=needsAttention(badge.tone),posted=reviewLocalTime(item.created);
+        const canApprove=openPanel(item.id);
+        const offers=<ImportOffers values={item.values}/>;
+        const link=item.link && <a class="fb-link" href={item.link} target="_blank" rel="noopener noreferrer">View the Facebook post ↗</a>;
+        return <li class={`review-panel import ${attention?'attention':''}`} id={`import-${item.id}`}>
+          <div class="import-head">
+            <div>
+              <p class="import-type">{item.scope}</p>
+              <p class="import-date">{posted ? `Posted ${posted}` : 'Post time unknown'}</p>
+            </div>
+            <span class={`badge ${badge.tone}`}>{badge.label}</span>
+          </div>
+          {attention ? <>
+            <p class="help">{badge.help}</p>
+            <p class="why"><strong>Why:</strong> {item.reason}</p>
+            {canApprove ? <AutomationApproval model={approvalPanels.get(item.id)}/> : <>
+              {offers}
+              <p class="next-step">{today ? 'This post can’t be approved here.' : 'Past posts can’t be approved here.'} Fix this day in the Specials editor.</p>
+              <a class="btn btn-primary" href={item.editor}>Fix in Specials editor</a>
+            </>}
+            {link}
+          </> : <details class="done">
+            <summary>Show specials</summary>
+            <p class="help">{badge.help}</p>
+            {offers}
+            {canApprove && <AutomationApproval model={approvalPanels.get(item.id)}/>}
+            {link}
+            <a href={item.editor}>Change in Specials editor</a>
+          </details>}
+          <div class="card-foot">
+          <details class="troubleshooting">
+            <summary>Troubleshooting details</summary>
+            <dl>
+              <dt>Automation status</dt><dd>{item.status}</dd>
+              {!attention && <><dt>Notes</dt><dd>{item.reason}</dd></>}
+              {approvalErrors.has(item.id) && <><dt>Approval</dt><dd>{approvalErrors.get(item.id)}</dd></>}
+              <dt>Facebook post ID</dt><dd>{item.source}</dd>
+              <dt>Posted (UTC)</dt><dd>{item.created || 'Unknown'}</dd>
+              <dt>Picked up (UTC)</dt><dd>{item.fetched || 'Unknown'}</dd>
+              <dt>Processed (UTC)</dt><dd>{item.processed || 'Not recorded'}</dd>
+            </dl>
+            {!!item.audits.length && <><p class="subhead">History</p><ul>{item.audits.map(event=><li><time>{event.at} UTC</time> · {event.type}{event.type==='review' && <p>{event.detail}</p>}</li>)}</ul></>}
+          </details>
+          {badge.tone!=='neutral' && <ImportDismiss id={item.id} reviewStatus={item.reviewStatus} day={date}/>}
+          </div>
+        </li>;
+      })}
+    </ul>
+
+    {!!dismissed.length && <details class="review-panel dismissed">
+      <summary>Dismissed posts ({dismissed.length})</summary>
+      <p class="hint">Posts staff removed from the review list. Their Facebook evidence and history are kept. Restore a post to review it again.</p>
+      <ul class="import-list">{dismissed.map(item=>{const posted=reviewLocalTime(item.created);return <li class="dismissed-item" id={`import-${item.id}`}>
+        <div class="import-head">
+          <div><p class="import-type">{item.scope}</p><p class="import-date">{posted ? `Posted ${posted}` : 'Post time unknown'}</p></div>
+          <ImportDismiss id={item.id} reviewStatus={item.reviewStatus} day={date} restore/>
+        </div>
+        <details class="troubleshooting">
+          <summary>Details</summary>
+          <ImportOffers values={item.values}/>
+          {item.link && <a class="fb-link" href={item.link} target="_blank" rel="noopener noreferrer">View the Facebook post ↗</a>}
+          <dl>
+            <dt>Automation status</dt><dd>{item.status}</dd>
+            <dt>Facebook post ID</dt><dd>{item.source}</dd>
+            <dt>Posted (UTC)</dt><dd>{item.created || 'Unknown'}</dd>
+          </dl>
+          {!!item.audits.length && <><p class="subhead">History</p><ul>{item.audits.map(event=><li><time>{event.at} UTC</time> · {event.type}{event.type==='review' && <p>{event.detail}</p>}</li>)}</ul></>}
+        </details>
+      </li>;})}</ul>
+    </details>}
+
+    <details class="review-panel compare">
+      <summary>Compare with what’s on the website now</summary>
+      <p class="hint">Shows what is saved now, not what visitors saw on past dates. Specials marked “Edited by staff” are protected — automation won’t change them.</p>
+      {!review.groups.length && <p>No saved specials for this day.</p>}
+      {review.groups.map(group=><div class="compare-group">
+        <h4>{group.label || group.service}{group.collection_id==='mexican-night' && ' · Mexican Night'}{group.time && <span class="hint"> · {group.time}</span>}</h4>
+        {group.slots.length ? <ul class="offers">{group.slots.map(slot=>{const lock=protectionLabel(slot.protection);return <li>{slot.value}{lock.startsWith('Protected') && <span class="tag">{lock==='Protected — edited by staff'?'Edited by staff':'Protected'}</span>}</li>;})}</ul> : <p>Nothing saved.</p>}
+        <p class="hint">{group.visibility}</p>
+      </div>)}
+      {review.eventsUnavailable && <p>Special events couldn’t be loaded. Daily and weekly specials are still shown.</p>}
+      {review.specialEvents.map(event=><div class="compare-group">
+        <h4>{event.title} · Special event</h4>
+        <ul class="offers">{event.values.map(value=><li>{value}</li>)}</ul>
+        <p class="hint">{event.visibility}{event.manual_locked===1 && ' · Edited by staff'}</p>
+        <a href={event.editor}>Edit special events</a>
+      </div>)}
+    </details>
+  </>}
+</section>
 </Base>
 <style>
-  .automation-review{max-width:1120px;margin:auto;padding:1rem;overflow-wrap:anywhere}
-  .date-picker{display:flex;flex-wrap:wrap;gap:1rem;align-items:end;margin:1.5rem 0}
-  .date-picker label{display:grid;gap:.4rem}.date-picker input{min-height:44px;padding:.5rem;font:inherit}
-  .comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.5rem;margin-top:1.5rem}
-  .review-card{border:1px solid #847252;border-radius:8px;padding:1rem;margin:1rem 0;background:rgba(255,255,255,.04)}
-  h4{font-size:1.1rem;margin-top:0}.hint,small{font-size:.9rem;line-height:1.5}
-  .legend{list-style:none;padding:0;margin:1rem 0;display:flex;flex-wrap:wrap;gap:.5rem 1.25rem;font-size:.9rem}.legend li{display:flex;gap:.4rem;align-items:center}
-  .badge{display:inline-block;padding:.15rem .55rem;border-radius:999px;border:1px solid currentColor;font-weight:700;font-size:.85rem;line-height:1.4;white-space:nowrap}
+  .automation-review{max-width:900px;margin:0 auto;padding:28px 16px 40px;overflow-wrap:anywhere}
+  .review-panel{box-sizing:border-box;margin:0 0 18px;padding:20px;border:1px solid rgba(36,22,16,.16);border-radius:10px;background:var(--surface-parchment)}
+  h3{font-family:var(--label);font-size:1.1rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin:0 0 10px}
+  h4{font-size:1.05rem;margin:0 0 6px}
+  .how-to ol{margin:0 0 10px;padding-left:1.4rem;display:grid;gap:6px}
+  .hint{font-size:.92rem;color:var(--ink-2);margin:0}
+  .notice{margin:0 0 18px;padding:12px 16px;border-radius:8px;font-weight:700;background:#fff;border-left:5px solid var(--gold)}
+  .notice.ok{border-color:#3d6b2c;color:#24461b}.notice.bad{border-color:var(--crimson);color:var(--crimson)}
+  .date-picker{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+  .date-picker label{display:grid;gap:6px;font-family:var(--label);font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .date-picker input{min-height:44px;padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit;font-size:16px}
+  .date-picker .btn{margin:0}.date-picker .hint{width:100%}
+  .list-head{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center;margin:28px 0 8px}.list-head h3{margin:0}.list-head .btn{margin:0}
+  .summary-line{margin:0 0 14px;font-weight:700}
+  .import-list{list-style:none;margin:0;padding:0}
+  .import{background:#fff}.import.attention{border:2px solid var(--gold)}
+  .import-head{display:flex;gap:12px;justify-content:space-between;align-items:flex-start}
+  .import-type{margin:0;font-family:var(--label);font-size:1.15rem;font-weight:700;letter-spacing:.04em}
+  .import-date{margin:0;color:var(--ink-2)}
+  .help{margin:12px 0 6px}.why{margin:0 0 12px}
+  .next-step{margin:12px 0;font-weight:700}
+  .fb-link{display:inline-block;margin:12px 16px 0 0}
+  .badge{display:inline-block;padding:.15rem .6rem;border-radius:999px;border:1px solid currentColor;font-weight:700;font-size:.85rem;line-height:1.4;white-space:nowrap}
   .badge.published{background:#e1eed8;color:#24461b}.badge.review{background:#fff3d6;color:#6a3f0c}.badge.failed{background:#f7dcd8;color:#7a1f1a}.badge.approved{background:#dce8ef;color:#183e50}.badge.neutral{background:#ece6da;color:#4a3a2e}
-  .status-line{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.25rem 0}.subhead{font-weight:700;margin:1rem 0 0}
-  .match{color:#24461b;font-weight:600}.lock{font-weight:600}details.compact{margin-top:.25rem}
-  .offers{padding-left:1.2rem}.offers li{margin:.8rem 0}.offers small{display:block;margin-top:.25rem}
-  dl{font-size:.9rem;display:grid;grid-template-columns:auto 1fr;gap:.3rem .75rem}dd{margin:0}
-  details{margin-top:1rem}summary{cursor:pointer;min-height:44px;padding:.5rem 0}
-  @media(max-width:720px){.comparison{grid-template-columns:1fr}.automation-review{padding:.75rem}dl{display:block}dd{margin-bottom:.5rem}}
+  .offers{margin:8px 0;padding-left:1.2rem}.offers li{margin:.5rem 0;white-space:pre-wrap}
+  .tag{display:inline-block;margin-left:.5rem;font-size:.85rem;font-weight:700;white-space:nowrap}
+  .tag{padding:0 .45rem;border-radius:999px;border:1px solid currentColor;background:#f7dcd8;color:#7a1f1a}
+  details{margin-top:12px}
+  summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-family:var(--label);font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  details.done>summary{color:var(--ink-2)}
+  details.done>a{display:inline-block;margin-top:12px}
+  .troubleshooting{border-top:1px solid rgba(36,22,16,.12);padding-top:4px}
+  .troubleshooting>summary{font-size:.85rem;color:var(--ink-2)}
+  .troubleshooting dl{font-size:.9rem;display:grid;grid-template-columns:auto 1fr;gap:.3rem .9rem;margin:8px 0}.troubleshooting dd{margin:0}.troubleshooting dt{font-weight:700}
+  .troubleshooting ul{font-size:.9rem;padding-left:1.2rem}.subhead{font-weight:700;margin:12px 0 0;font-size:.9rem}
+  .card-foot{display:flex;flex-wrap:wrap;gap:8px 16px;justify-content:space-between;align-items:flex-start;margin-top:12px;border-top:1px solid rgba(36,22,16,.12)}
+  .card-foot .troubleshooting{border-top:0;margin-top:0;flex:1 1 260px}
+  .dismissed-item{padding:12px 0;border-top:1px solid rgba(36,22,16,.12)}.dismissed-item .import-head{align-items:center}
+  .compare>summary,.dismissed>summary{margin:-4px 0}.compare-group{margin-top:16px;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px;background:#fff}
+  @media(max-width:680px){.automation-review{padding:20px 12px 32px}.review-panel{padding:14px}.troubleshooting dl{display:block}.troubleshooting dd{margin-bottom:.5rem}}
 </style>

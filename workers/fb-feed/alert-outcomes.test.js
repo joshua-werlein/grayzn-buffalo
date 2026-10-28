@@ -106,7 +106,7 @@ test('duplicate scans losing the delivery write fence report superseded, not fai
   const f=await setup(t);await f.run();assert.equal((await f.run()).status,'superseded');assert.equal(await f.incident(),null);
 });
 
-test('3 PM, midnight and OFF mode do not create delivery incidents',async t=>{
+test('1:30 PM, midnight and OFF mode do not create delivery incidents',async t=>{
   const f=await setup(t);f.env.SPECIALS_ALERT_MODE='OFF';f.fail(true);await f.run();assert.equal(await f.incident(),null);
   f.env.SPECIALS_ALERT_MODE='OBSERVE';f.advance(5*60*60*1000);assert.equal((await f.run()).status,'expired');assert.equal(await f.incident(),null);
   f.advance(9*60*60*1000);assert.equal((await f.run()).expectedActive,false);assert.equal(await f.incident(),null);

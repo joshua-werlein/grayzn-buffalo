@@ -120,7 +120,9 @@ export async function approvalModel(env: any,importId: string,day: string,now=ne
   }
   if(source.review_status==='edited' && !done.size) throw Error('This import was already reviewed in another editor.');
   const destinations=mexican?[]:collection.groups.filter(g=>g.day_of_week===weekday && g.enabled===1).flatMap(g=>g.slots.filter(s=>s.position<=specialInputCount(g)).map(s=>({
-    id:`${g.id}~${s.position}`,groupId:g.id,position:s.position,service:g.service,label:`${g.label} · ${s.position}`,current:displayedSpecial(s),protected:isProtectedSlot(s)})));
+    id:`${g.id}~${s.position}`,groupId:g.id,position:s.position,service:g.service,label:`${g.label} · ${s.position}`,current:displayedSpecial(s),protected:isProtectedSlot(s),
+    // Display hint: the same text with no separate price is not a replacement (approveImport() decides).
+    content:s.content??'',separatePrice:!!s.price})));
   return {source,raw,mexican,entries,destinations,collection,metadata,week,day,approvals,menuProtected:mexican && metadata.section_source==='manual',
     evidenceHash:await digest([source,collection,metadata,week]),requestId:crypto.randomUUID()};
 }
@@ -128,7 +130,9 @@ export async function approvalModel(env: any,importId: string,day: string,now=ne
 // Deliberately separate from applyCandidate(): existing groups and every
 // unselected slot survive. Claim, values and audit are one D1 transaction.
 export async function approveImport(env: any,input: any,now=new Date(),{preview=false}={}) {
-  if(!input || typeof input.importId!=='string' || !/^[0-9a-f-]{36}$/.test(input.requestId??'') || input.confirmed!==true) throw Error('Confirm the exact proposed replacements and source prices before publishing.');
+  // Preview writes nothing. Publishing requires the explicit confirmation sent
+  // only by the final Approve & Publish action, after staff saw the preview.
+  if(!input || typeof input.importId!=='string' || !/^[0-9a-f-]{36}$/.test(input.requestId??'') || !preview && input.confirmed!==true) throw Error('Confirm the exact proposed replacements and source prices before publishing.');
   const prior=await env.DB.prepare("SELECT detail FROM special_import_events WHERE import_id=?1 AND event_type='review' AND detail LIKE 'STAFF_APPROVAL:%' AND json_extract(substr(detail,16),'$.requestId')=?2 LIMIT 1").bind(input.importId,input.requestId).first();
   if(prior) return {duplicate:true};
   const model=await approvalModel(env,input.importId,input.day,now);

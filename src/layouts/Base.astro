@@ -38,7 +38,7 @@ const announcements = [announcement1, announcement2, announcement3]
   .map((message) => message.trim())
   .filter(Boolean);
 const deliveryDisplay = resolveDeliveryDisplay(deliveryDisplaySetting, automaticDelivery);
-// src/middleware.ts marks HTML no-store so the 3 PM deadline is re-checked per request.
+// src/middleware.ts marks HTML no-store so the 1:30 PM deadline is re-checked per request.
 const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
 ---
 <!DOCTYPE html>

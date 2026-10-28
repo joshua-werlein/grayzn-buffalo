@@ -115,17 +115,17 @@ test('staff overrides still win over the automatic notice and are never written'
   assert.equal(f.sql("SELECT value FROM settings WHERE key='delivery_display'")[0].value,'hidden');
 });
 
-test('expires exactly at 3 PM Chicago and never carries into Saturday',async t=>{
+test('expires exactly at 1:30 PM Chicago and never carries into Saturday',async t=>{
   const f=setup(t);await f.run();const row=f.row();
-  assert.equal(resolveDeliveryDisplay('auto',row,new Date('2026-10-23T19:59:59Z')),'available');
-  assert.equal(resolveDeliveryDisplay('auto',row,new Date('2026-10-23T20:00:00Z')),'hidden');
+  assert.equal(resolveDeliveryDisplay('auto',row,new Date('2026-10-23T18:29:59Z')),'available');
+  assert.equal(resolveDeliveryDisplay('auto',row,new Date('2026-10-23T18:30:00Z')),'hidden');
   assert.equal(resolveDeliveryDisplay('auto',row,new Date('2026-10-24T15:00:00Z')),'hidden');
-  f.state.now=Date.parse('2026-10-23T20:00:00Z');await f.run();
+  f.state.now=Date.parse('2026-10-23T18:30:00Z');await f.run();
   assert.equal(f.row().active,0);assert.equal(f.state.aiCalls,1);
 });
 
-test('poster processed after the 3 PM cutoff publishes food but no delivery',async t=>{
-  const f=setup(t,{start:'2026-10-23T20:01:00Z'});await f.run();food(f);
+test('poster processed after the 1:30 PM cutoff publishes food but no delivery',async t=>{
+  const f=setup(t,{start:'2026-10-23T18:31:00Z'});await f.run();food(f);
   assert.equal(resolveDeliveryDisplay('auto',f.row()??null,new Date(f.state.now)),'hidden');
 });
 

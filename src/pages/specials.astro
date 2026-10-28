@@ -14,7 +14,7 @@ import { mexicanNightDetailVisible } from '../lib/mexican-night-visibility.js';
 const env = (Astro.locals as any).runtime?.env ?? {};
 const today=chicagoCalendarDate();
 const [weeklySpecials,deliveryDisplaySetting,automaticDelivery,mexican]=await Promise.all([getWeeklySpecialsForDateRange(env,today,'9999-12-31'),getSetting(env,'delivery_display','auto'),readAutomaticDelivery(env),getMexicanNight(env)]);
-// Same resolution as the site banner: manual choices win; Automatic expires at 3 PM.
+// Same resolution as the site banner: manual choices win; Automatic expires at 1:30 PM.
 const deliveryDisplay=resolveDeliveryDisplay(deliveryDisplaySetting,automaticDelivery);
 const weekDateFor=(start:string,dow:number) => {const date=new Date(`${start}T12:00:00Z`); date.setUTCDate(date.getUTCDate()+((dow-date.getUTCDay()+7)%7)); return date.toISOString().slice(0,10);};
 const weeks=weeklySpecials.flatMap(week=>{

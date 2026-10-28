@@ -1,0 +1,12 @@
+---
+// Read-only list of the specials read from one Facebook import.
+interface Props { values: {value: string; onWebsite: boolean}[] }
+const {values}=Astro.props;
+---
+{values.length
+  ? <ul class="offers">{values.map(offer=><li>{offer.value}{offer.onWebsite ? <span class="match">✓ Matches the website</span> : <span class="missing">Not on the website</span>}</li>)}</ul>
+  : <p>No specials could be read from this post. Check the Facebook post directly.</p>}
+<style>
+  .offers{margin:8px 0;padding-left:1.2rem}.offers li{margin:.5rem 0;white-space:pre-wrap}
+  .match,.missing{display:inline-block;margin-left:.5rem;font-size:.85rem;font-weight:700;white-space:nowrap}.match{color:#24461b}.missing{color:#6a3f0c}
+</style>

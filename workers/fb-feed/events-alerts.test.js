@@ -78,7 +78,7 @@ test('events AUTO + alerts: the Brewers poster publishes automatically and raise
   const nightly=f.q("SELECT s.content FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='auto-week' AND g.day_of_week=5 AND g.service='nightly' AND s.content<>'' ORDER BY s.position");
   assert.equal(nightly.length,3); // The real October 23 poster printed three; capacity is four.
   assert.ok(!nightly.some(s=>/pulled pork/i.test(s.content)));
-  // Delivery published from the morning poster, then expired at 3 PM (final crons run ~3:47 PM).
+  // Delivery published from the morning poster, then expired at 1:30 PM (final crons run ~3:47 PM).
   assert.deepEqual(f.morningDelivery,[{active:1,day:'2026-10-23'}]);
   assert.deepEqual(f.q('SELECT active,day FROM delivery_automation WHERE id=1'),[{active:0,day:'2026-10-23'}]);
   assert.ok(!f.incidents().some(r=>r.scope==='delivery' && r.state==='attention'));

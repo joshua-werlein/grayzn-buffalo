@@ -1,0 +1,56 @@
+---
+// Dismiss (with a simple confirmation) or restore one Facebook import. The
+// server changes only the import's review status; specials are never touched.
+interface Props { id: string; reviewStatus: string; day: string; restore?: boolean }
+const {id,reviewStatus,day,restore=false}=Astro.props;
+---
+<div class="import-dismiss" data-dismiss data-import-id={id} data-review-status={reviewStatus} data-day={day} data-action={restore?'restore':'dismiss'}>
+  {restore
+    ? <button type="button" class="btn btn-ghost" data-start>Restore</button>
+    : <>
+      <button type="button" class="dismiss-link" data-start>Dismiss</button>
+      <dialog aria-label="Remove this post">
+        <h3>Remove this post from your review list?</h3>
+        <p>Nothing on the website changes. You can bring it back from “Dismissed posts” at the bottom of this page.</p>
+        <div class="dismiss-actions"><button type="button" class="btn btn-ghost" data-cancel>Keep it</button><button type="button" class="btn btn-primary" data-confirm>Remove</button></div>
+      </dialog>
+    </>}
+  <p class="dismiss-status" data-status role="status" aria-live="polite"></p>
+</div>
+<script>
+  document.querySelectorAll<HTMLElement>('[data-dismiss]').forEach(root=>{
+    const status=root.querySelector<HTMLElement>('[data-status]')!,dialog=root.querySelector('dialog');
+    const buttons=()=>root.querySelectorAll<HTMLButtonElement>('button');
+    let busy=false;
+    const run=async()=>{
+      if(busy)return;busy=true;buttons().forEach(b=>b.disabled=true);
+      const message=dialog?.querySelector('p')??status;const before=message.textContent;
+      status.textContent=root.dataset.action==='restore'?'Restoring…':'';if(dialog)message.textContent='Removing…';
+      try {
+        const response=await fetch('/admin/automation/dismiss',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({action:root.dataset.action,importId:root.dataset.importId,reviewStatus:root.dataset.reviewStatus})});
+        const result=await response.json().catch(()=>({}));
+        if(!response.ok||!result.ok)throw Error(result.error??'That didn’t work. Nothing was changed; reload and try again.');
+        const done=root.dataset.action==='restore'?'restored':'dismissed';
+        window.location.assign(`/admin/automation?date=${encodeURIComponent(root.dataset.day!)}&${done}=1`+(done==='restored'?`#import-${encodeURIComponent(root.dataset.importId!)}`:''));
+      } catch(error) {
+        if(dialog){dialog.close();message.textContent=before;}
+        status.textContent=(error as Error).message;busy=false;buttons().forEach(b=>b.disabled=false);
+      }
+    };
+    root.querySelector('[data-start]')!.addEventListener('click',()=>{if(dialog){status.textContent='';dialog.showModal();}else run();});
+    root.querySelector('[data-cancel]')?.addEventListener('click',()=>{if(!busy)dialog!.close();});
+    dialog?.addEventListener('cancel',event=>{if(busy)event.preventDefault();});
+    root.querySelector('[data-confirm]')?.addEventListener('click',run);
+  });
+</script>
+<style>
+  .import-dismiss{display:inline-grid;gap:4px}
+  .dismiss-link{min-height:44px;margin:0;padding:0 4px;border:0;background:none;color:var(--ink-2);font:700 .9rem var(--label);letter-spacing:.06em;text-transform:uppercase;text-decoration:underline;cursor:pointer}
+  .dismiss-link:hover{color:var(--crimson)}.import-dismiss .btn{margin:0}
+  .dismiss-status{margin:0;font-weight:700;color:var(--crimson)}.dismiss-status:empty{display:none}
+  dialog{position:fixed;inset:0;margin:auto;box-sizing:border-box;width:calc(100% - 1rem);max-width:460px;border:2px solid #847252;border-radius:8px;background:var(--cream);color:var(--ink);padding:1.25rem}
+  dialog::backdrop{background:rgba(0,0,0,.65)}
+  dialog h3{font-family:var(--label);font-size:1.2rem;letter-spacing:.04em;margin:0 0 8px}
+  .dismiss-actions{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:16px}.dismiss-actions button{flex:1;min-height:48px;margin:0}
+</style>
