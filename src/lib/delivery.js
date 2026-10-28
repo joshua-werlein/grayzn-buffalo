@@ -28,7 +28,14 @@ export function resolveDeliveryDisplay(manual, automatic, now = new Date(Date.no
   if (manual !== 'auto') return 'hidden';
   const window = deliveryWindow(now);
   return window.open && automatic?.active===1 && automatic.day===window.day
-    && automatic.expires_at===window.expiresAt ? 'available' : 'hidden';
+    && compatibleDeliveryExpiration(automatic.expires_at,window) ? 'available' : 'hidden';
+}
+// Accept only the current deadline or the known legacy 3 PM writer. The
+// renderer still independently enforces 1:30 PM and today's Chicago date.
+// Arbitrary, missing, malformed or earlier deadlines remain fail-closed.
+export function compatibleDeliveryExpiration(expiresAt, window) {
+  return expiresAt===window.expiresAt
+    || expiresAt===new Date(Date.parse(window.expiresAt)+90*60*1000).toISOString();
 }
 export async function readAutomaticDelivery(env) {
   try { return await env.DB.prepare('SELECT * FROM delivery_automation WHERE id=1').first(); }

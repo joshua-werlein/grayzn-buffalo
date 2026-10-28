@@ -2,11 +2,11 @@ import {parserVersionFor,classifyCaption} from './classify.js';
 import {reconcileToday} from './guarded-auto.js';
 import {reconcileDelivery} from './delivery.js';
 import {validateCurrentDay} from './reconcile.js';
-import {deliveryWindow} from '../../src/lib/delivery.js';
+import {deliveryWindow,resolveDeliveryDisplay} from '../../src/lib/delivery.js';
 import {dailyPublicationObservation,importAlertObservation} from './alert-policy.js';
 import {ALERT_GRACE_MS,dispatchAlert,alertEvidenceFence} from './alert-store.js';
 import {alertTransport} from './alert-email.js';
-import {dailyAlertDetail} from './alert-detail.js';
+import {dailyAlertDetail,deliveryAlertDetail} from './alert-detail.js';
 
 const MODES=['OBSERVE','MOCK','EMAIL'];
 const FRESH_MS=90*60*1000;
@@ -110,14 +110,18 @@ async function assess(env,scan,snap) {
   // specials caption. Unknown coverage is pending review, not claimed evidence.
   let delivery={state:'suppressed',cause:'delivery_failed'};
   const manual=snap.data[5][0]?.value ?? 'auto';
+  const expected=await reconcileDelivery(env,{sourceIds,observedAt:new Date(now).toISOString(),inspectOnly:true});
   if(w.open && manual==='auto') {
-    const expected=await reconcileDelivery(env,{sourceIds,observedAt:new Date(now).toISOString(),inspectOnly:true});
     const saved=snap.data[6].find(s=>s.id===1);
-    if(expected.expectedActive) delivery.state=saved?.active===1 && saved.day===w.day && saved.expires_at===w.expiresAt?'resolved':'attention';
+    if(expected.expectedActive) delivery.state=resolveDeliveryDisplay(manual,saved,new Date(now))==='available'?'resolved':'attention';
     else if(['pending','withheld'].includes(expected.status)) delivery.state='pending';
   }
   // Diagnostics for the email only; never part of the state, cause or proof.
-  return {daily:{state:food.state,cause,detail:dailyAlertDetail(daily,snap.data,scan.day,w.weekday)},delivery};
+  const detail=dailyAlertDetail(daily,snap.data,scan.day,w.weekday);
+  const deliveryDetail=deliveryAlertDetail(snap.data,expected,now);
+  if(detail) detail.delivery=deliveryDetail;
+  delivery.detail={scope:'delivery',day:scan.day,weekday:detail?.weekday,delivery:deliveryDetail};
+  return {daily:{state:food.state,cause,detail},delivery};
 }
 
 function recordVerified(env,scan,scope,observation,evidence) {

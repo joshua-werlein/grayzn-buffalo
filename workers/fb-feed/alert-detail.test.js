@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 import {harness} from './test-fixture.js';
 import {runImportPipeline} from './worker.js';
 import {ALERT_GRACE_MS} from './alert-store.js';
-import {dailyAlertDetail,plainValue,formatAlertText} from './alert-detail.js';
+import {dailyAlertDetail,deliveryAlertDetail,plainValue,formatAlertText} from './alert-detail.js';
 import {alertMessage} from './alert-email.js';
 
 // Verified-snapshot shape: [imports, weeks, collections, groups, slots, ...].
@@ -28,7 +28,7 @@ test('October 26 alert reports a classification failure without guessing slots',
   assert.deepEqual(detail.current,[]);
   const {subject,text}=send(detail);
   assert.equal(subject,"Grayz'n Buffalo automation needs review — 2026-10-26 (Unidentified service)");
-  assert.equal(text,[
+  const expectedLines=[
     'Available Facebook evidence could not be fully published.',
     'Date: Monday, 2026-10-26 (Chicago)',
     'First detected: 4:30 PM',
@@ -44,7 +44,10 @@ test('October 26 alert reports a classification failure without guessing slots',
     'Correction: needed for Monday. Review the held imports and use Approve & Publish; approved values are protected from automation. The specials editor is also available.',
     'Open: https://grayznbuffalo.com/admin/specials?week=77#weekly-day-0',
     'Review imports: https://grayznbuffalo.com/admin/automation?date=2026-10-26',
-  ].join('\n'));
+  ];
+  for(const line of expectedLines.filter(Boolean)) assert.ok(text.split('\n').includes(line),line);
+  assert.match(text,/Result: Partially Published/);
+  assert.match(text,/Published value: Monday Lunch #1: 3 Topping Personal Pizza/);
 });
 
 test('identified holds show the stored values and the staff-protected count',()=>{
@@ -52,10 +55,10 @@ test('identified holds show the stored values and the staff-protected count',()=
     {service:'all-day',position:1,reason:'Conflicting source offers'},
     {service:'nightly',position:1,reason:'Protected or ineligible destination slot'}]},DATA,'2026-10-26',1);
   assert.deepEqual(detail.holds,[{category:'All Day',reason:'Conflicting source offers',count:1,stage:'cross-post agreement'}]);
-  assert.equal(detail.protectedCount,1);
+  assert.equal(detail.protectedCount,0); // No matching fenced staff lock was supplied.
   const {text}=send(detail);
   assert.match(text,/\nNow showing for All Day: Grilled Honey Mustard Chicken Sandwich with Side Salad, Soup or Coleslaw \$10\.25 \| Grilled Ham and Cheese with a Cup of Soup or Coleslaw \$7\.25\n/);
-  assert.match(text,/\nStaff-protected values kept: 1\n/);
+  assert.match(text,/Destination slot is missing/);
   assert.match(text,/\nStage: cross-post agreement\n/);
 });
 
@@ -140,6 +143,76 @@ test('verified unclassified offers email once with the classification diagnostic
   const {text}=alertMessage(m.day,m.code,{detail:m.detail,firstSeenMs:m.firstSeenMs});
   assert.match(text,/^Available Facebook evidence could not be fully published\.\nDate: Wednesday, 2030-01-09 \(Chicago\)\nFirst detected: /);
   assert.ok(!text.includes('Burger') && !text.includes('Fish'),'unidentified offer text is never included');
+});
+
+const OCT28=JSON.parse(readFileSync(new URL('../../tests/fixtures/oct28-delivery-alert.json',import.meta.url),'utf8'));
+test('delivery diagnostic distinguishes a compatible expiration mismatch from current expiry without claiming history',()=>{
+  const data=[[{id:OCT28.importId,fb_created_time:OCT28.postedAt,candidate_json:JSON.stringify(OCT28.candidate),extracted_json:JSON.stringify(OCT28.candidate)}],[],[],[],[],[{value:'auto'}],
+    [{id:1,day:'2026-10-28',active:1,expires_at:OCT28.storedExpiry}],[]];
+  const before=deliveryAlertDetail(data,{status:'expected',sourceOutcomes:[{id:OCT28.importId,status:'available'}]},Date.parse('2026-10-28T16:45:00Z'));
+  assert.equal(before.mismatch,true);assert.equal(before.compatible,true);assert.equal(before.visibility,'available');
+  assert.equal(before.expectedExpiry,'2026-10-28T18:30:00.000Z');
+  const detail={day:'2026-10-28',weekday:'Wednesday',delivery:before};
+  assert.match(alertMessage(detail.day,'publication_blocked',{detail}).text,/recognized legacy deadline; rendering still ends at 1:30 PM Chicago/);
+  data[6][0].active=0;
+  detail.delivery=deliveryAlertDetail(data,{status:'expired'},Date.parse('2026-10-28T22:00:00Z'));
+  const {text}=alertMessage(detail.day,'publication_blocked',{detail});
+  assert.match(text,/visibility at .*: hidden/);
+  assert.match(text,/does not establish whether delivery was active earlier/);
+  assert.match(text,/Delivery Available 11-1:30/);
+  assert.doesNotMatch(text,/delivery failure/i);
+});
+
+test('verified destination details distinguish disabled, locked and other ineligible slots and strip unsafe content',()=>{
+  const data=structuredClone(DATA);
+  data[3].find(g=>g.id==='n').enabled=0;
+  data[4].find(s=>s.group_id==='a' && s.position===2).manual_locked=1;
+  const detail=dailyAlertDetail({blocked:[
+    {service:'all-day',group_id:'a',position:2,content:'Ham <script> https://evil.example a@b.com \u202e $7.25',reason:'Protected or ineligible destination slot'},
+    {service:'nightly',group_id:null,position:1,content:'Ribs $18',reason:'Missing, disabled or ambiguous destination'}]},data,'2026-10-26',1);
+  assert.equal(detail.informational,true);
+  assert.equal(detail.destinations[0].staffLocked,true);
+  assert.equal(detail.destinations[1].disabled,true);
+  const {text}=send(detail);
+  assert.doesNotMatch(text,/[<>\u202e]|evil\.example|a@b\.com/);
+  assert.match(text,/Staff-disabled destination/);
+  data[4].find(s=>s.group_id==='a' && s.position===2).manual_locked=0;
+  assert.equal(dailyAlertDetail({blocked:[{service:'all-day',group_id:'a',position:2,reason:'Protected or ineligible destination slot'}]},data,'2026-10-26',1).informational,false);
+});
+
+test('October 28: protected All Day #2 yields one informational partial-publication email with exact verified values',async t=>{
+  const f=setup(t,{now:'2026-10-28T16:16:00Z',caption:'Daily Specials',candidate:structuredClone(OCT28.candidate)});
+  f.db.exec("UPDATE weekly_specials SET week_start_date='2026-10-26',week_end_date='2026-11-01' WHERE id=9000");
+  Object.assign(f.state.posts[0],{id:OCT28.postId,created_time:OCT28.postedAt,updated_time:OCT28.postedAt});
+  const held=f.slots(3,'all-day')[1];
+  f.db.prepare("UPDATE special_slots SET content=?,origin='manual',manual_locked=1,last_auto_value=NULL WHERE group_id=? AND position=2").run(OCT28.retained,held.group_id);
+  await f.run();
+  assert.equal(f.sent.length,0);
+  assert.equal(f.slots(3,'lunch')[0].content,OCT28.candidate.offers[0].content);
+  assert.equal(f.slots(3,'all-day')[0].content,OCT28.candidate.offers[1].content);
+  f.state.now+=ALERT_GRACE_MS;
+  await f.run();await f.run();
+  assert.equal(f.sent.length,1);
+  const [message]=f.sent;
+  assert.equal(message.code,'publication_blocked');
+  const {subject,text}=alertMessage(message.day,message.code,{detail:message.detail,firstSeenMs:message.firstSeenMs});
+  assert.match(subject,/publication review \(staff protection\)/);
+  for(const value of [OCT28.candidate.offers[2].content,OCT28.retained,OCT28.candidate.offers[0].content,OCT28.candidate.offers[1].content]) assert.ok(text.includes(value),value);
+  assert.match(text,/Result: Partially Published/);
+  assert.match(text,/informational staff protection; AI extraction did not fail/);
+  assert.match(text,/Destination: Wednesday All Day #2/);
+  assert.match(text,/Staff lock: yes/);
+  assert.match(text,/Facebook posted: 2026-10-28, 11:15 AM/);
+  assert.ok(text.includes('https://www.facebook.com/583672228384067/posts/1748155386852338'));
+  assert.match(text,/Delivery evidence \(available\): Delivery Available 11-1:30/);
+  assert.match(text,/Delivery setting: auto; reconciliation: expected/);
+  assert.match(text,/Delivery visibility at .*: available/);
+  assert.match(text,/Staff action: optional/);
+  assert.ok(text.includes('/admin/specials?week=9000#weekly-day-2'));
+  assert.equal(f.slots(3,'all-day')[1].content,OCT28.retained);
+  assert.equal(f.slots(3,'all-day')[1].manual_locked,1);
+  for(let i=0;i<3;i++){f.state.now+=ALERT_GRACE_MS;await f.run();}
+  assert.equal(f.sent.length,1);
 });
 
 test('after the email, a staff correction is kept and the incident is never re-sent',async t=>{

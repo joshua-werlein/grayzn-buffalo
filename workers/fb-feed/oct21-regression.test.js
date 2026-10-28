@@ -49,14 +49,17 @@ test('daily alert rejects an outcome superseded by a staff collection revision',
   assert.equal(f.sql('SELECT * FROM facebook_alert_incidents').length,0);
 });
 
-for(const choice of ['disabled','locked']) test(`daily observation respects staff ${choice} Lunch without an actionable incident`,async t=>{
+for(const choice of ['disabled','locked']) test(`daily observation preserves staff ${choice} Lunch and records its review notification`,async t=>{
   const f=setup(t);enableObservations(f);
   const group=f.slots(3,'lunch')[0].group_id;
   if(choice==='disabled') f.sql('UPDATE special_groups SET enabled=0 WHERE id=?',group);
   else f.sql("UPDATE special_slots SET content='Staff lunch',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",group);
   await f.run();
-  assert.equal(f.sql("SELECT state FROM facebook_alert_incidents WHERE scope='daily'").length,0);
-  if(choice==='locked') assert.equal(f.slots(3,'lunch')[0].content,'Staff lunch');
+  assert.equal(f.sql("SELECT state FROM facebook_alert_incidents WHERE scope='daily'")[0]?.state,'attention');
+  if(choice==='locked') {
+    assert.equal(f.slots(3,'lunch')[0].content,'Staff lunch');
+    assert.equal(f.slots(3,'lunch')[0].manual_locked,1);
+  } else assert.equal(f.sql('SELECT enabled FROM special_groups WHERE id=?',group)[0].enabled,0);
 });
 test('production confirms discovery, complete extraction, global rejection and unlocked defaults',()=>{
   assert.ok(snapshot.every(s=>s.success && s.meta.rows_written===0));

@@ -36,12 +36,10 @@ export function dailyPublicationObservation(result) {
   if (['Current sources awaiting recovery','Concurrent change; nothing written'].includes(result.reason)) return observation('pending');
   if (result.rejectedSources?.length) return observation('attention','publication_blocked');
   if (result.blocked?.length) {
-    // This legacy reason combines staff protection and other ineligibility.
-    // Suppress rather than emailing about a deliberate override. A future
-    // adapter must inspect the fenced slot snapshot to distinguish the rest.
-    return result.blocked.some((b,index) => b.reason !== 'Protected or ineligible destination slot'
-      && !result.alertSnapshot?.intentionalBlockedIndices?.includes(index))
-      ? observation('attention','publication_blocked') : observation('suppressed');
+    // A protected destination is still a reviewable publication hold. The
+    // verified diagnostic classifies staff protection without calling it an
+    // extraction/technical failure; the existing daily key deduplicates sends.
+    return observation('attention','publication_blocked');
   }
   if (result.reason === 'No unique current saved week') return observation('attention','publication_blocked');
   // Missing extraction alone does not establish an eligible advertised offer.

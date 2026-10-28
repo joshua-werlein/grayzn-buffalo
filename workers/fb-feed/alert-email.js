@@ -9,7 +9,7 @@ const approved=env=>env.SPECIALS_ALERT_MODE==='EMAIL' && env.SPECIALS_ALERT_EMAI
 // built from fixed reasons and sanitized values (alert-detail.js).
 export function alertMessage(day,code,{detail=null,firstSeenMs=null}={}) {
   if(!Object.hasOwn(ALERT_CODES,code) || !/^\d{4}-\d{2}-\d{2}$/.test(day)) throw Error('Invalid alert message');
-  return {subject:`Grayz'n Buffalo automation needs review — ${day}${alertSubjectSuffix(detail)}`,
+  return {subject:`Grayz'n Buffalo ${detail?.informational?'publication review (staff protection)':'automation needs review'} — ${day}${alertSubjectSuffix(detail)}`,
     text:formatAlertText({day,code,summary:ALERT_CODES[code],detail,firstSeenMs})};
 }
 

@@ -206,6 +206,24 @@ test('delivery failure is independent of successful food; recovery and staff hid
   fail=true;f.advance(1);await f.run();assert.equal(f.all()[0].state,'suppressed');assert.equal(f.sent.length,1);
 });
 
+test('version skew: verified delivery assessment accepts the legacy deadline but reports an unknown deadline',async t=>{
+  const f=setup(t);
+  f.state.candidate.delivery={status:'available',evidence:'Delivery available 11-1:30',date_evidence:'Wednesday',uncertainties:[]};
+  await f.run();
+  f.db.exec("UPDATE delivery_automation SET expires_at='2030-01-09T21:00:00.000Z'");
+  f.advance(1);
+  const inspect=async()=>finishAlertScan(f.env,await beginAlertScan(f.env,'2030-01-09'),f.imports().map(s=>s.id));
+  await inspect();
+  assert.equal(f.all().length,0);assert.equal(f.sent.length,0);
+  f.db.exec("UPDATE delivery_automation SET expires_at='2030-01-09T22:00:00.000Z'");
+  f.advance(1);await inspect();
+  assert.equal(f.all()[0].scope,'delivery');assert.equal(f.all()[0].state,'attention');
+  f.advance(ALERT_GRACE_MS);await f.send();
+  assert.equal(f.sent.length,1);
+  assert.equal(f.sent[0].detail.delivery.visibility,'hidden');
+  assert.equal(f.sent[0].detail.delivery.compatible,false);
+});
+
 test('hidden delivery and cancellation never create a delivery incident',async t=>{
   const f=setup(t);f.state.candidate.delivery={status:'cancelled',evidence:'No delivery today',date_evidence:'Wednesday',uncertainties:[]};
   await f.run();assert.ok(!f.all().some(r=>r.scope==='delivery'));assert.equal(f.sent.length,0);

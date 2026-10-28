@@ -15,6 +15,36 @@ const homePage=(await import('../dist/_worker.js/pages/index.astro.mjs')).page()
 const adminPage=(await import('../dist/_worker.js/pages/admin/specials.astro.mjs')).page().default;
 const container=await AstroContainer.create();
 
+test('compiled home banner and specials accept the legacy Worker deadline only before 1:30 PM, with manual overrides intact',async t=>{
+  const f=fixture(t);
+  f.sql(readFileSync('migrations/0022_delivery_automation.sql','utf8'));
+  f.sql('CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT)');
+  f.sql("INSERT OR REPLACE INTO settings(key,value) VALUES('delivery_display','auto')");
+  f.sql("INSERT INTO delivery_automation(id,day,active,expires_at,observed_at,source_ids) VALUES(1,'2026-10-28',1,'2026-10-28T20:00:00.000Z','2026-10-28T16:16:00.000Z','[]')");
+  let now=Date.parse('2026-10-28T18:29:59Z');
+  t.mock.method(Date,'now',()=>now);
+  const render=(component,path)=>container.renderToString(component,{request:new Request('http://localhost'+path),locals:{runtime:{env:f.env}}});
+  for(const [component,path] of [[homePage,'/'],[publicPage,'/specials']]) {
+    assert.match(await render(component,path),/class="delivery-notice"/);
+    if(path==='/specials') assert.match(await render(component,path),/class="delivery-block"/);
+    now=Date.parse('2026-10-28T18:30:00Z');
+    assert.doesNotMatch(await render(component,path),/class="delivery-notice"|class="delivery-block"/);
+    now=Date.parse('2026-10-29T16:00:00Z');
+    assert.doesNotMatch(await render(component,path),/class="delivery-notice"|class="delivery-block"/);
+    for(const manual of ['available','unavailable','hidden']) {
+      f.sql("UPDATE settings SET value=? WHERE key='delivery_display'",manual);
+      const html=await render(component,path);
+      if(manual==='hidden') assert.doesNotMatch(html,/class="delivery-notice"|class="delivery-block"/);
+      else {
+        assert.match(html,/class="delivery-notice"/);
+        if(manual==='unavailable') assert.match(html,/Delivery is unavailable at this time/);
+      }
+    }
+    f.sql("UPDATE settings SET value='auto' WHERE key='delivery_display'");
+    now=Date.parse('2026-10-28T18:29:59Z');
+  }
+});
+
 test('October 21 repaired records render identical meals and wing prices on both public pages',async t=>{
   const {reconcilePosterEvidence}=await import('../workers/fb-feed/reconcile.js');
   const rows=JSON.parse(readFileSync('tests/fixtures/oct21-production.json','utf8'))[0].results;

@@ -3,6 +3,7 @@
 // stage, category or link: unknown reasons collapse to a generic label, and
 // stored slot text is reduced to short plain words with links removed.
 // Nothing here writes, logs or affects publication.
+import {deliveryWindow,resolveDeliveryDisplay,compatibleDeliveryExpiration} from '../../src/lib/delivery.js';
 export const SITE = 'https://grayznbuffalo.com';
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const EDITOR_DAY_ORDER = [1,2,3,4,5,6,0]; // DAY_NUMBERS in src/lib/specials-store.ts
@@ -42,7 +43,7 @@ export function plainValue(value, limit = MAX_VALUE) {
     .replace(/\b[a-z][a-z0-9+.-]*:\/*\S*/gi,' ')
     .replace(/\S*@\S*/g,' ')
     .replace(/\b(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b\S*/gi,' ')
-    .replace(/[^\p{L}\p{N} &,.$'"()\/+\-–—!?#%]/gu,' ')
+    .replace(/[^\p{L}\p{N} &,.:$'"()\/+\-–—!?#%]/gu,' ')
     .replace(/\s+/g,' ').trim();
   if (s.length > limit) s = `${s.slice(0, limit - 1).trimEnd()}…`;
   return s;
@@ -59,9 +60,30 @@ export function dailyAlertDetail(result, data, day, weekday) {
     const todays = collection ? groups.filter(g=>g.collection_id===collection.id && g.day_of_week===weekday) : [];
     const label = service => SERVICES[service] ?? 'Other';
     const held = new Map();
+    const destinations = [];
     let protectedCount = 0;
     for (const b of Array.isArray(result?.blocked) ? result.blocked : []) {
-      if (b?.reason === PROTECTED) { protectedCount++; continue; }
+      const matching=todays.filter(g=>g.service===b.service);
+      const group = todays.find(g=>g.id===b.group_id && g.service===b.service)
+        ?? (b.reason==='Missing, disabled or ambiguous destination' && matching.length===1 ? matching[0] : null);
+      const slot = group && slots.find(s=>s.group_id===group.id && s.position===b.position);
+      const staffLocked = !!slot && slot.manual_locked===1 && !!slot.content;
+      const disabled = group?.enabled===0 || (b.reason==='Missing, disabled or ambiguous destination'
+        && todays.filter(g=>g.service===b.service).length===1 && todays.find(g=>g.service===b.service)?.enabled===0);
+      const intentional = (b.reason===PROTECTED && staffLocked) || disabled;
+      if (b?.reason===PROTECTED && staffLocked) protectedCount++;
+      const reason = b.reason===PROTECTED
+        ? staffLocked ? 'Staff-locked destination; existing website value retained'
+          : !slot ? 'Destination slot is missing; automatic publication withheld'
+          : slot.price ? 'Destination has a separate price; automatic replacement is ineligible'
+          : slot.section_link ? 'Destination links to another section; automatic replacement is ineligible'
+          : slot.origin==='automation' && slot.content!==slot.last_auto_value ? 'Website value differs from the last automated value; retained for review'
+          : 'Destination slot is ineligible; existing website value retained'
+        : disabled ? 'Staff-disabled destination; automatic publication withheld' : known(b.reason);
+      destinations.push({category:label(b.service),position:Number.isSafeInteger(b.position) && b.position>0 ? b.position : null,
+        proposed: b.reason===PROTECTED || STAGE_OF.has(b.reason) ? plainValue(b.content,160) : '',
+        retained:slot ? plainValue(slot.content,160) : null,retainedPrice:slot?.price ? plainValue(slot.price,40) : '',staffLocked,disabled,intentional,reason});
+      if (b?.reason === PROTECTED) continue;
       const key = `${label(b?.service)}|${known(b?.reason)}`;
       held.set(key, (held.get(key) ?? 0) + 1);
     }
@@ -73,9 +95,12 @@ export function dailyAlertDetail(result, data, day, weekday) {
       return {category,reason,count,stage:STAGE_OF.get(reason) ?? 'reconciliation'};}).slice(0,MAX_LINES);
     // What automation currently shows today, from the same verified snapshot.
     const published = [];
+    const publishedValues = [];
     for (const g of todays.filter(g=>g.enabled===1)) {
       const n = slots.filter(s=>s.group_id===g.id && s.origin==='automation' && (s.content ?? '').trim()).length;
       if (n) published.push({category:label(g.service),count:n});
+      for (const s of slots.filter(s=>s.group_id===g.id && s.origin==='automation' && (s.content??'').trim()))
+        publishedValues.push({category:label(g.service),position:s.position,value:plainValue(s.content,160)});
     }
     // Current stored text only for an identified service; an unidentified
     // offer is never guessed onto a slot.
@@ -91,9 +116,51 @@ export function dailyAlertDetail(result, data, day, weekday) {
     const index = EDITOR_DAY_ORDER.indexOf(weekday);
     const reviewUrls=(data[0]??[]).filter(s=>/^[a-zA-Z0-9_-]{1,100}$/.test(s.id) && ['pending','accepted'].includes(s.review_status))
       .slice(0,6).map(s=>`${SITE}/admin/automation?date=${day}#import-${s.id}`);
+    const posts=(data[0]??[]).flatMap(s=>{
+      const ms=Date.parse(s.fb_created_time);
+      if(!Number.isFinite(ms) || deliveryWindow(new Date(ms)).day!==day) return [];
+      return [{time:chicagoTime(ms),url:/^\d{1,30}_\d{1,30}$/.test(s.fb_post_id)
+        ? `https://www.facebook.com/${s.fb_post_id.split('_')[0]}/posts/${s.fb_post_id.split('_')[1]}` : null}];
+    }).slice(0,MAX_LINES);
+    const hasHolds=destinations.length>0 || (result?.rejectedSources?.length??0)>0;
+    const informational=destinations.length>0 && destinations.every(d=>d.intentional) && !(result?.rejectedSources?.length);
     return {scope:'daily', day, weekday:DAY_NAMES[weekday], holds, protectedCount, published, current,reviewUrls,
+      destinations:destinations.slice(0,MAX_LINES),publishedValues:publishedValues.slice(0,12),posts,informational,
+      result:hasHolds ? published.length ? 'Partially Published' : 'Held for Review'
+        : result?.requiresWrite ? 'Publication incomplete'
+        : result?.reason==='No unique current saved week' ? 'Held for Review'
+        : result?.reason==='No extracted evidence' ? 'Evidence unavailable'
+        : published.length ? 'Published' : 'No verified publication',
       editorUrl: week ? `${SITE}/admin/specials?week=${week.id}#weekly-day-${index}` : `${SITE}/admin/specials`};
   } catch { return null; }
+}
+
+// Current visibility only. An expired row cannot establish earlier activation.
+// Source text is bounded and restricted to the explicit delivery evidence field.
+export function deliveryAlertDetail(data, outcome, now) {
+  const w=deliveryWindow(new Date(now)),saved=data[6]?.find(s=>s.id===1);
+  const manual=data[5]?.[0]?.value ?? 'auto';
+  const setting=['auto','available','unavailable','hidden'].includes(manual)?manual:'invalid';
+  const iso=value=>typeof value==='string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && Number.isFinite(Date.parse(value)) ? value : '(missing or invalid)';
+  const statuses=new Set(['available','cancelled','ambiguous','none','other_day','pending','ineligible','weekly','withheld']);
+  const readings=outcome?.sourceOutcomes ?? data[0].filter(s=>{
+    const time=Date.parse(s.fb_created_time);
+    return Number.isFinite(time) && time<=now && deliveryWindow(new Date(time)).day===w.day;
+  }).map(s=>({id:s.id,status:'not_reassessed'}));
+  const evidence=readings.slice(0,MAX_LINES).map(s=>{
+    let value='';
+    try {
+      const source=data[0].find(i=>i.id===s.id),candidate=JSON.parse(source.candidate_json);
+      const raw=candidate?.delivery_recovery ?? JSON.parse(source.extracted_json);
+      if(typeof raw?.delivery?.evidence==='string') value=plainValue(raw.delivery.evidence,160);
+    } catch { /* Missing evidence is never guessed. */ }
+    return {status:s.status==='not_reassessed'?'extracted; not reassessed outside delivery window':statuses.has(s.status)?s.status:'unknown',value};
+  });
+  return {setting,visibility:resolveDeliveryDisplay(manual,saved,new Date(now)),checkedAt:new Date(now).toISOString(),
+    reconciliation:['expected','pending','withheld','hidden','expired','failed'].includes(outcome?.status)?outcome.status:'unknown',
+    expectedExpiry:w.expiresAt,storedExpiry:iso(saved?.expires_at),
+    mismatch:!!saved && saved.day===w.day && saved.expires_at!==w.expiresAt,
+    compatible:!!saved && compatibleDeliveryExpiration(saved.expires_at,w),evidence};
 }
 
 const RETRY = {retry_exhausted:'exhausted',ai_budget_exhausted:'paused until the daily AI limit resets'};
@@ -107,6 +174,9 @@ export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
   const d = detail && detail.day===day ? detail : null;
   lines.push(`Date: ${d ? `${d.weekday}, ` : ''}${day} (Chicago)`);
   if (Number.isSafeInteger(firstSeenMs) && firstSeenMs>0) lines.push(`First detected: ${chicagoTime(firstSeenMs)}`);
+  if(d?.result) lines.push(`Result: ${d.result} (current verified snapshot)`);
+  if(d?.informational) lines.push('Classification: informational staff protection; AI extraction did not fail.');
+  for(const post of d?.posts??[]) lines.push(`Facebook posted: ${day}, ${post.time} (Chicago)${post.url ? ` — ${post.url}` : ''}`);
   const stages = d?.holds?.length ? [...new Set(d.holds.map(h=>h.stage))].join(', ') : STAGE_FOR_CODE[code] ?? 'publication';
   lines.push(`Stage: ${stages}`);
   if (d?.holds?.length) {
@@ -116,11 +186,30 @@ export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
       lines.push('  (The service could not be identified, so no slot is named.)');
   }
   if (d?.protectedCount) lines.push(`Staff-protected values kept: ${d.protectedCount}`);
-  if (d) lines.push('', `Published by automation today: ${d.published.length ? d.published.map(p=>`${p.category} (${p.count})`).join(', ') : 'none'}`);
+  for(const h of d?.destinations??[]) {
+    lines.push(`Destination: ${d.weekday} ${h.category}${h.position ? ` #${h.position}` : ' (slot unverified)'}`,
+      `Reason: ${h.reason}`,`Staff lock: ${h.staffLocked?'yes':'no verified lock'}; disabled: ${h.disabled?'yes':'no verified disabled destination'}`);
+    if(h.proposed) lines.push(`Facebook proposed: ${h.proposed}`);
+    if(h.retained!==null) lines.push(`Website retained: ${h.retained || '(blank)'}`);
+    if(h.retainedPrice) lines.push(`Website separate price: ${h.retainedPrice}`);
+  }
+  if (d?.scope==='daily') lines.push('', `Published by automation today: ${d.published?.length ? d.published.map(p=>`${p.category} (${p.count})`).join(', ') : 'none'}`);
   for (const c of d?.current ?? []) lines.push(`Now showing for ${c.category}: ${c.empty ? '(blank)' : c.values.join(' | ')}`);
+  for(const p of d?.publishedValues??[]) lines.push(`Published value: ${d.weekday} ${p.category} #${p.position}: ${p.value}`);
+  if(d?.delivery) {
+    const v=d.delivery;
+    lines.push('',`Delivery setting: ${v.setting}; reconciliation: ${v.reconciliation}`,
+      `Delivery visibility at ${v.checkedAt}: ${v.visibility}`,
+      `Delivery expiration: expected ${v.expectedExpiry}; stored ${v.storedExpiry}`);
+    if(v.mismatch) lines.push(`Delivery expiration mismatch: ${v.compatible?'recognized legacy deadline; rendering still ends at 1:30 PM Chicago':'unrecognized deadline; automatic rendering fails closed'}.`);
+    for(const e of v.evidence) lines.push(`Delivery evidence (${e.status}): ${e.value || '(not available)'}`);
+    if(v.reconciliation==='expired') lines.push('Delivery window has ended; this snapshot does not establish whether delivery was active earlier.');
+  }
   lines.push('', `Automatic retry: ${RETRY[code] ?? 'none pending'}`);
   if (code==='delivery_failed') {
     lines.push('Correction: check the Delivery display setting.', `Open: ${SITE}/admin#delivery-display`);
+  } else if(d?.informational) {
+    lines.push('Staff action: optional. The staff-entered value or disabled destination was preserved. Review only if you want to change that choice.',`Open: ${d.editorUrl}`);
   } else {
     lines.push(`Correction: needed${d ? ` for ${d.weekday}` : ''}. Review the held imports and use Approve & Publish; approved values are protected from automation. The specials editor is also available.`);
     lines.push(`Open: ${d?.editorUrl ?? `${SITE}/admin/specials`}`);

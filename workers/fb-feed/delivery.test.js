@@ -55,6 +55,32 @@ test('staff overrides retain precedence before/after expiration; missing and inv
   assert.equal(resolveDeliveryDisplay('invalid',row,now),'hidden');
 });
 
+test('October 28: legacy 3 PM Worker deadline renders before 1:30 only, without accepting arbitrary expirations',()=>{
+  const fixture=JSON.parse(readFileSync(new URL('../../tests/fixtures/oct28-delivery-alert.json',import.meta.url),'utf8'));
+  const row={active:1,day:'2026-10-28',expires_at:fixture.storedExpiry};
+  const before=new Date('2026-10-28T18:29:59Z');
+  // The previously deployed Pages predicate rejected this otherwise active row.
+  assert.notEqual(row.expires_at,deliveryWindow(before).expiresAt);
+  assert.equal(resolveDeliveryDisplay('auto',row,before),'available');
+  for(const now of ['2026-10-28T18:30:00Z','2026-10-28T19:00:00Z','2026-10-29T16:00:00Z'])
+    assert.equal(resolveDeliveryDisplay('auto',row,new Date(now)),'hidden');
+  for(const expires_at of ['bad',null,'2026-10-28T18:00:00.000Z','2026-10-28T20:00:01.000Z','2026-10-29T20:00:00.000Z'])
+    assert.equal(resolveDeliveryDisplay('auto',{...row,expires_at},before),'hidden');
+  for(const active of [0,null,'1']) assert.equal(resolveDeliveryDisplay('auto',{...row,active},before),'hidden');
+  for(const manual of ['available','unavailable','hidden']) assert.equal(resolveDeliveryDisplay(manual,row,before),manual);
+  for(const [before,legacy] of [
+    ['2026-03-06T19:29:59Z','2026-03-06T21:00:00.000Z'],
+    ['2026-03-09T18:29:59Z','2026-03-09T20:00:00.000Z'],
+    ['2026-10-30T18:29:59Z','2026-10-30T20:00:00.000Z'],
+    ['2026-11-02T19:29:59Z','2026-11-02T21:00:00.000Z'],
+  ]) {
+    const now=new Date(before),window=deliveryWindow(now);
+    const saved={active:1,day:window.day,expires_at:legacy};
+    assert.equal(resolveDeliveryDisplay('auto',saved,now),'available');
+    assert.equal(resolveDeliveryDisplay('auto',saved,new Date(now.getTime()+1000)),'hidden');
+  }
+});
+
 test('1:30 PM rendering expires even with delayed cron; cron clears state and late retries cannot reactivate',async t=>{
   const f=setup(t);await f.run();assert.equal(f.display(),'available');
   f.state.now=Date.parse('2030-01-09T19:29:59Z');assert.equal(f.display(),'available');

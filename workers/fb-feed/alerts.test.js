@@ -37,9 +37,9 @@ test('pending retries and staff reviews never become terminal import alerts',()=
   for (const status of ['pending','processing']) assert.equal(importAlertObservation({processing_status:status,failure_kind:'exhausted'},{eligible:true,resolution:'unresolved'}).state,'pending');
   for (const review of ['edited','kept','dismissed']) assert.equal(importAlertObservation({review_status:review,processing_status:'failed'},{eligible:true,resolution:'unresolved'}).state,'suppressed');
 });
-test('partial publication alerts even when some slots were written; staff locks are suppressed',()=>{
+test('partial publication alerts even when some slots were written or staff protection held a proposal',()=>{
   assert.equal(dailyPublicationObservation({written:true,reason:'reconciled',blocked:[{reason:'Missing or malformed lunch price'}]}).state,'attention');
-  assert.equal(dailyPublicationObservation({written:false,reason:'conflict',blocked:[{reason:'Protected or ineligible destination slot'}]}).state,'suppressed');
+  assert.equal(dailyPublicationObservation({written:false,reason:'conflict',blocked:[{reason:'Protected or ineligible destination slot'}]}).state,'attention');
   assert.equal(dailyPublicationObservation({written:false,reason:'conflict',rejectedSources:[{reason:'capacity'}]}).state,'attention');
 });
 test('normal no-post days, retries, unknown evidence, and successful reconciliations remain distinct',()=>{

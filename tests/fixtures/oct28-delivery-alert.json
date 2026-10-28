@@ -1,0 +1,20 @@
+{
+  "note": "Public menu fields verified by SELECT-only production inspection on October 28. Evidence wrapper is reconstructed for local tests; this is not a raw AI payload or a historical delivery activation claim.",
+  "importId": "d780b3ab3c35ba35e3f1563ef1d953fa",
+  "postId": "583672228384067_1748155386852338",
+  "postedAt": "2026-10-28T16:15:22+0000",
+  "retained": "Grilled Ham and Cheese with a Cup of Soup or Coleslaw $7.25",
+  "storedExpiry": "2026-10-28T20:00:00.000Z",
+  "candidate": {
+    "evidence_version": 2,
+    "day_of_week": -1,
+    "day_evidence": "",
+    "poster_evidence": "DAILY SPECIALS",
+    "delivery": {"status":"available","evidence":"Delivery Available 11-1:30","date_evidence":"","uncertainties":[]},
+    "offers": [
+      {"content":"Garlic Turkey Bacon Sub with Sweet Potato Fries & a Drink $9.75","evidence":"1) Garlic Turkey Bacon Sub with Sweet Potato Fries & a Drink $9.75 (11-1:30)","service_time":"11-1:30","service_evidence":"11-1:30","date_evidence":"","uncertainties":[]},
+      {"content":"Grayz'n Burger with Side Salad or Coleslaw $10.25","evidence":"2) Grayz'n Burger with Side Salad or Coleslaw $10.25","service_time":"","service_evidence":"","date_evidence":"","uncertainties":[]},
+      {"content":"Grilled Ham and Cheese with a Cup of Coleslaw $7.25","evidence":"3) Grilled Ham and Cheese with a Cup of Coleslaw $7.25","service_time":"","service_evidence":"","date_evidence":"","uncertainties":[]}
+    ]
+  }
+}
