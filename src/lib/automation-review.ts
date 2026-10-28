@@ -72,6 +72,25 @@ export function importOutcome(source: any, events: any[]) {
     : ['pending','processing'].includes(source.processing_status) ? 'Processing' : 'Staged — publication unconfirmed';
   return {status, reason: reviewReason(detail || source.validation_reason || source.classification_reason) || 'No publication audit is available.'};
 }
+// Staff-facing grouping of importOutcome() statuses: one of four plain labels
+// (plus Processing while the worker is still running).
+const NEEDS_REVIEW: Record<string,string>={
+  'Partially Staff Approved':'Some offers were approved by staff. The rest still need a look.',
+  'Partially Published':'Some specials were published automatically. The rest were held for staff to check.',
+  'Held':'Automation did not publish this post. Check it against Facebook and approve it, or fix the day in the editor.',
+};
+export function statusBadge(status: string) {
+  if(status==='Staff Approved') return {label:'Staff Approved',tone:'approved',help:'Staff checked and published this post. Automation won’t change these specials.'};
+  if(status==='Published') return {label:'Published',tone:'published',help:'Automation published this post to the website. No action needed.'};
+  if(status==='Failed') return {label:'Failed',tone:'failed',help:'Automation could not read or publish this post. Check it against Facebook and fix the specials if needed.'};
+  if(status==='Processing') return {label:'Processing',tone:'neutral',help:'Automation is still working on this post. Check back shortly.'};
+  return {label:'Needs Review',tone:'review',help:NEEDS_REVIEW[status]??'Automation could not confirm this post was published. Check it against Facebook and approve it, or fix the day in the editor.'};
+}
+export function protectionLabel(protection: string) {
+  return protection.startsWith('Yes') ? ({'Yes — staff locked':'Protected — edited by staff','Yes — separate price or section link':'Protected — has a separate price or link',
+    'Yes — changed since automation':'Protected — changed after automation','Yes — existing legacy value':'Protected — older saved value'}[protection]??'Protected')
+    : 'Automation can update';
+}
 function sourceDate(value: unknown): string | null {
   const date = new Date(String(value));
   return Number.isFinite(date.getTime()) ? chicagoCalendarDate(date) : null;
@@ -101,7 +120,7 @@ export function extractedForDay(source: any, day: string, week: any) {
   if (raw.type === 'mexican-night') return {values: Array.isArray(raw.groups) ? raw.groups.slice(0,12).flatMap((g: any) => Array.isArray(g?.items) ? g.items.slice(0,4).map((i: any) => reviewText([i?.title,i?.description].filter(v => typeof v === 'string').join(' '))) : []) : [], scope: 'Mexican Night', relevant: sourceDate(source.fb_created_time) === day};
   const values = Array.isArray(raw.offers) ? raw.offers.slice(0,20).map((o: any) => reviewText(o?.content))
     : Array.isArray(raw) ? raw.slice(0,12).filter((g: any) => g?.day_of_week === calendarDayOfWeek(day)).flatMap((g: any) => Array.isArray(g.items) ? g.items.slice(0,4).map((i: any) => reviewText([i?.content,i?.price].filter(v => typeof v === 'string').join(' '))) : []) : [];
-  return {values: values.filter(Boolean), scope: 'Daily evidence — compare by service below', relevant: sourceDate(source.fb_created_time) === day};
+  return {values: values.filter(Boolean), scope: 'Daily specials', relevant: sourceDate(source.fb_created_time) === day};
 }
 export function protectedValue(slot: any): string {
   if (slot.manual_locked === 1) return 'Yes — staff locked';
@@ -143,11 +162,11 @@ export async function readAutomationReview(env: any, day: string, now = new Date
   const withSlots = groups.map((g: any)=>({...g,slots:slots.filter((s: any)=>s.group_id===g.id)}));
   const publicGroups = visibleGroups(withSlots.filter((g: any)=>g.collection_id===week?.collection_id));
   const currentGroups = withSlots.map((g: any)=>({...g,label:reviewText(g.label),time:reviewServiceTime(g.service_time),
-    visibility:g.collection_id==='mexican-night' ? (mexicanNightDetailVisible(collections[0]?.updated_at,now) ? 'Visible in the current Mexican Night publication window' : 'Saved; outside the current Mexican Night publication window')
-      : !g.enabled ? 'Saved; group disabled' : !publicGroups.some(p=>p.id===g.id) ? 'Saved; empty or suppressed as a duplicate'
-      : day < chicagoCalendarDate(now) ? 'Historical saved values; this date is no longer on the public board'
-      : 'Listed on the specials board; homepage uses today’s date. Service hours are shown, not a timed approval gate.',
-    slots:g.slots.filter((s: any)=>(s.content??'').trim() || s.price).map((s: any)=>({position:s.position,value:reviewText(displayedSpecial(s)),visibility:g.collection_id==='mexican-night' ? (g.enabled===1 && mexicanNightDetailVisible(collections[0]?.updated_at,now)?'Shown in the current Mexican Night window':'Saved; not currently shown') : day<chicagoCalendarDate(now)?'Historical date; not currently shown':publicGroups.some(p=>p.id===g.id && p.slots.some(v=>v.position===s.position))?'Shown on the specials board':'Saved; not shown (disabled or suppressed duplicate)',owner:s.origin==='automation'?'Automation':s.manual_locked===1?'Staff corrected':s.origin==='manual'?'Recurring default':'Legacy',protection:protectedValue(s)}))}));
+    visibility:g.collection_id==='mexican-night' ? (mexicanNightDetailVisible(collections[0]?.updated_at,now) ? 'Shown on the website now' : 'Saved — not shown right now (outside Mexican Night dates)')
+      : !g.enabled ? 'Saved but hidden' : !publicGroups.some(p=>p.id===g.id) ? 'Saved but not shown (empty or a duplicate)'
+      : day < chicagoCalendarDate(now) ? 'Past date — no longer on the specials board'
+      : 'Shown on the specials board',
+    slots:g.slots.filter((s: any)=>(s.content??'').trim() || s.price).map((s: any)=>({position:s.position,value:reviewText(displayedSpecial(s)),visibility:g.collection_id==='mexican-night' ? (g.enabled===1 && mexicanNightDetailVisible(collections[0]?.updated_at,now)?'Shown in the current Mexican Night window':'Saved — not shown right now') : day<chicagoCalendarDate(now)?'Past date — not shown':publicGroups.some(p=>p.id===g.id && p.slots.some(v=>v.position===s.position))?'Shown on the specials board':'Saved but not shown (hidden or a duplicate)',owner:s.origin==='automation'?'Automation':s.manual_locked===1?'Staff corrected':s.origin==='manual'?'Recurring default':'Older saved value',protection:protectedValue(s)}))}));
   let specialEvents: any[] = [], eventsUnavailable = false;
   try {
     specialEvents = await query(`SELECT id,title,event_date,end_time,status,origin,manual_locked,source_import_id,source_post_id,review_reason
@@ -164,7 +183,7 @@ export async function readAutomationReview(env: any, day: string, now = new Date
       : currentGroups.filter((g: any)=>g.collection_id===week?.collection_id && (extracted.scope!=='Weekly Lunch' || g.service==='lunch'));
     const current = linkedEvents.length ? linkedEvents.flatMap(e=>e.values) : website.flatMap((g: any)=>g.slots.map((s: any)=>s.value));
     return {id:source.id,source:reviewText(source.fb_post_id,90),created:reviewTimestamp(source.fb_created_time),fetched:reviewTimestamp(source.fetched_at),processed:reviewTimestamp(source.processed_at),link:facebookLink(source.permalink_url),...extracted,...importOutcome(source,audit),
-      values:extracted.values.map((value: string)=>({value,comparison:current.some((v: string)=>factKey(v)===factKey(value))?'Matching saved text — comparison only':'No identical saved text — comparison only; matching is not required to replace an unlocked recurring default'})),
+      values:extracted.values.map((value: string)=>({value,onWebsite:current.some((v: string)=>factKey(v)===factKey(value))})),
       editor:linkedEvents.length?'/admin/specials#special-events':extracted.scope==='Mexican Night'?'/admin/specials#mexican-form':editor,
       audits:audit.slice(0,4).map((e: any)=>({type:reviewText(e.event_type,30),at:reviewTimestamp(e.occurred_at),detail:reviewReason(e.detail)})),
       relevant:extracted.relevant || linkedEvents.length>0};

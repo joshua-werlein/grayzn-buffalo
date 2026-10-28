@@ -77,7 +77,7 @@ test('authenticated page escapes evidence, exposes correction navigation and rej
   assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
   const html=await response.text();assert.match(html,/Automation Review/);assert.match(html,/week=9000#weekly-day-0/);assert.match(html,/Burger \$14/);
   assert.doesNotMatch(html,/<img src=x|<script>alert\(1\)/);
-  assert.match(html,/No identical saved text/);
+  assert.doesNotMatch(html,/No identical saved text|comparison only/);assert.match(html,/Not on the website|Matches the website/);
   const post=await container.renderToResponse(page,{request:request('','POST'),locals:locals(f.env)});
   assert.equal(post.status,405);
   const bad=await container.renderToResponse(page,{request:request('?date=2026-02-30'),locals:locals(f.env)});

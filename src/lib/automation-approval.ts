@@ -26,6 +26,10 @@ function checkPrices(proposed: string,original: string) {
   const printed=new Set([...normalizeMexicanPrices(original).matchAll(pair)].map(m=>`${m[1].toLowerCase()}:${m[2]}`));
   for(const m of normalizeMexicanPrices(proposed).matchAll(pair)) if(!printed.has(`${m[1].toLowerCase()}:${m[2]}`)) throw Error('Keep each portion label with its printed price.');
 }
+// Staff edits, legacy values, separate prices/links and values changed after
+// automation all require an explicit override. The review UI uses this same
+// rule to decide when to ask; approveImport() enforces it.
+export const isProtectedSlot=(s: any)=>s.manual_locked===1 || s.origin==='legacy' && !!s.content || s.origin==='automation' && !!s.content && s.content!==s.last_auto_value || !!s.price || !!s.section_link;
 async function digest(value: unknown) {
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value))))].map(n=>n.toString(16).padStart(2,'0')).join('');
 }
@@ -85,13 +89,18 @@ export async function approvalModel(env: any,importId: string,day: string,now=ne
   let entries: any[]=[];
   if(mexican) {
     if(!Array.isArray(raw.groups)||raw.groups.length<1||raw.groups.length>12) throw Error('Invalid stored menu groups.');
+    // Display hint only: approveImport() re-derives protection from the saved slot.
+    const saved=collection.groups.flatMap(g=>g.slots.filter(s=>s.content?.trim()).map(s=>({s,key:mexicanItemKey(String(s.content).split('\n')[0])})));
     for(const [g,group] of raw.groups.entries()) {
       if(!Array.isArray(group.items)||group.items.length<1||group.items.length>4) throw Error('Invalid stored menu items.');
       for(const [i,item] of group.items.entries()) {
         const normalized=normalizeMexicanSizeItem(item);
         const original=typeof item.evidence==='string' && item.evidence.trim()?item.evidence:[item.title,item.description].filter(v=>typeof v==='string').join(' ');
-        entries.push({key:`m:${g}:${i}`,group:g,label:text(group.label,80),title:text(normalized.title,300),description:text(normalized.description,300),
-          original,uncertainties:Array.isArray(item.uncertainties)?item.uncertainties:[],evidence:typeof item.evidence==='string'?item.evidence:'',done:done.has(`m:${g}:${i}`)});
+        const title=text(normalized.title,300),evidence=typeof item.evidence==='string'?item.evidence:'';
+        const matches=saved.filter(v=>[mexicanItemKey(title),mexicanItemKey(evidence)].includes(v.key));
+        entries.push({key:`m:${g}:${i}`,group:g,label:text(group.label,80),title,description:text(normalized.description,300),
+          original,uncertainties:Array.isArray(item.uncertainties)?item.uncertainties:[],evidence,done:done.has(`m:${g}:${i}`),
+          current:matches[0]?displayedSpecial(matches[0].s):'',protected:matches.some(v=>isProtectedSlot(v.s))});
       }
     }
   } else {
@@ -111,8 +120,8 @@ export async function approvalModel(env: any,importId: string,day: string,now=ne
   }
   if(source.review_status==='edited' && !done.size) throw Error('This import was already reviewed in another editor.');
   const destinations=mexican?[]:collection.groups.filter(g=>g.day_of_week===weekday && g.enabled===1).flatMap(g=>g.slots.filter(s=>s.position<=specialInputCount(g)).map(s=>({
-    id:`${g.id}~${s.position}`,groupId:g.id,position:s.position,service:g.service,label:`${g.label} · ${s.position}`,current:displayedSpecial(s),protected:s.manual_locked===1 || s.origin==='legacy' && !!s.content || s.origin==='automation' && !!s.content && s.content!==s.last_auto_value || !!s.price || !!s.section_link})));
-  return {source,raw,mexican,entries,destinations,collection,metadata,week,day,approvals,
+    id:`${g.id}~${s.position}`,groupId:g.id,position:s.position,service:g.service,label:`${g.label} · ${s.position}`,current:displayedSpecial(s),protected:isProtectedSlot(s)})));
+  return {source,raw,mexican,entries,destinations,collection,metadata,week,day,approvals,menuProtected:mexican && metadata.section_source==='manual',
     evidenceHash:await digest([source,collection,metadata,week]),requestId:crypto.randomUUID()};
 }
 
@@ -177,9 +186,9 @@ export async function approveImport(env: any,input: any,now=new Date(),{preview=
     const destKey=`${group.id}~${slot.position}`;
     if(destinations.has(destKey)) throw Error('Two offers cannot replace the same destination.');
     destinations.add(destKey);
-    const protectedSlot=slot.manual_locked===1 || slot.origin==='legacy' && !!slot.content || slot.origin==='automation' && !!slot.content && slot.content!==slot.last_auto_value || !!slot.price || !!slot.section_link;
+    const protectedSlot=isProtectedSlot(slot);
     const changed=content!==slot.content || !!slot.price;
-    if((protectedSlot || model.mexican && model.metadata.section_source==='manual') && changed && submitted.override!==true) throw Error('Explicitly confirm each protected-value replacement.');
+    if((protectedSlot || model.mexican && model.metadata.section_source==='manual') && changed && submitted.override!==true) throw Error('A special edited by staff (protected) needs confirmation before it can be replaced. Tick “Yes, replace” and review again.');
     rows.push({key:entry.key,index:entry.index??null,groupId:group.id,groupLabel:group.label,position:slot.position,service:group.service,
       content,sectionLink:slot.section_link,previous:{content:slot.content,price:slot.price,section_link:slot.section_link,origin:slot.origin,manual_locked:slot.manual_locked},override:submitted.override===true});
     Object.assign(slot,{content,price:'',origin:'manual',manual_locked:1});

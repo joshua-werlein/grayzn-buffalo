@@ -2,7 +2,7 @@
 import Base from '../../layouts/Base.astro';
 import { isAuthed } from '../../lib/auth';
 import { chicagoCalendarDate } from '../../lib/weekly-specials';
-import { readAutomationReview, reviewDate } from '../../lib/automation-review';
+import { readAutomationReview, reviewDate, statusBadge, protectionLabel } from '../../lib/automation-review';
 import {approvalModel,approvalPageContext} from '../../lib/automation-approval';
 import AutomationApproval from '../../components/AutomationApproval.astro';
 const env = (Astro.locals as any).runtime?.env ?? {};
@@ -24,53 +24,59 @@ if(review && date===chicagoCalendarDate(now)) for(const item of review.history) 
 <Base title="Automation Review — Grayz'n Buffalo Staff">
   <section class="automation-review">
     <h2>Automation Review</h2>
-    <p>Review Facebook imports, correct selected values and approve them directly. Staff-approved destinations are protected from automation.</p>
-    {Astro.url.searchParams.get('approved')==='1' && <p role="status">Approval saved. The latest website values and import status are shown below.</p>}
+    <p>Compare what was posted on Facebook with what’s on the website. If a post needs review, check it and approve it here. Specials you approve are protected — automation won’t change them.</p>
+    <ul class="legend" aria-label="Status meanings">
+      <li><span class="badge published">Published</span> Automation put it on the website.</li>
+      <li><span class="badge review">Needs Review</span> Staff should check it.</li>
+      <li><span class="badge failed">Failed</span> Automation couldn’t handle it.</li>
+      <li><span class="badge approved">Staff Approved</span> Staff checked and published it.</li>
+    </ul>
+    {Astro.url.searchParams.get('approved')==='1' && <p role="status">Approved and published. The updated website values are shown below.</p>}
     <form method="get" class="date-picker">
-      <label for="review-date">Chicago date <input id="review-date" type="date" name="date" value={date} max={chicagoCalendarDate(now)} required /></label>
+      <label for="review-date">Date <input id="review-date" type="date" name="date" value={date} max={chicagoCalendarDate(now)} required /></label>
       <button class="btn btn-primary" type="submit">View imports</button>
     </form>
-    <p class="hint">The last 30 days are available while import evidence is retained. Timestamps below are stored in UTC. Saved values are current, not historical snapshots of what visitors saw.</p>
+    <p class="hint">You can look back up to 30 days. Times are shown in UTC. The website column shows what is saved now, not what visitors saw on past dates.</p>
     {invalid && <p role="alert">Choose a valid date within the last 30 days.</p>}
     {unavailable && <p role="alert">Automation history is temporarily unavailable. No data was changed. Reload to try again.</p>}
     {review && <>
       <h3>{review.dayName} · {review.day}</h3>
       <a class="btn btn-ghost" href={review.editor}>Edit this day’s specials</a>
-      {review.ambiguousWeek && <p role="alert">Multiple saved weeks cover this date. Daily slot associations are unavailable until the saved weeks are corrected.</p>}
-      {review.truncated && <p role="status">Showing the latest 30 imports in this date’s week. Older imports may be omitted.</p>}
+      {review.ambiguousWeek && <p role="alert">More than one saved week covers this date. Fix the saved weeks in the Specials editor before approving daily specials.</p>}
+      {review.truncated && <p role="status">Showing the latest 30 Facebook posts for this week. Older posts may be left out.</p>}
       <div class="comparison">
         <section aria-labelledby="imports-heading">
-          <h3 id="imports-heading">Facebook AI imports</h3>
-          {!review.history.length && <p>No retained imports are associated reliably with this date.</p>}
-          {review.history.map(item=><article class="review-card" id={`import-${item.id}`}>
+          <h3 id="imports-heading">What Facebook posted</h3>
+          {!review.history.length && <p>No Facebook posts were found for this date.</p>}
+          {review.history.map(item=>{const badge=statusBadge(item.status);return <article class="review-card" id={`import-${item.id}`}>
             <h4>{item.scope}</h4>
-            <p class="status">{item.status} <span>· audit evidence</span></p>
-            <p><strong>Facebook source:</strong> {item.source} {item.link && <a href={item.link} target="_blank" rel="noopener noreferrer">View Facebook post ↗</a>}</p>
-            <dl><dt>Posted (UTC)</dt><dd>{item.created || 'Unknown'}</dd><dt>Imported (UTC)</dt><dd>{item.fetched || 'Unknown'}</dd><dt>Processed (UTC)</dt><dd>{item.processed || 'Not recorded'}</dd></dl>
-            <p><strong>Reason:</strong> {item.reason}</p>
-            {item.values.length ? <ul class="offers">{item.values.map(offer=><li><strong>{offer.value}</strong><small>{offer.comparison}</small></li>)}</ul> : <p>Usable extracted items are unavailable. The source is retained in history.</p>}
-            <p class="hint">A matching description does not prove which import wrote a slot. Unidentified services are not assigned to a destination.</p>
-            <a href={item.editor}>Open the correction editor</a>
+            <p class="status-line"><span class={`badge ${badge.tone}`}>{badge.label}</span>{badge.label!==item.status && <span class="hint">{item.status}</span>}</p>
+            <p>{badge.help}</p>
+            {badge.tone==='review' || badge.tone==='failed' ? <p><strong>Why:</strong> {item.reason}</p> : <details class="compact"><summary>Details</summary><p>{item.reason}</p></details>}
+            <p><strong>Facebook post:</strong> {item.link ? <a href={item.link} target="_blank" rel="noopener noreferrer">View on Facebook ↗</a> : 'Link unavailable'} <span class="hint">({item.source})</span></p>
+            <dl><dt>Posted (UTC)</dt><dd>{item.created || 'Unknown'}</dd><dt>Picked up (UTC)</dt><dd>{item.fetched || 'Unknown'}</dd><dt>Processed (UTC)</dt><dd>{item.processed || 'Not recorded'}</dd></dl>
+            <p class="subhead">Specials read from the post</p>
+            {item.values.length ? <ul class="offers">{item.values.map(offer=><li><strong>{offer.value}</strong>{offer.onWebsite ? <small class="match">✓ Matches the website</small> : <small>Not on the website</small>}</li>)}</ul> : <p>No specials could be read from this post. Check the Facebook post directly.</p>}
+            <a href={item.editor}>Fix this day in the Specials editor</a>
             {approvalPanels.has(item.id) && <AutomationApproval model={approvalPanels.get(item.id)}/>}
             {approvalErrors.has(item.id) && <p class="hint">{approvalErrors.get(item.id)}</p>}
-            {date!==chicagoCalendarDate(now) && <p class="hint">Historical imports are read-only here. They cannot be published into today’s menu.</p>}
-            {!!item.audits.length && <details><summary>Recent import history</summary><ul>{item.audits.map(event=><li><time>{event.at} UTC</time> · {event.type}{event.type==='review' && <p>{event.detail}</p>}</li>)}</ul></details>}
-          </article>)}
+            {date!==chicagoCalendarDate(now) && <p class="hint">Past posts can’t be approved here. Use the Specials editor for corrections.</p>}
+            {!!item.audits.length && <details><summary>History</summary><ul>{item.audits.map(event=><li><time>{event.at} UTC</time> · {event.type}{event.type==='review' && <p>{event.detail}</p>}</li>)}</ul></details>}
+          </article>;})}
         </section>
         <section aria-labelledby="website-heading">
-          <h3 id="website-heading">Current saved website values</h3>
-          <p class="hint">Compare these by service with the imports. Website display status is separate from the import’s processing or publication audit.</p>
-          {!review.groups.length && <p>No corresponding saved collection is available.</p>}
+          <h3 id="website-heading">What’s on the website now</h3>
+          {!review.groups.length && <p>No saved specials for this date.</p>}
           {review.groups.map(group=><article class="review-card">
             <h4>{group.label || group.service}{group.collection_id==='mexican-night' && ' · Mexican Night'}</h4>
             {group.time && <p>{group.time}</p>}
             <p class="hint">{group.visibility}</p>
-            {group.slots.length ? <ul class="offers">{group.slots.map(slot=><li><strong>{slot.value}</strong><small>{slot.visibility}</small><small>Slot {slot.position} · {slot.owner}</small><small>Protected from automation: {slot.protection}</small></li>)}</ul> : <p>No saved values.</p>}
+            {group.slots.length ? <ul class="offers">{group.slots.map(slot=>{const lock=protectionLabel(slot.protection);return <li><strong>{slot.value}</strong><small>Slot {slot.position} · {slot.owner} · {slot.visibility}</small><small class={lock.startsWith('Protected')?'lock':''}>{lock}</small></li>;})}</ul> : <p>Nothing saved.</p>}
           </article>)}
-          {review.eventsUnavailable && <p>Special-event history is unavailable. Daily and weekly comparisons remain available.</p>}
+          {review.eventsUnavailable && <p>Special events couldn’t be loaded. Daily and weekly specials are still shown.</p>}
           {review.specialEvents.map(event=><article class="review-card">
             <h4>{event.title} · Special event</h4><p>{event.visibility} · {event.status}</p>
-            <p>{event.origin==='automation'?'Automation':'Staff'} · Protected: {event.manual_locked===1?'Yes — staff locked':'No staff lock'}</p>
+            <p>{event.origin==='automation'?'Added by automation':'Added by staff'} · {event.manual_locked===1?'Protected — edited by staff':'Automation can update'}</p>
             {event.reason && <p>{event.reason}</p>}
             <ul>{event.values.map(value=><li>{value}</li>)}</ul>
             <a href={event.editor}>Edit special events</a>
@@ -86,7 +92,12 @@ if(review && date===chicagoCalendarDate(now)) for(const item of review.history) 
   .date-picker label{display:grid;gap:.4rem}.date-picker input{min-height:44px;padding:.5rem;font:inherit}
   .comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.5rem;margin-top:1.5rem}
   .review-card{border:1px solid #847252;border-radius:8px;padding:1rem;margin:1rem 0;background:rgba(255,255,255,.04)}
-  h4{font-size:1.1rem;margin-top:0}.status{font-weight:700}.status span,.hint,small{font-size:.9rem;line-height:1.5}
+  h4{font-size:1.1rem;margin-top:0}.hint,small{font-size:.9rem;line-height:1.5}
+  .legend{list-style:none;padding:0;margin:1rem 0;display:flex;flex-wrap:wrap;gap:.5rem 1.25rem;font-size:.9rem}.legend li{display:flex;gap:.4rem;align-items:center}
+  .badge{display:inline-block;padding:.15rem .55rem;border-radius:999px;border:1px solid currentColor;font-weight:700;font-size:.85rem;line-height:1.4;white-space:nowrap}
+  .badge.published{background:#e1eed8;color:#24461b}.badge.review{background:#fff3d6;color:#6a3f0c}.badge.failed{background:#f7dcd8;color:#7a1f1a}.badge.approved{background:#dce8ef;color:#183e50}.badge.neutral{background:#ece6da;color:#4a3a2e}
+  .status-line{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.25rem 0}.subhead{font-weight:700;margin:1rem 0 0}
+  .match{color:#24461b;font-weight:600}.lock{font-weight:600}details.compact{margin-top:.25rem}
   .offers{padding-left:1.2rem}.offers li{margin:.8rem 0}.offers small{display:block;margin-top:.25rem}
   dl{font-size:.9rem;display:grid;grid-template-columns:auto 1fr;gap:.3rem .75rem}dd{margin:0}
   details{margin-top:1rem}summary{cursor:pointer;min-height:44px;padding:.5rem 0}
