@@ -78,6 +78,12 @@ function intentional(s,data,weekday) {
   return destinations.length===1 && (destinations[0].enabled===0 || slots.some(p=>p.group_id===destinations[0].id && p.manual_locked===1 && p.content));
 }
 
+function staffProtectionOnly(daily,data,day,weekday) {
+  const blocked=Array.isArray(daily?.blocked)?daily.blocked:[];
+  const detail=blocked.length && !daily.rejectedSources?.length ? dailyAlertDetail(daily,data,day,weekday) : null;
+  return !!detail && detail.protectedCount===blocked.length;
+}
+
 async function assess(env,scan,snap) {
   const now=Date.now(),w=deliveryWindow(new Date(now)),sourceIds=JSON.parse(scan.source_ids);
   const sources=snap.data[0].filter(s=>currentSource(s,scan,now));
@@ -103,6 +109,8 @@ async function assess(env,scan,snap) {
       food={state:'attention'};
       cause=importAlertObservation(terminal,{eligible:true,resolution:'unresolved'}).code;
     } else if(daily.requiresWrite && food.state!=='suppressed') food={state:'attention'};
+    // Staff-locked values retained as the only hold are not a failure; no email.
+    else if(food.state==='attention' && staffProtectionOnly(daily,snap.data,scan.day,w.weekday)) food={state:'suppressed'};
     else if(!eligible.length || !sourceIds.length) food={state:'suppressed'};
     else if(food.state==='unknown') food={state:'pending'};
   }

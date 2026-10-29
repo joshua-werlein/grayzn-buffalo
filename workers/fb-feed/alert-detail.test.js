@@ -180,39 +180,44 @@ test('verified destination details distinguish disabled, locked and other inelig
   assert.equal(dailyAlertDetail({blocked:[{service:'all-day',group_id:'a',position:2,reason:'Protected or ineligible destination slot'}]},data,'2026-10-26',1).informational,false);
 });
 
-test('October 28: protected All Day #2 yields one informational partial-publication email with exact verified values',async t=>{
+function october28(t) {
   const f=setup(t,{now:'2026-10-28T16:16:00Z',caption:'Daily Specials',candidate:structuredClone(OCT28.candidate)});
   f.db.exec("UPDATE weekly_specials SET week_start_date='2026-10-26',week_end_date='2026-11-01' WHERE id=9000");
   Object.assign(f.state.posts[0],{id:OCT28.postId,created_time:OCT28.postedAt,updated_time:OCT28.postedAt});
   const held=f.slots(3,'all-day')[1];
   f.db.prepare("UPDATE special_slots SET content=?,origin='manual',manual_locked=1,last_auto_value=NULL WHERE group_id=? AND position=2").run(OCT28.retained,held.group_id);
+  return f;
+}
+
+test('October 28: staff-protection-only hold retains the locked value and sends no email',async t=>{
+  const f=october28(t);
   await f.run();
-  assert.equal(f.sent.length,0);
   assert.equal(f.slots(3,'lunch')[0].content,OCT28.candidate.offers[0].content);
   assert.equal(f.slots(3,'all-day')[0].content,OCT28.candidate.offers[1].content);
-  f.state.now+=ALERT_GRACE_MS;
-  await f.run();await f.run();
+  for(let i=0;i<4;i++){f.state.now+=ALERT_GRACE_MS;await f.run();}
+  assert.equal(f.sent.length,0);
+  assert.equal(f.db.prepare("SELECT count(*) AS n FROM facebook_alert_incidents WHERE scope='daily' AND state='attention'").get().n,0);
+  assert.equal(f.slots(3,'all-day')[1].content,OCT28.retained);
+  assert.equal(f.slots(3,'all-day')[1].manual_locked,1);
+  // The import record itself is unchanged and remains visible for review.
+  assert.ok(f.db.prepare('SELECT id FROM special_imports WHERE fb_post_id=?').get(OCT28.postId));
+});
+
+test('staff protection alongside a genuine hold still sends the existing review email',async t=>{
+  const f=october28(t);
+  const lunch=f.slots(3,'lunch')[0];
+  f.db.prepare("UPDATE special_slots SET price='$9.00' WHERE group_id=? AND position=1").run(lunch.group_id);
+  await f.run();
+  for(let i=0;i<3;i++){f.state.now+=ALERT_GRACE_MS;await f.run();}
   assert.equal(f.sent.length,1);
   const [message]=f.sent;
   assert.equal(message.code,'publication_blocked');
   const {subject,text}=alertMessage(message.day,message.code,{detail:message.detail,firstSeenMs:message.firstSeenMs});
-  assert.match(subject,/publication review \(staff protection\)/);
-  for(const value of [OCT28.candidate.offers[2].content,OCT28.retained,OCT28.candidate.offers[0].content,OCT28.candidate.offers[1].content]) assert.ok(text.includes(value),value);
-  assert.match(text,/Result: Partially Published/);
-  assert.match(text,/informational staff protection; AI extraction did not fail/);
-  assert.match(text,/Destination: Wednesday All Day #2/);
+  assert.match(subject,/automation needs review/);
   assert.match(text,/Staff lock: yes/);
-  assert.match(text,/Facebook posted: 2026-10-28, 11:15 AM/);
-  assert.ok(text.includes('https://www.facebook.com/583672228384067/posts/1748155386852338'));
-  assert.match(text,/Delivery evidence \(available\): Delivery Available 11-1:30/);
-  assert.match(text,/Delivery setting: auto; reconciliation: expected/);
-  assert.match(text,/Delivery visibility at .*: available/);
-  assert.match(text,/Staff action: optional/);
-  assert.ok(text.includes('/admin/specials?week=9000#weekly-day-2'));
+  assert.match(text,/separate price/);
   assert.equal(f.slots(3,'all-day')[1].content,OCT28.retained);
   assert.equal(f.slots(3,'all-day')[1].manual_locked,1);
-  for(let i=0;i<3;i++){f.state.now+=ALERT_GRACE_MS;await f.run();}
-  assert.equal(f.sent.length,1);
 });
 
 test('after the email, a staff correction is kept and the incident is never re-sent',async t=>{
