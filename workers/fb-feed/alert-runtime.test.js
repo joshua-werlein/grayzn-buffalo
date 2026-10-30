@@ -44,6 +44,50 @@ function setup(t) {
 const permanent=f=>{f.env.AI.run=async()=>{throw Object.assign(Error('private-provider-detail'),{status:400});};};
 async function failure(t) {const f=setup(t);permanent(f);await f.run();assert.equal(f.row()?.state,'attention');return f;}
 
+async function october30HeldOffer(t) {
+  const f=setup(t);
+  f.env.SPECIALS_EVIDENCE_VERSION='2';
+  f.state.now=Date.parse('2026-10-30T15:12:40Z');
+  f.state.candidate=JSON.parse(readFileSync(new URL('../../tests/fixtures/oct30-daily-specials.json',import.meta.url),'utf8'));
+  // A genuine remaining uncertainty must still alert after heading recognition.
+  f.state.candidate.offers[1].uncertainties=['Side alternatives are unclear'];
+  Object.assign(f.state.posts[0],{message:'',created_time:'2026-10-30T15:11:07Z',updated_time:'2026-10-30T15:11:07Z'});
+  f.db.exec("UPDATE weekly_specials SET week_start_date='2026-10-26',week_end_date='2026-11-01' WHERE id=9000");
+  f.db.prepare("UPDATE special_slots SET content=?,origin='manual',manual_locked=1 WHERE group_id=? AND position=2")
+    .run(f.state.candidate.offers[2].content,f.slots(5,'all-day')[0].group_id);
+  await f.run();
+  assert.equal(f.row()?.state,'attention');
+  assert.equal(f.slots(5,'all-day')[0].content,'');
+  assert.equal(f.slots(5,'all-day')[1].manual_locked,1);
+  assert.equal(f.sent.length,0);
+  return f;
+}
+
+test('October 30: an unresolved extracted offer stays alertable after the full grace period',async t=>{
+  const f=await october30HeldOffer(t);
+  f.advance(ALERT_GRACE_MS-1);await f.send();assert.equal(f.sent.length,0);
+  f.advance(1);await f.send();assert.equal(f.sent.length,1);
+  await f.send();assert.equal(f.sent.length,1);
+});
+
+test('October 30: audited staff correction before grace suppresses the held-offer email',async t=>{
+  const f=await october30HeldOffer(t);
+  f.advance(6*60000);
+  const rows=f.state.candidate.offers.map((o,index)=>({index,service:index===0?'lunch':'all-day',
+    groupId:f.slots(5,index===0?'lunch':'all-day')[0].group_id,position:index===2?2:1,content:o.content,sectionLink:''}));
+  for(const row of rows) f.db.prepare("UPDATE special_slots SET content=?,origin='manual',manual_locked=1 WHERE group_id=? AND position=?")
+    .run(row.content,row.groupId,row.position);
+  const source=f.imports()[0];
+  f.db.prepare("INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?,'review',?)")
+    .run(source.id,'STAFF_APPROVAL:'+JSON.stringify({version:1,day:'2026-10-30',complete:true,rows}));
+  f.db.prepare("UPDATE special_imports SET review_status='accepted' WHERE id=?").run(source.id);
+  f.db.exec("UPDATE special_collections SET revision=revision+1 WHERE id='auto-week'");
+  await f.send();assert.equal(f.sent.length,0,'the saved staff change invalidates old dispatch proof immediately');
+  f.advance(12*60000);await f.run();assert.equal(f.row().state,'suppressed');
+  f.advance(ALERT_GRACE_MS);await f.send();assert.equal(f.sent.length,0);
+  assert.equal(f.slots(5,'all-day')[0].content,f.state.candidate.offers[1].content);
+});
+
 test('Worker: successful import, repeated cron and read-only assessment are silent',async t=>{
   const f=setup(t);await f.run();f.advance(ALERT_GRACE_MS);await f.run();
   assert.equal(f.all().length,0);assert.equal(f.sent.length,0);

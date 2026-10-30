@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {reconcilePosterEvidence} from './reconcile.js';
 import {harness} from './test-fixture.js';
+import {reconcileToday} from './guarded-auto.js';
 
 const fixture=name=>JSON.parse(readFileSync(new URL(`../../tests/fixtures/${name}.json`,import.meta.url),'utf8'));
 const OCT10=fixture('oct10-saturday'),OCT11=fixture('oct11-sunday');
@@ -19,6 +20,82 @@ const route=(poster,day=poster.day_of_week)=>reconcilePosterEvidence([poster],da
 const services=r=>r.targets.map(t=>[t.role??t.service,t.items.map(i=>i.content)]);
 const withoutSoup=p=>({...p,offers:p.offers.filter(o=>!/^\s*soups?\s*:/i.test(o.content))});
 const MEALS=[offer('Philly & Fries $11'),offer('German Burger w/ Side Salad, Soup or Coleslaw $10.25'),offer('Chicken Salad Sandwich w/ cup of Soup or Coleslaw $7.25')];
+
+const OCT30=fixture('oct30-daily-specials');
+const october30=(candidate,options={})=>reconcilePosterEvidence([{...candidate,evidence_version:2}],5,[],
+  {today:'2026-10-30',verifiedSameDaySources:new Set([0]),...options});
+for(const heading of ['DAILY SPECIALS',OCT30.poster_evidence,"  Grayz’n Buffalo Bar and Grill\nDaily   Specials  "])
+  test(`October 30 trusted three-meal layout: ${heading}`,()=>{
+    const result=october30({...OCT30,poster_evidence:heading});
+    assert.deepEqual(services(result),[['lunch',[OCT30.offers[0].content]],['all-day',OCT30.offers.slice(1).map(o=>o.content)]]);
+    assert.deepEqual(result.unresolvedTargets,[]);
+  });
+
+test('October 30 branding does not authorize arbitrary headings, weekends, untrusted sources or other meal counts',()=>{
+  for(const heading of ['OTHER BAR DAILY SPECIALS',"NOT GRAYZ'N BUFFALO BAR & GRILL DAILY SPECIALS",
+    `${OCT30.poster_evidence} MAYBE`,`${OCT30.poster_evidence} OR NIGHT SPECIALS`,'DAILY SPECIALS MENU']) {
+    const result=october30({...OCT30,poster_evidence:heading});
+    assert.ok(!result.targets.some(t=>t.service==='all-day'),heading);
+    assert.equal(result.unresolvedTargets.length,2,heading);
+  }
+  assert.equal(october30(OCT30,{verifiedSameDaySources:new Set()}).unresolvedTargets.length,2);
+  for(const [weekday,today] of [[6,'2026-10-31'],[0,'2026-11-01']]) {
+    const result=reconcilePosterEvidence([{...OCT30,evidence_version:2}],weekday,[],{today,verifiedSameDaySources:new Set([0])});
+    assert.ok(!result.targets.some(t=>t.service==='all-day'));
+  }
+  for(const count of [2,4]) {
+    const offers=count===2?OCT30.offers.slice(0,2):[...OCT30.offers,offer('Ribs $15')];
+    assert.ok(!october30({...OCT30,offers}).targets.some(t=>t.service==='all-day'));
+  }
+});
+
+test('October 30 explicit service evidence wins and conflicting layout assumptions stay held',()=>{
+  const candidate=structuredClone(OCT30);
+  Object.assign(candidate.offers[1],{service_time:'5-10 PM',service_evidence:'5-10 PM'});
+  const result=october30(candidate);
+  assert.deepEqual(result.targets.map(t=>t.service),['lunch','nightly']);
+  assert.equal(result.targets.find(t=>t.service==='nightly').items[0].content,OCT30.offers[1].content);
+  assert.equal(result.unresolvedTargets.length,1);
+});
+
+test('October 30 branded headings cannot bypass printed stale or future dates',()=>{
+  for(const date of ['2026-10-29','2026-10-31']) {
+    const candidate=structuredClone(OCT30);candidate.offers[1].date_evidence=date;
+    const result=october30(candidate);
+    assert.deepEqual(result.targets,[]);
+    assert.ok(result.rejectedSources.length>0);
+  }
+});
+
+test('integration October 30: lunch and missing All Day publish while the manual All Day slot and repeated scans are protected',async t=>{
+  const f=setupDay(t,OCT30,{now:'2026-10-30T15:15:00Z',weekStart:'2026-10-26',weekEnd:'2026-11-01',created:'2026-10-30T15:11:07Z'});
+  const group=f.slots(5,'all-day')[0].group_id;
+  const manual='Grilled Ham and Cheese with a Cup of Coleslaw $7.25';
+  f.sql("UPDATE special_slots SET content=?,origin='manual',manual_locked=1 WHERE group_id=? AND position=2",manual,group);
+  const protectedBefore=f.slots(5,'all-day')[1];
+  await f.run();
+  assert.equal(f.slots(5,'lunch')[0].content,OCT30.offers[0].content);
+  assert.equal(f.slots(5,'all-day')[0].content,OCT30.offers[1].content);
+  assert.deepEqual(f.slots(5,'all-day')[1],protectedBefore);
+  const slots=f.sql('SELECT * FROM special_slots ORDER BY group_id,position');
+  const revision=f.sql("SELECT revision FROM special_collections WHERE id='auto-week'");
+  await f.run();
+  assert.deepEqual(f.sql('SELECT * FROM special_slots ORDER BY group_id,position'),slots);
+  assert.deepEqual(f.sql("SELECT revision FROM special_collections WHERE id='auto-week'"),revision);
+  assert.equal(f.state.aiCalls,1);
+});
+
+for(const created of ['2026-10-29T15:11:07Z','2026-10-31T15:11:07Z'])
+  test(`October 30 guarded publisher rejects a branded poster with source timestamp ${created}`,async t=>{
+    const f=setupDay(t,OCT30,{now:'2026-10-30T15:15:00Z',weekStart:'2026-10-26',weekEnd:'2026-11-01',created});
+    f.sql("INSERT INTO special_imports(id,fb_post_id,fb_created_time,parser_version,image_r2_key,candidate_json,processing_status,validation_result) VALUES('dated','dated',?,19,'test.jpg',?,'staged','ok')",
+      created,JSON.stringify({...OCT30,evidence_version:2}));
+    const before=f.sql('SELECT * FROM special_slots ORDER BY group_id,position');
+    const result=await reconcileToday(f.env,{sourceIds:['dated'],today:'2026-10-30',weekday:5});
+    assert.equal(result.written,false);
+    assert.ok(result.rejectedSources.some(s=>/timestamp/.test(s.reason)));
+    assert.deepEqual(f.sql('SELECT * FROM special_slots ORDER BY group_id,position'),before);
+  });
 
 // ── October 10 and 11 posters, with and without the soup list ──
 test('October 10 Saturday poster: Saturday Special, two All Day meals and the Soups list',()=>{

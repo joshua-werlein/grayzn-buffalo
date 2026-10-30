@@ -1,0 +1,31 @@
+{
+  "day_of_week": -1,
+  "day_evidence": "",
+  "poster_evidence": "GRAYZ'N BUFFALO BAR & GRILL DAILY SPECIALS",
+  "offers": [
+    {
+      "content": "Fish Sandwich w/ Fries + Drink $9.75",
+      "evidence": "1) FISH SANDWICH W/ FRIES + DRINK $9.75 (11 AM - 1:30 PM)",
+      "service_time": "11 AM - 1:30 PM",
+      "service_evidence": "(11 AM - 1:30 PM)",
+      "date_evidence": "",
+      "uncertainties": []
+    },
+    {
+      "content": "Cheeseburger or Fish Sandwich w/ Side Salad, Soup or Coleslaw $10.25",
+      "evidence": "2) CHEESEBURGER OR FISH SANDWICH W/ SIDE SALAD, SOUP OR COLESLAW $10.25",
+      "service_time": "",
+      "service_evidence": "",
+      "date_evidence": "",
+      "uncertainties": []
+    },
+    {
+      "content": "Grilled Ham and Cheese w/ Cup of Soup or Coleslaw $7.25",
+      "evidence": "3) GRILLED HAM AND CHEESE W/ CUP OF SOUP OR COLESLAW $7.25",
+      "service_time": "",
+      "service_evidence": "",
+      "date_evidence": "",
+      "uncertainties": []
+    }
+  ]
+}

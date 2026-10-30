@@ -229,8 +229,11 @@ function houseLayout(p,isExplicitToday,weekday,known,explicit,verifiedSameDay=fa
   const heading=headingService(p);
   // Timestamp trust comes from the guarded publisher, never extracted JSON.
   // Only the weekday DAILY SPECIALS three-priced-meal format gets this fallback.
+  // Allow its known bar branding, including typographic apostrophes, wrapped
+  // whitespace and &/and. The whole heading must match; unrelated text cannot
+  // acquire service meaning merely by containing "Daily Specials".
   const sameDayLayout=verifiedSameDay && weekday>=1 && weekday<=5
-    && /^\s*daily\s+specials\s*$/i.test(p.poster_evidence)
+    && /^\s*(?:grayz['’]n\s+buffalo\s+bar\s*(?:&|and)\s+grill\s+)?daily\s+specials\s*$/i.test(p.poster_evidence)
     && !p.day_evidence.trim() && p.day_of_week===-1 && meals.length===3
     && meals.every(i=>prices(p.offers[i].evidence??'').length===1);
   // The same trusted timestamp also dates an undated "TONIGHT" night poster
