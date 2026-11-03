@@ -163,6 +163,89 @@ export function deliveryAlertDetail(data, outcome, now) {
     compatible:!!saved && compatibleDeliveryExpiration(saved.expires_at,w),evidence};
 }
 
+// Weekly Lunch diagnostics: fixed reason codes from the weekly assessment.
+// Weekday names, validated dates and fixed text only; no meal or AI text.
+const WEEKLY_REASONS = {
+  validation_rejected:'Weekly poster failed validation; no weekday meal was verified',
+  import_failed:'Weekly poster could not be imported',
+  retry_exhausted:'Automatic import retries were exhausted',
+  ai_budget_exhausted:'The daily AI limit prevented extraction',
+  invalid_evidence:'Stored weekly evidence is no longer valid',
+  unverified_meal:'Meal facts could not be verified against the poster',
+  source_conflict:'Weekly posters disagree for this day',
+  unwritten:'Eligible meal was not written to the website',
+  missing_destination:'Lunch destination is missing or ambiguous',
+  ineligible:'Lunch slot is not eligible for automatic replacement',
+  no_matching_week:'No unique saved week matches the printed date range',
+  retained_conflict:'Website shows a different automated meal that this poster cannot replace',
+};
+const WEEKLY_CATEGORIES = new Set(['extraction','validation','publication']);
+const isRange = v => typeof v==='string' && /^\d{1,2}\/\d{1,2}-\d{1,2}\/\d{1,2}$/.test(v);
+const isDate = v => typeof v==='string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+export function weeklyAlertDetail({day, data, sources=[], failures=[], inspection=[]}) {
+  try {
+    if (!isDate(day)) return null;
+    const weeks = Array.isArray(data?.[1]) ? data[1] : [];
+    const known = failures.find(f=>Number.isSafeInteger(f.weekId) && f.weekId>0 && isDate(f.weekStart));
+    const current = weeks.length===1 && Number.isSafeInteger(weeks[0].id) && weeks[0].id>0 ? weeks[0] : null;
+    const week = known ? {id:known.weekId,start:known.weekStart} : current ? {id:current.id,start:current.week_start_date} : null;
+    let range = failures.map(f=>f.dateRange).find(isRange) ?? null;
+    if (!range) for (const s of sources) {
+      try {
+        const printed = JSON.parse(String(s.extracted_json).replace(/^```(?:json)?\n?|\n?```$/gm,'').trim())?.date_range;
+        if (isRange(printed)) { range = printed; break; }
+      } catch { /* No printed range is guessed. */ }
+    }
+    const holds = [];
+    for (const f of failures) {
+      if (!Object.hasOwn(WEEKLY_REASONS,f.reason) || !WEEKLY_CATEGORIES.has(f.category)) continue;
+      const days = [...new Set([f.day,...(f.days??[])].filter(d=>Number.isInteger(d) && d>=1 && d<=5))].sort();
+      const line = {category:f.category, reason:WEEKLY_REASONS[f.reason], days:days.map(d=>DAY_NAMES[d])};
+      if (!holds.some(h=>h.category===line.category && h.reason===line.reason && h.days.join()===line.days.join())) holds.push(line);
+    }
+    // Weekday outcomes from the read-only weekly inspection (fixed codes only).
+    const failing = new Set(failures.flatMap(f=>[f.day,...(f.days??[])]).filter(d=>Number.isInteger(d)));
+    const daysWith = reasons => [...new Set((Array.isArray(inspection)?inspection:[]).flatMap(r=>(r.held??[])
+      .filter(h=>reasons.includes(h.reason) && Number.isInteger(h.day) && h.day>=1 && h.day<=5 && !failing.has(h.day)).map(h=>h.day)))].sort().map(d=>DAY_NAMES[d]);
+    const publishedDays = daysWith(['published']), protectedDays = daysWith(['staff_locked','disabled','staff_cleared']), retainedDays = daysWith(['retained']);
+    const first = failures.map(f=>f.day ?? f.days?.[0]).find(d=>Number.isInteger(d) && d>=1 && d<=5);
+    const reviewUrls = sources.filter(s=>/^[a-zA-Z0-9_-]{1,100}$/.test(s.id)).slice(0,6).map(s=>`${SITE}/admin/automation?date=${day}#import-${s.id}`);
+    const posts = sources.flatMap(s=>{
+      const ms=Date.parse(s.fb_created_time);
+      if(!Number.isFinite(ms) || deliveryWindow(new Date(ms)).day!==day) return [];
+      return [{time:chicagoTime(ms),url:/^\d{1,30}_\d{1,30}$/.test(s.fb_post_id)
+        ? `https://www.facebook.com/${s.fb_post_id.split('_')[0]}/posts/${s.fb_post_id.split('_')[1]}` : null}];
+    }).slice(0,MAX_LINES);
+    return {scope:'weekly', day, weekday:DAY_NAMES[new Date(`${day}T12:00:00Z`).getUTCDay()],
+      weekStart:week?.start ?? null, dateRange:range, categories:[...new Set(holds.map(h=>h.category))],
+      weeklyHolds:holds.slice(0,MAX_LINES), posts, reviewUrls, publishedDays, protectedDays, retainedDays,
+      // Partial only when a weekday is verified as published by automation now.
+      result: publishedDays.length ? 'Partially Published' : 'Held for Review',
+      editorUrl: week ? `${SITE}/admin/specials?week=${week.id}${first ? `#weekly-day-${EDITOR_DAY_ORDER.indexOf(first)}` : ''}` : `${SITE}/admin/specials`};
+  } catch { return null; }
+}
+function formatWeeklyText({day, code, summary, detail:d, firstSeenMs}) {
+  const lines = [`Weekly Lunch: ${summary}`, `Date: ${d.weekday}, ${day} (Chicago)`];
+  if (Number.isSafeInteger(firstSeenMs) && firstSeenMs>0) lines.push(`First detected: ${chicagoTime(firstSeenMs)}`);
+  lines.push(`Affected week: ${d.weekStart ? `week of ${d.weekStart}` : 'saved week not verified'}${d.dateRange ? ` (printed ${d.dateRange})` : ''}`);
+  lines.push(`Result: ${d.result} (current verified snapshot)`);
+  lines.push(`Failure category: ${d.categories.length ? d.categories.join(', ') : STAGE_FOR_CODE[code] ?? 'publication'}`);
+  for (const post of d.posts) lines.push(`Facebook posted: ${day}, ${post.time} (Chicago)${post.url ? ` — ${post.url}` : ''}`);
+  if (d.weeklyHolds.length) {
+    lines.push('', 'Held:');
+    for (const h of d.weeklyHolds) lines.push(`- ${h.days.length ? h.days.join(', ') : 'Weekly poster'}: ${h.reason}`);
+  }
+  lines.push('', `Published by automation: ${d.publishedDays?.length ? d.publishedDays.join(', ') : 'none verified'}`);
+  if (d.protectedDays?.length) lines.push(`Staff-protected (kept, not a failure): ${d.protectedDays.join(', ')}`);
+  if (d.retainedDays?.length) lines.push(`Daily poster value kept (precedence, not a failure): ${d.retainedDays.join(', ')}`);
+  lines.push('', 'Daily specials publication does not establish Weekly Lunch publication.');
+  lines.push('', `Automatic retry: ${RETRY[code] ?? 'none pending'}`);
+  lines.push('Correction: needed for Weekly Lunch. Review the held weekly import and enter or approve the weekday lunches; staff-entered values are protected from automation.');
+  lines.push(`Open: ${d.editorUrl}`, `Review imports: ${SITE}/admin/automation?date=${day}`);
+  for (const url of d.reviewUrls) if (new RegExp(`^${SITE.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/admin/automation\\?date=${day}#import-[a-zA-Z0-9_-]{1,100}$`).test(url)) lines.push(`Pending import: ${url}`);
+  return lines.join('\n');
+}
+
 const RETRY = {retry_exhausted:'exhausted',ai_budget_exhausted:'paused until the daily AI limit resets'};
 const STAGE_FOR_CODE = {import_failed:'import',validation_rejected:'validation',ai_budget_exhausted:'AI extraction',
   retry_exhausted:'import retries',delivery_failed:'delivery activation',automation_failed:'automation run'};
@@ -170,8 +253,9 @@ const STAGE_FOR_CODE = {import_failed:'import',validation_rejected:'validation',
 // Plain-text body only. Every interpolated value is either fixed text, a
 // validated number/date, or plainValue() output.
 export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
-  const lines = [summary];
   const d = detail && detail.day===day ? detail : null;
+  if (d?.scope==='weekly') return formatWeeklyText({day, code, summary, detail:d, firstSeenMs});
+  const lines = [summary];
   lines.push(`Date: ${d ? `${d.weekday}, ` : ''}${day} (Chicago)`);
   if (Number.isSafeInteger(firstSeenMs) && firstSeenMs>0) lines.push(`First detected: ${chicagoTime(firstSeenMs)}`);
   if(d?.result) lines.push(`Result: ${d.result} (current verified snapshot)`);
@@ -221,6 +305,7 @@ export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
   return lines.join('\n');
 }
 export function alertSubjectSuffix(detail) {
+  if (detail?.scope==='weekly') return ' (Weekly Lunch)';
   const categories = [...new Set((detail?.holds ?? []).map(h=>h.category))].slice(0,3);
   return categories.length ? ` (${categories.join(', ')})` : '';
 }

@@ -270,7 +270,10 @@ async function resolveWeeklyLunchTargetWeek(env, evidence, fbCreatedTime, today)
   return results[0];
 }
 
-async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=[source]) {
+// replaceable: weekday -> slot values written by an older, no-longer-current
+// weekly poster for this week; only a current replacement poster receives it.
+// protectedDays: weekdays owned by a current daily poster (never overwritten).
+async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=[source],{inspectOnly=false,replaceable=null,protectedDays=new Set()}={}) {
   const stage = reason => ({written: false, reason});
   const {results: groups} = await env.DB.prepare(
     'SELECT * FROM special_groups WHERE collection_id=?1 AND day_of_week IN (1,2,3,4,5)'
@@ -292,15 +295,22 @@ async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=
   );
 
   const rows = [];
+  // Read-only alert classification per held day: fixed codes, never content.
+  const held = [];
+  const hold = (entry, reason) => held.push({day: entry.day_of_week, reason});
   for (const entry of evidence.entries) {
     const date = new Date(`${week.week_start_date}T12:00:00Z`);
     date.setUTCDate(date.getUTCDate()+entry.day_of_week-1);
     if (date.toISOString().slice(0,10)<today) continue;
     const lunchGroups = groups.filter(g => g.service === 'lunch' && g.day_of_week === entry.day_of_week && g.enabled === 1);
-    if (lunchGroups.length !== 1) continue;
+    if (lunchGroups.length !== 1) {
+      const all = groups.filter(g => g.service === 'lunch' && g.day_of_week === entry.day_of_week);
+      hold(entry, all.length === 1 && all[0].enabled === 0 ? 'disabled' : 'missing_destination');
+      continue;
+    }
     const dest = lunchGroups[0];
     const slot = slots.find(s => s.group_id === dest.id && s.position === 1);
-    if (!slot) continue;
+    if (!slot) { hold(entry, 'missing_destination'); continue; }
     const canonicalContent = canonicalizeSlotContent(entry.content, entry.day_of_week, 'lunch');
     // An untouched automation value is the same poster row read without its
     // shared heading price; adding that price is the only permitted upgrade.
@@ -308,11 +318,35 @@ async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=
       && slot.content === slot.last_auto_value && slot.content === canonicalizeSlotContent(entry.base_content, entry.day_of_week, 'lunch');
     // Fill blanks or replace untouched recurring defaults. Preserve existing
     // Facebook evidence (including the more specific daily poster) and staff edits.
-    if (slot.content !== '' && slot.content !== null && !(slot.origin === 'manual' && slot.manual_locked === 0) && !priceUpgrade) continue;
-    if (!safe(slot)) continue;
-    if (slot.origin === 'automation' && slot.content === canonicalContent && slot.last_auto_value === canonicalContent) continue;
+    if (slot.content !== '' && slot.content !== null && !(slot.origin === 'manual' && slot.manual_locked === 0) && !priceUpgrade) {
+      // Only verified automation provenance (unlocked, unchanged since the last
+      // automated write, no separate price/link) can prove publication or a
+      // retained Facebook value; any other filled slot is ineligible.
+      const automated = slot.origin === 'automation' && slot.manual_locked === 0 && slot.last_auto_value === slot.content
+        && slot.price === '' && slot.section_link === '';
+      // A corrected poster replaces an unchanged automation value that an older,
+      // deleted/superseded weekly poster wrote. A daily poster's value, a staff
+      // edit/lock or any value of unknown provenance is never replaced.
+      if (automated && slot.content !== canonicalContent && !protectedDays.has(entry.day_of_week)
+          && replaceable?.get(entry.day_of_week)?.has(slot.content)) {
+        rows.push({group_id: dest.id, position: 1, content: canonicalContent, old: slot, replaced: true});
+        continue;
+      }
+      hold(entry, slot.manual_locked === 1 ? 'staff_locked' : !automated ? 'ineligible'
+        : slot.content === canonicalContent ? 'published' : 'retained');
+      continue;
+    }
+    if (!safe(slot)) {
+      // A blank slot whose last automation value differs was cleared by staff.
+      hold(entry, slot.manual_locked === 1 ? 'staff_locked'
+        : (slot.content === '' || slot.content === null) && typeof slot.last_auto_value === 'string' ? 'staff_cleared' : 'ineligible');
+      continue;
+    }
+    if (slot.origin === 'automation' && slot.content === canonicalContent && slot.last_auto_value === canonicalContent) { hold(entry, 'published'); continue; }
     rows.push({group_id: dest.id, position: 1, content: canonicalContent, old: slot});
   }
+  if (inspectOnly) return {written: false, requiresWrite: rows.length > 0, pendingDays: rows.map(r => groups.find(g => g.id === r.group_id).day_of_week), held,
+    reason: rows.length ? 'Eligible weekly lunch changes remain unwritten' : 'No unambiguous eligible weekly lunch changes'};
   if (!rows.length) return stage('No unambiguous eligible weekly lunch changes');
 
   const token = crypto.randomUUID();
@@ -343,7 +377,8 @@ async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=
     JSON.stringify(groups), JSON.stringify(slots), JSON.stringify(dependencies),week.week_start_date);
 
   const gate = 'EXISTS(SELECT 1 FROM special_collections WHERE id=?1 AND mutation_token=?2)';
-  const detail = `GUARDED_WEEKLY_LUNCH: ${dateRangeLabel}; ${rows.length} slot(s)`;
+  const replacedCount = rows.filter(r => r.replaced).length;
+  const detail = `GUARDED_WEEKLY_LUNCH: ${dateRangeLabel}; ${rows.length} slot(s)${replacedCount ? `; replaced ${replacedCount} superseded poster value(s)` : ''}`;
   const results = await env.DB.batch([
     claim,
     ...rows.map(r => prepare(`UPDATE special_slots SET content=?3,price='',origin='automation',manual_locked=0,last_auto_value=?3
@@ -355,32 +390,107 @@ async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=
   return results.at(-1)?.results?.length ? {written: true, reason: detail} : stage('Concurrent change; nothing written');
 }
 
-export async function reconcileWeeklyLunch(env, today) {
-  const {results: sources} = await env.DB.prepare(
+const chicagoDayOf = time => new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(time));
+const weeklyEvidence = raw => applySharedWeeklyLunchPrice({...validateWeeklyLunch(normalizeWeeklyRange(raw)),unresolved_days:raw.unresolved_days??[]});
+
+// Slot values that earlier weekly posters actually wrote for this week (audited
+// GUARDED_WEEKLY_LUNCH writes), by weekday. Used only as replacement provenance.
+async function priorWeeklyWriters(env, week, today) {
+  const {results} = await env.DB.prepare(`SELECT i.id,i.fb_created_time,i.candidate_json FROM special_imports i
+    WHERE i.candidate_json LIKE ?1 AND EXISTS(SELECT 1 FROM special_import_events e
+      WHERE e.import_id=i.id AND e.event_type='review' AND e.detail LIKE 'GUARDED_WEEKLY_LUNCH:%')`).bind('{"type":"weekly-lunch"%').all();
+  const writers = [];
+  for (const row of results) {
+    try {
+      const evidence = weeklyEvidence(JSON.parse(row.candidate_json));
+      const target = await resolveWeeklyLunchTargetWeek(env, evidence, row.fb_created_time, today);
+      if (target?.id !== week.id) continue;
+      const byDay = new Map();
+      for (const e of evidence.entries) for (const value of [e.content, e.base_content].filter(v => typeof v === 'string'))
+        byDay.set(e.day_of_week, (byDay.get(e.day_of_week) ?? new Set()).add(canonicalizeSlotContent(value, e.day_of_week, 'lunch')));
+      writers.push({id: row.id, created: Date.parse(row.fb_created_time), byDay});
+    } catch { /* Unusable history never authorizes a replacement. */ }
+  }
+  return writers;
+}
+
+// sourceIds is the import set of a COMPLETE Facebook Page scan (today only).
+// With it: a weekly import created today but absent from that scan was deleted
+// (or replaced) and is never used; a current poster supersedes older posters for
+// its week; only current posters may replace older weekly automation values.
+// Without it (no complete scan), legacy fill-only behavior applies.
+// inspectOnly is the alert's read-only view: limited to the fenced scan sources,
+// it reports per-source holds with fixed codes and never writes.
+export async function reconcileWeeklyLunch(env, today, {sourceIds=null, inspectOnly=false}={}) {
+  const current = Array.isArray(sourceIds) ? new Set(sourceIds) : null;
+  const {results: staged} = await env.DB.prepare(
     `SELECT * FROM special_imports WHERE parser_version=?1 AND processing_status='staged' AND validation_result='ok'
      AND image_r2_key IS NOT NULL AND review_status IN ('pending','accepted')
      AND candidate_json LIKE ?2
      AND NOT EXISTS(SELECT 1 FROM special_imports newer WHERE newer.fb_post_id=special_imports.fb_post_id
        AND newer.parser_version=?1 AND newer.rowid>special_imports.rowid)`
   ).bind(parserVersionFor(env), '{"type":"weekly-lunch"%').all();
-  if (!sources.length) return {written: false, reason: 'No weekly lunch sources'};
+  const sources = staged.filter(s => {
+    if (!current || current.has(s.id)) return true;
+    if (inspectOnly) return false;
+    // Created today yet absent from the complete scan: deleted or replaced.
+    return Number.isFinite(Date.parse(s.fb_created_time)) && chicagoDayOf(s.fb_created_time) !== today;
+  });
+  if (!sources.length) return inspectOnly ? [] : {written: false, reason: 'No weekly lunch sources'};
   if(env.SPECIALS_EVIDENCE_VERSION==='2') {
-    const plans=[];
+    let plans=[];const unusable=[];
     for(const source of sources) {
       try {
         if(!Number.isFinite(Date.parse(source.fb_created_time)) || Date.parse(source.fb_created_time)>Date.now()) continue;
-        const raw=JSON.parse(source.candidate_json);
-        const evidence=applySharedWeeklyLunchPrice({...validateWeeklyLunch(normalizeWeeklyRange(raw)),unresolved_days:raw.unresolved_days??[]});
+        const evidence=weeklyEvidence(JSON.parse(source.candidate_json));
         const week=await resolveWeeklyLunchTargetWeek(env,evidence,source.fb_created_time,today);
         if(week) plans.push({source,evidence,week});
-      } catch { /* Unusable weekly scope cannot be rebound to an unrelated week. */ }
+        else unusable.push({sourceId:source.id,reason:'no_matching_week',dateRange:evidence.date_range});
+      } catch { unusable.push({sourceId:source.id,reason:'invalid_evidence'}); /* Unusable weekly scope cannot be rebound to an unrelated week. */ }
     }
-    const results=[];
+    // Newer wins: an older poster (outside today's scan) never competes with a
+    // current poster for the same week; current posters still conflict normally.
+    const protectedDays=new Set(),writersByWeek=new Map();
+    if(current) {
+      const currentWeeks=new Set(plans.filter(p=>current.has(p.source.id)).map(p=>p.week.id));
+      plans=plans.filter(p=>current.has(p.source.id) || !currentWeeks.has(p.week.id));
+      const {results:daily}=await env.DB.prepare(`SELECT candidate_json FROM special_imports WHERE id IN (SELECT value FROM json_each(?1))
+        AND processing_status='staged' AND validation_result='ok' AND review_status IN ('pending','accepted')`).bind(JSON.stringify([...current])).all();
+      for(const row of daily) {
+        try { const c=JSON.parse(row.candidate_json); if('offers' in c && Number.isInteger(c.day_of_week)) protectedDays.add(c.day_of_week); } catch { /* not daily */ }
+      }
+      for(const week of new Map(plans.filter(p=>current.has(p.source.id)).map(p=>[p.week.id,p.week])).values())
+        writersByWeek.set(week.id,await priorWeeklyWriters(env,week,today));
+    }
+    const replaceableFor=plan=>{
+      if(!current?.has(plan.source.id)) return null;
+      const created=Date.parse(plan.source.fb_created_time),map=new Map();
+      for(const w of writersByWeek.get(plan.week.id)??[]) {
+        if(w.id===plan.source.id || current.has(w.id) || !(w.created<=created)) continue;
+        for(const [day,values] of w.byDay) map.set(day,new Set([...(map.get(day)??[]),...values]));
+      }
+      return map;
+    };
+    const results=inspectOnly?[...unusable]:[];
     for(const plan of plans) {
       const peers=plans.filter(p=>p.week.id===plan.week.id);
-      const entries=plan.evidence.entries.filter(entry=>!peers.some(p=>p.evidence.unresolved_days.some(d=>d.day===entry.day_of_week))
-        && new Set(peers.flatMap(p=>p.evidence.entries.filter(e=>e.day_of_week===entry.day_of_week).map(e=>factKey(e.content)))).size===1);
-      results.push(await applyWeeklyLunch(env,plan.source,{...plan.evidence,entries},plan.week,today,peers.map(p=>p.source)));
+      const conflicts=[];
+      const entries=plan.evidence.entries.filter(entry=>{
+        const unresolved=peers.some(p=>p.evidence.unresolved_days.some(d=>d.day===entry.day_of_week));
+        const agreed=new Set(peers.flatMap(p=>p.evidence.entries.filter(e=>e.day_of_week===entry.day_of_week).map(e=>factKey(e.content)))).size===1;
+        if(!unresolved && !agreed) conflicts.push(entry.day_of_week);
+        return !unresolved && agreed;
+      });
+      if(inspectOnly) {
+        const outcome=await applyWeeklyLunch(env,plan.source,{...plan.evidence,entries},plan.week,today,peers.map(p=>p.source),
+          {inspectOnly:true,replaceable:replaceableFor(plan),protectedDays});
+        results.push({...outcome,sourceId:plan.source.id,weekId:plan.week.id,weekStart:plan.week.week_start_date,dateRange:plan.evidence.date_range,
+          entries:plan.evidence.entries.map(e=>({day:e.day_of_week,key:factKey(e.base_content??e.content)})),
+          unresolvedDays:plan.evidence.unresolved_days.map(d=>({day:d.day,reason:d.reason})),conflictDays:conflicts});
+        continue;
+      }
+      results.push(await applyWeeklyLunch(env,plan.source,{...plan.evidence,entries},plan.week,today,peers.map(p=>p.source),
+        {replaceable:replaceableFor(plan),protectedDays}));
       // Each apply snapshots the current collection revision; reread before a
       // subsequent independent source to avoid using a stale plan revision.
       for(const next of plans) if(next.week.id===plan.week.id) {

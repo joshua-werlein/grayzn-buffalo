@@ -133,7 +133,10 @@ test('Worker: unknown image, old-day caption, weekly and Mexican sources do not 
   for(const caption of ['Hello friends','Tuesday Night Specials','Weekly Lunch Specials','Mexican Night',
     'Next Wednesday Night Specials','Wednesday Night Specials tomorrow','Wednesday Night Specials 2030-01-16']) {
     f.state.posts[0].message=caption;f.advance(1);await f.run();
-    assert.ok(!f.all().some(r=>r.state==='attention'));assert.equal(f.sent.length,0);
+    // An explicit weekly lunch caption with a permanent extraction failure is a
+    // Weekly Lunch incident (its own scope), never a daily terminal failure.
+    assert.deepEqual(f.all().filter(r=>r.state==='attention').map(r=>r.scope),caption==='Weekly Lunch Specials'?['weekly']:[]);
+    assert.equal(f.sent.length,0);
   }
 });
 

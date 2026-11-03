@@ -307,6 +307,9 @@ export function chicagoDayWindow(now) {
   return {today,weekday:new Date(`${today}T12:00:00Z`).getUTCDay(),since:midnight(today),until:midnight(chicagoCalendarOffset(now,1))};
 }
 
+// Returns null for ANY failed or incomplete retrieval (HTTP error, malformed
+// body, broken/looping pagination, page limit, exception). Only a complete scan
+// returns an array, which may legitimately be empty.
 async function fetchScanPosts(env, now, window) {
   const url = new URL(`https://graph.facebook.com/${GRAPH_API_VERSION}/${env.FB_PAGE_ID}/posts`);
   url.search = new URLSearchParams({
@@ -318,21 +321,21 @@ async function fetchScanPosts(env, now, window) {
     // Page only within today's bounds; never fall back to a recent-post scan.
     for (let page=0;page<10;page++) {
       const response = await fetch(url, { headers: { Authorization: `Bearer ${env.FB_SYSTEM_TOKEN}` } });
-      if (!response.ok) return [];
+      if (!response.ok) return null;
       const result = await response.json();
-      if (!Array.isArray(result?.data)) return [];
+      if (!Array.isArray(result?.data)) return null;
       for (const post of result.data) {
         const created = Date.parse(post.created_time);
         if (post.id && Number.isFinite(created) && created >= window.since*1000 && created < window.until*1000 && created <= now.getTime()) posts.set(post.id,post);
       }
       if (!result.paging?.next) return [...posts.values()].sort((a,b)=>Date.parse(a.updated_time || a.created_time)-Date.parse(b.updated_time || b.created_time));
       const after = result.paging?.cursors?.after;
-      if (typeof after !== 'string' || !after || cursors.has(after)) return [];
+      if (typeof after !== 'string' || !after || cursors.has(after)) return null;
       cursors.add(after);
       url.searchParams.set('after',after);
     }
   } catch { /* Failed or incomplete retrieval must not publish a partial scan. */ }
-  return [];
+  return null;
 }
 
 async function storeImportImage(env, post, imageSrcVer, attemptToken) {
@@ -567,6 +570,8 @@ export function validateExtraction(extractedJson,reliable=false,window={}) {
             return [{day_of_week:e.day_of_week,content:offer.content}];
           } catch(error) {unresolved.push({day:e.day_of_week,reason:error.message});return [];}
         })};
+        // Report the per-row reasons, not the generic entry-count shape error.
+        if(!parsed.entries.length && unresolved.length) throw Error(`No verified weekly meals: ${JSON.stringify(unresolved)}`);
       }
       const daily=singleDayLunchEvidence(parsed);
       if(reliable && daily) throw Error('Single-day poster requires daily offers with individual service evidence');
@@ -766,6 +771,14 @@ export async function runImportPipeline(env,alertOptions={}) {
   const sourceIds=[], work=[];
   const alertScan=await beginAlertScan(env,window.today,now.getTime());
   const rawPosts = await fetchScanPosts(env, now, window);
+  // An unavailable scan is never an empty Page: no reconciliation, no deletion
+  // inference and no alert evaluation. The started alert scan stays incomplete,
+  // which the alert health check reports.
+  if (!rawPosts) {
+    console.warn('Facebook scan unavailable; reconciliation skipped',{date:window.today});
+    try { await pruneImportImages(env); } catch { console.error('Import pipeline: unable to prune old import images'); }
+    return;
+  }
   // Register the COMPLETE scan before processing, so recovery never publishes a
   // single new poster while another known current source is still pending.
   for (const raw of rawPosts) {
@@ -823,7 +836,7 @@ export async function runImportPipeline(env,alertOptions={}) {
     // Special events use their own table and revisions; failures stay isolated.
     try { await reconcileEvents(env,{sourceIds,today:window.today}); }
     catch(err) { console.error('Special events reconcile error',String(err)); }
-    try { await reconcileWeeklyLunch(env,window.today); }
+    try { await reconcileWeeklyLunch(env,window.today,{sourceIds}); }
     catch(err) { console.error('Weekly lunch reconcile error',String(err)); }
     try { await reconcileMexicanNight(env); }
     catch(err) { console.error('Mexican Night reconcile error',String(err)); }

@@ -1,15 +1,20 @@
 import {parserVersionFor,classifyCaption} from './classify.js';
-import {reconcileToday} from './guarded-auto.js';
+import {reconcileToday,reconcileWeeklyLunch} from './guarded-auto.js';
 import {reconcileDelivery} from './delivery.js';
-import {validateCurrentDay} from './reconcile.js';
+import {validateCurrentDay,hasWeeklyLunchEvidence,singleDayLunchEvidence,singleDayLunchEvidenceV2,canonicalizeSlotContent,WEEKLY_LUNCH_SHAPE_ERROR} from './reconcile.js';
+import {factKey} from './evidence.js';
 import {deliveryWindow,resolveDeliveryDisplay} from '../../src/lib/delivery.js';
 import {dailyPublicationObservation,importAlertObservation} from './alert-policy.js';
 import {ALERT_GRACE_MS,dispatchAlert,alertEvidenceFence} from './alert-store.js';
 import {alertTransport} from './alert-email.js';
-import {dailyAlertDetail,deliveryAlertDetail} from './alert-detail.js';
+import {dailyAlertDetail,deliveryAlertDetail,weeklyAlertDetail} from './alert-detail.js';
 
 const MODES=['OBSERVE','MOCK','EMAIL'];
 const FRESH_MS=90*60*1000;
+// Each dispatchAlert claims, fences and sends at most one incident; a
+// superseded claim keeps its lease, so the next iteration reaches another.
+// Covers daily, delivery and weekly with headroom; bounded by the send timeout.
+const MAX_DISPATCH_PER_RUN=6;
 const hour=now=>Number(new Intl.DateTimeFormat('en-US',{timeZone:'America/Chicago',hour:'numeric',hourCycle:'h23'}).format(new Date(now)));
 const active=env=>MODES.includes(env.SPECIALS_ALERT_MODE) && env.SPECIALS_IMPORT_MODE==='GUARDED_AUTO';
 const safeError=()=>console.error('Facebook alert subsystem unavailable');
@@ -65,11 +70,147 @@ function currentSource(s,scan,now) {
   return Number.isFinite(time) && time<=now && deliveryWindow(new Date(time)).day===scan.day;
 }
 function dedicated(s) {
+  if(s.validation_reason===WEEKLY_LUNCH_SHAPE_ERROR) return true;
   try {
     const c=JSON.parse(s.candidate_json || s.extracted_json);
     return ['weekly-lunch','mexican-night'].includes(c?.type) && !('offers' in c) && !('day_of_week' in c);
   } catch {return s.target_kind==='section' || (s.target_kind==='week' && s.target_day==null);}
 }
+// Weekly Lunch has its own scope: daily publication never proves it, and the
+// daily assessment above excludes these sources via dedicated().
+const unfence=s=>String(s).replace(/^```(?:json)?\n?|\n?```$/gm,'').trim();
+// A one-day lunch poster in the weekly shape is daily evidence (validateExtraction).
+// Recognition that then fails price checks is still daily-owned.
+function singleDay(c) {
+  try {return !!(singleDayLunchEvidenceV2(c) || singleDayLunchEvidence(c));} catch {return true;}
+}
+function weeklyReading(s) {
+  try {
+    const c=JSON.parse(unfence(s.candidate_json || s.extracted_json));
+    if(c?.type==='weekly-lunch' && !('offers' in c) && !singleDay(c)) return c;
+  } catch { /* Shape is decided below without trusting malformed output. */ }
+  return null;
+}
+function weeklySource(s) {
+  if(weeklyReading(s)) return true;
+  // A weekly poster read as daily offers that never recovered its weekly shape.
+  if(s.validation_reason===WEEKLY_LUNCH_SHAPE_ERROR) return true;
+  return !s.candidate_json && !s.extracted_json && hasWeeklyLunchEvidence(String(s.caption??''));
+}
+// Advertised rows of a failed reading: weekday and a comparison key only. The
+// raw text is never displayed; unusable rows make coverage unprovable.
+function advertised(s) {
+  const entries=weeklyReading({extracted_json:s.extracted_json})?.entries;
+  if(!Array.isArray(entries) || !entries.length) return null;
+  const rows=entries.map(e=>Number.isInteger(e?.day_of_week) && e.day_of_week>=1 && e.day_of_week<=5
+    && typeof e.content==='string' && e.content.trim() ? {day:e.day_of_week,key:factKey(e.content)} : null);
+  return rows.every(Boolean)?rows:null;
+}
+const WEEKLY_PUBLICATION_HOLDS=new Set(['missing_destination','ineligible']);
+
+// Same-day deduplication identity for Weekly Lunch. Equivalent posters with
+// different Facebook IDs share it; a different week, weekday or meal is a new
+// incident. Cause/category changes for the same meals are not. Only a digest
+// is stored; meal text never enters the alert tables.
+async function weeklyFingerprint(scan,sources,failures,inspection) {
+  const range=v=>typeof v==='string' && /^\d{1,2}\/\d{1,2}-\d{1,2}\/\d{1,2}$/.test(v)?v:null;
+  const printed=s=>{try {return range(JSON.parse(unfence(s.extracted_json))?.date_range);} catch {return null;}};
+  const tokens=new Set();
+  for(const f of failures) {
+    const week=f.weekStart ?? range(f.dateRange) ?? printed(sources.find(s=>s.id===f.sourceId) ?? {}) ?? scan.day;
+    if(f.rows) for(const r of f.rows) tokens.add(`${week}|${r.day}|${r.key}`);
+    else if(Number.isInteger(f.day)) {
+      // This failure's own source meal: a conflict is identified by every
+      // conflicting meal (one failure per source), never the first match.
+      const key=inspection.find(r=>r.sourceId===f.sourceId)?.entries?.find(e=>e.day===f.day)?.key ?? '';
+      tokens.add(`${week}|${f.day}|${key}`);
+    } else {
+      // Unreadable or unscoped source: the image identity, never its text.
+      const s=sources.find(x=>x.id===f.sourceId);
+      tokens.add(`${week}|source|${s?.image_hash ?? s?.fb_post_id ?? f.reason}`);
+    }
+  }
+  return (await digest([...tokens].sort())).slice(0,16);
+}
+
+async function assessWeekly(env,scan,snap,now,sourceIds) {
+  const sources=snap.data[0].filter(s=>currentSource(s,scan,now) && ['pending','accepted'].includes(s.review_status) && weeklySource(s));
+  const result=(state,cause='publication_blocked',failures=[],inspection=[])=>({state,cause,
+    detail:state==='attention'?weeklyAlertDetail({day:scan.day,data:snap.data,sources,failures,inspection}):null});
+  if(!sources.length) return result('suppressed');
+  if(sources.some(s=>['pending','processing'].includes(s.processing_status))) return result('pending');
+  // Read-only, limited to the fenced scan sources, after the real publisher ran.
+  const inspection=env.SPECIALS_EVIDENCE_VERSION==='2'
+    ? (await reconcileWeeklyLunch(env,scan.day,{sourceIds,inspectOnly:true})).filter(r=>sources.some(s=>s.id===r.sourceId)) : null;
+  const failures=[];let unknown=false,cause=null,suppressedDays=0;
+  // Daily-poster precedence requires actual publication: the weekday's lunch
+  // slot in the verified snapshot (already proven automation-managed by the
+  // 'retained' hold) shows one of a current staged daily poster's offers. A
+  // staged daily poster alone proves nothing; anything else retained, e.g. an
+  // earlier weekly reading, is an unreplaced discrepancy to review.
+  const dailyOffers=new Map();
+  for(const s of snap.data[0].filter(s=>currentSource(s,scan,now) && s.processing_status==='staged'
+    && s.validation_result==='ok' && ['pending','accepted'].includes(s.review_status) && !weeklySource(s))) {
+    try {
+      const c=JSON.parse(s.candidate_json);
+      if(!('offers' in c) || !Number.isInteger(c.day_of_week)) continue;
+      for(const o of c.offers) if(typeof o?.content==='string')
+        dailyOffers.set(c.day_of_week,(dailyOffers.get(c.day_of_week)??new Set()).add(canonicalizeSlotContent(o.content,c.day_of_week,'lunch')));
+    } catch { /* Not daily evidence. */ }
+  }
+  const [,,collections,groups,slots]=snap.data;
+  const lunchSlot=(weekId,day)=>{
+    const collection=collections.find(c=>c.weekly_special_id===weekId && c.kind==='week');
+    const group=groups.filter(g=>g.collection_id===collection?.id && g.day_of_week===day && g.service==='lunch' && g.enabled===1);
+    return group.length===1 ? slots.find(x=>x.group_id===group[0].id && x.position===1) : null;
+  };
+  const dailyPublished=(weekId,day)=>{
+    const slot=lunchSlot(weekId,day);
+    return !!slot?.content && slot.origin==='automation' && slot.manual_locked===0 && slot.last_auto_value===slot.content
+      && !!dailyOffers.get(day)?.has(slot.content);
+  };
+  for(const r of inspection??[]) {
+    const own=[];
+    if(r.reason==='no_matching_week') own.push({category:'publication',reason:'no_matching_week',dateRange:r.dateRange});
+    else if(r.reason==='invalid_evidence') own.push({category:'validation',reason:'invalid_evidence'});
+    for(const d of r.unresolvedDays??[]) own.push({category:'validation',reason:'unverified_meal',day:d.day,detail:d.reason});
+    for(const day of r.conflictDays??[]) own.push({category:'publication',reason:'source_conflict',day});
+    for(const day of r.pendingDays??[]) own.push({category:'publication',reason:'unwritten',day});
+    for(const h of r.held??[]) {
+      if(WEEKLY_PUBLICATION_HOLDS.has(h.reason)) own.push({category:'publication',reason:h.reason,day:h.day});
+      else if(h.reason==='retained' && !dailyPublished(r.weekId,h.day)) own.push({category:'publication',reason:'retained_conflict',day:h.day});
+      else if(h.reason!=='published') suppressedDays++;
+    }
+    failures.push(...own.map(f=>({...f,sourceId:r.sourceId,weekStart:r.weekStart,weekId:r.weekId,dateRange:f.dateRange??r.dateRange})));
+  }
+  for(const s of sources) {
+    if(s.processing_status==='staged' && s.validation_result==='ok') {
+      if(!inspection?.some(r=>r.sourceId===s.id)) unknown=true;
+      continue;
+    }
+    const observed=importAlertObservation(s,{eligible:true,resolution:'unresolved'});
+    if(observed.state!=='attention') {unknown=true;continue;}
+    // An equivalent poster (different Facebook ID) resolves this failure only
+    // when every advertised weekday shows that same meal, verified as published.
+    // Staff-locked, disabled, retained or skipped days are never proof.
+    const rows=advertised(s);
+    const covered=rows && rows.every(a=>(inspection??[]).some(r=>r.entries?.some(e=>e.day===a.day && e.key===a.key)
+      && r.held?.some(h=>h.day===a.day && h.reason==='published')));
+    if(covered) continue;
+    cause??=observed.code;
+    failures.push({category:['ai_budget_exhausted','retry_exhausted','import_failed'].includes(observed.code)?'extraction':'validation',
+      reason:observed.code,days:rows?.map(r=>r.day)??[],rows,sourceId:s.id});
+  }
+  if(failures.length) {
+    const r=result('attention',cause??(failures.some(f=>f.category==='validation')?'validation_rejected':'publication_blocked'),failures,inspection??[]);
+    return {...r,fingerprint:await weeklyFingerprint(scan,sources,failures,inspection??[])};
+  }
+  if(unknown) return result('pending');
+  // Resolved only when every held weekday is verified published; staff
+  // protection or daily precedence is an explicit suppressed outcome.
+  return result(suppressedDays ? 'suppressed' : 'resolved');
+}
+
 function intentional(s,data,weekday) {
   const [,weeks,collections,groups,slots]=data;
   if(weeks.length!==1 || !s.target_service) return false;
@@ -129,15 +270,31 @@ async function assess(env,scan,snap) {
   const deliveryDetail=deliveryAlertDetail(snap.data,expected,now);
   if(detail) detail.delivery=deliveryDetail;
   delivery.detail={scope:'delivery',day:scan.day,weekday:detail?.weekday,delivery:deliveryDetail};
-  return {daily:{state:food.state,cause,detail},delivery};
+  const weekly=await assessWeekly(env,scan,snap,now,sourceIds);
+  return {daily:{state:food.state,cause,detail},delivery,weekly};
 }
 
-function recordVerified(env,scan,scope,observation,evidence) {
+// Weekly Lunch: the current failure has its own fingerprinted key. Every other
+// weekly incident of the day takes the current state (superseded by a newer,
+// different failure, or resolved/pending/suppressed), so an unsent stale
+// failure cannot send and a resolution clears all of them.
+function recordWeekly(env,scan,observation,evidence) {
+  const fence=alertEvidenceFence(evidence,6);
+  const key=observation.state==='attention' && observation.fingerprint ? `${scan.day}:weekly:weekly_lunch_failed:${observation.fingerprint}` : '';
+  const others=env.DB.prepare(`UPDATE facebook_alert_incidents SET state=?3,observed_ms=?4
+    WHERE day=?1 AND scope='weekly' AND incident_key<>?2 AND observed_ms<=?4
+      AND EXISTS(SELECT 1 FROM facebook_alert_scans WHERE day=?1 AND token=?5 AND completed_ms IS NOT NULL)
+      ${fence.sql}`).bind(scan.day,key,observation.state==='attention'?'suppressed':observation.state,scan.started_ms,scan.token,...fence.args);
+  return key ? [others,recordVerified(env,scan,'weekly',observation,evidence,key)] : [others];
+}
+
+function recordVerified(env,scan,scope,observation,evidence,incidentKey=null) {
   const {hash}=evidence,fence=alertEvidenceFence(evidence,10);
-  const code=scope==='daily'?'publication_blocked':'delivery_failed';
+  const code=scope==='daily'?'publication_blocked':scope==='weekly'?'weekly_lunch_failed':'delivery_failed';
   const deliveryEnd=Date.parse(deliveryWindow(new Date(scan.completed_ms)).expiresAt);
   const proof=JSON.stringify({version:1,token:scan.token,hash,cause:observation.cause,parser:scan.parser,
-    expires_ms:Math.min(scan.completed_ms+FRESH_MS,deliveryEnd+(scope==='daily'?5*3600000:0))});
+    ...(observation.fingerprint?{fingerprint:observation.fingerprint}:{}),
+    expires_ms:Math.min(scan.completed_ms+FRESH_MS,deliveryEnd+(scope==='delivery'?0:5*3600000))});
   return env.DB.prepare(`INSERT INTO facebook_alert_incidents
     (incident_key,day,scope,code,state,first_seen_ms,observed_ms,due_ms,proof_json)
     SELECT ?1,?2,?3,?4,?5,?6,?6,?7,?8 WHERE EXISTS(SELECT 1 FROM facebook_alert_scans
@@ -150,7 +307,7 @@ function recordVerified(env,scan,scope,observation,evidence) {
       due_ms=CASE WHEN facebook_alert_incidents.state='attention' AND excluded.state='attention'
         THEN facebook_alert_incidents.due_ms ELSE excluded.due_ms END
     WHERE excluded.observed_ms>=facebook_alert_incidents.observed_ms`)
-    .bind(`${scan.day}:${scope}:${code}`,scan.day,scope,code,observation.state,scan.started_ms,
+    .bind(incidentKey ?? `${scan.day}:${scope}:${code}`,scan.day,scope,code,observation.state,scan.started_ms,
       scan.completed_ms+ALERT_GRACE_MS,proof,scan.token,...fence.args);
 }
 
@@ -168,7 +325,9 @@ export async function revalidateAlert(env,row,{withEvidence=false}={}) {
   if(!before || before.hash!==proof.hash) return false;
   const outcome=(await assess(env,scan,before))[row.scope];
   const after=await snapshot(env,scan);
-  const valid=outcome?.state==='attention' && outcome.cause===proof.cause && after?.hash===proof.hash;
+  // A weekly proof authorizes only the same failure fingerprint.
+  const valid=outcome?.state==='attention' && outcome.cause===proof.cause && after?.hash===proof.hash
+    && (row.scope!=='weekly' || (!!proof.fingerprint && outcome.fingerprint===proof.fingerprint && row.incident_key.endsWith(`:${proof.fingerprint}`)));
   return valid && withEvidence?{...after,detail:outcome.detail ?? null}:valid;
 }
 
@@ -180,7 +339,7 @@ export async function dispatchVerifiedAlerts(env,{send,timeoutMs}={}) {
   if(typeof transport!=='function') return {status:env.SPECIALS_ALERT_MODE==='EMAIL'?'unconfigured':'disabled'};
   try {
     const counts={sent:0,uncertain:0,superseded:0};
-    for(let i=0;i<2;i++) {
+    for(let i=0;i<MAX_DISPATCH_PER_RUN;i++) {
       const result=await dispatchAlert(env.DB,transport,{enabled:true,requireProof:true,revalidate:row=>revalidateAlert(env,row,{withEvidence:true}),timeoutMs});
       if(result.status==='idle') break;
       if(Object.hasOwn(counts,result.status)) counts[result.status]++;
@@ -233,12 +392,13 @@ export async function finishAlertScan(env,context,sourceIds,options={}) {
     const fence=alertEvidenceFence(before,4);
     const persisted=await env.DB.batch([
       ...['daily','delivery'].map(scope=>recordVerified(env,scan,scope,outcomes[scope],before)),
+      ...recordWeekly(env,scan,outcomes.weekly,before),
       env.DB.prepare(`UPDATE facebook_alert_scans SET evaluated_ms=?3,evaluation_state='complete',evaluation_error=NULL
         WHERE day=?1 AND token=?2 ${fence.sql}`)
         .bind(scan.day,scan.token,Date.now(),...fence.args),
     ]);
-    if(persisted[2].meta?.changes!==1) {await mark('skipped','evidence_changed');return;}
-    console.log('Facebook alert observation',{daily:outcomes.daily.state,delivery:outcomes.delivery.state});
+    if(persisted.at(-1).meta?.changes!==1) {await mark('skipped','evidence_changed');return;}
+    console.log('Facebook alert observation',{daily:outcomes.daily.state,delivery:outcomes.delivery.state,weekly:outcomes.weekly.state});
     await dispatchVerifiedAlerts(env,options);
     console.log('Facebook alert health',await readAlertHealth(env,now));
     // Bounded retention, never deletes this day's sent deduplication records.

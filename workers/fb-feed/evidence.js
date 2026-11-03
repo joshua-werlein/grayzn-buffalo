@@ -487,11 +487,14 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
 // A weekly row's verbatim evidence normally begins with its own weekday label
 // (optionally with a date). Remove only a label naming THIS entry's day; any
 // other weekday label is a day-association error and remains in the comparison.
+// Posters may frame the label with decorative marks ("* MONDAY *", "— MONDAY —");
+// only that fixed punctuation set is layout, never letters, digits or "$".
 const WEEKDAY_LABELS=[null,'mon(?:day)?','tue(?:s(?:day)?)?','wed(?:nesday)?','thu(?:r(?:s(?:day)?)?)?','fri(?:day)?'];
+const LABEL_MARK=String.raw`[*•·~=#_|–—-]`;
 export function weeklyEntryEvidence(evidence,day) {
   const label=WEEKDAY_LABELS[day];
   if(!label) return evidence;
-  return evidence.replace(new RegExp(String.raw`^\s*${label}\.?(?:\s+\d{1,2}\/\d{1,2})?\s*(?:[:.–—-]\s*|\n\s*|\s+(?=\S))`,'i'),'');
+  return evidence.replace(new RegExp(String.raw`^\s*(?:${LABEL_MARK}+\s*)?${label}\.?(?:\s+\d{1,2}\/\d{1,2})?(?:\s*${LABEL_MARK}+(?=\s|$))?\s*(?:[:.–—-]\s*|\n\s*|\s+(?=\S))`,'i'),'');
 }
 // Same facts, ignoring service labels/windows and presentation punctuation.
 // Word ORDER is significant: a reordered meal can change sides or alternatives.

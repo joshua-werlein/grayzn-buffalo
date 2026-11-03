@@ -11,6 +11,7 @@ export const ALERT_CODES = Object.freeze({
   publication_blocked: 'Available Facebook evidence could not be fully published.',
   delivery_failed: 'Confirmed delivery evidence could not be activated automatically.',
   automation_failed: 'Facebook automation encountered a persistent technical failure.',
+  weekly_lunch_failed: 'Weekly Lunch Facebook evidence could not be fully published.',
 });
 
 function timestamp(value) {
