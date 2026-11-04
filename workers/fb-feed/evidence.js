@@ -27,8 +27,12 @@ export function serviceFromEvidence(s) {
   if (/\ball[ -]+day\b/.test(t)) found.push('all-day');
   return found.length===1?found[0]:found.length?'conflict':'unknown';
 }
+// Posters also print the house lunch window without its colon ("(11–130)", November 3).
+// Only that exact window: windows() would match "11–1" and leave a false "30" fact.
+// It is presentation, not service evidence: the house layout still places the meal.
+const COMPACT_LUNCH_WINDOW=/\b11(?::00)?\s*(?:a\.?m\.?)?\s*[-–—]\s*130\s*(?:p\.?m\.?)?(?!\w)/gi;
 function withoutService(s) {
-  return s.replace(windows(),' ').replace(/\b(?:all[ -]+day|lunch|nightly)\s*(?:specials?)?\s*:?/gi,' ')
+  return s.replace(COMPACT_LUNCH_WINDOW,' ').replace(windows(),' ').replace(/\b(?:all[ -]+day|lunch|nightly)\s*(?:specials?)?\s*:?/gi,' ')
     .replace(/[()]/g,' ').replace(/\s+/g,' ').trim();
 }
 // Only a leading punctuated list marker is presentation. Bare quantities,
