@@ -32,11 +32,8 @@ test('affirmative current weekday activates, fixed text, duplicate queue/cron wo
 
 for (const [name,value] of Object.entries({
   absent:undefined,none:{...affirmative,status:'none',evidence:''},
-  ambiguous:{...affirmative,status:'ambiguous',evidence:'Delivery may be available'},
-  misleading:{...affirmative,evidence:'Delivery available if a driver is available'},
   cancellation:{...affirmative,status:'cancelled',evidence:'NO DELIVERY TODAY'},
   negation:{...affirmative,evidence:'Delivery not available'},
-  uncertainty:{...affirmative,uncertainties:['Unreadable notice']},
   future:{...affirmative,date_evidence:'Tomorrow'},
   oldDate:{...affirmative,date_evidence:'January 2, 2030'},
 })) test(`${name} never activates delivery`,async t=>{
@@ -272,15 +269,14 @@ test('October 19 weekly shape repair cannot veto the separate daily delivery pos
   assert.deepEqual(f.slots(),before);
 });
 
-for(const kind of ['cancelled','ambiguous','daily conflict','pending','processing','rejected',
+for(const kind of ['cancelled','daily conflict','pending','processing','rejected',
   'unresolved weekly','malformed weekly','hybrid daily','weekly delivery','mismatched shape','staff dismissed'])
   test(`October 19 multi-post scan retains ${kind} protection`,async t=>{
     const f=await october19Scan(t),before=f.slots();
     let raw=JSON.parse(f.weeklyImport.extracted_json),candidate=JSON.parse(f.weeklyImport.candidate_json);
-    if(['cancelled','ambiguous','daily conflict'].includes(kind)) {
+    if(['cancelled','daily conflict'].includes(kind)) {
       raw=structuredClone(f.daily);
-      if(kind!=='daily conflict') raw.delivery={...raw.delivery,status:kind,
-        evidence:kind==='cancelled'?'NO DELIVERY TODAY':'Delivery may be available'};
+      if(kind==='cancelled') raw.delivery={...raw.delivery,status:kind,evidence:'NO DELIVERY TODAY'};
       candidate={...JSON.parse(f.dailyImport.candidate_json),...(kind==='daily conflict'?{delivery_blocked:true}:{})};
     }
     if(kind==='unresolved weekly') candidate.unresolved_days=[{day:2,reason:'Unreadable meal'}];

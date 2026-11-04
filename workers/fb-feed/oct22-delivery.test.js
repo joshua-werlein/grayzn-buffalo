@@ -72,20 +72,17 @@ test('October 22 exact weekly response gets one daily reread; persists delivery 
   assert.deepEqual(f.sql('SELECT * FROM special_slots ORDER BY group_id,position'),slots);
   for(const manual of ['available','unavailable','hidden'])assert.equal(resolveDeliveryDisplay(manual,state,new Date(now)),manual);
 });
-for(const kind of ['none','cancelled','ambiguous','uncertain','wrong-day','tomorrow','malformed','missing','failure','wrong-shape','conditional'])
+for(const kind of ['none','cancelled','wrong-day','tomorrow','malformed','missing','failure','wrong-shape'])
 test(`delivery reread ${kind} stays hidden without losing food`,async t=>{
   let second=daily();
   if(kind==='none')second.delivery={status:'none',evidence:'',date_evidence:'',uncertainties:[]};
   if(kind==='cancelled')second.delivery={...second.delivery,status:'cancelled',evidence:'NO DELIVERY TODAY'};
-  if(kind==='ambiguous')second.delivery.status='ambiguous';
-  if(kind==='uncertain')second.delivery.uncertainties=['Unreadable footer'];
   if(kind==='wrong-day') {second.day_of_week=5;second.day_evidence='FRIDAY';}
   if(kind==='tomorrow')second.delivery.date_evidence='Tomorrow';
   if(kind==='malformed')second='not json';
   if(kind==='missing')delete second.delivery;
   if(kind==='failure')second=new Error('Provider unavailable');
   if(kind==='wrong-shape')second=original;
-  if(kind==='conditional')second.delivery.evidence='Delivery available if driver available';
   const f=setup(t,{second});await f.run();food(f);assert.equal(f.row().active,0);
   await f.run();assert.equal(f.state.aiCalls,2);
 });

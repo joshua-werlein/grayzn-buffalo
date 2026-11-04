@@ -1,5 +1,89 @@
 # Delivery banner automation
 
+## Current behavior (November 2026)
+
+This section is the reference for how delivery works now. The dated sections
+below are historical records, including older, stricter wording rules that no
+longer apply. `workers/fb-feed/delivery.js` holds the Worker rules,
+`src/lib/delivery.js` the shared display rules, and
+`workers/fb-feed/delivery-formatting.test.js` the regression tests.
+
+### The rule
+
+If today's Facebook specials poster contains the word `delivery`, the Worker turns
+on the existing website delivery notice. This is keyword detection, not sentence
+matching.
+
+- Matching ignores case and needs the whole word. `Delivery`, `Delivery Available`,
+  `Delivery 11-130` and `Delivery Available Within Mondovi City Limits` all activate.
+  `Deliveries` and `delivering` do not.
+- The Worker looks in the AI reading's delivery notice, heading, weekday and each
+  offer's text and service fields. Hours, punctuation, city-limit wording, the AI
+  status label and AI uncertainty notes do not affect the result.
+- Weekly and Mexican Night menus are not daily posters and do not activate delivery.
+- The Facebook caption is not the poster and is not checked.
+
+### Cancellations
+
+A cancelling word applied to delivery itself turns automatic delivery off, as does
+the AI reporting `status: cancelled`. That covers `NO DELIVERY`, `CANCELLED DELIVERY`,
+`DELIVERY CLOSED`, `DELIVERY NOT AVAILABLE`, `Delivery is unavailable`, and the same
+with `canceled`, `suspended` or `paused`. A cancellation on any current post turns
+delivery off for the whole scan.
+
+Words about something else do not cancel. Line breaks, bullets and sentence
+punctuation separate statements, and a comma after the notice ends the reach of
+`delivery`, so `Delivery available, no substitutions` and `Delivery available, closed
+Sundays` still activate.
+
+### The poster must belong to today
+
+The poster needs a matching printed weekday or date, or the undated weekday `DAILY
+SPECIALS` template, plain or headed `GRAYZ'N BUFFALO BAR & GRILL`, with a same-day
+Facebook timestamp. Another weekday, a past or future date, or `TOMORROW` keeps
+delivery off.
+
+### Permanent website notice
+
+The website owns the wording, hours and city-limits restriction. Nothing on the
+poster changes them.
+
+- Site banner: `Delivery M–F 11 AM–1:30 PM` / `within Mondovi city limits.`
+  (`src/lib/delivery.js`, rendered by `src/layouts/Base.astro`).
+- Specials page: `Delivery — Monday–Friday, 11 AM – 1:30 PM, within Mondovi city
+  limits.` (`src/pages/specials.astro`).
+- Automation stores only `day`, `active`, `expires_at`, `observed_at` and
+  `source_ids` in `delivery_automation`, and never writes the staff
+  `delivery_display` setting.
+
+### AI rereads
+
+When a reread happens, `deliveryReadingsAgree()` compares the keyword result of the
+two readings: available, cancelled or none. Different wording agrees. A different
+result sets `delivery_blocked` and keeps delivery off, so a reread that no longer
+sees the word, or that cancels, wins over the first reading, and a reread saying
+available cannot override a cancellation. A Mexican Night reread counts as none, so
+it cannot block another post unless the first reading saw `delivery`.
+
+### Expiration
+
+Automatic delivery ends at 1:30 PM Chicago time on the poster's weekday, whatever
+hours the poster prints. The renderer enforces this independently of any scan, and
+the next cron clears the stored state. Weekends, the next day and posters first
+processed after the cutoff never show automatic delivery.
+
+### Staff overrides
+
+`Available`, `Unavailable` and `Hidden` on the admin page always win, before and
+after expiration, and automation never changes them. Only `Automatic` follows
+Facebook. `Available` shows the notice regardless of the automatic cutoff.
+
+### Other sources that keep delivery off
+
+A current post that is still pending or processing, was rejected, or was dismissed
+or edited by staff keeps delivery off for the scan. A cancelled notice does not send
+an alert email.
+
 ## October 19, 2026 correction (committed locally; Worker not yet deployed)
 
 This section describes a narrow follow-up to the original feature rollout below.

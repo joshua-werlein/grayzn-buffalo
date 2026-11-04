@@ -25,8 +25,11 @@ test('compiled home banner and specials accept the legacy Worker deadline only b
   t.mock.method(Date,'now',()=>now);
   const render=(component,path)=>container.renderToString(component,{request:new Request('http://localhost'+path),locals:{runtime:{env:f.env}}});
   for(const [component,path] of [[homePage,'/'],[publicPage,'/specials']]) {
-    assert.match(await render(component,path),/class="delivery-notice"/);
-    if(path==='/specials') assert.match(await render(component,path),/class="delivery-block"/);
+    const automatic=await render(component,path);
+    assert.match(automatic,/class="delivery-notice"/);
+    assert.match(automatic,/<span class="qualifier"[^>]*>within Mondovi city limits\.<\/span>/);
+    assert.match(automatic,/Delivery M–F 11 AM–1:30 PM/);
+    if(path==='/specials') assert.match(automatic,/class="delivery-block"[^>]*><p[^>]*><strong[^>]*>Delivery<\/strong> — Monday–Friday, 11 AM – 1:30 PM, within Mondovi city limits\.<\/p>/);
     now=Date.parse('2026-10-28T18:30:00Z');
     assert.doesNotMatch(await render(component,path),/class="delivery-notice"|class="delivery-block"/);
     now=Date.parse('2026-10-29T16:00:00Z');
@@ -38,6 +41,7 @@ test('compiled home banner and specials accept the legacy Worker deadline only b
       else {
         assert.match(html,/class="delivery-notice"/);
         if(manual==='unavailable') assert.match(html,/Delivery is unavailable at this time/);
+        else assert.match(html,/within Mondovi city limits\./);
       }
     }
     f.sql("UPDATE settings SET value='auto' WHERE key='delivery_display'");

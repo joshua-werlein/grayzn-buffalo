@@ -79,12 +79,10 @@ test('weekend windows never use the undated template',()=>{
   assert.equal(deliveryEvidence(original,deliveryWindow(new Date('2026-10-25T15:00:00Z')),{trustedSameDay:true}),'none');
 });
 
-test('cancellation, conditional wording and uncertainty still fail closed under timestamp trust',()=>{
+test('cancellation and missing evidence stay off under timestamp trust; the word alone activates',()=>{
   const cancel=poster(p=>{p.delivery={...p.delivery,status:'cancelled',evidence:'NO DELIVERY TODAY'};});
   assert.equal(deliveryEvidence(cancel,friday,{trustedSameDay:true}),'cancelled');
-  assert.equal(deliveryEvidence(poster(p=>{p.delivery.evidence='DELIVERY AVAILABLE IF DRIVER AVAILABLE';}),friday,{trustedSameDay:true}),'ambiguous');
-  assert.equal(deliveryEvidence(poster(p=>{p.delivery.uncertainties=['Footer partly hidden'];}),friday,{trustedSameDay:true}),'ambiguous');
-  assert.equal(deliveryEvidence(poster(p=>{p.delivery.status='ambiguous';}),friday,{trustedSameDay:true}),'ambiguous');
+  assert.equal(deliveryEvidence(poster(p=>{p.delivery.evidence='DELIVERY';p.delivery.status='ambiguous';}),friday,{trustedSameDay:true}),'available');
   assert.equal(deliveryEvidence(poster(p=>{p.delivery={status:'none',evidence:'',date_evidence:'',uncertainties:[]};}),friday,{trustedSameDay:true}),'none');
 });
 

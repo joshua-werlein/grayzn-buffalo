@@ -32,7 +32,7 @@ export function recoveredDeliveryReading(raw,window) {
 function undatedDailyTemplate(raw,d,window) {
   if (!raw || 'type' in raw || !Array.isArray(raw.offers) || raw.day_of_week!==-1
     || typeof raw.day_evidence!=='string' || raw.day_evidence.trim()
-    || typeof raw.poster_evidence!=='string' || !/^\s*daily\s+specials\s*$/i.test(raw.poster_evidence)
+    || typeof raw.poster_evidence!=='string' || !/^\s*(?:grayz['’]n\s+buffalo\s+bar\s*(?:&|and)\s+grill\s+)?daily\s+specials\s*$/i.test(raw.poster_evidence)
     || window.weekday<1 || window.weekday>5) return false;
   const printed=[raw.poster_evidence,d.date_evidence,d.evidence,...raw.offers.flatMap(o=>
     [o?.content,o?.evidence,o?.service_time,o?.service_evidence,o?.date_evidence])].filter(s=>typeof s==='string' && s.trim());
@@ -40,24 +40,38 @@ function undatedDailyTemplate(raw,d,window) {
   catch { return false; }
 }
 
-// A model label alone is not sufficient. Accept only a complete affirmative
-// sentence with optional today, city-limit qualifier and the known lunch window.
+// Keyword detection: today's daily poster saying "delivery" anywhere turns on the
+// website notice, which owns the wording, hours and city-limits restriction. A
+// statement that cancels delivery turns it off and is never read as availability.
+// The cancelling word must apply to delivery itself ("NO DELIVERY", "DELIVERY IS
+// CLOSED"); a comma ends that reach, so "Delivery available, no substitutions" stays on.
+// The caption is not the poster. Weekly and Mexican Night menus are not daily posters.
+const CANCELLATION=/\b(?:no(?:\s+(?:more|lunch))?|not(?:\s+\w+)?|unavailable|cancell?ed|suspended|paused)\s+delivery\b|\bdelivery\b[\s:,–—-]*(?:\w+\s+){0,3}(?:not|\w+n['’]t|unavailable|cancell?ed|suspended|paused|closed)\b/i;
+function deliveryStatements(raw) {
+  if (!raw || 'type' in raw) return [];
+  const offers=Array.isArray(raw.offers) ? raw.offers : [];
+  return [raw.delivery?.evidence,raw.poster_evidence,raw.day_evidence,
+    ...offers.flatMap(o=>[o?.content,o?.evidence,o?.service_time,o?.service_evidence])]
+    .filter(text=>typeof text==='string').flatMap(text=>text.split(/[\n|•·.!?;]+/))
+    .filter(text=>/\bdelivery\b/i.test(text));
+}
+function noticeStatus(raw) {
+  const statements=deliveryStatements(raw);
+  if (raw?.delivery?.status==='cancelled' || statements.some(text=>CANCELLATION.test(text))) return 'cancelled';
+  return statements.length ? 'available' : 'none';
+}
+// A reread only conflicts when it changes that result. Wording never matters.
+export const deliveryReadingsAgree=(before,after)=>noticeStatus(before)===noticeStatus(after);
 // trustedSameDay comes from the source's stored Facebook creation time, never
 // from extracted JSON, and only admits the undated DAILY SPECIALS template.
 export function deliveryEvidence(raw, window, {trustedSameDay=false}={}) {
-  const d=raw?.delivery;
-  if (!d || typeof d.evidence!=='string' || d.evidence.length>600
-    || typeof d.date_evidence!=='string' || d.date_evidence.length>600
-    || !Array.isArray(d.uncertainties)) return 'none';
-  if (d.uncertainties.length) return 'ambiguous';
+  const d=raw?.delivery ?? {};
+  const printed=[raw?.poster_evidence,d.date_evidence,d.evidence,...deliveryStatements(raw)].filter(text=>typeof text==='string');
   try {
-    if (!validateCurrentDay({...raw,poster_evidence:`${raw.poster_evidence ?? ''} ${d.date_evidence} ${d.evidence}`},window.weekday,window.day)
+    if (!validateCurrentDay({...raw,poster_evidence:printed.join(' ')},window.weekday,window.day)
       && !(trustedSameDay && undatedDailyTemplate(raw,d,window))) return 'none';
   } catch { return 'none'; }
-  const text=d.evidence.normalize('NFKC').toLowerCase().replace(/[–—]/g,'-').replace(/\s+/g,' ').trim();
-  if (d.status==='cancelled' || /\b(?:no|not|unavailable|cancelled|canceled|suspended|paused)\b/.test(text)) return 'cancelled';
-  if (d.status!=='available') return d.status==='ambiguous' ? 'ambiguous' : 'none';
-  return /^delivery (?:is )?available(?: today)?(?: within (?:mondovi )?city limits)?(?: (?:from )?11(?::00)?\s*(?:am)?\s*-\s*1:30\s*(?:pm)?)?[.!]?$/.test(text) ? 'available' : 'ambiguous';
+  return noticeStatus(raw);
 }
 
 export async function expireDelivery(env, now = new Date(Date.now())) {
@@ -111,7 +125,7 @@ export async function reconcileDelivery(env,{sourceIds,observedAt,inspectOnly=fa
     const evidence=deliveryEvidence(raw,w,{trustedSameDay});
     sourceOutcomes.push({id:source.id,status:evidence});
     available ||= evidence==='available';
-    blocked ||= evidence==='cancelled' || evidence==='ambiguous';
+    blocked ||= evidence==='cancelled';
   }
   // Snapshot fencing includes staff review and newer versions of the same post.
   // A slower scan cannot overwrite a later cancellation or expiration.

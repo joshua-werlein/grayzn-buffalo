@@ -6,7 +6,7 @@ import {ensureAutomaticWeek} from './auto-week.js';
 import {MAX_IMPORT_ATTEMPTS,OWNS_ATTEMPT_SQL,isTransientFailure,claimImportAttempt,attemptEvent,saveAttemptImage,finishImportAttempt,retireImportAttempts} from './recovery.js';
 import {validateEvidence, validateWeeklyLunch, validateMexicanNight, singleDayLunchEvidence, singleDayLunchEvidenceV2, validateCurrentDay, hasWeeklyLunchEvidence, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR, WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
 import {WEBHOOK_PATH, handleFacebookWebhook} from './webhook.js';
-import {expireDelivery,reconcileDelivery,completeDeliveryReading,recoveredDeliveryReading} from './delivery.js';
+import {expireDelivery,reconcileDelivery,completeDeliveryReading,recoveredDeliveryReading,deliveryReadingsAgree} from './delivery.js';
 import {observeDeliveryOutcome,observeDailyOutcome} from './alert-outcomes.js';
 import {beginAlertScan,finishAlertScan} from './alert-runtime.js';
 import {reconcileEvents} from './event-store.js';
@@ -475,7 +475,7 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
     if (attempt && priorRaw) {
       try {
         const before=JSON.parse(priorRaw),after=JSON.parse(outcome.extractedJson);
-        if (JSON.stringify(before.delivery)!==JSON.stringify(after.delivery)) {
+        if (!deliveryReadingsAgree(before,after)) {
           outcome={...outcome,deliveryConflict:true};
           if (priorOutcome) priorOutcome={...priorOutcome,deliveryConflict:true};
         }
