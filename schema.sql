@@ -166,6 +166,7 @@ CREATE TABLE special_slots (
   origin TEXT NOT NULL DEFAULT 'manual' CHECK(origin IN ('legacy','manual','automation')),
   manual_locked INTEGER NOT NULL DEFAULT 1 CHECK(manual_locked IN (0,1)),
   last_auto_value TEXT,
+  manual_edited_at TEXT,
   PRIMARY KEY(group_id,position)
 );
 

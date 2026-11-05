@@ -262,7 +262,7 @@ test('compiled admin preserves drafts on stale POST and rejects wrong origin wit
   assert.ok(html.includes('data-active-day="6"'));assert.deepEqual(f.sql('SELECT * FROM special_slots ORDER BY group_id,position'),before);
 });
 
-test('compiled Admin new-week POST saves recurring prefills unlocked and staff changes locked',async t=>{
+test('compiled Admin new-week POST saves recurring prefills unlocked, honors Lock, and renders it checked',async t=>{
   const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};
   const defaults=await s.readCollection(f.env,'defaults');
   const group=defaults.groups.find(g=>g.day_of_week===6 && g.service==='all-day');
@@ -274,7 +274,10 @@ test('compiled Admin new-week POST saves recurring prefills unlocked and staff c
     for(const [key,value] of Object.entries({id:g.id,day:g.day_of_week,service:g.service,label:g.label,time:g.service_time})) body.set(`g${i}_${key}`,String(value));
     if(g.enabled) body.set(`g${i}_enabled`,'on');
     for(const slot of g.slots) if(slot.position<=s.specialInputCount(g)) body.set(`g${i}_${slot.position}_content`,s.displayedSpecial(slot));
-    if(g.day_of_week===6 && g.service==='all-day') body.set(`g${i}_2_content`,'Staff correction $12');
+    if(g.day_of_week===6 && g.service==='all-day') {
+      body.set(`g${i}_2_content`,'Staff correction $12');
+      body.set(`g${i}_2_lock_shown`,'1');body.set(`g${i}_2_locked`,'on');
+    }
   });
   const response=await container.renderToResponse(adminPage,{request:new Request('http://localhost/admin/specials?new=1',{
     method:'POST',headers:{origin:'http://localhost',cookie:'gb_session='+'a'.repeat(32)},body}),locals:{runtime:{env:f.env}}});
@@ -283,6 +286,13 @@ test('compiled Admin new-week POST saves recurring prefills unlocked and staff c
   const slots=(await s.readWeek(f.env,weekId)).collection.groups.find(g=>g.day_of_week===6 && g.service==='all-day').slots;
   assert.deepEqual(slots.slice(0,2).map(x=>[x.content,x.origin,x.manual_locked]),
     [['Recurring sandwich $10.25','manual',0],['Staff correction $12','manual',1]]);
+  const page=await (await container.renderToResponse(adminPage,{request:new Request(`http://localhost/admin/specials?week=${weekId}`,{
+    headers:{cookie:'gb_session='+'a'.repeat(32)}}),locals:{runtime:{env:f.env}}})).text();
+  const index=(await s.readWeek(f.env,weekId)).collection.groups.findIndex(g=>g.day_of_week===6 && g.service==='all-day');
+  const lockInput=position=>new RegExp(`<input[^>]*name="g${index}_${position}_locked"[^>]*>`).exec(page)?.[0];
+  assert.match(page,/Lock: keep this special even when Facebook posts something newer/);
+  assert.doesNotMatch(lockInput(1),/checked/);
+  assert.match(lockInput(2),/checked/);
 });
 
 test('compiled simple editor has service-specific inputs, inline prices and no database controls',async t=>{

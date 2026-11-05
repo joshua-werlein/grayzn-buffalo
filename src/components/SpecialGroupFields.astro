@@ -26,6 +26,8 @@ const soup=isSoupGroup(group);
     <textarea id={`${formPrefix}-${index}-${slot.position}`} name={p+slot.position+'_content'} rows={soup ? 1 : 2} maxlength="150" data-content>{displayedSpecial(slot)}</textarea>
     {soup && !defaults && <small>Blank is hidden. Clearing Soup keeps it hidden from Facebook updates today.</small>}
     <output class="count" data-count>0 / 150</output>
+    {formPrefix==='weekly' && !soup && <><input type="hidden" name={p+slot.position+'_lock_shown'} value="1"/>
+      <label class="check"><input type="checkbox" name={p+slot.position+'_locked'} checked={slot.manual_locked===1 && !!slot.content?.trim()}/> Lock: keep this special even when Facebook posts something newer</label></>}
     </>}
   </div> : <>
     {/* Retain existing extra content without exposing extra editing slots. */}

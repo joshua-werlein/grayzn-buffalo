@@ -9,6 +9,7 @@ const windowPattern=String.raw`${clock}\s*[-–—]\s*${clock}`;
 const windows=()=>new RegExp(windowPattern,'gi');
 const pricePattern=()=>/(?<![\w$.,−+])\$\s*(?:\d+(?:\.\d{2})?|\.\d{2})(?![\w.,])/g;
 const prices=s=>[...s.matchAll(pricePattern())].map(m=>({text:m[0],cents:Math.round(Number(m[0].replace(/[$\s]/g,''))*100)}));
+export const hasPrintedPrice=s=>prices(s).length>0;
 const clean=s=>s.normalize('NFKC').replace(/\r\n?/g,'\n').replace(/[\t ]+/g,' ').trim();
 const soupLabel=s=>/^\s*soups?\s*(?::|[–—-]|\r?\n)/i.test(s);
 function readSoup(o) {
@@ -34,6 +35,36 @@ const COMPACT_LUNCH_WINDOW=/\b11(?::00)?\s*(?:a\.?m\.?)?\s*[-–—]\s*130\s*(?:
 function withoutService(s) {
   return s.replace(COMPACT_LUNCH_WINDOW,' ').replace(windows(),' ').replace(/\b(?:all[ -]+day|lunch|nightly)\s*(?:specials?)?\s*:?/gi,' ')
     .replace(/[()]/g,' ').replace(/\s+/g,' ').trim();
+}
+// The model also reports that printed window as a possible typo (November 4:
+// "Time '11-130' is likely a typo for 11-1:30"). Such a note questions only the
+// notation accepted above, so it cannot hold the meal. The vocabulary is closed,
+// never a list of banned words: a price, dish, side, other time, negation or any
+// unrecognized word keeps the offer uncertain.
+const WINDOW_NOTE_WORDS=new Set(('time times window hours hour service lunch printed print notation format formatted '
+  +'written shown listed reads read is are it this that as a an the of for in to be likely probably possibly perhaps '
+  +'appears seems looks like may might could should typo typographical error misprint missing colon shorthand '
+  +'abbreviated abbreviation compact nonstandard unusual unclear ambiguous intended meant means mean interpreted assumed').split(' '));
+const COLON_LUNCH_WINDOW=/\b11(?::00)?\s*(?:a\.?m\.?)?\s*(?:-|\bto\b)\s*1:30\s*(?:p\.?m\.?)?(?!\w)/gi;
+const dashes=s=>s.normalize('NFKC').replace(/[–—]/g,'-');
+function compactWindowNote(note) {
+  const text=dashes(String(note));
+  if(text.includes('$') || text.replace(COMPACT_LUNCH_WINDOW,'')===text) return false;
+  const rest=text.replace(COMPACT_LUNCH_WINDOW,' ').replace(COLON_LUNCH_WINDOW,' ').replace(/\b(?:1:30|130)\b/g,' ');
+  return [...rest.toLowerCase().matchAll(/[\p{L}\p{N}:]+/gu)].every(([word])=>WINDOW_NOTE_WORDS.has(word));
+}
+// The window must be printed in this meal's own evidence, with no other time or
+// service label beside it there or in its service fields.
+function compactWindowEvidence(offer) {
+  const evidence=dashes(String(offer.evidence??'')),rest=evidence.replace(COMPACT_LUNCH_WINDOW,' ');
+  if(rest===evidence || new RegExp(windowPattern,'i').test(rest) || !['unknown','lunch'].includes(serviceFromEvidence(rest))) return false;
+  return [offer.service_time,offer.service_evidence].every(field=>
+    !dashes(String(field??'')).replace(COMPACT_LUNCH_WINDOW,' ').replace(COLON_LUNCH_WINDOW,' ').replace(/\blunch\b/gi,' ').replace(/[()\s]/g,''));
+}
+export function hasUnresolvedUncertainty(offer) {
+  const notes=offer?.uncertainties;
+  if(!notes?.length) return false;
+  return !Array.isArray(notes) || !notes.every(compactWindowNote) || !compactWindowEvidence(offer);
 }
 // Only a leading punctuated list marker is presentation. Bare quantities,
 // including "1 or 2 Piece Fish", remain part of the exact fact comparison.
@@ -108,23 +139,32 @@ export function normalizeEvidenceOffer(input) {
   return {content,service_time:time,evidence,...(input.service_evidence!=null?{service_evidence:input.service_evidence}:{})};
 }
 
+// A meal may genuinely print no price: it still publishes, without an invented or
+// inherited price, and staff are notified. Price-like text in its own words or the
+// poster heading means a price exists that was not reliably read, so the meal holds.
+const PRICE_LIKE=/\$|\b\d+\.\d{2}\b|\bdollars?\b/i;
+const verifiedPricelessMeal=o=>!!o.evidence.trim() && !PRICE_LIKE.test(`${o.content} ${o.evidence}`)
+  && sameTokensAllowingBundleConnectors(withoutService(withoutListMarker(o.content)),withoutService(withoutListMarker(o.evidence)));
+
 // Keep invalid offers in their original positions. They participate in conflict
 // scope and never disappear to manufacture agreement or shift another slot.
-export function analyzeDailyEvidence(value) {
+// Special events pass no options: an event offer always requires its price.
+export function analyzeDailyEvidence(value,{allowUnpriced=false}={}) {
   if (!value || !Number.isInteger(value.day_of_week) || value.day_of_week < -1 || value.day_of_week>6
     || typeof value.day_evidence!=='string' || value.day_evidence.length>600
     || typeof value.poster_evidence!=='string' || value.poster_evidence.length>2400
     || !Array.isArray(value.offers) || value.offers.length>48) throw Error('Invalid poster evidence');
   const issues=[];
+  const noPrices=allowUnpriced && !PRICE_LIKE.test(`${value.day_evidence} ${value.poster_evidence}`);
   const offers=value.offers.map((raw,index)=>{
     try {
       const o=normalizeEvidenceOffer(raw);
       const soup=soupLabel(o.content)||soupLabel(o.evidence);
       if (soup && !readSoup(o)) throw Error('Ambiguous standalone Soup evidence');
-      if (!soup && !prices(o.content).length) throw Error('Missing meal price');
+      if (!soup && !prices(o.content).length && !(noPrices && verifiedPricelessMeal(o))) throw Error('Missing meal price');
       const service=serviceFromEvidence(`${o.service_time} ${o.service_evidence??''}`);
       if (service==='conflict') throw Error('Conflicting offer service evidence');
-      if (Array.isArray(raw.uncertainties) && raw.uncertainties.length) throw Error('Uncertain extracted offer');
+      if (hasUnresolvedUncertainty(raw)) throw Error('Uncertain extracted offer');
       if(!soup && service==='unknown') issues.push({index,reason:'Service not established by evidence',service});
       return {...o,...(raw.date_evidence?{date_evidence:raw.date_evidence}:{}),...(raw.uncertainties?{uncertainties:raw.uncertainties}:{} )};
     } catch(error) {
@@ -227,7 +267,7 @@ const headingNames=(p,pattern)=>pattern.test(`${p.day_evidence} ${p.poster_evide
 function houseLayout(p,isExplicitToday,weekday,known,explicit,verifiedSameDay=false) {
   if(headingNames(p,/\bweekly\b/i)) return null;
   const meals=p.offers.flatMap((o,i)=>isMeal(o)?[i]:[]);
-  if(!meals.length || !meals.every(i=>pricedMeal(p.offers[i]))) return null;
+  if(!meals.length) return null;
   const agree=assignment=>meals.every((i,k)=>['unknown',assignment[k]].includes(explicit[i]))?new Map(meals.map((i,k)=>[i,assignment[k]])):null;
   const nightText=i=>['nightly','conflict'].includes(serviceFromEvidence(p.offers[i].content));
   const heading=headingService(p);
@@ -239,7 +279,7 @@ function houseLayout(p,isExplicitToday,weekday,known,explicit,verifiedSameDay=fa
   const sameDayLayout=verifiedSameDay && weekday>=1 && weekday<=5
     && /^\s*(?:grayz['’]n\s+buffalo\s+bar\s*(?:&|and)\s+grill\s+)?daily\s+specials\s*$/i.test(p.poster_evidence)
     && !p.day_evidence.trim() && p.day_of_week===-1 && meals.length===3
-    && meals.every(i=>prices(p.offers[i].evidence??'').length===1);
+    && meals.every(i=>prices(p.offers[i].evidence??'').length<=1);
   // The same trusted timestamp also dates an undated "TONIGHT" night poster
   // (October 22: "TONIGHT IS PIZZA NIGHT / SPECIAL IS 5-10PM"). It reaches only
   // the night-heading layouts below, never Tuesday (Mexican Night owns that
@@ -347,7 +387,9 @@ const proteinVariant=o=>{
 };
 export const joinProteinVariants=value=>joinVariants(value,proteinVariant);
 
-export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,today,existingAllDay=[],slotLayout=[],verifiedSameDaySources=new Set()}) {
+export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,today,existingAllDay=[],slotLayout=[],verifiedSameDaySources=new Set(),sourceTimes=[]}) {
+  // Verified post times from the publisher. Equal or unknown times prove nothing.
+  const newer=(a,b)=>Number.isFinite(sourceTimes[a]) && Number.isFinite(sourceTimes[b]) && sourceTimes[a]>sourceTimes[b];
   const rejectedSources=[],excludedSources=[],unresolvedTargets=[],blocked=new Set();
   const sources=[];
   for (let source=0;source<candidates.length;source++) {
@@ -356,7 +398,7 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
       const raw=candidates[source];
       if (['weekly-lunch','mexican-night'].includes(raw?.type) && !('offers' in raw)) continue;
       const joined=joinProteinVariants(joinPizzaSizes(raw));
-      p={...analyzeDailyEvidence(joined),joined_offers:joined.joined_offers===true};
+      p={...analyzeDailyEvidence(joined,{allowUnpriced:true}),joined_offers:joined.joined_offers===true};
       if(!p.offers.length && !/\bspecials?|menu|lunch|night|soup\b/i.test(`${p.day_evidence} ${p.poster_evidence}`)) continue;
       isExplicitToday=validateDay(p,weekday,today);
     } catch(error) {
@@ -404,7 +446,7 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
   // Build per-source proposals with stable reading-order positions per service.
   // The dish named before its sides/price: similar-looking offers share it.
   const dishName=text=>factKey(text.replace(pricePattern(),'').split(/\s+(?:w\/\s*|with\s+)|\s+[-–—]\s*$/i)[0]);
-  const proposals=new Map(),reserved=new Map(),pending=[];
+  const proposals=new Map(),reserved=new Map(),pending=[],offered=[],heldBy=new Map();
   for(const {source,p,services} of sources) {
     const positions=new Map(),sourceItems=new Map(),placedAt=[];
     services.forEach((service,i)=>{
@@ -422,7 +464,8 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
       if(['unknown','conflict'].includes(service)) continue;
       const o=p.offers[i],pos=placedAt[i],capacity=capacityOf(service,weekday);
       const hold=reason=>{
-        unresolvedTargets.push({service,position:pos,content:'',reason});
+        const target={service,position:pos,content:'',reason};
+        unresolvedTargets.push(target);heldBy.set(target,source);
         const r=reserved.get(service)??new Map();r.set(pos,source);reserved.set(service,r);
       };
       const issue=contentIssue(p,i);
@@ -449,6 +492,7 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
       const shown=service==='soup'?null:slotLayout.find(s=>s.service===service && s.content && s.content!==content
         && canonicalize(s.content,weekday,svc)===s.content && sameOffer(s.content,content));
       items.push({position:pos,content:shown?.content??content,source});sourceItems.set(service,items);
+      offered.push({service:service==='soup'?'custom':service,content,source});
     }
     // Separate posts must agree. Identical facts repeated on another post are
     // consistent; a subset is consistent; anything else (including the same dish
@@ -459,6 +503,9 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
       if(!existing) proposals.set(service,items);
       else if(within(items,existing)) continue;
       else if(within(existing,items)) proposals.set(service,items);
+      // A newer verified poster supersedes an older conflicting one for this service.
+      else if(newer(existing[0].source,source)) continue;
+      else if(newer(source,existing[0].source)) proposals.set(service,items);
       else {blocked.add(service);unresolvedTargets.push({service,position:1,content:'',reason:'Conflicting source offers'});}
     }
   }
@@ -467,12 +514,13 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
     if(blocked.has('*')||blocked.has(service)) continue;
     // Never assume similar-looking offers match: an unresolved meal with the same
     // dish name but different facts (price, sides, wording) holds this service.
-    if(service!=='soup' && items.some(item=>pending.some(u=>dishName(u.content)===dishName(item.content) && factKey(u.content)!==factKey(item.content)))) {
+    if(service!=='soup' && items.some(item=>pending.some(u=>!newer(item.source,u.source) && dishName(u.content)===dishName(item.content) && factKey(u.content)!==factKey(item.content)))) {
       unresolvedTargets.push({service,position:1,content:'',reason:'Unresolved offer could contradict this offer'});continue;
     }
     if(new Set(items.map(o=>factKey(o.content))).size!==items.length) continue;
     // A slot held by another post's unresolved offer is contested: hold the service.
-    const holds=reserved.get(service)??new Map();
+    // A hold left by an older poster does not outlive the newer poster replacing it.
+    const holds=new Map([...(reserved.get(service)??new Map())].filter(([,held])=>!items.some(item=>newer(item.source,held))));
     if(items.some(item=>holds.has(item.position) && holds.get(item.position)!==item.source)) {
       unresolvedTargets.push({service,position:1,content:'',reason:'Slot contested by another post'});continue;
     }
@@ -485,7 +533,10 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
     targets.push({day_of_week:weekday,service:service==='soup'?'custom':service,...(service==='soup'?{role:'soup'}:{}),partial:true,
       items:positioned.map(({source:_source,...item})=>item)});
   }
-  return {targets,rejectedSources,excludedSources,unresolvedTargets};
+  // Every post printing an offer: the newest of them decides whether it beats a staff edit.
+  const offeredBy=(service,content)=>offered.filter(o=>o.service===service && sameOffer(o.content,content)).map(o=>o.source);
+  const stale=target=>heldBy.has(target) && proposals.get(target.service)?.some(item=>newer(item.source,heldBy.get(target)));
+  return {targets,rejectedSources,excludedSources,unresolvedTargets:unresolvedTargets.filter(target=>!stale(target)),offeredBy};
 }
 
 // A weekly row's verbatim evidence normally begins with its own weekday label

@@ -133,6 +133,7 @@ export function extractedForDay(source: any, day: string, week: any) {
 }
 export function protectedValue(slot: any): string {
   if (slot.manual_locked === 1) return 'Yes — staff locked';
+  if (slot.manual_edited_at) return 'Until a newer Facebook post — staff edit, not locked';
   if (slot.price || slot.section_link) return 'Yes — separate price or section link';
   if (slot.origin === 'automation' && slot.last_auto_value !== slot.content) return 'Yes — changed since automation';
   if (!slot.content || slot.origin === 'automation' || slot.origin === 'manual') return 'No staff lock; other publication safeguards still apply';

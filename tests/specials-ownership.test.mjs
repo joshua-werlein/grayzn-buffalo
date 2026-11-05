@@ -38,7 +38,7 @@ test('newWeekFromDefaults → saveCollection preserves every supplied default ow
   assert.equal(saturday(actual).slots[0].origin,'manual');
 });
 
-test('Admin new-week POST retains defaults across fresh UUIDs, protects edits, and ignores forged ownership',async t=>{
+test('Admin new-week POST retains defaults across fresh UUIDs, records staff edits unlocked, and ignores forged ownership',async t=>{
   const f=fixture(t), defaults=await defaultsFor(f);
   const draft=s.newWeekFromDefaults(defaults), form=formFor(draft);
   const group=saturday(draft), index=draft.groups.indexOf(group);
@@ -50,11 +50,13 @@ test('Admin new-week POST retains defaults across fresh UUIDs, protects edits, a
   const saved=await s.saveCollection(f.env,next,dates);
   const slots=saturday((await s.readWeek(f.env,saved.id)).collection).slots;
   assert.deepEqual(slots.slice(0,2).map(x=>[x.content,x.origin,x.manual_locked]),
-    [[recurring,'manual',0],['Staff special $12','manual',1]]);
+    [[recurring,'manual',0],['Staff special $12','manual',0]]);
+  assert.equal(slots[0].manual_edited_at,null,'a recurring prefill is not a staff edit');
+  assert.ok(slots[1].manual_edited_at,'a staff edit records its time');
   assert.ok(slots.slice(2).every(x=>x.content==='' && x.origin==='legacy' && x.manual_locked===0));
 });
 
-for(const staffEdited of [false,true]) test(`Saturday Worker ${staffEdited?'protects a staff correction':'replaces an Admin-created recurring default'}`,async t=>{
+for(const staffEdited of [false,true]) test(`Saturday Worker ${staffEdited?'keeps a staff correction newer than the post':'replaces an Admin-created recurring default'}`,async t=>{
   const f=harness(t,{week:false,now:'2030-01-12T17:00:00Z',caption:'Saturday Specials',
     candidate:poster(6,'Saturday Specials',[offer('Lunch and Drink $9.75','Lunch','11-1:30'),offer(facebook),offer('Ham Sandwich $7.25')])});
   f.state.posts[0].created_time='2030-01-12T14:00:00Z';
@@ -66,11 +68,11 @@ for(const staffEdited of [false,true]) test(`Saturday Worker ${staffEdited?'prot
   const slots=saturday((await s.readWeek(f.env,saved.id)).collection).slots;
   assert.equal(f.state.aiCalls,1);
   assert.deepEqual([slots[0].content,slots[0].origin,slots[0].manual_locked,slots[0].last_auto_value],
-    staffEdited ? ['Staff correction $12','manual',1,null] : [publishedFacebook,'automation',0,publishedFacebook]);
+    staffEdited ? ['Staff correction $12','manual',0,null] : [publishedFacebook,'automation',0,publishedFacebook]);
   assert.equal(slots[1].content,'Ham Sandwich $7.25');
 });
 
-for(const origin of ['automation','manual']) test(`existing ${origin} slot survives unrelated Admin save; staff edit locks it`,async t=>{
+for(const origin of ['automation','manual']) test(`existing ${origin} slot survives unrelated Admin save; staff edit records its time`,async t=>{
   const f=fixture(t), saved=await s.saveCollection(f.env,s.newWeekFromDefaults(await defaultsFor(f)),dates);
   let collection=(await s.readWeek(f.env,saved.id)).collection;
   const groupId=saturday(collection).id;
@@ -86,5 +88,6 @@ for(const origin of ['automation','manual']) test(`existing ${origin} slot survi
   form=formFor(collection);form.set(`g${index}_1_content`,'Actual staff edit $11');
   await s.saveCollection(f.env,s.collectionFromForm(form,collection),dates);
   const after=f.sql('SELECT * FROM special_slots WHERE group_id=? AND position=1',groupId)[0];
-  assert.deepEqual([after.content,after.origin,after.manual_locked,after.last_auto_value],['Actual staff edit $11','manual',1,autoValue]);
+  assert.deepEqual([after.content,after.origin,after.manual_locked,after.last_auto_value],['Actual staff edit $11','manual',0,autoValue]);
+  assert.ok(after.manual_edited_at);
 });

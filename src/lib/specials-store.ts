@@ -8,6 +8,7 @@ export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'
 export type SpecialSlot = {
   position: number; content: string | null; price: string; section_link: string;
   origin: 'legacy' | 'manual' | 'automation'; manual_locked: number; last_auto_value: string | null;
+  manual_edited_at?: string | null; staff_edited?: boolean;
 };
 export type SpecialGroup = {
   id: string; day_of_week: number; service: string; label: string; service_time: string;
@@ -387,6 +388,10 @@ export function collectionFromForm(form: FormData, baseline: SpecialCollection):
       slots: [1,2,3,4].map(position => {
         const prior = old?.slots.find(s => s.position === position);
         const splitFields = ['mexican-night','mexican-night-defaults'].includes(baseline.id) && form.has(p+position+'_title');
+        // Weekly specials are replaceable by newer Facebook posts unless staff lock
+        // them. Soup, recurring defaults and sections keep their own ownership rules.
+        const lockable = baseline.kind === 'week' && !soup;
+        const lockShown = lockable && form.has(p+position+'_lock_shown');
         if (prior && !form.has(p+position+'_content') && !splitFields) return {...prior};
         // Blank textarea in a defaults collection means "no recurring default".
         let content: string | null = baseline.kind === 'defaults' && !value(p+position+'_content').trim() ? null : value(p+position+'_content');
@@ -395,14 +400,17 @@ export function collectionFromForm(form: FormData, baseline: SpecialCollection):
         // value must not become a manual correction merely because of that.
         if (prior?.content != null && content === displayedSpecial(prior).replace(/\r\n?/g,'\n') && !form.has(p+position+'_price')) {
           const section_link = form.has(p+position+'_link') ? value(p+position+'_link') : prior.section_link;
-          return {...prior, section_link, ...(newWeek && section_link !== prior.section_link ? {origin: 'manual' as const, manual_locked: 1} : {})};
+          return {...prior, section_link, ...(newWeek && section_link !== prior.section_link ? {origin: 'manual' as const, manual_locked: 1} : {}),
+            ...(lockShown && prior.content.trim() ? {manual_locked: form.has(p+position+'_locked') ? 1 : 0} : {})};
         }
         if (prior?.content != null && content === prior.content.replace(/\r\n?/g,'\n')) content = prior.content;
         const price = value(p+position+'_price');
         if (content?.trim() && price) content = displayedSpecial({content,price});
+        const staffLock = !content?.trim() ? 0 : lockShown ? (form.has(p+position+'_locked') ? 1 : 0) : prior?.manual_locked ?? 0;
         return { position, content, price: '', section_link: content?.trim() ? (form.has(p+position+'_link') ? value(p+position+'_link') : prior?.section_link ?? '') : '',
           origin: soup && content?.trim() ? 'manual' : newWeek || !prior ? (content?.trim() ? 'manual' : 'legacy') : prior.origin,
-          manual_locked: soup && content?.trim() ? 1 : newWeek || !prior ? (content?.trim() ? 1 : 0) : prior.manual_locked, last_auto_value: prior?.last_auto_value ?? null };
+          manual_locked: lockable ? staffLock : soup && content?.trim() ? 1 : newWeek || !prior ? (content?.trim() ? 1 : 0) : prior.manual_locked,
+          last_auto_value: prior?.last_auto_value ?? null, manual_edited_at: prior?.manual_edited_at ?? null, ...(lockable ? {staff_edited: true} : {}) };
       }) };
   });
   return { ...baseline, revision: Number(value('revision')), title: baseline.kind==='section' ? value('title') : baseline.title,
@@ -455,7 +463,7 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
     if (!dates || !isIsoCalendarDate(dates.start) || !isIsoCalendarDate(dates.end) || dates.start > dates.end) throw new Error('Enter valid week dates.');
     if (!fresh && (mondayForIsoDate(dates.start) !== dates.start || standardWeekEndDate(dates.start) !== dates.end)) throw new Error('New weeks must run Monday through Sunday.');
   }
-  const editable = (c: SpecialCollection) => JSON.stringify([c.title,c.schedule,c.groups.map(g => [g.id,g.day_of_week,g.service,g.label,g.service_time,g.sort,g.enabled,g.slots.map(slotValue)])]);
+  const editable = (c: SpecialCollection) => JSON.stringify([c.title,c.schedule,c.groups.map(g => [g.id,g.day_of_week,g.service,g.label,g.service_time,g.sort,g.enabled,g.slots.map(s => [slotValue(s),c.kind==='week' && !isSoupGroup(g) ? s.manual_locked : 0])])]);
   if (fresh && editable(next)===editable(fresh)) {
     const head = next.kind==='week' ? await env.DB.prepare('SELECT week_start_date,week_end_date FROM weekly_specials WHERE id=?1').bind(next.weekly_special_id).first() : null;
     if (next.kind!=='week' || (head?.week_start_date===dates?.start && head?.week_end_date===dates?.end)) return {id:next.weekly_special_id,collectionId:next.id,groupIds:{},revision:fresh.revision};
@@ -483,6 +491,7 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
   if (next.kind==='week') writes.push(prepare(`UPDATE weekly_specials SET week_start_date=?3,week_end_date=?4,updated_at=CURRENT_TIMESTAMP WHERE id=?5 AND ${gate}`,collectionId,token,dates!.start,dates!.end,weekId));
   const groupRows: any[][] = [];
   const slotRows: any[][] = [];
+  const editedAt = new Date(Date.now()).toISOString();
   for (const group of next.groups) {
     const previous = fresh?.groups.find(g => g.id===group.id);
     const soup=isSoupGroup(group);
@@ -490,15 +499,28 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
     if (!previous) groupIds[group.id] = groupId;
     const clearedSoup=soup && next.kind==='week' && !!previous?.slots[0].content?.trim() && !group.slots[0].content?.trim();
     groupRows.push([groupId,group.day_of_week,group.service,group.label,group.service_time,group.sort,clearedSoup ? 0 : group.enabled]);
+    const lockable = next.kind === 'week' && !soup;
     for (const slot of group.slots) {
       const old = previous?.slots.find(s=>s.position===slot.position);
-      if (old && slotValue(old)===slotValue(slot)) continue;
-      // New slots retain their server-prepared ownership (including defaults).
-      // Existing changed slots are staff edits: populated locks, cleared unlocks.
       const isPopulated = (slot.content ?? '').trim().length > 0;
+      if (old && slotValue(old)===slotValue(slot)) {
+        if (!lockable || !isPopulated || old.manual_locked===slot.manual_locked) continue;
+        // Lock control only. An unchanged automation value stays automation-owned.
+        // Unlocking anything else makes it a staff edit that only newer posts replace;
+        // a lock with no recorded edit time is treated as edited now.
+        const automated = old.origin==='automation' && old.content===old.last_auto_value;
+        const unlockedEdit = slot.manual_locked===0 && !automated;
+        slotRows.push([groupId,slot.position,slot.content,slot.price,slot.section_link,old.last_auto_value ?? null,slot.manual_locked,
+          unlockedEdit ? 'manual' : old.origin,unlockedEdit ? old.manual_edited_at ?? editedAt : old.manual_edited_at ?? null]);
+        continue;
+      }
+      // New slots retain their server-prepared ownership (including defaults); a
+      // weekly slot staff typed in records its edit time. Existing changed slots are
+      // staff edits. Weekly slots lock only on request; other kinds lock when populated.
       slotRows.push([groupId,slot.position,slot.content,slot.price,slot.section_link,old?.last_auto_value ?? null,
-        old === undefined ? (soup && fresh && isPopulated ? 1 : slot.manual_locked) : isPopulated ? 1 : 0,
-        old === undefined ? (soup && isPopulated ? 'manual' : slot.origin) : isPopulated ? 'manual' : 'legacy']);
+        old === undefined ? (soup && fresh && isPopulated ? 1 : slot.manual_locked) : isPopulated ? lockable ? slot.manual_locked : 1 : 0,
+        old === undefined ? (soup && isPopulated ? 'manual' : slot.origin) : isPopulated ? 'manual' : 'legacy',
+        old === undefined ? (slot.staff_edited && isPopulated ? editedAt : null) : lockable ? editedAt : old.manual_edited_at ?? null]);
     }
   }
   // JSON rowsets use one SELECT and three bound parameters per statement,
@@ -509,11 +531,11 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
     FROM json_each(?3) WHERE ${gate}
     ON CONFLICT(id) DO UPDATE SET label=excluded.label,service_time=excluded.service_time,sort=excluded.sort,enabled=excluded.enabled`,
     collectionId,token,JSON.stringify(groupRows)));
-  writes.push(prepare(`INSERT INTO special_slots(group_id,position,content,price,section_link,origin,manual_locked,last_auto_value)
+  writes.push(prepare(`INSERT INTO special_slots(group_id,position,content,price,section_link,origin,manual_locked,last_auto_value,manual_edited_at)
     SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]'),json_extract(value,'$[2]'),
-      json_extract(value,'$[3]'),json_extract(value,'$[4]'),json_extract(value,'$[7]'),json_extract(value,'$[6]'),json_extract(value,'$[5]')
+      json_extract(value,'$[3]'),json_extract(value,'$[4]'),json_extract(value,'$[7]'),json_extract(value,'$[6]'),json_extract(value,'$[5]'),json_extract(value,'$[8]')
     FROM json_each(?3) WHERE ${gate}
-    ON CONFLICT(group_id,position) DO UPDATE SET content=excluded.content,price=excluded.price,section_link=excluded.section_link,origin=excluded.origin,manual_locked=excluded.manual_locked`,
+    ON CONFLICT(group_id,position) DO UPDATE SET content=excluded.content,price=excluded.price,section_link=excluded.section_link,origin=excluded.origin,manual_locked=excluded.manual_locked,manual_edited_at=excluded.manual_edited_at`,
     collectionId,token,JSON.stringify(slotRows)));
   writes.push(prepare('SELECT id FROM special_collections WHERE id=?1 AND mutation_token=?2',collectionId,token));
   const results = await env.DB.batch(writes);

@@ -70,7 +70,7 @@ for(const [name,content,origin,lock,baseline,expected] of [
   const f=harness(t);f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1',content,origin,lock,baseline,f.slots()[0].group_id);
   await f.run();assert.equal(f.slots()[0].content,expected);
 });
-for(const [value,expectedLock] of [['Bartender correction',1],['',0]]) test(`admin save ${JSON.stringify(value)} wins`,async t=>{
+for(const [value,expectedLock] of [['Bartender correction',0],['',0]]) test(`admin save ${JSON.stringify(value)} wins`,async t=>{
   const f=harness(t);await f.run();const w=await store.readWeek(f.env,9000);w.collection.groups.find(g=>g.day_of_week===3&&g.service==='nightly').slots[0].content=value;
   await store.saveCollection(f.env,w.collection,{start:w.week_start_date,end:w.week_end_date});
   f.state.posts[0].updated_time='2030-01-09T14:30:00Z';await f.run();assert.equal(f.slots()[0].content,value);assert.equal(f.slots()[0].manual_locked,expectedLock);

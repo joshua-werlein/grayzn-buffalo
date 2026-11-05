@@ -382,14 +382,14 @@ function hasCompletePrintedPrices(content) {
 export function reconcilePosters(candidates,weekday,existingAllDay=[]) {
   return reconcilePosterEvidence(candidates,weekday,existingAllDay).targets;
 }
-export function reconcilePosterEvidence(candidates,weekday,existingAllDay=[],{today,slotLayout=[],verifiedSameDaySources=new Set()}={}) {
+export function reconcilePosterEvidence(candidates,weekday,existingAllDay=[],{today,slotLayout=[],verifiedSameDaySources=new Set(),sourceTimes=[]}={}) {
   // The same adapter serves fresh validation and persisted failed evidence.
   candidates=candidates.map(c=>{
     if(!Array.isArray(c?.entries) || !c.entries.some(e=>e && typeof e==='object' && 'evidence' in e)) return c;
     try { return singleDayLunchEvidenceV2(c)??c; } catch { return c; }
   });
   if(candidates.some(c=>c?.evidence_version===2)) return planDailyEvidence(candidates,weekday,{
-    today,existingAllDay,slotLayout,verifiedSameDaySources,validateDay:validateCurrentDay,canonicalize:canonicalizeSlotContent});
+    today,existingAllDay,slotLayout,verifiedSameDaySources,sourceTimes,validateDay:validateCurrentDay,canonicalize:canonicalizeSlotContent});
   const rejectedSources=[],validIndices=[];
   const posters=candidates.map((c,index)=>{
     try { const p=forToday(c,weekday,today); if (p) validIndices.push(index); return p; }

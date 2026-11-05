@@ -29,6 +29,8 @@ const STAGES = {
 };
 const STAGE_OF = new Map(Object.entries(STAGES).flatMap(([stage,reasons])=>reasons.map(r=>[r,stage])));
 const PROTECTED = 'Protected or ineligible destination slot';
+// An older post beside a newer unlocked staff edit: the rule working, not a failure.
+export const NEWER_STAFF_EDIT = 'Newer staff edit retained';
 const MAX_LINES = 6, MAX_VALUE = 80;
 // Control, soft-hyphen, zero-width, bidirectional and line/paragraph separator
 // characters, built from code points so the source holds none of them.
@@ -70,9 +72,9 @@ export function dailyAlertDetail(result, data, day, weekday) {
       const staffLocked = !!slot && slot.manual_locked===1 && !!slot.content;
       const disabled = group?.enabled===0 || (b.reason==='Missing, disabled or ambiguous destination'
         && todays.filter(g=>g.service===b.service).length===1 && todays.find(g=>g.service===b.service)?.enabled===0);
-      const intentional = (b.reason===PROTECTED && staffLocked) || disabled;
-      if (b?.reason===PROTECTED && staffLocked) protectedCount++;
-      const reason = b.reason===PROTECTED
+      const intentional = (b.reason===PROTECTED && staffLocked) || b.reason===NEWER_STAFF_EDIT || disabled;
+      if ((b?.reason===PROTECTED && staffLocked) || b?.reason===NEWER_STAFF_EDIT) protectedCount++;
+      const reason = b.reason===NEWER_STAFF_EDIT ? 'Staff edit is newer than this Facebook post; existing website value retained' : b.reason===PROTECTED
         ? staffLocked ? 'Staff-locked destination; existing website value retained'
           : !slot ? 'Destination slot is missing; automatic publication withheld'
           : slot.price ? 'Destination has a separate price; automatic replacement is ineligible'
@@ -81,9 +83,9 @@ export function dailyAlertDetail(result, data, day, weekday) {
           : 'Destination slot is ineligible; existing website value retained'
         : disabled ? 'Staff-disabled destination; automatic publication withheld' : known(b.reason);
       destinations.push({category:label(b.service),position:Number.isSafeInteger(b.position) && b.position>0 ? b.position : null,
-        proposed: b.reason===PROTECTED || STAGE_OF.has(b.reason) ? plainValue(b.content,160) : '',
+        proposed: [PROTECTED,NEWER_STAFF_EDIT].includes(b.reason) || STAGE_OF.has(b.reason) ? plainValue(b.content,160) : '',
         retained:slot ? plainValue(slot.content,160) : null,retainedPrice:slot?.price ? plainValue(slot.price,40) : '',staffLocked,disabled,intentional,reason});
-      if (b?.reason === PROTECTED) continue;
+      if ([PROTECTED,NEWER_STAFF_EDIT].includes(b?.reason)) continue;
       const key = `${label(b?.service)}|${known(b?.reason)}`;
       held.set(key, (held.get(key) ?? 0) + 1);
     }
@@ -124,7 +126,8 @@ export function dailyAlertDetail(result, data, day, weekday) {
     }).slice(0,MAX_LINES);
     const hasHolds=destinations.length>0 || (result?.rejectedSources?.length??0)>0;
     const informational=destinations.length>0 && destinations.every(d=>d.intentional) && !(result?.rejectedSources?.length);
-    return {scope:'daily', day, weekday:DAY_NAMES[weekday], holds, protectedCount, published, current,reviewUrls,
+    const noPrice=(Array.isArray(result?.pricelessOffers)?result.pricelessOffers:[]).slice(0,MAX_LINES).map(p=>({category:label(p.service),position:p.position}));
+    return {scope:'daily', day, weekday:DAY_NAMES[weekday], holds, protectedCount, published, current,reviewUrls,noPrice,
       destinations:destinations.slice(0,MAX_LINES),publishedValues:publishedValues.slice(0,12),posts,informational,
       result:hasHolds ? published.length ? 'Partially Published' : 'Held for Review'
         : result?.requiresWrite ? 'Publication incomplete'
@@ -178,6 +181,8 @@ const WEEKLY_REASONS = {
   ineligible:'Lunch slot is not eligible for automatic replacement',
   no_matching_week:'No unique saved week matches the printed date range',
   retained_conflict:'Website shows a different automated meal that this poster cannot replace',
+  price_removed:'Published the newest poster without a price, replacing a priced special',
+  published_unpriced:'Published a verified meal without a price; other meals on this poster have prices',
 };
 const WEEKLY_CATEGORIES = new Set(['extraction','validation','publication']);
 const isRange = v => typeof v==='string' && /^\d{1,2}\/\d{1,2}-\d{1,2}\/\d{1,2}$/.test(v);
@@ -207,7 +212,7 @@ export function weeklyAlertDetail({day, data, sources=[], failures=[], inspectio
     const failing = new Set(failures.flatMap(f=>[f.day,...(f.days??[])]).filter(d=>Number.isInteger(d)));
     const daysWith = reasons => [...new Set((Array.isArray(inspection)?inspection:[]).flatMap(r=>(r.held??[])
       .filter(h=>reasons.includes(h.reason) && Number.isInteger(h.day) && h.day>=1 && h.day<=5 && !failing.has(h.day)).map(h=>h.day)))].sort().map(d=>DAY_NAMES[d]);
-    const publishedDays = daysWith(['published']), protectedDays = daysWith(['staff_locked','disabled','staff_cleared']), retainedDays = daysWith(['retained']);
+    const publishedDays = daysWith(['published']), protectedDays = daysWith(['staff_locked','disabled','staff_cleared','staff_edit_newer']), retainedDays = daysWith(['retained']);
     const first = failures.map(f=>f.day ?? f.days?.[0]).find(d=>Number.isInteger(d) && d>=1 && d<=5);
     const reviewUrls = sources.filter(s=>/^[a-zA-Z0-9_-]{1,100}$/.test(s.id)).slice(0,6).map(s=>`${SITE}/admin/automation?date=${day}#import-${s.id}`);
     const posts = sources.flatMap(s=>{
@@ -240,7 +245,7 @@ function formatWeeklyText({day, code, summary, detail:d, firstSeenMs}) {
   if (d.retainedDays?.length) lines.push(`Daily poster value kept (precedence, not a failure): ${d.retainedDays.join(', ')}`);
   lines.push('', 'Daily specials publication does not establish Weekly Lunch publication.');
   lines.push('', `Automatic retry: ${RETRY[code] ?? 'none pending'}`);
-  lines.push('Correction: needed for Weekly Lunch. Review the held weekly import and enter or approve the weekday lunches; staff-entered values are protected from automation.');
+  lines.push('Correction: needed for Weekly Lunch. Review the held weekly import and enter or approve the weekday lunches; a newer Facebook post replaces an entry unless you Lock it.');
   lines.push(`Open: ${d.editorUrl}`, `Review imports: ${SITE}/admin/automation?date=${day}`);
   for (const url of d.reviewUrls) if (new RegExp(`^${SITE.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/admin/automation\\?date=${day}#import-[a-zA-Z0-9_-]{1,100}$`).test(url)) lines.push(`Pending import: ${url}`);
   return lines.join('\n');
@@ -270,6 +275,7 @@ export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
       lines.push('  (The service could not be identified, so no slot is named.)');
   }
   if (d?.protectedCount) lines.push(`Staff-protected values kept: ${d.protectedCount}`);
+  for(const p of d?.noPrice??[]) lines.push(`Published without a printed price: ${d.weekday} ${p.category} #${p.position}`);
   for(const h of d?.destinations??[]) {
     lines.push(`Destination: ${d.weekday} ${h.category}${h.position ? ` #${h.position}` : ' (slot unverified)'}`,
       `Reason: ${h.reason}`,`Staff lock: ${h.staffLocked?'yes':'no verified lock'}; disabled: ${h.disabled?'yes':'no verified disabled destination'}`);

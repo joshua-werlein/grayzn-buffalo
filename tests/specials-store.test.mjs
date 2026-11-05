@@ -17,7 +17,7 @@ test('new weeks copy templates once; saved weeks and deliberate blanks never inh
   await assert.rejects(()=>s.saveCollection(f.env,s.newWeekFromDefaults(defaults),{start:'2030-01-07',end:'2030-01-13'}),s.SpecialConflict);
   assert.equal(f.sql("SELECT count(*) n FROM weekly_specials WHERE week_start_date='2030-01-07'")[0].n,1);
 });
-test('manual changes and manual blanks lock only changed slots and preserve automatic baseline',async t=>{
+test('manual changes and manual blanks change only their own slots and preserve automatic baseline',async t=>{
   const f=fixture(t); const id=f.sql("SELECT id FROM special_collections WHERE kind='week' LIMIT 1")[0].id;
   const before=await s.readCollection(f.env,id); const g=before.groups.find(g=>g.service==='nightly' && g.day_of_week===1);
   f.sql("UPDATE special_slots SET content='Imported',origin='automation',manual_locked=0,last_auto_value='baseline' WHERE group_id=? AND position IN (1,2,3)",g.id);
@@ -26,8 +26,8 @@ test('manual changes and manual blanks lock only changed slots and preserve auto
   const week=f.sql('SELECT * FROM weekly_specials WHERE id=?',next.weekly_special_id)[0];
   await s.saveCollection(f.env,next,{start:week.week_start_date,end:week.week_end_date});
   const slots=f.sql('SELECT * FROM special_slots WHERE group_id=? ORDER BY position',g.id);
-  // Slot 0: non-empty ('Corrected') → locked manual entry
-  assert.equal(slots[0].origin,'manual'); assert.equal(slots[0].manual_locked,1); assert.equal(slots[0].last_auto_value,'baseline');
+  // Slot 0: non-empty ('Corrected') → unlocked manual entry with its edit time
+  assert.equal(slots[0].origin,'manual'); assert.equal(slots[0].manual_locked,0); assert.equal(slots[0].last_auto_value,'baseline'); assert.ok(slots[0].manual_edited_at);
   // Slot 1: empty (cleared) → unlocked and eligible for automation; last_auto_value preserved
   assert.equal(slots[1].content,''); assert.equal(slots[1].origin,'legacy'); assert.equal(slots[1].manual_locked,0); assert.equal(slots[1].last_auto_value,'baseline');
   assert.equal(slots[2].origin,'automation'); assert.equal(slots[2].manual_locked,0);
@@ -301,7 +301,7 @@ test('unlockBlankSlots throws on unknown week id', async t => {
   await assert.rejects(()=>s.unlockBlankSlots(f.env,9999999,0),/no longer exists/);
 });
 
-test('saveCollection relocks a slot when its content is changed after unlock', async t => {
+test('saveCollection records a staff edit after unlock without locking it', async t => {
   const f=fixture(t);
   const weekRow=f.sql('SELECT ws.id,ws.week_start_date,ws.week_end_date,sc.id cid,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id LIMIT 1')[0];
   const groupId=f.sql('SELECT id FROM special_groups WHERE collection_id=? AND service<>\'nightly\' LIMIT 1',weekRow.cid)[0]?.id
@@ -316,15 +316,16 @@ test('saveCollection relocks a slot when its content is changed after unlock', a
   assert.equal(unlocked.manual_locked,0,'slot must be unlocked before edit');
   assert.equal(unlocked.origin,'legacy');
 
-  // A bartender now edits the slot and saves: content changes → slot gets re-locked.
+  // A bartender now edits the slot and saves: it stays unlocked unless they Lock it.
   const collection=await s.readWeek(f.env,weekRow.id);
   const group=collection.collection.groups.find(g=>g.id===groupId);
   group.slots.find(s=>s.position===1).content='Edited by staff';
   await s.saveCollection(f.env,collection.collection,{start:weekRow.week_start_date,end:weekRow.week_end_date});
 
-  const relocked=f.sql('SELECT manual_locked,origin FROM special_slots WHERE group_id=? AND position=1',groupId)[0];
-  assert.equal(relocked.manual_locked,1,'edited slot must be relocked');
-  assert.equal(relocked.origin,'manual','edited slot origin must be manual');
+  const edited=f.sql('SELECT manual_locked,origin,manual_edited_at FROM special_slots WHERE group_id=? AND position=1',groupId)[0];
+  assert.equal(edited.manual_locked,0,'an edit alone does not lock');
+  assert.equal(edited.origin,'manual','edited slot origin must be manual');
+  assert.ok(edited.manual_edited_at,'edited slot records its time');
 });
 
 test('saveCollection does not relock an unchanged unlocked blank slot', async t => {

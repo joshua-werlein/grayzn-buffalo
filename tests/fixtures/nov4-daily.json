@@ -1,0 +1,43 @@
+{
+  "source": "Production special_import_events 663 and 666 for import 7c19ee1ede2d8abc2de3e5cd37b010ff, post 583672228384067_1756146729386537. Both attempts returned this same reading.",
+  "fb_created_time": "2026-11-04T15:48:06+0000",
+  "reading": {
+    "day_of_week": 3,
+    "day_evidence": "WEDNESDAY",
+    "poster_evidence": "WEDNESDAY LUNCH SPECIALS DELIVERY AVAILABLE 11-1:30",
+    "delivery": {
+      "status": "available",
+      "evidence": "DELIVERY AVAILABLE 11-1:30",
+      "date_evidence": "",
+      "uncertainties": []
+    },
+    "offers": [
+      {
+        "content": "Chicken Alfredo with Breadsticks and a Drink $9.75",
+        "evidence": "1) CHICKEN ALFREDO WITH BREADSTICKS AND A DRINK (11-130) – $9.75",
+        "service_time": "11-130",
+        "service_evidence": "(11-130)",
+        "date_evidence": "",
+        "uncertainties": [
+          "Time '11-130' is likely a typo for 11-1:30"
+        ]
+      },
+      {
+        "content": "Jalapeno Burger with Side Salad, Chili or Coleslaw $10.25",
+        "evidence": "2) JALAPENO BURGER WITH SIDE SALAD, CHILI OR COLESLAW – $10.25",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      },
+      {
+        "content": "Grilled Ham and Cheese with Cup of Chili or Coleslaw $7.25",
+        "evidence": "3) GRILLED HAM AND CHEESE WITH CUP OF CHILI OR COLESLAW – $7.25",
+        "service_time": "",
+        "service_evidence": "",
+        "date_evidence": "",
+        "uncertainties": []
+      }
+    ]
+  }
+}

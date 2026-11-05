@@ -1,4 +1,4 @@
-// Saving one corrected special through the editor locks only that slot.
+// Locking one corrected special through the editor locks only that slot.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -39,6 +39,7 @@ test('correcting one Monday Nightly special locks only that slot and survives th
   const form=formFor(week.collection);
   const index=week.collection.groups.findIndex(g=>g.day_of_week===1 && g.service==='nightly');
   form.set(`g${index}_1_content`,'2 Burgers and 1 Order of Fries $14');
+  form.set(`g${index}_1_lock_shown`,'1');form.set(`g${index}_1_locked`,'on');
   await s.saveCollection(f.env,s.collectionFromForm(form,week.collection),dates);
 
   const after=allSlots(f);

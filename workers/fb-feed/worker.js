@@ -1,5 +1,5 @@
 import {buildExtractionRequest, buildWeeklyLunchExtractionRequest, buildMexicanNightExtractionRequest,buildReliableExtractionRequest} from './extraction.js';
-import {analyzeDailyEvidence,normalizeEvidenceOffer,factKey,serviceFromEvidence,normalizeWeeklyRange,weeklyEntryEvidence,sameMealFacts,sameMenuItemFacts} from './evidence.js';
+import {analyzeDailyEvidence,normalizeEvidenceOffer,factKey,serviceFromEvidence,normalizeWeeklyRange,weeklyEntryEvidence,sameMealFacts,sameMenuItemFacts,hasUnresolvedUncertainty} from './evidence.js';
 import { classifyCaption, parserVersionFor } from './classify.js';
 import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexicanNight } from './guarded-auto.js';
 import {ensureAutomaticWeek} from './auto-week.js';
@@ -562,7 +562,7 @@ export function validateExtraction(extractedJson,reliable=false,window={}) {
         if(days.some(d=>!Number.isInteger(d)||d<1||d>5)||new Set(days).size!==days.length) throw Error('Invalid or duplicate weekly weekday evidence');
         parsed={...parsed,entries:parsed.entries.flatMap(e=>{
           try {
-            if(typeof e.evidence!=='string'||!e.evidence.trim()||e.uncertainties?.length) throw Error('Missing or uncertain weekly meal evidence');
+            if(typeof e.evidence!=='string'||!e.evidence.trim()||hasUnresolvedUncertainty(e)) throw Error('Missing or uncertain weekly meal evidence');
             // The row's own weekday label is layout, not meal content.
             const evidence=weeklyEntryEvidence(e.evidence,e.day_of_week);
             const offer=normalizeEvidenceOffer({...e,evidence,service_time:''});
@@ -600,7 +600,7 @@ export function validateExtraction(extractedJson,reliable=false,window={}) {
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'offers' in parsed) {
     if(reliable || parsed.evidence_version===2) {
       try {
-        const candidate=analyzeDailyEvidence(parsed);
+        const candidate=analyzeDailyEvidence(parsed,{allowUnpriced:true});
         // Wrong response shape: a weekly or Mexican Night poster read as daily
         // offers gets ONE targeted single-shape reread, as the legacy contract does.
         const heading=`${candidate.day_evidence} ${candidate.poster_evidence}`;

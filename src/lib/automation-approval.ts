@@ -247,7 +247,7 @@ export async function approveImport(env: any,input: any,now=new Date(),{preview=
     writes.push(prepare(`INSERT INTO special_slots(group_id,position,content,price,section_link,origin,manual_locked,last_auto_value)
       SELECT ?3,value,'','','','legacy',0,NULL FROM json_each('[1,2,3,4]') WHERE ${gate}`,collectionId,token,group.id));
   }
-  for(const row of rows) writes.push(prepare(`UPDATE special_slots SET content=?3,price='',origin='manual',manual_locked=1 WHERE group_id=?4 AND position=?5 AND ${gate}`,collectionId,token,row.content,row.groupId,row.position));
+  for(const row of rows) writes.push(prepare(`UPDATE special_slots SET content=?3,price='',origin='manual',manual_locked=1,manual_edited_at=?6 WHERE group_id=?4 AND position=?5 AND ${gate}`,collectionId,token,row.content,row.groupId,row.position,now.toISOString()));
   if(!model.mexican) writes.push(prepare(`UPDATE weekly_specials SET updated_at=?3 WHERE id=?4 AND ${gate}`,collectionId,token,now.toISOString(),model.week.id));
   // Accepted preserves the source's independent delivery evidence. Food slots
   // are protected by ownership and the complete approval audit, not dismissal

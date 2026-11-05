@@ -1,5 +1,6 @@
 import {parserVersionFor,classifyCaption} from './classify.js';
-import {reconcileToday,reconcileWeeklyLunch} from './guarded-auto.js';
+import {reconcileToday,reconcileWeeklyLunch,dailyPosterWeekday} from './guarded-auto.js';
+import {hasPrintedPrice} from './evidence.js';
 import {reconcileDelivery} from './delivery.js';
 import {validateCurrentDay,hasWeeklyLunchEvidence,singleDayLunchEvidence,singleDayLunchEvidenceV2,canonicalizeSlotContent,WEEKLY_LUNCH_SHAPE_ERROR} from './reconcile.js';
 import {factKey} from './evidence.js';
@@ -152,10 +153,10 @@ async function assessWeekly(env,scan,snap,now,sourceIds) {
   for(const s of snap.data[0].filter(s=>currentSource(s,scan,now) && s.processing_status==='staged'
     && s.validation_result==='ok' && ['pending','accepted'].includes(s.review_status) && !weeklySource(s))) {
     try {
-      const c=JSON.parse(s.candidate_json);
-      if(!('offers' in c) || !Number.isInteger(c.day_of_week)) continue;
+      const c=JSON.parse(s.candidate_json),day=dailyPosterWeekday(c,s.fb_created_time,scan.day);
+      if(day===null) continue;
       for(const o of c.offers) if(typeof o?.content==='string')
-        dailyOffers.set(c.day_of_week,(dailyOffers.get(c.day_of_week)??new Set()).add(canonicalizeSlotContent(o.content,c.day_of_week,'lunch')));
+        dailyOffers.set(day,(dailyOffers.get(day)??new Set()).add(canonicalizeSlotContent(o.content,day,'lunch')));
     } catch { /* Not daily evidence. */ }
   }
   const [,,collections,groups,slots]=snap.data;
@@ -169,6 +170,11 @@ async function assessWeekly(env,scan,snap,now,sourceIds) {
     return !!slot?.content && slot.origin==='automation' && slot.manual_locked===0 && slot.last_auto_value===slot.content
       && !!dailyOffers.get(day)?.has(slot.content);
   };
+  const removedDays=new Map();
+  const {results:removals}=await env.DB.prepare(`SELECT import_id,detail FROM special_import_events WHERE import_id IN (SELECT value FROM json_each(?1))
+    AND event_type='review' AND detail LIKE 'GUARDED_WEEKLY_LUNCH:%; price removed: %'`).bind(JSON.stringify(sources.map(s=>s.id))).all();
+  for(const e of removals) removedDays.set(e.import_id,[...new Set([...(removedDays.get(e.import_id)??[]),
+    ...e.detail.slice(e.detail.lastIndexOf(': ')+2).split(',').map(Number).filter(d=>Number.isInteger(d) && d>=1 && d<=5)])]);
   for(const r of inspection??[]) {
     const own=[];
     if(r.reason==='no_matching_week') own.push({category:'publication',reason:'no_matching_week',dateRange:r.dateRange});
@@ -180,6 +186,15 @@ async function assessWeekly(env,scan,snap,now,sourceIds) {
       if(WEEKLY_PUBLICATION_HOLDS.has(h.reason)) own.push({category:'publication',reason:h.reason,day:h.day});
       else if(h.reason==='retained' && !dailyPublished(r.weekId,h.day)) own.push({category:'publication',reason:'retained_conflict',day:h.day});
       else if(h.reason!=='published') suppressedDays++;
+    }
+    // The published replacement stays unpriced: tell staff. A later price or staff edit ends this.
+    for(const day of removedDays.get(r.sourceId)??[]) {
+      const slot=lunchSlot(r.weekId,day);
+      if(slot?.origin==='automation' && slot.content && !hasPrintedPrice(slot.content)) own.push({category:'publication',reason:'price_removed',day});
+    }
+    for(const day of r.unpricedDays??[]) {
+      const slot=lunchSlot(r.weekId,day);
+      if(!removedDays.get(r.sourceId)?.includes(day) && slot?.origin==='automation' && slot.content && !hasPrintedPrice(slot.content)) own.push({category:'publication',reason:'published_unpriced',day});
     }
     failures.push(...own.map(f=>({...f,sourceId:r.sourceId,weekStart:r.weekStart,weekId:r.weekId,dateRange:f.dateRange??r.dateRange})));
   }
@@ -254,6 +269,8 @@ async function assess(env,scan,snap) {
     else if(food.state==='attention' && staffProtectionOnly(daily,snap.data,scan.day,w.weekday)) food={state:'suppressed'};
     else if(!eligible.length || !sourceIds.length) food={state:'suppressed'};
     else if(food.state==='unknown') food={state:'pending'};
+    // Published without a printed price: not a failure, but staff are told.
+    if(daily.pricelessOffers?.length && ['resolved','suppressed'].includes(food.state)) {food={state:'attention'};cause='publication_blocked';}
   }
   // Do not fabricate a failure from a failed image with no explicit current-day
   // specials caption. Unknown coverage is pending review, not claimed evidence.
