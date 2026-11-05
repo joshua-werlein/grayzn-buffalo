@@ -51,14 +51,14 @@ test('identity anchors ignore price, so an edited price stays in its published s
     [['all-day',2,'Salad $9'],['all-day',1,'Burger $11']]);
 });
 test('a displaced offer never takes the slot reserved by an unresolved offer',()=>{
-  // Offer 1 is unresolved (no price) and reserves slot 1; offer 2 wants slot 2,
+  // Offer 1 is unresolved (no price, no verbatim evidence) and reserves slot 1; offer 2 wants slot 2,
   // which an anchor for offer 3 already holds. No legal slot remains: hold, never shift into slot 1.
-  const r=plan([offer('Fish'),offer('Burger $10'),offer('Salad $9')],layout('','Salad $9'),5);
+  const r=plan([offer('Fish','All Day',''),offer('Burger $10'),offer('Salad $9')],layout('','Salad $9'),5);
   assert.deepEqual(r.targets,[]);
   assert.ok(r.unresolvedTargets.some(u=>u.reason==='Missing meal price' && u.position===1));
 });
 test('without anchors, a valid offer keeps its printed slot beside an unresolved one',()=>{
-  const r=plan([offer('Fish'),offer('Salad $9')],layout('Recurring',''));
+  const r=plan([offer('Fish','All Day',''),offer('Salad $9')],layout('Recurring',''));
   assert.deepEqual(placed(r),[['all-day',2,'Salad $9']]);
 });
 test('two offers anchored to the same slot remain ambiguous and are held',()=>{

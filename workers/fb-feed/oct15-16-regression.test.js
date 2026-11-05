@@ -79,10 +79,15 @@ for(const [name,mutate] of [
   ['offer future wording',p=>p.offers[2].evidence+=' tomorrow'],
   ['future service field',p=>p.offers[2].service_time='tomorrow'],
   ['multiple unlabelled prices',p=>{p.offers[2].content+='/$8.25';p.offers[2].evidence+='/$8.25';}],
-  ['missing price',p=>{p.offers[2].content=p.offers[2].content.replace('$7.25','');p.offers[2].evidence=p.offers[2].evidence.replace('$7.25','');}],
 ]) test(`same-day fallback rejects ${name}`,()=>{
   const p=candidate(1);mutate(p);
   assert.ok(!route([p]).targets.some(t=>t.service==='all-day'));
+});
+test('same-day fallback publishes a verified meal without a price, inventing none',()=>{
+  const p=candidate(1);
+  p.offers[2].content=p.offers[2].content.replace('$7.25','').trim();p.offers[2].evidence=p.offers[2].evidence.replace('$7.25','').trim();
+  const items=route([p]).targets.find(t=>t.service==='all-day').items;
+  assert.equal(items.length,2);assert.doesNotMatch(items[1].content,/\$/);
 });
 test('conflicting price or lost alternatives hold the affected meal',()=>{
   for(const mutate of [o=>o.content=o.content.replace('$10.25','$10.75'),o=>o.content=o.content.replace(' OR ',' AND ')]) {

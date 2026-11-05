@@ -94,7 +94,7 @@ for(const value of ['$9.75-10.25','$9.750','-$9.75','$9.75 / $10.25','$9.75 99-9
 // version key trapped real daily posters in the mexican-night shape). Contract-2
 // rules still govern: the response is analyzed per offer, never by the legacy validator.
 test('contract 2 is enforced by the request and its rules, not by a model-echoed version',()=>{
-  const r=validateExtraction(JSON.stringify(poster([offer('Burger $10'),offer('Fish','All Day')])),true,{weekday:1,today:'2026-10-12'});
+  const r=validateExtraction(JSON.stringify(poster([offer('Burger $10'),offer('Fish','All Day','')])),true,{weekday:1,today:'2026-10-12'});
   const candidate=JSON.parse(r.candidateJson);
   assert.equal(candidate.evidence_version,2);
   assert.deepEqual(candidate.issues.map(i=>[i.index,i.reason]),[[1,'Missing meal price']]);

@@ -95,11 +95,11 @@ test('a staff-locked Nightly correction is kept; the other Nightly slot still pu
   assert.equal(rows(f,'nightly')[1].manual_locked,1);
 });
 
-test('a missing Nightly price is held and never borrowed from the default',async t=>{
+test('a verified Nightly meal without a price publishes and never borrows the default price',async t=>{
   const night=NIGHT();night.offers[0]=reprint('2 Burgers and 1 Order of Fries');
   const f=await october26(t,night);
-  assert.equal(contents(f,'nightly')[0],DEFAULT_NIGHTLY[0]);
-  assert.equal(rows(f,'nightly')[0].origin,'manual');
+  assert.doesNotMatch(contents(f,'nightly')[0],/\$/);
+  assert.equal(rows(f,'nightly')[0].origin,'automation');
 });
 
 // ── Genuine conflicts stay conflicts (October 5 safeguards) ────────────────────

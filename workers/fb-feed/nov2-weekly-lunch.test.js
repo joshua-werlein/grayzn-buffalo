@@ -393,8 +393,11 @@ test('a deleted post after its email was sent is not resent or republished', asy
 // A valid poster that differs from MEALS only on Monday.
 const mondayAs = meal => weekly('asterisk',(e,i)=>i===0?{...e,content:meal,evidence:'* MONDAY * '+meal}:e);
 
+// Posters with the same posting time cannot be ordered, so a difference stays a conflict.
+const samePostingTime = f => Object.assign(f.state.posts[1],{created_time:f.state.posts[0].created_time,updated_time:f.state.posts[0].updated_time});
+
 test('Monday conflict A/B alerted, then B changes to C: the new conflict gets a new fingerprint', async t => {
-  const f = setup(t);
+  const f = setup(t);samePostingTime(f);
   f.readings.set('Weekly lunch specials!!',mondayAs('Patty Melt with Fries and a Drink $10.50'));
   await f.run();
   assert.ok(f.imports().every(i=>i.processing_status==='staged'));
@@ -403,9 +406,9 @@ test('Monday conflict A/B alerted, then B changes to C: the new conflict gets a 
   const first = f.incident('weekly');
   assert.equal(first.state,'attention');
   f.advance(ALERT_GRACE_MS);await f.send();assert.equal(f.sent.length,1);
-  // Poster B is edited on Facebook to a third Monday meal (C).
+  // Poster B is replaced at the same posting time by a third Monday meal (C).
   f.readings.set('Weekly lunch REVISED',mondayAs('Reuben with Chips and a Drink $10.50'));
-  Object.assign(f.state.posts[1],{message:'Weekly lunch REVISED',updated_time:'2026-11-02T15:52:00+0000'});
+  f.state.posts[1]=post('583672228384067_1753900000000003','Weekly lunch REVISED',f.state.posts[0].created_time);
   f.advance(5*60000);await f.run();
   const second = f.incident('weekly');
   assert.equal(second.state,'attention');
@@ -414,14 +417,14 @@ test('Monday conflict A/B alerted, then B changes to C: the new conflict gets a 
 });
 
 test('an equivalent repost of a conflicting poster keeps the same conflict fingerprint', async t => {
-  const f = setup(t);
+  const f = setup(t);samePostingTime(f);
   const b = mondayAs('Patty Melt with Fries and a Drink $10.50');
   f.readings.set('Weekly lunch specials!!',b);
   await f.run();
   const first = f.incident('weekly');
   f.advance(ALERT_GRACE_MS);await f.send();assert.equal(f.sent.length,1);
   f.readings.set('Weekly lunch B again',b);
-  f.state.posts.push(post('583672228384067_1753900000000002','Weekly lunch B again','2026-11-02T15:55:00+0000'));
+  f.state.posts.push(post('583672228384067_1753900000000002','Weekly lunch B again',f.state.posts[0].created_time));
   f.advance(5*60000);await f.run();
   assert.equal(f.incident('weekly').incident_key,first.incident_key);
   f.advance(ALERT_GRACE_MS);await f.send();await f.run();await f.send();
@@ -565,13 +568,13 @@ test('a corrected poster never overwrites a current daily poster value', async t
   assert.notEqual(f.incident('weekly')?.state,'attention','actual daily publication is legitimate precedence');
 });
 
-test('original still present beside a different corrected poster: conflicting days stay held', async t => {
+test('original still present beside a newer corrected poster: the newer poster controls', async t => {
   const f = setup(t);original(f);
   await f.run();
   corrected(f);
   f.advance(20*60000);await f.run();
-  MEALS.forEach((m,i)=>assert.equal(f.lunch(i+1).content,m,'nothing replaced while two current posters disagree'));
-  assert.equal(f.incident('weekly')?.state,'attention');
+  NEW.forEach((m,i)=>assert.equal(f.lunch(i+1).content,m));
+  assert.notEqual(f.incident('weekly')?.state,'attention');
 });
 
 test('an equivalent corrected repost after deletion causes no redundant write', async t => {

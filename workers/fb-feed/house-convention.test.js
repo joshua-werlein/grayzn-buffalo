@@ -182,7 +182,10 @@ held('heading is not a Specials heading',v2(1,'Monday Menu',MEALS));
 held('heading is a night heading',v2(1,'Monday Night Specials',MEALS));
 held('heading is an All Day heading',v2(1,'Monday All Day Specials',MEALS));
 held('heading is a weekly heading',v2(1,'Monday Weekly Specials',MEALS));
-held('one meal lacks a price',v2(1,'Monday Specials',[MEALS[0],offer('German Burger w/ Side Salad'),MEALS[2]]));
+test('a verified meal without a price keeps the layout and publishes without one',()=>{
+  const r=route(v2(1,'Monday Specials',[MEALS[0],offer('German Burger w/ Side Salad'),MEALS[2]]));
+  assert.deepEqual(services(r).find(([service])=>service==='all-day')?.[1],['German Burger w/ Side Salad','Chicken Salad Sandwich w/ cup of Soup or Coleslaw $7.25']);
+});
 // The layout is identified by three priced meals; a meal whose wording or price
 // reading is uncertain keeps its slot (default stays) while verified siblings publish.
 test('layout still identified when one meal is uncertain: it alone is held in its slot',()=>{
