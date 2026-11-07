@@ -20,7 +20,8 @@ const lateNight: Group[] = categories
 const splitColumns = (groups: Group[]) => {
   const left = groups.filter((_, index) => index % 2 === 0);
   const right = groups.filter((_, index) => index % 2 === 1);
-  const lighterSide = left.find((group) => group.cat.name === 'On The Lighter Side');
+  // Case-insensitive: section names are saved in title case ("On the Lighter Side").
+  const lighterSide = left.find((group) => group.cat.name.toLowerCase() === 'on the lighter side');
 
   // Keep Lighter Side on the right, preserving the navigation's category order.
   return lighterSide

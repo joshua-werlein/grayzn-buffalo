@@ -21,15 +21,15 @@ for (const [raw,expected] of [
   ['2 Wraps & 1 Order of Fries $19','2 Wraps & 1 Order of Fries $19'],
   ['2 Wraps and 1 Order of Fries $19','2 Wraps and 1 Order of Fries $19'],
   ['2 Wraps + 1 Order of Fries $19','2 Wraps + 1 Order of Fries $19'],
-  ['Wrap OR Salad with Soup $11','Wrap OR Salad with Soup $11'],
-  ['Wrap $11\nOR Salad $12','Wrap $11\nOR Salad $12'],
+  ['Wrap OR Salad with Soup $11','Wrap or Salad with Soup $11'],
+  ['Wrap $11\nOR Salad $12','Wrap $11\nor Salad $12'],
   ["8'' Sub $10 / 12'' Sub $14",'8" Sub $10\n12" Sub $14'],
   ["Flatbread 9'' $12 | 13'' $17",'Flatbread 9" $12\n13" $17'],
   ['Small Bowl $7\nLarge Bowl $11','Small Bowl $7\nLarge Bowl $11'],
   ['Wrap $11\nSalad $12','Wrap $11\nSalad $12'],
   ['Wrap\nSalad\n$12','Wrap Salad $12'],
   ['Wrap Salad $12','Wrap Salad $12'],
-  ['Wrap OR Salad','Wrap OR Salad'],
+  ['Wrap OR Salad','Wrap or Salad'],
   ['Wrap & Salad','Wrap & Salad'],
   ['Chef\'s "Favorite" Sandwich $10','Chef\'s "Favorite" Sandwich $10'],
   ['Grayz\'n Buffalo\'s Special $12','Grayz\'n Buffalo\'s Special $12'],
@@ -99,7 +99,7 @@ test('complete double-apostrophe size choices pass price safeguards without inve
 
 test('150-character offers are kept complete; 151-character offers still fail validation before normalization',()=>{
   const raw='Sub with '+'a'.repeat(150-'Sub with '.length-' $10'.length)+' $10';
-  assert.equal(raw.length,150);assert.equal(format(raw),raw);
+  assert.equal(raw.length,150);assert.equal(format(raw),'Sub with A'+raw.slice(10));
   assert.equal(validateEvidence(poster(0,'Sunday Specials',[offer(raw)])).offers[0].content,raw);
   assert.throws(()=>validateEvidence(poster(0,'Sunday Specials',[offer(raw+'x')])),/Invalid offer evidence/);
   const oversized="8'' Sub with "+'a'.repeat(135)+' $10';
@@ -141,6 +141,6 @@ test('weekly lunch uses the same safe inch formatting and retains explicit bundl
   const p={type:'weekly-lunch',poster_evidence:'Weekly Lunch Specials',date_range:'1/7-1/11',service_time:'11 AM-1:30 PM',entries:[{day_of_week:1,content:"8'' SUB & A DRINK $10"}]};
   const f=harness(t,{now:'2030-01-07T16:00:00Z',caption:'',candidate:p});
   Object.assign(f.state.posts[0],{created_time:'2030-01-07T14:00:00Z',updated_time:'2030-01-07T14:00:00Z'});
-  await f.run();assert.equal(f.slots(1,'lunch')[0].content,'8" Sub & A Drink $10');
+  await f.run();assert.equal(f.slots(1,'lunch')[0].content,'8" Sub & a Drink $10');
   assert.equal(f.imports()[0].extracted_json,JSON.stringify(p));
 });

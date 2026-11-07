@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {validateExtraction} from './worker.js';
@@ -94,7 +95,7 @@ test('original Mexican image readings use one focused repair and publish all cur
   const contents=f.sql("SELECT s.content FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='mexican-night' AND s.content<>'' ORDER BY g.sort,s.position").map(s=>s.content);
   const normalized=JSON.parse(validateExtraction(JSON.stringify(readings[1]),true,window).candidateJson);
   for(const item of normalized.groups.flatMap(g=>g.items)) {
-    const expected=item.title.replace(/50c/g,'$0.50');
+    const expected=normalizeMenuCase(item.title.replace(/50c/g,'$0.50'));
     assert.ok(contents.some(c=>c.startsWith(expected)),expected);
   }
   assert.equal(f.sql("SELECT * FROM special_import_events WHERE import_id=? AND detail LIKE 'GUARDED_AUTO:%'",source.id).length,0);

@@ -5,11 +5,13 @@ import {reconcilePosterEvidence, singleDayLunchEvidence} from './reconcile.js';
 import {standaloneSoup, soupGroupId} from '../../src/lib/daily-soup.js';
 import {harness, offer} from './test-fixture.js';
 import {PARSER_VERSION} from './classify.js';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 
 // Exact production extracted_json: import 494c0b4742408f02c26da116cc39c2a9.
 const exact=JSON.parse(readFileSync(new URL('../../tests/fixtures/oct10-saturday.json',import.meta.url),'utf8'));
 const soups='French Onion, Chili or Beer Cheese Soup';
-const meals=exact.offers.slice(0,3).map(o=>o.content);
+// Published in the house capitalization; the fixture keeps the exact extraction.
+const meals=exact.offers.slice(0,3).map(o=>normalizeMenuCase(o.content));
 const clone=()=>structuredClone(exact);
 function setup(t) {
   const f=harness(t,{now:'2026-10-10T15:00:00Z',caption:'🍻 🍺',candidate:clone(),mode:'DRY_RUN'});

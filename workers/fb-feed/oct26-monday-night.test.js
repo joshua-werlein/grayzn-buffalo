@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {harness} from './test-fixture.js';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 import {sameOffer} from './evidence.js';
 import {reconcilePosterEvidence} from './reconcile.js';
 
@@ -12,8 +13,9 @@ import {reconcilePosterEvidence} from './reconcile.js';
 // "Service not established by evidence" and wrote only the soup.
 const FIXTURE=JSON.parse(readFileSync(new URL('../../tests/fixtures/oct26-monday-night.json',import.meta.url),'utf8'));
 const MORNING=()=>structuredClone(FIXTURE.morning), NIGHT=()=>structuredClone(FIXTURE.night);
-const [LUNCH,CHICKEN,HAM]=FIXTURE.morning.offers.map(o=>o.content);
-const [BURGERS,RIBS]=FIXTURE.night.offers.map(o=>o.content);
+// Published in the house capitalization; the fixture keeps the exact extraction.
+const [LUNCH,CHICKEN,HAM]=FIXTURE.morning.offers.map(o=>normalizeMenuCase(o.content));
+const [BURGERS,RIBS]=FIXTURE.night.offers.map(o=>normalizeMenuCase(o.content));
 const DEFAULT_NIGHTLY=['2 Burgers and 1 Order of Fries','Half Rack Ribs w/ Mac n Cheese & Coleslaw'];
 const reprint=content=>({content,service_time:'',evidence:`• ${content}`,service_evidence:'',uncertainties:[]});
 

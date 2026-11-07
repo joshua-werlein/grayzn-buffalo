@@ -23,7 +23,7 @@ test('local D1 reproduces old compound limit and saves all seven days atomically
   const loaded = await s.readWeek(env,saved.id);
   assert.equal(loaded.collection.groups.length,21);
   assert.equal(loaded.collection.groups.flatMap(g=>g.slots).length,84);
-  assert.deepEqual(loaded.collection.groups.flatMap(g=>g.slots.map(x=>x.content)).sort(),week.groups.flatMap(g=>g.slots.map(x=>x.content)).sort());
+  assert.deepEqual(loaded.collection.groups.flatMap(g=>g.slots.map(x=>x.content)).sort(),week.groups.flatMap(g=>g.slots.map(x=>`${g.day_of_week} ${({'all-day':'All-Day',lunch:'Lunch',nightly:'Nightly'})[g.service]} ${x.position} $7.25`)).sort());
   const before = await DB.prepare('SELECT * FROM special_slots ORDER BY group_id,position').all();
   const revision = loaded.collection.revision;
   for (const g of loaded.collection.groups) for (const slot of g.slots) slot.content = '';

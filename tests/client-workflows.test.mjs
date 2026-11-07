@@ -53,6 +53,33 @@ function specialsClient() {
 }
 function event(extra = {}) { return { prevented: false, preventDefault() { this.prevented = true; }, ...extra }; }
 
+for (const laterDraft of [false,true]) test(`menu capitalization response ${laterDraft?'preserves a newer draft':'shows saved text in the editor and card'}`,async()=>{
+  const form=element(),name=element(),description=element(),submit=element(),card=element(),strong=element(),desc=element();
+  form.fields=new Map([['action','edit'],['id','1'],['name','BBQ BURGER'],['description','with FRIES']]);
+  for(const [input,key] of [[name,'name'],[description,'description']]) Object.defineProperty(input,'value',{
+    get:()=>form.fields.get(key),set:value=>form.fields.set(key,value),
+  });
+  form.closest=()=>null;
+  form.querySelector=selector=>selector.includes('name="action"')?{value:'edit'}:selector.includes('name="id"')?{value:'1'}:
+    selector.includes('name="name"')?name:selector.includes('name="description"')?description:selector.includes('button')?submit:null;
+  card.querySelector=selector=>selector==='.who strong'?strong:selector==='.desc'?desc:null;
+  const document={querySelectorAll:()=>[form],getElementById:()=>card};
+  let finish;
+  const source=script('src/pages/admin/menu.astro');
+  const start=source.indexOf('// Existing items update in place.');
+  assert.ok(start>=0);
+  vm.runInNewContext(source.slice(start,source.indexOf('function paint(',start)),{
+    document,addForm:null,FormData:FormDataDouble,toast(){},applyFilters(){},fetch:()=>new Promise(resolve=>finish=resolve),
+  });
+  const saving=form.emit('submit',event());
+  if(laterDraft){name.value='new draft';description.value='new description';}
+  finish(Response.json({ok:true,name:'BBQ Burger',description:'With Fries'}));await saving;
+  assert.equal(name.value,laterDraft?'new draft':'BBQ Burger');
+  assert.equal(description.value,laterDraft?'new description':'With Fries');
+  assert.equal(strong.textContent,'BBQ Burger');assert.equal(desc.textContent,'With Fries');
+  assert.equal(submit.disabled,false);
+});
+
 test('Mexican editors submit independent actions and saving one preserves the other unsaved draft',async()=>{
   const f=specialsClient();const actions=[];
   f.fetch(async(_url,request)=>{actions.push(request.body.get('action'));return Response.json({ok:true,revision:2});});

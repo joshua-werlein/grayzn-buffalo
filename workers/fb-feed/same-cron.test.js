@@ -10,6 +10,7 @@ import {harness} from './test-fixture.js';
 
 const NIGHT=JSON.parse(readFileSync(new URL('../../tests/fixtures/contract2-eval/oct05-mon-night.json',import.meta.url),'utf8')).first_reading;
 const BLT='BLT on Texas Toast w/ Side Salad or Coleslaw - $10.25',CHICKEN='Chicken Salad Sandwich w/ Cup of Coleslaw - $7.25';
+const PUBLISHED_BLT='BLT On Texas Toast w/ Side Salad or Coleslaw - $10.25';
 const offer=(content,service_evidence='')=>({content,evidence:content,service_time:'',service_evidence,date_evidence:'',uncertainties:[]});
 // Monday day poster with labeled services (layout-independent).
 const day=(allDay)=>({day_of_week:1,day_evidence:'Monday',poster_evidence:'MONDAY SPECIALS',
@@ -19,8 +20,8 @@ const services=r=>Object.fromEntries(r.targets.map(t=>[t.service,t.items.map(i=>
 
 test('same cron, identical repeats: night poster publishes Nightly; All Day agrees across both posts',()=>{
   const r=plan([day([BLT,CHICKEN]),NIGHT]);
-  assert.deepEqual(services(r),{lunch:['Caesar Salad and a Drink - $9.75'],'all-day':[BLT,CHICKEN],
-    nightly:['2 Burgers and 1 Order of Fries - $14','Half Rack Ribs with Mac n Cheese & Coleslaw - $18.75']});
+  assert.deepEqual(services(r),{lunch:['Caesar Salad and a Drink - $9.75'],'all-day':[PUBLISHED_BLT,CHICKEN],
+    nightly:['2 Burgers and 1 Order of Fries - $14','Half Rack Ribs with Mac N Cheese & Coleslaw - $18.75']});
 });
 test('same cron, night poster processed FIRST: repeats are still recognized from the day poster',()=>{
   assert.deepEqual(Object.keys(services(plan([NIGHT,day([BLT,CHICKEN])]))).sort(),['all-day','lunch','nightly']);
@@ -43,12 +44,12 @@ test('two posts labeling DIFFERENT All Day pairs conflict: All Day held, other s
   const r=plan([day(['Fish Fry - $12.00','Reuben - $11.00']),night]);
   assert.ok(!r.targets.some(t=>t.service==='all-day'));
   assert.ok(r.unresolvedTargets.some(u=>u.reason==='Conflicting source offers'));
-  assert.deepEqual(services(r).nightly,['2 Burgers and 1 Order of Fries - $14','Half Rack Ribs with Mac n Cheese & Coleslaw - $18.75']);
+  assert.deepEqual(services(r).nightly,['2 Burgers and 1 Order of Fries - $14','Half Rack Ribs with Mac N Cheese & Coleslaw - $18.75']);
 });
 test('earlier cron: repeats recognized from already-published automation with identical text',()=>{
   const r=plan([NIGHT],[{content:BLT},{content:CHICKEN}]);
-  assert.deepEqual(services(r).nightly,['2 Burgers and 1 Order of Fries - $14','Half Rack Ribs with Mac n Cheese & Coleslaw - $18.75']);
-  assert.deepEqual(services(r)['all-day'],[BLT,CHICKEN]);
+  assert.deepEqual(services(r).nightly,['2 Burgers and 1 Order of Fries - $14','Half Rack Ribs with Mac N Cheese & Coleslaw - $18.75']);
+  assert.deepEqual(services(r)['all-day'],[PUBLISHED_BLT,CHICKEN]);
 });
 
 test('integration: day and night posts found in one cron publish atomically; a staff lock is kept; reruns are idempotent',async t=>{
@@ -64,7 +65,7 @@ test('integration: day and night posts found in one cron publish atomically; a s
   f.sql("UPDATE special_slots SET content='Staff Steak $22',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",nightly);
   await f.run();
   assert.equal(f.slots(1,'lunch')[0].content,'Caesar Salad and a Drink - $9.75');
-  assert.deepEqual(f.slots(1,'all-day').slice(0,2).map(s=>s.content),[BLT,CHICKEN]);
+  assert.deepEqual(f.slots(1,'all-day').slice(0,2).map(s=>s.content),[PUBLISHED_BLT,CHICKEN]);
   const [one,two]=f.slots(1,'nightly');
   assert.deepEqual([one.content,one.origin],['2 Burgers and 1 Order of Fries - $14','automation']);
   assert.deepEqual([two.content,two.manual_locked],['Staff Steak $22',1]);
@@ -79,5 +80,5 @@ test('same cron, unidentifiable night layout repeating ONE All Day offer: the id
   const night={...NIGHT,offers:[NIGHT.offers[0],NIGHT.offers[1],
     {...NIGHT.offers[1],content:'Steak & Shrimp - $22',evidence:'Steak & Shrimp - $22'},NIGHT.offers[2]]};
   const r=plan([day([BLT,CHICKEN]),night]);
-  assert.deepEqual(services(r),{lunch:['Caesar Salad and a Drink - $9.75'],'all-day':[BLT,CHICKEN]});
+  assert.deepEqual(services(r),{lunch:['Caesar Salad and a Drink - $9.75'],'all-day':[PUBLISHED_BLT,CHICKEN]});
 });

@@ -6,6 +6,7 @@
 // authorized calls (*.final-reread.json). Assertions are the publication
 // the poster IMAGE supports, verified by hand, not merely withheld data.
 import test from 'node:test';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {validateExtraction} from './worker.js';
@@ -44,7 +45,7 @@ test('real output under the original contract-2 schema was trapped in the mexica
 test('Oct 10 Saturday (real reading): Saturday Special, both All Day meals and the Soups list, one AI call',async t=>{
   const f=setup(t,'2026-10-10',readings('oct10-sat-daily'));await f.run();
   assert.equal(content(f,6,'lunch')[0],'Philly & Fries $11');
-  assert.deepEqual(content(f,6,'all-day').slice(0,2),['German Burger w/ Side Salad, Soup or Coleslaw $10.25','Chicken Salad Sandwich w/ cup of Soup or Coleslaw $7.25']);
+  assert.deepEqual(content(f,6,'all-day').slice(0,2),['German Burger w/ Side Salad, Soup or Coleslaw $10.25','Chicken Salad Sandwich w/ Cup of Soup or Coleslaw $7.25']);
   assert.equal(soup(f,6),'French Onion, Chili or Beer Cheese Soup');
   assert.ok(content(f,6,'nightly').every(c=>!c)); // weekend Nightly stays disabled/blank
   assert.ok(owned(f,6,'lunch') && owned(f,6,'all-day'));
@@ -71,15 +72,15 @@ test('Oct 12 Monday (real readings): Lunch $9.75 and Cheddar BLT publish; the me
 // ── Night posters ──
 test('Oct 5 Monday night (real reading): two Nightly meals and the two All Day meals, in printed order',async t=>{
   const f=setup(t,'2026-10-05',readings('oct05-mon-night'));await f.run();
-  assert.deepEqual(content(f,1,'nightly').slice(0,2),['2 Burgers and 1 Order of Fries - $14','Half Rack Ribs with Mac n Cheese & Coleslaw - $18.75']);
-  assert.deepEqual(content(f,1,'all-day').slice(0,2),['BLT on Texas Toast w/ Side Salad or Coleslaw - $10.25','Chicken Salad Sandwich w/ Cup of Coleslaw - $7.25']);
+  assert.deepEqual(content(f,1,'nightly').slice(0,2),['2 Burgers and 1 Order of Fries - $14','Half Rack Ribs with Mac N Cheese & Coleslaw - $18.75']);
+  assert.deepEqual(content(f,1,'all-day').slice(0,2),['BLT On Texas Toast w/ Side Salad or Coleslaw - $10.25','Chicken Salad Sandwich w/ Cup of Coleslaw - $7.25']);
   assert.equal(f.state.aiCalls,1); // a missing label is not repaired: the earlier reread copied the heading onto All Day meals
 });
 test('Oct 5 Monday night (real REPAIR reading, heading copied onto every offer): same correct publication',async t=>{
   const [,repair]=readings('oct05-mon-night');
   const f=setup(t,'2026-10-05',[repair]);await f.run();
-  assert.deepEqual(content(f,1,'nightly').slice(0,2),['2 Burgers and 1 Order of Fries - $14','Half Rack Ribs with Mac n Cheese & Coleslaw - $18.75']);
-  assert.deepEqual(content(f,1,'all-day').slice(0,2),['BLT on Texas Toast w/ Side Salad or Coleslaw - $10.25','Chicken Salad Sandwich w/ Cup of Coleslaw - $7.25']);
+  assert.deepEqual(content(f,1,'nightly').slice(0,2),['2 Burgers and 1 Order of Fries - $14','Half Rack Ribs with Mac N Cheese & Coleslaw - $18.75']);
+  assert.deepEqual(content(f,1,'all-day').slice(0,2),['BLT On Texas Toast w/ Side Salad or Coleslaw - $10.25','Chicken Salad Sandwich w/ Cup of Coleslaw - $7.25']);
 });
 test('Oct 7 Wednesday (real reading): Wing Night, both All Day meals and the Soup list',async t=>{
   const f=setup(t,'2026-10-07',readings('oct07-wed-night'));await f.run();
@@ -130,15 +131,15 @@ const MEXICAN_MENU=[
   'Chimichanga ... $12.25\nMeat, refried beans, shredded cheese, and onion rolled up in a tortilla and fried. Topped with enchilada sauce, black olives, and shredded cheese. Lettuce and tomato on the side',
   'Taco Salad ... Large $9.00 | Small $8.50 | Mini $6.00\nMeat, shredded cheese, lettuce, onion, tomato, and black olives served in a shell bowl',
   'Chips & Salsa or Chips & Cheese ... $4.00',
-  'Substitute chicken $1.50','Add Nacho Cheese $1.50','Substitute Queso $0.50','Substitute Shredded Cheese for Nacho Cheese $0.50',
-  'Add nacho cheese or salsa +$1.50'];
+  'Substitute Chicken $1.50','Add Nacho Cheese $1.50','Substitute Queso $0.50','Substitute Shredded Cheese For Nacho Cheese $0.50',
+  'Add Nacho Cheese or Salsa +$1.50'];
 const mexicanReads=()=>[load('oct06-mexican-night').first_reading,load('oct06-mexican-night.final-reread').reading];
 test('Oct 6 Mexican Night (real first reading + real reread): one Mexican-only reread; the COMPLETE printed menu publishes',async t=>{
   const f=setup(t,'2026-10-06',mexicanReads());
   await f.run();
   assert.equal(f.state.aiCalls,2);
   assert.equal(f.requests[1].response_format.json_schema.name,'specials_evidence_v2_mexican');
-  assert.deepEqual(mexicanMenu(f),MEXICAN_MENU);
+  assert.deepEqual(mexicanMenu(f),MEXICAN_MENU.map(normalizeMenuCase));
   assert.ok(content(f,2,'nightly').every(c=>!c)); // never published as daily Tuesday offers
 });
 test('Mexican Night: the real reread dropped Taco Salad size labels; they are restored only from its own printed evidence',()=>{

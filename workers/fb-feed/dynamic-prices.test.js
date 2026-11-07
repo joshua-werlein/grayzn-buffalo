@@ -23,7 +23,7 @@ const nightPoster=(chicken,steak)=>poster(5,'Friday Night Specials 5-10 PM',[
 for (const [raw,expected] of [
   ['12" 3-Topping Pizza $13.50 / 16" 3-Topping Pizza $16','12" 3-Topping Pizza $13.50\n16" 3-Topping Pizza $16'],
   ['12" 3-Topping Pizza $14.25 / 16" 3-Topping Pizza $17.50','12" 3-Topping Pizza $14.25\n16" 3-Topping Pizza $17.50'],
-  ['10 inch BBQ Pizza with Bacon $14.25 OR 18 inch Garden Pizza with Olives $17.50','10 inch BBQ Pizza with Bacon $14.25\nOR 18 inch Garden Pizza with Olives $17.50'],
+  ['10 inch BBQ Pizza with Bacon $14.25 OR 18 inch Garden Pizza with Olives $17.50','10 inch BBQ Pizza with Bacon $14.25\nor 18 inch Garden Pizza with Olives $17.50'],
   ['3-Topping Pizza 12" $14.25 / 16" $17.50','3-Topping Pizza 12" $14.25\n16" $17.50'],
   ['Pizza with Sausage and Peppers $19.25','Pizza with Sausage and Peppers $19.25'],
 ]) test(`current pizza descriptions and prices survive extraction, reconciliation, D1 and display: ${raw}`,async t=>{
@@ -44,7 +44,7 @@ for (const [chicken,steak] of [['$12.99','$13.99'],['$14.50','$16.25']])
     const candidate=nightPoster(chicken,steak);
     f.state.posts.push({...f.state.posts[0],id:'night',created_time:'2030-01-11T21:00:00Z',updated_time:'2030-01-11T21:00:00Z'});
     f.state.candidate=candidate;await f.run();
-    const expected=`Chicken Stir Fry ${chicken}\nOR Steak Stir Fry ${steak}`;
+    const expected=`Chicken Stir Fry ${chicken}\nor Steak Stir Fry ${steak}`;
     assert.deepEqual(JSON.parse(f.imports().at(-1).extracted_json),candidate);
     assert.deepEqual(f.slots(5,'all-day'),established);
     assert.deepEqual(f.slots(5,'nightly').map(s=>s.content),[candidate.offers[0].content,expected,'','']);
@@ -87,7 +87,7 @@ test('Friday All Day formatting preserves actual prices instead of importing his
 
 test('capitalization and whitespace preserve every printed size, choice and changed price',()=>{
   const raw='10 INCH BBQ PIZZA WITH BACON $14.25 / 18 INCH GARDEN PIZZA WITH OLIVES $17.50';
-  assert.equal(canonicalizeSlotContent(raw,4,'nightly'),'10 Inch BBQ Pizza With Bacon $14.25\n18 Inch Garden Pizza With Olives $17.50');
+  assert.equal(canonicalizeSlotContent(raw,4,'nightly'),'10 inch BBQ Pizza with Bacon $14.25\n18 inch Garden Pizza with Olives $17.50');
   assert.equal(canonicalizeSlotContent('CHICKEN STIR FRY $14.50 / STEAK STIR FRY $16.25',5,'all-day'),
     'Chicken Stir Fry $14.50\nSteak Stir Fry $16.25');
 });

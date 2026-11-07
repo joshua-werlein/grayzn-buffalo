@@ -82,7 +82,7 @@ test('exact night extraction preserves portion amounts and groups adjacent varia
   const result=reconcilePosterEvidence([lunch(),n],5);
   assert.deepEqual(n,before);
   assert.deepEqual(result.targets.find(g=>g.service==='nightly').items.map(o=>o.content),
-    [n.offers[0].content,'Chicken Stir Fry $12.99\nOR Steak Stir Fry $13.99']);
+    [n.offers[0].content,'Chicken Stir Fry $12.99\nor Steak Stir Fry $13.99']);
   assert.ok(result.unresolvedTargets.some(t=>t.service==='all-day' && /price conflict/.test(t.reason)));
   assert.deepEqual(result.targets.find(g=>g.service==='all-day').items.map(o=>o.content),expected.slice(1));
 });
@@ -120,7 +120,7 @@ for (const reverse of [false,true]) test(`validated two-offer night grouping iso
   n.offers.splice(1,2,offer('Chicken Stir Fry $12.99 OR Steak Stir Fry $13.99'));
   const result=reconcilePosterEvidence(reverse?[n,lunch()]:[lunch(),n],5);
   const nightly=result.targets.find(g=>g.service==='nightly');
-  assert.deepEqual(nightly.items.map(o=>o.content),[n.offers[0].content,n.offers[1].content.replace(' OR ','\nOR ')]);
+  assert.deepEqual(nightly.items.map(o=>o.content),[n.offers[0].content,n.offers[1].content.replace(' OR ','\nor ')]);
   assert.equal(result.unresolvedTargets.length,1);
   assert.match(result.unresolvedTargets[0].reason,/retained.*\$10.25/);
 });
@@ -157,7 +157,7 @@ for (const nightFirst of [false,true]) test(`exact October 9 pipeline is determi
   f.state.candidate=nightFirst?lunch():night();await f.run();
   assert.equal(f.slots(5,'lunch')[0].content,expected[0]);
   assert.deepEqual(f.slots(5,'all-day').map(s=>s.content),[...expected.slice(1),'','']);
-  assert.deepEqual(f.slots(5,'nightly').map(s=>s.content),[night().offers[0].content,'Chicken Stir Fry $12.99\nOR Steak Stir Fry $13.99','','']);
+  assert.deepEqual(f.slots(5,'nightly').map(s=>s.content),[night().offers[0].content,'Chicken Stir Fry $12.99\nor Steak Stir Fry $13.99','','']);
   const events=f.sql("SELECT * FROM special_import_events WHERE event_type='review'");
   assert.match(events.at(-1).detail,/Repeated All Day price conflict/);
   assert.match(events.at(-1).detail,/\$10.75/);

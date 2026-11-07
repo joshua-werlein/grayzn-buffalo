@@ -204,7 +204,7 @@ test('version 2 preserves Mexican Night replacement and manual collection protec
   const f=setup(t,p);f.state.now=Date.parse('2026-10-13T16:00:00Z');
   Object.assign(f.state.posts[0],{created_time:'2026-10-13T14:00:00Z',updated_time:'2026-10-13T14:00:00Z'});
   await f.run();
-  assert.ok(f.sql("SELECT s.content FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='mexican-night'").some(s=>s.content==='Burrito $9\nMeat and refried beans'));
+  assert.ok(f.sql("SELECT s.content FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='mexican-night'").some(s=>s.content==='Burrito $9\nMeat and Refried Beans'));
   f.sql("UPDATE special_collections SET section_source='manual' WHERE id='mexican-night'");
   f.state.posts.push({...f.state.posts[0],id:'new-menu'});
   f.state.candidate={...p,groups:[{label:'Entrees',items:[{title:'Taco $5',description:'',evidence:'Taco $5',uncertainties:[]}]}]};await f.run();

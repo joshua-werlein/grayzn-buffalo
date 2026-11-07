@@ -4,6 +4,7 @@ import {isSoupGroup,soupGroupId} from './daily-soup.js';
 import {mexicanNightDetailVisible} from './mexican-night-visibility.js';
 import {isWingSauceGroup,wingPriceText,wingWednesdayVisible,wingWeekFor,WING_OPTIONS_GROUP} from './wing-wednesday.js';
 import {priceFreeWingDefault} from './section-links.js';
+import {normalizeMenuCase,normalizeChangedMenuCase} from './text-case.js';
 
 export const SPECIAL_LIMIT = 150;
 // Sections whose items carry a separate title and description, and full poster text.
@@ -512,11 +513,26 @@ const wingOptionLocked = (slot: SpecialSlot, old: SpecialSlot | undefined, claim
   return old?.manual_locked ?? 0;
 };
 
+/** House capitalization (text-case.js) for every title, label and special staff
+ * changed. An untouched value keeps its stored form, so its ownership, lock and
+ * automation baseline are unaffected. Schedules, times and prices are never changed. */
+export function withMenuCase(next: SpecialCollection, previous?: SpecialCollection): SpecialCollection {
+  return { ...next, title: next.kind === 'section' ? normalizeChangedMenuCase(next.title, previous?.title) : next.title,
+    groups: next.groups.map(group => {
+      const old = previous?.groups.find(g => g.id === group.id);
+      return { ...group, label: normalizeChangedMenuCase(group.label, old?.label), slots: group.slots.map(slot => {
+        const prior = old?.slots.find(s => s.position === slot.position);
+        return prior && prior.content === slot.content ? slot : { ...slot, content: normalizeMenuCase(slot.content) };
+      }) };
+    }) };
+}
+
 /** One transactional batch; every dependent write requires the same unique
  * mutation token. A failed compare-and-swap makes ALL later writes no-ops. */
 export async function saveCollection(env: any, next: SpecialCollection, dates?: { start: string; end: string }): Promise<{ id: number | null; collectionId: string; groupIds: Record<string,string>; revision: number }> {
   const fresh = next.id ? await readCollection(env, next.id) : undefined;
   if (fresh && fresh.revision !== next.revision) throw new SpecialConflict();
+  next = withMenuCase(next, fresh);
   validateCollection(next, fresh);
   if (next.kind === 'week') {
     if (!dates || !isIsoCalendarDate(dates.start) || !isIsoCalendarDate(dates.end) || dates.start > dates.end) throw new Error('Enter valid week dates.');

@@ -12,7 +12,7 @@ const read=name=>JSON.parse(readFileSync(new URL(`../../tests/fixtures/${name}`,
 const morningRaw=read('oct23-delivery.json');
 const {friday_night:nightRaw,brewers_event:brewersRaw}=read('oct23-friday-night.json');
 const {sunday_specials:sundayRaw,packers_event:packersRaw}=read('oct25-sunday-soup.json');
-const BREWERS_OFFER='Pulled Pork Sandwich With Chips and Side of Coleslaw $7.25';
+const BREWERS_OFFER='Pulled Pork Sandwich with Chips and Side of Coleslaw $7.25';
 
 function friday(t,mode) {
   const f=harness(t,{now:'2026-10-23T14:26:05.441Z',candidate:structuredClone(morningRaw)});
@@ -211,7 +211,7 @@ test('an unlocked automation event follows its own edited Facebook post',async t
   await f.run();
   const [after]=f.events();
   assert.equal(f.events().length,1);assert.equal(after.id,e.id);assert.equal(after.revision,e.revision+1);
-  assert.deepEqual(f.offers(e.id),['Pulled Pork Sandwich With Chips and Side of Coleslaw $7.50']);
+  assert.deepEqual(f.offers(e.id),['Pulled Pork Sandwich with Chips and Side of Coleslaw $7.50']);
   assert.ok(f.log().some(l=>l.action==='updated'));
 });
 

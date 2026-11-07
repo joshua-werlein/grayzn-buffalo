@@ -105,7 +105,7 @@ test('October 23 Brewers poster: published automatically from the printed headin
   assert.equal(r.route,'event');assert.equal(r.publish,true);
   assert.equal(r.draft.event_date,'2026-10-23');assert.equal(r.draft.date_basis,'relative');
   assert.equal(r.draft.identity,'brewers');assert.equal(r.draft.title,'Brewers Game Special');
-  assert.deepEqual(r.draft.offers,['Pulled Pork Sandwich With Chips and Side of Coleslaw $7.25']);
+  assert.deepEqual(r.draft.offers,['Pulled Pork Sandwich with Chips and Side of Coleslaw $7.25']);
   assert.equal(r.draft.time_text,'Tonight');assert.deepEqual(r.draft.review_reasons,[]);
 });
 test('October 25 Packers poster: the stored extraction ("Sunday Special", empty caption) is NOT an event',()=>{
@@ -124,7 +124,7 @@ test('October 25 Packers poster: its printed "LET\'S GO PACK!" headline, once ex
   const r=route(banner,'');
   assert.equal(r.route,'event');assert.equal(r.publish,true);
   assert.equal(r.draft.identity,'packers');assert.equal(r.draft.event_date,'2026-10-25');
-  assert.equal(r.draft.title,"LET'S GO PACK! Sunday Special"); // Printed wording; only all-caps text is title-cased.
+  assert.equal(r.draft.title,"Let's Go Pack! Sunday Special"); // Published title uses house capitalization; evidence stays verbatim.
   assert.deepEqual(r.draft.offers,['Pulled Pork Sandwich w/ Chips - $4']);
   // A genuine Packers caption is also verified evidence for this small poster.
   const captioned=route(packers,'Packers kickoff at noon! Come watch with us.');

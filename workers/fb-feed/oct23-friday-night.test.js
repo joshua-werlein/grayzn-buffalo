@@ -36,7 +36,7 @@ test('production October 23, both orders: three Friday Nightly specials; All Day
 test('evening poster after the morning publication: published All Day automation identifies the repeat',()=>{
   const r=route([night()],{existing:ALL_DAY.map(content=>({content}))});
   assert.deepEqual(items(r,'nightly'),NIGHTLY);
-  assert.deepEqual(items(r,'all-day'),['Grilled Ham and Cheese w/cup of Soup or Coleslaw $7.25']);
+  assert.deepEqual(items(r,'all-day'),['Grilled Ham and Cheese w/Cup of Soup or Coleslaw $7.25']);
 });
 
 test('without any All Day evidence for today the Friday Night poster stays held',()=>{
@@ -68,7 +68,7 @@ test('four Friday Nightly specials fit; a fifth holds the whole service and drop
 
 test('night price variants publish at night; only identical repeats are recognized as All Day',()=>{
   const r=route([morning(),night(p=>{p.offers[4].content=p.offers[4].evidence='Grilled Ham and Cheese w/cup of Soup or Coleslaw $7.75';})]);
-  assert.deepEqual(items(r,'nightly'),[...NIGHTLY,'Grilled Ham and Cheese w/cup of Soup or Coleslaw $7.75']);
+  assert.deepEqual(items(r,'nightly'),[...NIGHTLY,'Grilled Ham and Cheese w/Cup of Soup or Coleslaw $7.75']);
   assert.deepEqual(items(r,'all-day'),ALL_DAY);
 });
 

@@ -5,6 +5,7 @@ import {readdirSync,readFileSync} from 'node:fs';
 import {experimental_AstroContainer as AstroContainer} from 'astro/container';
 import {fixture} from './specials-fixture.mjs';
 import {loadTs} from './load-ts.mjs';
+import {normalizeMenuCase} from '../src/lib/text-case.js';
 const s=loadTs('src/lib/specials-store.ts');
 const dates=loadTs('src/lib/weekly-specials.ts');
 const rendererChunk=readdirSync('dist/_worker.js/chunks').find(name=>/^(?:SpecialGroup|DailySoup|EventSpecials)_/.test(name) && readFileSync('dist/_worker.js/chunks/'+name,'utf8').includes('/SpecialGroup.astro'));
@@ -216,16 +217,16 @@ test('Mexican menu merges stored food groups, separates accessories and preserve
   assert.equal((food.match(/<li[ >]/g)||[]).length,7);
   assert.equal((extras.match(/<li[ >]/g)||[]).length,5);
   assert.match(food,/<strong[^>]*>Burrito - \$10.25<\/strong>/);
-  assert.match(food,/<p class="menu-item-description"[^>]*>Meat &amp; beans\.\n\nExtra salsa\.<\/p>/);
-  assert.match(food,/<strong[^>]*>One line item \$9.00<\/strong>/);
+  assert.match(food,/<p class="menu-item-description"[^>]*>Meat &amp; Beans\.\n\nExtra Salsa\.<\/p>/);
+  assert.match(food,/<strong[^>]*>One Line Item \$9.00<\/strong>/);
   assert.equal((food.match(/class="menu-item-description"/g)||[]).length,1);
   const titles=[...food.matchAll(/<strong[^>]*>(.*?)<\/strong>/g)].map(m=>m[1]);
-  assert.deepEqual(titles,entries.slice(0,4).flatMap(([,items])=>items.map(item=>item.split('\n')[0])));
-  assert.ok(extras.indexOf('Add cheese')<extras.indexOf('Substitute chicken'));
-  assert.ok(extras.indexOf('Substitute chicken')<extras.indexOf('Substitute queso'));
+  assert.deepEqual(titles,entries.slice(0,4).flatMap(([,items])=>items.map(item=>normalizeMenuCase(item.split('\n')[0]))));
+  assert.ok(extras.indexOf('Add Cheese')<extras.indexOf('Substitute Chicken'));
+  assert.ok(extras.indexOf('Substitute Chicken')<extras.indexOf('Substitute Queso'));
   assert.doesNotMatch(html,/More Mexican Night|Unexpected section|>Entrees</);
-  assert.doesNotMatch(food,/Add cheese|Substitute chicken/);
-  assert.match(extras,/&lt;script&gt;unsafe/);
+  assert.doesNotMatch(food,/Add Cheese|Substitute Chicken/);
+  assert.match(extras,/&lt;script&gt;Unsafe/);
   assert.doesNotMatch(extras,/<script>/);
   assert.ok(html.indexOf('id="mex-title"')<html.indexOf('id="mexican-favorites-heading"'));
   assert.ok(html.indexOf('menu-grid--food')<html.indexOf('id="mexican-extras-heading"'));
@@ -284,7 +285,7 @@ test('compiled Admin new-week POST saves recurring prefills unlocked, honors Loc
   const weekId=Number(new URL(response.headers.get('location'),'http://localhost').searchParams.get('week'));
   const slots=(await s.readWeek(f.env,weekId)).collection.groups.find(g=>g.day_of_week===6 && g.service==='all-day').slots;
   assert.deepEqual(slots.slice(0,2).map(x=>[x.content,x.origin,x.manual_locked]),
-    [['Recurring sandwich $10.25','manual',0],['Staff correction $12','manual',1]]);
+    [['Recurring Sandwich $10.25','manual',0],['Staff Correction $12','manual',1]]);
   const page=await (await container.renderToResponse(adminPage,{request:new Request(`http://localhost/admin/specials?week=${weekId}`,{
     headers:{cookie:'gb_session='+'a'.repeat(32)}}),locals:{runtime:{env:f.env}}})).text();
   const index=(await s.readWeek(f.env,weekId)).collection.groups.findIndex(g=>g.day_of_week===6 && g.service==='all-day');

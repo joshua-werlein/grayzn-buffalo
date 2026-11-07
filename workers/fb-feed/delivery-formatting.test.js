@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {harness} from './test-fixture.js';
@@ -101,7 +102,7 @@ for (const evidence of ['NO DELIVERY TODAY','No delivery','DELIVERY NOT AVAILABL
     await f.run();
     assert.equal(f.display(),'hidden');
     assert.equal(f.row().active,0);
-    assert.equal(f.slots(2,'lunch')[0].content,LUNCH,'food still publishes');
+    assert.equal(f.slots(2,'lunch')[0].content,normalizeMenuCase(LUNCH),'food still publishes');
   });
 
 test('the model reporting a cancellation turns delivery off',()=>{
@@ -124,7 +125,7 @@ test('DELIVERY CLOSED turns off the alert end to end and keeps food',async t=>{
   const f=setup(t,[poster(notice('DELIVERY CLOSED'))]);
   await f.run();
   assert.equal(f.display(),'hidden');assert.equal(f.row().active,0);
-  assert.equal(f.slots(2,'lunch')[0].content,LUNCH);
+  assert.equal(f.slots(2,'lunch')[0].content,normalizeMenuCase(LUNCH));
 });
 
 for (const evidence of [

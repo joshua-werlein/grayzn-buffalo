@@ -274,6 +274,6 @@ test('an older daily post leaves a newer staff edit but fills other slots',async
   const f=setup(t,'2026-11-04T16:00:00Z');
   await f.edit('2026-11-04T16:00:00Z',{content:'Staff lunch $9.00'});
   await f.scan('2026-11-04T16:30:00Z',[NOV4_POST]);
-  assert.equal(f.lunch().content,'Staff lunch $9.00');
+  assert.equal(f.lunch().content,'Staff Lunch $9.00');
   assert.deepEqual(f.slots(3,'all-day').slice(0,2).map(x=>x.content),NOV4.offers.slice(1).map(o=>o.content));
 });

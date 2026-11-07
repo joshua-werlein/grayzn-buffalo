@@ -6,6 +6,7 @@ import {reconcileMexicanNight} from './guarded-auto.js';
 import {PARSER_VERSION} from './classify.js';
 import {composeMexicanItem,splitMexicanItem,MEXICAN_ITEM_LIMIT,mexicanDisplayTitle,normalizeMexicanPrices} from '../../src/lib/mexican-item.js';
 import {mexicanNightExtractionPrompt,extractionPrompt} from './extraction.js';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 
 const entrees = [
   {description: '', title: '2 Soft Shell $8.50'},
@@ -168,15 +169,15 @@ test('full-length October 6 poster descriptions validate verbatim with prices',a
   await f.run();
   assert.equal(mnCollection(f).section_source,'facebook');
   const contents=mnSlots(f).map(s=>s.content);
-  // Food evidence is stored verbatim, including the printed leaders.
-  for(const item of octoberPosterGroups().slice(0,2).flatMap(g=>g.items)) assert.ok(contents.includes(composeMexicanItem(item.title,item.description)),`missing ${item.title}`);
-  assert.ok(contents.includes(composeMexicanItem('Nacho Deluxe ... $9.75','Meat, lettuce, onion, tomato, black olives, and nacho cheese served on top of chips')));
+  // Food text is stored in the house capitalization, including the printed leaders.
+  for(const item of octoberPosterGroups().slice(0,2).flatMap(g=>g.items)) assert.ok(contents.includes(normalizeMenuCase(composeMexicanItem(item.title,item.description))),`missing ${item.title}`);
+  assert.ok(contents.includes(normalizeMenuCase(composeMexicanItem('Nacho Deluxe ... $9.75','Meat, lettuce, onion, tomato, black olives, and nacho cheese served on top of chips'))));
   assert.ok(contents.some(c=>c.startsWith('Taco Salad ... Large $9.00 | Small $8.50 | Mini $6.00\n')));
   // The banner becomes the one canonical accessory group, with every price in USD format.
-  const accessoryGroups=mnGroups(f).filter(g=>g.label==='Substitutions & Add-ons');
+  const accessoryGroups=mnGroups(f).filter(g=>g.label==='Substitutions & Add-Ons');
   assert.equal(accessoryGroups.length,1);
   assert.deepEqual(f.sql('SELECT content FROM special_slots WHERE group_id=? ORDER BY position',accessoryGroups[0].id).map(s=>s.content),
-    ['Substitute chicken $1.50','Add Nacho Cheese $1.50','Substitute queso $0.50','Substitute Shredded Cheese for Nacho Cheese $0.50']);
+    ['Substitute Chicken $1.50','Add Nacho Cheese $1.50','Substitute Queso $0.50','Substitute Shredded Cheese For Nacho Cheese $0.50']);
   assert.equal(mnSlots(f).length,11);
   assert.ok(mnSlots(f).every(s=>s.price===''));
   // Candidate evidence keeps the printed 50c; only the published accessory text is normalized.
@@ -191,7 +192,7 @@ test('automated descriptions use canonical admin format across seven foods and a
   assert.equal(slots.length,11);
   assert.equal(slots[0].content,composeMexicanItem(entrees[0].title,'Beans\nSalsa'));
   assert.deepEqual(splitMexicanItem(slots[0].content),{title:entrees[0].title,description:'Beans\nSalsa'});
-  assert.equal(slots[7].content,addons[0].title);
+  assert.equal(slots[7].content,normalizeMenuCase(addons[0].title));
   assert.equal(PARSER_VERSION,18);
 });
 
@@ -286,7 +287,7 @@ test('clear Mexican Night poster replaces all groups and items', async t => {
   assert.equal(mnGroups(f).length, 3);
   assert.ok(mnSlots(f).some(s => s.content === entrees[0].title));
   assert.ok(mnSlots(f).some(s => s.content === extras[0].title));
-  assert.ok(mnSlots(f).some(s => s.content === addons[0].title));
+  assert.ok(mnSlots(f).some(s => s.content === normalizeMenuCase(addons[0].title)));
   assert.equal(f.imports()[0].validation_result, 'ok');
 });
 
@@ -305,7 +306,7 @@ test('second poster preserves omitted foods and accessories', async t => {
   assert.ok(mnSlots(f).some(s => s.content === 'Special Burrito $10'));
   assert.ok(mnSlots(f).some(s => s.content === entrees[0].title));
   // Add-Ons slots from first poster remain
-  for (const addon of addons) assert.ok(mnSlots(f).some(s => s.content === addon.title), `missing: ${addon.title}`);
+  for (const addon of addons) assert.ok(mnSlots(f).some(s => s.content === normalizeMenuCase(addon.title)), `missing: ${addon.title}`);
 });
 
 test('prices, sizes, and add-ons are preserved verbatim', async t => {
@@ -313,7 +314,7 @@ test('prices, sizes, and add-ons are preserved verbatim', async t => {
   await f.run();
   assert.ok(mnSlots(f).some(s => s.content === 'Taco Salad — Large $9.50 / Small $7.50 / Mini $5.50'));
   for (const addon of addons) {
-    assert.ok(mnSlots(f).some(s => s.content === addon.title), `missing addon: ${addon.title}`);
+    assert.ok(mnSlots(f).some(s => s.content === normalizeMenuCase(addon.title)), `missing addon: ${addon.title}`);
   }
 });
 
@@ -346,7 +347,7 @@ test('accessory groups survive a Facebook update that omits them', async t => {
   // Food group replaced; Add-Ons preserved because Facebook did not mention them
   assert.ok(groups.some(g => g.label === 'Entrees'));
   assert.ok(groups.some(g => g.label === 'Add-Ons'), 'Add-Ons group should survive update that omits it');
-  for (const addon of addons) assert.ok(mnSlots(f).some(s => s.content === addon.title), `missing: ${addon.title}`);
+  for (const addon of addons) assert.ok(mnSlots(f).some(s => s.content === normalizeMenuCase(addon.title)), `missing: ${addon.title}`);
   // Extras group from first poster preserved
   assert.ok(groups.some(g => g.label === 'Extras'));
 });
@@ -356,7 +357,7 @@ test('Facebook with explicit accessory group replaces recurring accessory, no du
   // First run: seeds Entrees + Extras + Add-Ons from defaults
   await f.run();
   assert.equal(mnGroups(f).length, 3);
-  const oldAddonSlots = mnSlots(f).filter(s => addons.some(a => a.title === s.content));
+  const oldAddonSlots = mnSlots(f).filter(s => addons.some(a => normalizeMenuCase(a.title) === s.content));
   assert.ok(oldAddonSlots.length > 0, 'should have existing Add-Ons slots');
 
   // Second post explicitly provides an updated "Add-Ons" group with changed values
@@ -379,11 +380,11 @@ test('Facebook with explicit accessory group replaces recurring accessory, no du
   assert.equal(addonGroups.length, 2, 'updated entries and omitted accessories remain in bounded groups');
 
   // Facebook's new values are present
-  for (const item of newAddons) assert.ok(slots.some(s => s.content === item.title), `missing new addon: ${item.title}`);
+  for (const item of newAddons) assert.ok(slots.some(s => s.content === normalizeMenuCase(item.title)), `missing new addon: ${item.title}`);
 
   // Only explicitly changed recurring values are replaced
-  assert.ok(!slots.some(s => s.content === addons[0].title), 'explicit chicken price replaces old price');
-  for (const old of addons.slice(1)) assert.ok(slots.some(s => s.content === old.title), `omitted addon preserved: ${old.title}`);
+  assert.ok(!slots.some(s => s.content === normalizeMenuCase(addons[0].title)), 'explicit chicken price replaces old price');
+  for (const old of addons.slice(1)) assert.ok(slots.some(s => s.content === normalizeMenuCase(old.title)), `omitted addon preserved: ${old.title}`);
 
   // Entrees and omitted Extras groups present
   assert.ok(groups.some(g => g.label === 'Entrees'));
@@ -425,14 +426,14 @@ test('concurrent revision bump causes write to fail closed', async t => {
   f.sql("UPDATE special_collections SET revision=revision+1 WHERE id='mexican-night'");
   const result = await reconcileMexicanNight(f.env);
   assert.equal(result.written, false);
-  assert.ok(!mnSlots(f).some(s => s.content === 'New item $5'));
+  assert.ok(!mnSlots(f).some(s => s.content === normalizeMenuCase('New item $5')));
 });
 
 test('merge is atomic: omitted foods and accessories retained alongside new foods', async t => {
   const f = mnHarness(t);
   await f.run();
   assert.equal(mnGroups(f).length, 3);
-  const oldFoodContents = mnSlots(f).filter(s => !addons.some(a => a.title === s.content)).map(s => s.content);
+  const oldFoodContents = mnSlots(f).filter(s => !addons.some(a => normalizeMenuCase(a.title) === s.content)).map(s => s.content);
   f.state.posts = [{...f.state.posts[0], id: 'p2', created_time: '2030-01-14T14:30:00Z', updated_time: '2030-01-14T14:30:00Z'}];
   const newItems = [{description: '', title: 'New Taco $7'}, {description: '', title: 'New Burrito $8'}];
   f.state.candidate = mexicanNightCandidate({groups: [{label: 'New Menu', items: newItems}]});
@@ -445,7 +446,7 @@ test('merge is atomic: omitted foods and accessories retained alongside new food
     assert.ok(newSlots.some(s => s.content === item.title), `new item missing: ${item.title}`);
   }
   // Accessory (Add-Ons) slots from the first poster are preserved
-  for (const addon of addons) assert.ok(newSlots.some(s => s.content === addon.title), `missing addon: ${addon.title}`);
+  for (const addon of addons) assert.ok(newSlots.some(s => s.content === normalizeMenuCase(addon.title)), `missing addon: ${addon.title}`);
   assert.equal(newSlots.length, newItems.length + addons.length + oldFoodContents.length);
 });
 
@@ -492,7 +493,7 @@ test('accessory prices normalize to USD format without changing their value',()=
 
 const nextPost = f => { f.state.posts=[{...f.state.posts[0],id:'p2',created_time:'2030-01-14T14:30:00Z',updated_time:'2030-01-14T14:30:00Z'}]; };
 const priceFreeDefaults = [{title:'Substitute chicken',description:''},{title:'Add nacho cheese',description:''}];
-const accessorySlots = f => f.sql("SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='mexican-night' AND g.label='Substitutions & Add-ons' ORDER BY s.position");
+const accessorySlots = f => f.sql("SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='mexican-night' AND g.label='Substitutions & Add-Ons' ORDER BY s.position");
 
 test('any Facebook accessory group replaces recurring accessory defaults regardless of label',async t=>{
   const f=mnHarness(t,{candidate:mexicanNightCandidate({groups:[{label:'Entrees',items:entrees},{label:'Substitutions & Add-ons',items:priceFreeDefaults}]})});
@@ -500,10 +501,10 @@ test('any Facebook accessory group replaces recurring accessory defaults regardl
   nextPost(f);
   f.state.candidate=mexicanNightCandidate({groups:[{label:'Entrees',items:entrees},{label:'Add-Ons',items:[{title:'Substitute chicken $1.50',description:''},{title:'Substitute queso 50c',description:''}]}]});
   await f.run();
-  assert.deepEqual(mnGroups(f).map(g=>g.label),['Entrees','Add-Ons','Substitutions & Add-ons'],'unmentioned accessory survives');
+  assert.deepEqual(mnGroups(f).map(g=>g.label),['Entrees','Add-Ons','Substitutions & Add-Ons'],'unmentioned accessory survives');
   const contents=mnSlots(f).map(s=>s.content);
-  assert.ok(contents.includes('Substitute chicken $1.50') && contents.includes('Substitute queso $0.50'));
-  assert.ok(!contents.includes('Substitute chicken') && contents.includes('Add nacho cheese'),'explicit update replaces only matching default');
+  assert.ok(contents.includes('Substitute Chicken $1.50') && contents.includes('Substitute Queso $0.50'));
+  assert.ok(!contents.includes('Substitute Chicken') && contents.includes('Add Nacho Cheese'),'explicit update replaces only matching default');
 });
 
 test('Facebook evidence without accessories keeps recurring accessory defaults exactly',async t=>{

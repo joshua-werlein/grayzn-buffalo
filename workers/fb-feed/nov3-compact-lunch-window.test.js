@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 import assert from 'node:assert/strict';
 import {harness} from './test-fixture.js';
 import {validateExtraction} from './worker.js';
@@ -38,8 +39,8 @@ for (const [name,evidence,time] of [
 ]) test(`compact lunch window is presentation: ${name}`,()=>{
   const p=plan(offer(LUNCH,evidence,time));
   assert.equal(p.result.needsRepair,false,'no repair read is spent on a valid poster');
-  assert.deepEqual(lunchTarget(p).items,[{position:1,content:LUNCH}]);
-  assert.deepEqual(allDayTarget(p).items.map(i=>i.content),[TURKEY,HAM]);
+  assert.deepEqual(lunchTarget(p).items,[{position:1,content:normalizeMenuCase(LUNCH)}]);
+  assert.deepEqual(allDayTarget(p).items.map(i=>i.content),[TURKEY,HAM].map(normalizeMenuCase));
   assert.deepEqual(p.unresolvedTargets,[]);
 });
 
@@ -110,8 +111,8 @@ test('an All Day special printing the compact window never publishes into the Lu
     const raw=poster(first);raw.offers[1]=second;
     const result=validateExtraction(JSON.stringify(raw),true,window);
     const {targets}=reconcilePosterEvidence([JSON.parse(result.candidateJson)],2,[],{today:window.today,verifiedSameDaySources:new Set([0])});
-    assert.deepEqual(targets.find(t=>t.service==='lunch')?.items,[{position:1,content:LUNCH}],name);
-    assert.deepEqual(targets.find(t=>t.service==='all-day')?.items,[{position:1,content:TURKEY},{position:2,content:HAM}],name);
+    assert.deepEqual(targets.find(t=>t.service==='lunch')?.items,[{position:1,content:normalizeMenuCase(LUNCH)}],name);
+    assert.deepEqual(targets.find(t=>t.service==='all-day')?.items,[{position:1,content:normalizeMenuCase(TURKEY)},{position:2,content:normalizeMenuCase(HAM)}],name);
   }
 });
 
@@ -134,9 +135,9 @@ test('November 3: the daily poster prices an automation-owned weekly lunch and f
   await f.run();
   assert.equal(f.state.aiCalls,1);
   const lunch=f.slots(2,'lunch')[0];
-  assert.equal(lunch.content,LUNCH);
-  assert.equal(lunch.origin,'automation');assert.equal(lunch.last_auto_value,LUNCH);assert.equal(lunch.manual_locked,0);
-  assert.deepEqual(f.slots(2,'all-day').slice(0,2).map(s=>s.content),[TURKEY,HAM]);
+  assert.equal(lunch.content,normalizeMenuCase(LUNCH));
+  assert.equal(lunch.origin,'automation');assert.equal(lunch.last_auto_value,normalizeMenuCase(LUNCH));assert.equal(lunch.manual_locked,0);
+  assert.deepEqual(f.slots(2,'all-day').slice(0,2).map(s=>s.content),[TURKEY,HAM].map(normalizeMenuCase));
   assert.equal(f.slots(3,'lunch')[0].content,WEEKLY,'another weekday is untouched');
   const source=f.imports()[0];
   assert.equal(source.processing_status,'staged');assert.equal(source.validation_reason,'poster evidence v2');
@@ -150,15 +151,15 @@ test('an All Day meal printing the compact window cannot overwrite the Lunch slo
   const raw=poster(offer(LUNCH,LUNCH));raw.offers[1]=offer(TURKEY,`${TURKEY} (11-130)`);
   const f=setup(t,raw);
   await f.run();
-  assert.equal(f.slots(2,'lunch')[0].content,LUNCH);
-  assert.deepEqual(f.slots(2,'all-day').slice(0,2).map(s=>s.content),[TURKEY,HAM]);
+  assert.equal(f.slots(2,'lunch')[0].content,normalizeMenuCase(LUNCH));
+  assert.deepEqual(f.slots(2,'all-day').slice(0,2).map(s=>s.content),[TURKEY,HAM].map(normalizeMenuCase));
 });
 
 test('a mismatched meal stays held and keeps the priceless weekly lunch, All Day still publishes',async t=>{
   const f=setup(t,poster(offer(LUNCH,PRINTED.replace('11–130','11–230'))));
   await f.run();
   assert.equal(f.slots(2,'lunch')[0].content,WEEKLY);
-  assert.deepEqual(f.slots(2,'all-day').slice(0,2).map(s=>s.content),[TURKEY,HAM]);
+  assert.deepEqual(f.slots(2,'all-day').slice(0,2).map(s=>s.content),[TURKEY,HAM].map(normalizeMenuCase));
   assert.match(f.sql("SELECT detail FROM special_import_events WHERE detail LIKE 'GUARDED_AUTO_CONFLICT%'")[0].detail,/Meal facts differ from original evidence/);
 });
 
@@ -168,7 +169,7 @@ test('a staff-locked lunch is never replaced by the poster or a later post; othe
   f.setLunch(2,"content=?,origin='manual',manual_locked=1",STAFF);
   await f.run();
   assert.equal(f.slots(2,'lunch')[0].content,STAFF);
-  assert.deepEqual(f.slots(2,'all-day').slice(0,2).map(s=>s.content),[TURKEY,HAM]);
+  assert.deepEqual(f.slots(2,'all-day').slice(0,2).map(s=>s.content),[TURKEY,HAM].map(normalizeMenuCase));
   f.state.candidate=poster(offer(LUNCH.replace('9.75','10.00'),PRINTED.replace('9.75','10.00')));
   f.state.posts=[{...f.state.posts[0],id:'583672228384067_2',message:'Corrected',created_time:'2026-11-03T15:50:00+0000',updated_time:'2026-11-03T15:50:00+0000'}];
   f.state.now+=20*60000;

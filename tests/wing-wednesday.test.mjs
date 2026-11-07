@@ -131,7 +131,7 @@ for(const recurring of [true,false]) test(`admin ${recurring?'recurring':'live'}
   body.set('g1_1_content','Buffalo\r\nRanch');
   const response=await post(f,body);assert.equal(response.status,200);assert.equal((await response.json()).ok,true);
   const saved=await store.readCollection(f.env,id);
-  assert.match(saved.groups[0].slots[0].content,recurring?/^Bone-In Wings\nStaff description$/:/^Bone-In Wings \$1\.25 each\nStaff description$/);
+  assert.match(saved.groups[0].slots[0].content,recurring?/^Bone-In Wings\nStaff Description$/:/^Bone-In Wings \$1\.25 each\nStaff Description$/);
   assert.equal(saved.groups[1].slots[0].content,'Buffalo\nRanch');
   assert.deepEqual(await store.readCollection(f.env,other),before);
   assert.deepEqual(await store.readCollection(f.env,'mexican-night'),mexican);

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 import {harness,poster,offer} from './test-fixture.js';
 import {reconcileToday} from './guarded-auto.js';
 import {validateEvidence,WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
@@ -50,7 +51,7 @@ test('Monday production mismatch retries once and publishes Nightly while preser
   await f.run();
   assert.equal(requests.length,2);assert.equal(calls(f)-before,2);
   assert.deepEqual(requests[0],requests[1]);
-  assert.deepEqual(f.slots(1,'nightly').map(s=>s.content),[...mondayNightItems.slice(0,2),'','']);
+  assert.deepEqual(f.slots(1,'nightly').map(s=>s.content),[...mondayNightItems.slice(0,2).map(normalizeMenuCase),'','']);
   assert.deepEqual(f.slots(1,'all-day'),established);
   assert.equal(f.imports().at(-1).validation_result,'ok');
   assert.equal(JSON.parse(f.imports().at(-1).extracted_json).day_of_week,1);
@@ -114,8 +115,8 @@ test('daily prompt specifies the complete weekday mapping and unknown-day rule',
 test('exact Sunday image-only poster replaces unlocked Western Burger and maps all three offers',async t=>{
   const f=sunday(t);await f.run();
   assert.equal(f.slots(0,'lunch')[0].content,pizza);
-  assert.deepEqual(f.slots(0,'all-day').slice(0,2).map(s=>s.content),[hawaiian,sandwich]);
-  assert.equal(f.slots(0,'all-day')[0].last_auto_value,hawaiian);
+  assert.deepEqual(f.slots(0,'all-day').slice(0,2).map(s=>s.content),[hawaiian,sandwich].map(normalizeMenuCase));
+  assert.equal(f.slots(0,'all-day')[0].last_auto_value,normalizeMenuCase(hawaiian));
   assert.equal(f.imports()[0].validation_result,'ok');
 });
 for(const origin of ['manual','legacy']) test(`Sunday ${origin} locked correction remains protected`,async t=>{
@@ -128,7 +129,7 @@ test('Sunday retry uses identical full instructions and schema and counts two ac
   f.env.AI.run=async(_model,request)=>{requests.push(structuredClone(request));return {choices:[{message:{content:requests.length===1?'not JSON':JSON.stringify(f.state.candidate)}}]};};
   await f.run();assert.equal(requests.length,2);assert.deepEqual(requests[0],requests[1]);
   assert.match(requests[1].messages[1].content[0].text,/For a weekly schedule/);
-  assert.equal(calls(f),2);assert.equal(f.slots(0,'all-day')[0].content,hawaiian);
+  assert.equal(calls(f),2);assert.equal(f.slots(0,'all-day')[0].content,normalizeMenuCase(hawaiian));
   await f.run();assert.equal(requests.length,2);
 });
 test('one remaining AI call prevents retry, including across later pipeline runs',async t=>{

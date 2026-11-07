@@ -96,7 +96,7 @@ test('valid Facebook menu patches unlocked defaults; repeats preserve Facebook c
   setMondayPoster(f);await f.run();
   assert.equal(collection(f).section_source,'facebook');assert.equal(collection(f).section_week_start,'2030-01-14');
   assert.equal(collection(f).section_service_date,'2030-01-15');
-  const imported=slots(f).find(s=>s.content.includes('Facebook burrito'));
+  const imported=slots(f).find(s=>s.content.includes('Facebook Burrito'));
   assert.ok(imported);assert.equal(imported.origin,'automation');assert.equal(imported.content,imported.last_auto_value);
   assert.deepEqual(slots(f).filter(s=>seeded.some(old=>old.group_id===s.group_id)),seeded);
   const before=snapshot(f);await ensureAutomaticWeek(f.env,sunday);assert.equal(snapshot(f),before);
@@ -226,8 +226,8 @@ for(const source of ['manual','facebook']) test(`next Sunday replaces expired ${
   const c=collection(f);
   assert.equal(c.section_source,'recurring');assert.equal(c.section_week_start,'2030-01-21');
   assert.equal(c.section_service_date,'2030-01-22');assert.equal(c.updated_at,'2030-01-21T01:00:00.000Z');
-  assert.equal(c.title,defaults.title);assert.equal(c.schedule,defaults.schedule);
-  assert.equal(slots(f)[0].content,'Canonical recipe for future weeks');assert.equal(slots(f)[0].price,'');
+  assert.equal(c.title,'Updated Recurring Title');assert.equal(c.schedule,defaults.schedule);
+  assert.equal(slots(f)[0].content,'Canonical Recipe For Future Weeks');assert.equal(slots(f)[0].price,'');
   assert.ok(slots(f).every(s=>s.origin==='manual' && s.manual_locked===0 && s.last_auto_value===null));
   const after=snapshot(f);await ensureAutomaticWeek(f.env,following);assert.equal(snapshot(f),after);
 });

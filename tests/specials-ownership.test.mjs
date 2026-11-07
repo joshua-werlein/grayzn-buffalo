@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {fixture} from './specials-fixture.mjs';
 import {loadTs} from './load-ts.mjs';
 import {harness, offer, poster} from '../workers/fb-feed/test-fixture.js';
+import {normalizeMenuCase} from '../src/lib/text-case.js';
 const s=loadTs('src/lib/specials-store.ts');
 const dates={start:'2030-01-07',end:'2030-01-13'};
 const recurring="Crispy Grayz'n Chicken Sandwich w/Side Salad, Chili or Coleslaw $10.25";
@@ -33,7 +34,7 @@ test('newWeekFromDefaults → saveCollection preserves every supplied default ow
   for(const group of week.groups) {
     const stored=actual.groups.find(g=>g.id===saved.groupIds[group.id]);
     assert.deepEqual(stored.slots.map(x=>[x.content,x.origin,x.manual_locked,x.last_auto_value]),
-      group.slots.map(x=>[x.content,x.origin,0,null]));
+      group.slots.map(x=>[normalizeMenuCase(x.content),x.origin,0,null]));
   }
   assert.equal(saturday(actual).slots[0].origin,'manual');
 });
@@ -50,7 +51,7 @@ test('Admin new-week POST retains defaults across fresh UUIDs, records staff edi
   const saved=await s.saveCollection(f.env,next,dates);
   const slots=saturday((await s.readWeek(f.env,saved.id)).collection).slots;
   assert.deepEqual(slots.slice(0,2).map(x=>[x.content,x.origin,x.manual_locked]),
-    [[recurring,'manual',0],['Staff special $12','manual',0]]);
+    [[recurring,'manual',0],['Staff Special $12','manual',0]]);
   assert.equal(slots[0].manual_edited_at,null,'a recurring prefill is not a staff edit');
   assert.ok(slots[1].manual_edited_at,'a staff edit records its time');
   assert.ok(slots.slice(2).every(x=>x.content==='' && x.origin==='legacy' && x.manual_locked===0));
@@ -68,7 +69,7 @@ for(const staffEdited of [false,true]) test(`Saturday Worker ${staffEdited?'keep
   const slots=saturday((await s.readWeek(f.env,saved.id)).collection).slots;
   assert.equal(f.state.aiCalls,1);
   assert.deepEqual([slots[0].content,slots[0].origin,slots[0].manual_locked,slots[0].last_auto_value],
-    staffEdited ? ['Staff correction $12','manual',0,null] : [publishedFacebook,'automation',0,publishedFacebook]);
+    staffEdited ? ['Staff Correction $12','manual',0,null] : [publishedFacebook,'automation',0,publishedFacebook]);
   assert.equal(slots[1].content,'Ham Sandwich $7.25');
 });
 
@@ -88,6 +89,6 @@ for(const origin of ['automation','manual']) test(`existing ${origin} slot survi
   form=formFor(collection);form.set(`g${index}_1_content`,'Actual staff edit $11');
   await s.saveCollection(f.env,s.collectionFromForm(form,collection),dates);
   const after=f.sql('SELECT * FROM special_slots WHERE group_id=? AND position=1',groupId)[0];
-  assert.deepEqual([after.content,after.origin,after.manual_locked,after.last_auto_value],['Actual staff edit $11','manual',0,autoValue]);
+  assert.deepEqual([after.content,after.origin,after.manual_locked,after.last_auto_value],['Actual Staff Edit $11','manual',0,autoValue]);
   assert.ok(after.manual_edited_at);
 });

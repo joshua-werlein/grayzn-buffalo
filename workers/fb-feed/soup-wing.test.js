@@ -10,10 +10,13 @@ import {formatWingNight,validateWingNight} from './wing-night.js';
 import {standaloneSoup,soupGroupId,withSoupControls} from '../../src/lib/daily-soup.js';
 import {loadTs} from '../../tests/load-ts.mjs';
 import {extractionPrompt} from './extraction.js';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 const store=loadTs('src/lib/specials-store.ts');
 const exact=JSON.parse(readFileSync(new URL('../../tests/fixtures/oct7-wednesday.json',import.meta.url),'utf8'));
 const wing='Wing Night!\nBone-In Wings $.89 each\nBoneless Wings $.99 each';
 const pair=exact.offers.slice(1,3);
+// What automation publishes (and has stored) for that pair: the house capitalization.
+const published=pair.map(o=>normalizeMenuCase(o.content));
 const morning=poster(3,'Wednesday Specials',[offer('Hoagie Sandwich w/ Beer Fries & a Drink - $9.75','','11 AM-1:30 PM'),...pair]);
 const input={today:'2026-10-07',weekday:3};
 function setup(t,candidate=exact) {
@@ -34,7 +37,7 @@ for(const existing of [[],pair]) test(`exact October 7 poster reconciles with ${
   const r=targets([exact],existing);
   assert.deepEqual(r.rejectedSources,[]);
   assert.equal(r.targets.find(t=>t.service==='nightly').items[0].content,wing);
-  assert.deepEqual(r.targets.find(t=>t.service==='all-day').items.map(i=>i.content),pair.map(i=>i.content));
+  assert.deepEqual(r.targets.find(t=>t.service==='all-day').items.map(i=>i.content),published);
   assert.deepEqual(r.targets.find(t=>t.role==='soup').items,[{content:'French Onion or Chili'}]);
 });
 for(const sources of [[morning,exact],[exact,morning]]) test(`morning/evening source order ${sources[0]===morning ? 'morning first' : 'evening first'} agrees`,()=>{
@@ -64,7 +67,7 @@ test('Wednesday clean or corroborating All Day meal evidence keeps the bounded m
   for(const heading of ['', 'All Day:']) {
     const p=structuredClone(exact);
     for(const index of [1,2])p.offers[index].evidence=`${heading} ${p.offers[index].content}`.trim();
-    assert.deepEqual(targets([p]).targets.find(t=>t.service==='all-day').items.map(i=>i.content),pair.map(i=>i.content));
+    assert.deepEqual(targets([p]).targets.find(t=>t.service==='all-day').items.map(i=>i.content),published);
   }
 });
 for(const text of ['Sandwich w/ Soup or Coleslaw $7.25','Sandwich with Cup of Soup $7.25','Burger with soup as a side','Soup or Coleslaw','Soup:','Soup: Cup of Soup with sandwich','Soup: or','Soup: Ask today','Soup: French Onion or'])
@@ -80,9 +83,9 @@ test('conflicting explicit Soup sources retain rejected-source protection',()=>{
 });
 for(const existing of [false,true]) test(`pipeline publishes exact poster, atomic Soup creation and idempotency; existing pair=${existing}`,async t=>{
   const f=setup(t);
-  if(existing) pair.forEach((o,i)=>f.sql("UPDATE special_slots SET content=?,origin='automation',last_auto_value=? WHERE group_id=? AND position=?",o.content,o.content,f.slots(3,'all-day')[0].group_id,i+1));
+  if(existing) published.forEach((content,i)=>f.sql("UPDATE special_slots SET content=?,origin='automation',last_auto_value=? WHERE group_id=? AND position=?",content,content,f.slots(3,'all-day')[0].group_id,i+1));
   await f.run();assert.equal(f.slots()[0].content,wing);
-  assert.deepEqual(f.slots(3,'all-day').slice(0,2).map(s=>s.content),pair.map(o=>o.content));
+  assert.deepEqual(f.slots(3,'all-day').slice(0,2).map(s=>s.content),published);
   assert.equal(soup(f)[0].content,'French Onion or Chili');assert.equal(soup(f).length,4);
   assert.ok(soup(f).slice(1).every(s=>s.content===''));assert.equal(soup(f)[0].origin,'automation');
   assert.equal(soupGroup(f).service,'custom');assert.equal(soupGroup(f).label,'Soup');
@@ -197,7 +200,7 @@ for(const fries of ['', ' Add Fries $2'])test(`equivalent Wing item order agrees
     const r=targets(sources),night=r.targets.find(t=>t.service==='nightly');
     assert.ok(night);assert.deepEqual(r.unresolvedTargets,[]);
     assert.equal(formatWingNight(night.items[0].content),night.items[0].content);
-    assert.deepEqual(r.targets.find(t=>t.service==='all-day').items.map(i=>i.content),pair.map(i=>i.content));
+    assert.deepEqual(r.targets.find(t=>t.service==='all-day').items.map(i=>i.content),published);
   }
   // Numeric changes still conflict even after item order is normalized.
   second.offers[0].content=second.offers[0].content.replace('$0.99','$1.09');second.offers[0].evidence=second.offers[0].content;

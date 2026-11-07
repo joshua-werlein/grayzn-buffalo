@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {harness} from './test-fixture.js';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 import {validateMexicanNight} from './reconcile.js';
 import {mergeMexicanMenu,scheduleKey} from './mexican-menu.js';
 
@@ -22,7 +23,7 @@ const contents=f=>f.sql("SELECT s.content FROM special_slots s JOIN special_grou
 test('October 20 complete import keeps all menu and accessory prices, canonical heading and repeat idempotency',async t=>{
   const f=setup(t);await f.run();
   const before=contents(f);
-  for(const item of october20.groups.flatMap(g=>g.items)) assert.ok(before.some(c=>c.startsWith(item.title)),item.title);
+  for(const item of october20.groups.flatMap(g=>g.items)) assert.ok(before.some(c=>c.startsWith(normalizeMenuCase(item.title))),item.title);
   const collection=f.sql("SELECT * FROM special_collections WHERE id='mexican-night'")[0];
   assert.equal(collection.title,'Mexican Night');assert.equal(scheduleKey(collection.schedule),'5pm-10pm');
   await f.run();assert.deepEqual(contents(f),before);
@@ -72,7 +73,7 @@ test('partial Facebook changes preserve the actual recurring template in D1',asy
   f.sql("INSERT INTO special_groups(id,collection_id,day_of_week,service,label,sort,enabled) VALUES('template','mexican-night-defaults',-1,'custom','Favorites',0,1)");
   for(const [position,content] of [[1,'Burrito\nStored recipe'],[2,'Taco Salad | Large · Small · Mini'],[3,'Nacho Deluxe'],[4,'Chips & Salsa or Chips & Cheese\nAdd nacho cheese or salsa']]) f.sql("INSERT INTO special_slots(group_id,position,content) VALUES('template',?,?)",position,content);
   await f.run();
-  assert.ok(contents(f).includes('Burrito $11.25\nStored recipe'));
+  assert.ok(contents(f).includes('Burrito $11.25\nStored Recipe'));
   assert.ok(contents(f).includes('Taco Salad | Large · Small · Mini'));
-  assert.ok(contents(f).includes('Chips & Salsa or Chips & Cheese\nAdd nacho cheese or salsa'));
+  assert.ok(contents(f).includes('Chips & Salsa or Chips & Cheese\nAdd Nacho Cheese or Salsa'));
 });

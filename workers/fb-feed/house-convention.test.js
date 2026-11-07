@@ -4,6 +4,7 @@
 // anything undetermined stays held and the recurring defaults remain visible.
 // All AI responses are mocked; none of these tests evaluates a real image.
 import test from 'node:test';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {reconcilePosterEvidence} from './reconcile.js';
@@ -101,13 +102,13 @@ for(const created of ['2026-10-29T15:11:07Z','2026-10-31T15:11:07Z'])
 test('October 10 Saturday poster: Saturday Special, two All Day meals and the Soups list',()=>{
   assert.deepEqual(services(route({...OCT10,evidence_version:2})),[
     ['lunch',['Philly & Fries – $11']],
-    ['all-day',['German Burger w/ Side Salad, Soup or Coleslaw – $10.25','Chicken Salad Sandwich w/ cup of Soup or Coleslaw – $7.25']],
+    ['all-day',['German Burger w/ Side Salad, Soup or Coleslaw – $10.25','Chicken Salad Sandwich w/ Cup of Soup or Coleslaw – $7.25']],
     ['soup',['French Onion, Chili or Beer Cheese Soup']]]);
 });
 test('October 10 Saturday poster without a soup list: same meal mapping, no Soup target',()=>{
   assert.deepEqual(services(route(withoutSoup({...OCT10,evidence_version:2}))),[
     ['lunch',['Philly & Fries – $11']],
-    ['all-day',['German Burger w/ Side Salad, Soup or Coleslaw – $10.25','Chicken Salad Sandwich w/ cup of Soup or Coleslaw – $7.25']]]);
+    ['all-day',['German Burger w/ Side Salad, Soup or Coleslaw – $10.25','Chicken Salad Sandwich w/ Cup of Soup or Coleslaw – $7.25']]]);
 });
 test('October 11 Sunday poster (weekday only in the heading): Sunday Special, two All Day meals and the Soups list',()=>{
   assert.deepEqual(services(route({...OCT11,evidence_version:2})),[
@@ -184,13 +185,13 @@ held('heading is an All Day heading',v2(1,'Monday All Day Specials',MEALS));
 held('heading is a weekly heading',v2(1,'Monday Weekly Specials',MEALS));
 test('a verified meal without a price keeps the layout and publishes without one',()=>{
   const r=route(v2(1,'Monday Specials',[MEALS[0],offer('German Burger w/ Side Salad'),MEALS[2]]));
-  assert.deepEqual(services(r).find(([service])=>service==='all-day')?.[1],['German Burger w/ Side Salad','Chicken Salad Sandwich w/ cup of Soup or Coleslaw $7.25']);
+  assert.deepEqual(services(r).find(([service])=>service==='all-day')?.[1],['German Burger w/ Side Salad','Chicken Salad Sandwich w/ Cup of Soup or Coleslaw $7.25']);
 });
 // The layout is identified by three priced meals; a meal whose wording or price
 // reading is uncertain keeps its slot (default stays) while verified siblings publish.
 test('layout still identified when one meal is uncertain: it alone is held in its slot',()=>{
   const r=route(v2(1,'Monday Specials',[MEALS[0],{...MEALS[1],uncertainties:['price partly obscured']},MEALS[2]]));
-  assert.deepEqual(services(r),[['lunch',['Philly & Fries $11']],['all-day',['Chicken Salad Sandwich w/ cup of Soup or Coleslaw $7.25']]]);
+  assert.deepEqual(services(r),[['lunch',['Philly & Fries $11']],['all-day',['Chicken Salad Sandwich w/ Cup of Soup or Coleslaw $7.25']]]);
   assert.deepEqual(r.targets.find(t=>t.service==='all-day').items.map(i=>i.position),[2]);
   assert.deepEqual(r.unresolvedTargets.map(u=>[u.service,u.position,u.reason]),[['all-day',1,'Uncertain extracted offer']]);
 });
@@ -241,7 +242,7 @@ test('integration October 10: an edited repost keeps each All Day meal in its pu
   set(2,'German Burger w/ Side Salad, Soup or Coleslaw – $10.25');
   await f.run();
   assert.deepEqual(f.slots(6,'all-day').slice(0,2).map(s=>s.content),
-    ['Chicken Salad Sandwich w/ cup of Soup or Coleslaw – $7.25','German Burger w/ Side Salad, Soup or Coleslaw – $10.25']);
+    ['Chicken Salad Sandwich w/ Cup of Soup or Coleslaw – $7.25','German Burger w/ Side Salad, Soup or Coleslaw – $10.25']);
   assert.equal(f.slots(6,'lunch')[0].content,'Philly & Fries – $11');
 });
 test('integration: an undetermined layout fails silently and keeps the recurring defaults',async t=>{

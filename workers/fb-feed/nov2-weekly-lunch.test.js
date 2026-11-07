@@ -9,6 +9,7 @@ import {dispatchVerifiedAlerts,beginAlertScan,finishAlertScan,readAlertHealth} f
 import {ALERT_GRACE_MS,ALERT_LEASE_MS} from './alert-store.js';
 import {alertMessage} from './alert-email.js';
 import {weeklyAlertDetail} from './alert-detail.js';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 
 // November 2, 2026: two equivalent weekly lunch posters printed decorated
 // weekday labels. AI responses are mocked; these exercise validation,
@@ -560,10 +561,10 @@ test('corrected prices update only eligible slots; locked, edited and disabled s
 test('a corrected poster never overwrites a current daily poster value', async t => {
   const f = setup(t);original(f);withDaily(f);
   await f.run();
-  assert.equal(f.lunch(1).content,DAILY.offers[0].content);
+  assert.equal(f.lunch(1).content,normalizeMenuCase(DAILY.offers[0].content));
   f.state.posts = f.state.posts.filter(p=>p.message==='Monday lunch special');corrected(f);
   f.advance(20*60000);await f.run();
-  assert.equal(f.lunch(1).content,DAILY.offers[0].content,'daily offer kept');
+  assert.equal(f.lunch(1).content,normalizeMenuCase(DAILY.offers[0].content),'daily offer kept');
   [2,3,4,5].forEach(d=>assert.equal(f.lunch(d).content,NEW[d-1]));
   assert.notEqual(f.incident('weekly')?.state,'attention','actual daily publication is legitimate precedence');
 });

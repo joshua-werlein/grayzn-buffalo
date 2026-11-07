@@ -61,7 +61,7 @@ for(const recurring of [true,false]) test(`compiled ${recurring?'recurring':'liv
   const body=bodyFor(draft,recurring?'save-mexican-night-defaults':'save-mexican-night');
   body.set('g0_1_title',recurring?'Future taco recipe':'Staff taco recipe $12');
   const response=await post(f,body);assert.equal(response.status,200);assert.equal((await response.json()).ok,true);
-  assert.match((await store.readCollection(f.env,id)).groups[0].slots[0].content,recurring?/Future taco recipe/:/Staff taco recipe \$12/);
+  assert.match((await store.readCollection(f.env,id)).groups[0].slots[0].content,recurring?/Future Taco Recipe/:/Staff Taco Recipe \$12/);
   assert.deepEqual(await store.readCollection(f.env,other),before);
   const source=f.sql('SELECT section_source FROM special_collections WHERE id=?',id)[0].section_source;
   assert.equal(source,recurring?null:'manual');
@@ -86,7 +86,7 @@ test('public page renders seeded price-free size names, descriptions and accesso
   const f=await setup(t);const before=await store.readCollection(f.env,'mexican-night');
   const html=await container.renderToString(publicPage,{request:new Request('http://localhost/specials'),locals:{runtime:{env:f.env,now:new Date('2030-01-15T16:00:00Z')}}});
   const menu=html.match(/<div class="mexican-night-menu"[\s\S]*?<\/article>/)[0];
-  assert.match(menu,/Taco Salad \| Large · Small · Mini/);assert.match(menu,/Meat and cheese/);
-  assert.match(menu,/Substitute chicken/);assert.doesNotMatch(menu,/\$/);
+  assert.match(menu,/Taco Salad \| Large · Small · Mini/);assert.match(menu,/Meat and Cheese/);
+  assert.match(menu,/Substitute Chicken/);assert.doesNotMatch(menu,/\$/);
   assert.deepEqual(await store.readCollection(f.env,'mexican-night'),before);
 });

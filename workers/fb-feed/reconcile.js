@@ -4,6 +4,7 @@ import {trailingDailyPrice,normalizeMexicanSizeItem} from './evidence.js';
 import {standaloneSoup,hasStandaloneSoupLabel} from '../../src/lib/daily-soup.js';
 import {formatWingNight,validateWingNight,isWingOffer,WING_HEADING} from './wing-night.js';
 import {planDailyEvidence} from './evidence.js';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 // Evidence is persisted separately from the website's final group structure.
 // A poster-level night heading does NOT make every offer a night-only offer.
 const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
@@ -23,29 +24,11 @@ export function canonicalizeSlotContent(content, weekday, service) {
     return formatWingNight(content);
   content = normalizeInchMarks(content);
   if(weekday>=0 && !(weekday===2 && service==='nightly')) content = trailingDailyPrice(content);
-  // ALL CAPS Facebook poster text → title case before publication.
-  // Only fires when every Unicode letter in the string is uppercase; prices
-  // ($9.75, $.89), punctuation (—, &), and non-letter characters are untouched.
-  // A standalone "w/" abbreviation is ignored by the check, so posters typed
-  // as "HANG OVER BURGER w/ SIDE SALAD" are still recognized as ALL CAPS.
-  // Explicit allowlist — only known specials abbreviations stay ALL-CAPS.
-  // Connectors (and/or/of) stay lowercase unless they begin the content.
-  const ABBREVS = new Set(['BLT', 'BBQ', 'FF']);
-  const CONNECTORS = new Set(['AND', 'OR', 'OF']);
-  const letters = content.replace(/(?<!\p{L})w(?=\/)/gu, '').replace(/\P{L}/gu, '');
-  if (letters.length > 0 && letters === letters.toUpperCase()) {
-    content = content.replace(/\p{L}+/gu, (word, offset, str) => {
-      if (word.toUpperCase() === 'W' && str[offset + word.length] === '/') return 'w';
-      if (ABBREVS.has(word.toUpperCase())) return word.toUpperCase();
-      if (CONNECTORS.has(word) && /\p{L}/u.test(str.slice(0, offset))) return word.toLowerCase();
-      return word[0].toUpperCase() + word.slice(1).toLowerCase();
-    });
-  }
   // Formatting only. Split complete, individually labelled price lines without
   // adding/reordering dish names, sizes, descriptions, connectors or amounts.
   const lines=pricedOfferLines(content);
-  if (lines.length>1 && lines.every(line=>hasCompletePrintedPrices(line) && hasPriceLabel(line))) return lines.join('\n');
-  return content.replace(/[\t\r\n]+/g, ' ').replace(/ {2,}/g, ' ').trim();
+  if (lines.length>1 && lines.every(line=>hasCompletePrintedPrices(line) && hasPriceLabel(line))) return normalizeMenuCase(lines.join('\n'));
+  return normalizeMenuCase(content.replace(/[\t\r\n]+/g, ' ').replace(/ {2,}/g, ' ').trim());
 }
 function pricedOfferLines(content) {
   return content.replace(/\r\n?/g,'\n').replace(/[ \t]+/g,' ').trim()

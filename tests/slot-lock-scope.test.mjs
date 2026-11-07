@@ -58,6 +58,6 @@ test('correcting one Monday Nightly special locks only that slot and survives th
   f.state.candidate=structuredClone(records.night);
   await f.run();
   assert.deepEqual(f.slots(1,'nightly').slice(0,2).map(x=>[x.content,x.origin,x.manual_locked]),
-    [['2 Burgers and 1 Order of Fries $14','manual',1],['Half Rack Ribs w/ Mac n Cheese & Coleslaw — $18.75','automation',0]]);
+    [['2 Burgers and 1 Order of Fries $14','manual',1],['Half Rack Ribs w/ Mac N Cheese & Coleslaw — $18.75','automation',0]]);
   assert.equal(f.slots(2,'all-day')[0].manual_locked,0);
 });

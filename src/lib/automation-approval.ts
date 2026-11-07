@@ -2,6 +2,7 @@ import {chicagoCalendarDate,calendarDayOfWeek,mondayForIsoDate} from './weekly-s
 import {readCollection,displayedSpecial,specialInputCount,validateCollection,SpecialConflict} from './specials-store';
 import {parseReviewEvidence} from './automation-review';
 import {normalizeMexicanPrices,composeMexicanItem} from './mexican-item.js';
+import {normalizeMenuCase} from './text-case.js';
 import {isSoupGroup,standaloneSoup} from './daily-soup.js';
 import {validateMexicanNight,validateCurrentDay,canonicalizeSlotContent,reconcilePosterEvidence} from '../../workers/fb-feed/reconcile.js';
 import {normalizeMexicanSizeItem,serviceFromEvidence,factKey} from '../../workers/fb-feed/evidence.js';
@@ -157,7 +158,8 @@ export async function approveImport(env: any,input: any,now=new Date(),{preview=
       // Staff may correct wording, but cannot silently turn a source entry into
       // another food or move its printed price to another entry.
       if(![mexicanItemKey(entry.title),mexicanItemKey(entry.evidence)].includes(key)) throw Error('Keep each Mexican item associated with its source heading.');
-      content=composeMexicanItem(accessoryGroup(entry.label)?normalizeMexicanPrices(title):title,accessoryGroup(entry.label)?normalizeMexicanPrices(description):description);
+      // House capitalization (text-case.js); the ordinary path gets it from canonicalizeSlotContent().
+      content=normalizeMenuCase(composeMexicanItem(accessoryGroup(entry.label)?normalizeMexicanPrices(title):title,accessoryGroup(entry.label)?normalizeMexicanPrices(description):description));
       checkPrices(content,entry.original);
       const old=baselineItems.find(i=>i.key===key);
       if(old) {
@@ -166,8 +168,8 @@ export async function approveImport(env: any,input: any,now=new Date(),{preview=
       }
       else {
         let extra=newGroups.at(-1);
-        if(!extra || extra.label!==entry.label || extra.used===4) {
-          extra={id:`mn-staff:${input.requestId}:${newGroups.length}`,day_of_week:-1,service:'custom',label:entry.label,service_time:'',sort:Math.max(-1,...next.groups.map(g=>g.sort))+1,enabled:1,used:0,
+        if(!extra || extra.label!==normalizeMenuCase(entry.label) || extra.used===4) {
+          extra={id:`mn-staff:${input.requestId}:${newGroups.length}`,day_of_week:-1,service:'custom',label:normalizeMenuCase(entry.label),service_time:'',sort:Math.max(-1,...next.groups.map(g=>g.sort))+1,enabled:1,used:0,
             slots:[1,2,3,4].map(position=>({position,content:'',price:'',section_link:'',origin:'legacy',manual_locked:0,last_auto_value:null}))};
           newGroups.push(extra);next.groups.push(extra);
         }

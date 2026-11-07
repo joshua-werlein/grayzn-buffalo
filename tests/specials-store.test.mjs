@@ -40,7 +40,7 @@ test('stale saves and races between read and transactional batch cannot partiall
   const batch=f.env.DB.batch;
   f.env.DB.batch=async statements=>{f.sql("UPDATE special_collections SET revision=revision+1 WHERE id='defaults'"); return batch(statements)};
   await assert.rejects(()=>s.saveCollection(f.env,next),s.SpecialConflict);
-  assert.equal((await s.readCollection(f.env,'defaults')).groups[0].slots[0].content,'First editor');
+  assert.equal((await s.readCollection(f.env,'defaults')).groups[0].slots[0].content,'First Editor');
 });
 test('failed statement rolls back revision and all prior writes in the batch',async t=>{
   const f=fixture(t);const next=await s.readCollection(f.env,'defaults');const revision=next.revision;
@@ -53,7 +53,7 @@ test('Mexican menu editing is isolated from all saved weeks and defaults',async 
   const next=await s.readCollection(f.env,'mexican-night'); const group=s.blankGroup(-1); group.label='Staff supplied test group'; group.slots[0].content='Staff supplied test item'; next.groups=[group];
   const result=await s.saveCollection(f.env,next); assert.ok(result.groupIds[group.id]);
   assert.deepEqual(f.sql("SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id<>'mexican-night' ORDER BY s.group_id,s.position"),before);
-  assert.equal((await s.readCollection(f.env,'mexican-night')).groups[0].slots[0].content,'Staff supplied test item');
+  assert.equal((await s.readCollection(f.env,'mexican-night')).groups[0].slots[0].content,'Staff Supplied Test Item');
 });
 test('unchanged repeated saves do not bump revision or rewrite content',async t=>{
   const f=fixture(t);const defaults=await s.readCollection(f.env,'defaults');
@@ -139,7 +139,7 @@ test('applyCandidate for section candidate applies to mexican-night collection',
   const before=await s.readCollection(f.env,'mexican-night');
   await s.applyCandidate(f.env,importId,null,before.revision);
   const after=await s.readCollection(f.env,'mexican-night');
-  assert.ok(after.groups.some(g=>g.slots.some(slot=>slot.content==='Tacos al Pastor $13')));
+  assert.ok(after.groups.some(g=>g.slots.some(slot=>slot.content==='Tacos Al Pastor $13')));
   // Populated slots must be manually locked; blank slots are eligible for future automation
   assert.ok(after.groups.every(g=>g.slots.every(slot=>
     (slot.content&&slot.content.trim()) ? (slot.origin==='manual'&&slot.manual_locked===1) : (slot.origin==='legacy'&&slot.manual_locked===0)

@@ -29,6 +29,6 @@ test('direct description, side and price edits affect future new weeks only and 
   await store.saveCollection(f.env,defaults);
   assert.deepEqual(await store.readWeek(f.env,saved.id),before);
   const future=store.newWeekFromDefaults(await store.readCollection(f.env,'defaults')).groups.find(g=>g.day_of_week===2&&g.service==='all-day');
-  assert.deepEqual(future.slots.slice(0,2).map(s=>s.content),allDay.slots.slice(0,2).map(s=>s.content));
+  assert.deepEqual(future.slots.slice(0,2).map(s=>s.content),['Different Meal with Side Salad, Soup or Coleslaw $12.25','New Sandwich with Fries $8.75']);
   assert.ok(future.slots.slice(0,2).every(s=>s.origin==='manual'&&s.manual_locked===0));
 });

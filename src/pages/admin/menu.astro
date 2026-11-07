@@ -2,6 +2,7 @@
 import Base from '../../layouts/Base.astro';
 import { isAuthed } from '../../lib/auth';
 import { thumbKey } from '../../lib/db';
+import { normalizeMenuCase } from '../../lib/text-case.js';
 
 const env = (Astro.locals as any).runtime?.env ?? {};
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -31,6 +32,8 @@ const SM_MESSAGES: Record<string, { ok: boolean; text: string }> = {
 };
 let notice = '';
 let problem = '';
+// The saved item text, returned so the editor shows the house capitalization.
+let saved: { name: string; description: string } | null = null;
 const wantsJson = Astro.request.headers.get('accept')?.includes('application/json');
 
 // Photo upload/remove goes to /api/menu-photo so the page can update in place.
@@ -51,8 +54,8 @@ if (Astro.request.method === 'POST') {
         'INSERT INTO items (category_id, name, description, late_night, sort) VALUES (?1, ?2, ?3, ?4, COALESCE((SELECT MAX(sort)+1 FROM items WHERE category_id=?1), 0))'
       ).bind(
         Number(f.get('category_id')),
-        String(f.get('name')),
-        String(f.get('description') ?? ''),
+        normalizeMenuCase(String(f.get('name'))),
+        normalizeMenuCase(String(f.get('description') ?? '')),
         f.get('late_night') ? 1 : 0
       ).run();
 
@@ -65,12 +68,13 @@ if (Astro.request.method === 'POST') {
       notice = 'Item added.';
 
     } else if (action === 'edit') {
+      saved = { name: normalizeMenuCase(String(f.get('name'))), description: normalizeMenuCase(String(f.get('description') ?? '')) };
       await env.DB.prepare(
         'UPDATE items SET name = ?2, description = ?3, category_id = ?4, late_night = ?5 WHERE id = ?1'
       ).bind(
         Number(f.get('id')),
-        String(f.get('name')),
-        String(f.get('description') ?? ''),
+        saved.name,
+        saved.description,
         Number(f.get('category_id')),
         f.get('late_night') ? 1 : 0
       ).run();
@@ -88,7 +92,7 @@ if (Astro.request.method === 'POST') {
       notice = 'Item updated.';
 
     } else if (action === 'add-section') {
-      const name = String(f.get('name') ?? '').trim();
+      const name = normalizeMenuCase(String(f.get('name') ?? '').trim());
       if (!name) throw new Error('Section name is required.');
       if (name.length > 60) throw new Error('Section name must be 60 characters or fewer.');
       await env.DB.prepare(
@@ -99,7 +103,7 @@ if (Astro.request.method === 'POST') {
     } else if (action === 'edit-section') {
       const id = Number(f.get('category_id'));
       if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid section.');
-      const name = String(f.get('name') ?? '').trim();
+      const name = normalizeMenuCase(String(f.get('name') ?? '').trim());
       if (!name) throw new Error('Section name is required.');
       if (name.length > 60) throw new Error('Section name must be 60 characters or fewer.');
       await env.DB.prepare(
@@ -135,7 +139,7 @@ if (Astro.request.method === 'POST') {
       return Astro.redirect('/admin/menu?sm=s4', 303);
     }
     if (wantsJson) {
-      return new Response(JSON.stringify({ ok: true, action, id: Number(f.get('id')), message: notice }), {
+      return new Response(JSON.stringify({ ok: true, action, id: Number(f.get('id')), message: notice, ...(saved ?? {}) }), {
         headers: { 'content-type': 'application/json' },
       });
     }
@@ -579,10 +583,11 @@ try {
       if (submit) submit.disabled = true;
       try {
         toast(action === 'delete' ? 'Removing item…' : 'Saving…', 'busy');
+        const submitted = new FormData(form);
         const res = await fetch('/admin/menu', {
           method: 'POST',
           headers: { accept: 'application/json' },
-          body: new FormData(form),
+          body: submitted,
         });
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.error ?? 'Could not update the item.');
@@ -598,8 +603,14 @@ try {
           if (hiddenBadge) hiddenBadge.hidden = isNowActive;
           if (submit) submit.textContent = isNowActive ? 'Hide' : 'Show';
         } else if (action === 'edit') {
-          const name = form.querySelector<HTMLInputElement>('input[name="name"]')?.value.trim() ?? '';
-          const description = form.querySelector<HTMLTextAreaElement>('textarea[name="description"]')?.value.trim() ?? '';
+          // Show the saved text, which uses the house capitalization.
+          const nameInput = form.querySelector<HTMLInputElement>('input[name="name"]');
+          const descInput = form.querySelector<HTMLTextAreaElement>('textarea[name="description"]');
+          // A response must not replace a newer draft typed while it was saving.
+          if (nameInput && nameInput.value === submitted.get('name') && typeof data.name === 'string') nameInput.value = data.name;
+          if (descInput && descInput.value === submitted.get('description') && typeof data.description === 'string') descInput.value = data.description;
+          const name = typeof data.name === 'string' ? data.name.trim() : String(submitted.get('name') ?? '').trim();
+          const description = typeof data.description === 'string' ? data.description.trim() : String(submitted.get('description') ?? '').trim();
           const lateNight = form.querySelector<HTMLInputElement>('input[name="late_night"]')?.checked ?? false;
           const categoryId = form.querySelector<HTMLSelectElement>('select[name="category_id"]')?.value;
           const strong = item?.querySelector<HTMLElement>('.who strong');

@@ -261,7 +261,7 @@ test('October 26 exact records: fully resolved publication sends no email',async
   assert.equal(f.sent.length,0);
   assert.ok(incidents(f).every(i=>i.state!=='attention' && i.sent_ms==null),JSON.stringify(incidents(f)));
   assert.deepEqual(f.slots(1,'nightly').slice(0,2).map(s=>s.content),
-    ['2 Burgers and 1 Order of Fries — $14','Half Rack Ribs w/ Mac n Cheese & Coleslaw — $18.75']);
+    ['2 Burgers and 1 Order of Fries — $14','Half Rack Ribs w/ Mac N Cheese & Coleslaw — $18.75']);
 });
 
 test('a genuine October 26 price conflict sends one detailed email with the Monday editor link',async t=>{

@@ -283,7 +283,7 @@ test('a renamed item or new description keeps its text and still receives the ve
   await editOption(f,2,'Boneless Bites');
   assert.equal(source(f),'recurring');assert.equal(slotOf(f,1).manual_locked,0);
   await f.run();
-  assert.deepEqual(options(f).slice(0,2),['Jumbo Bone-In Wings $.89 each\nTossed to order','Boneless Bites $.99 each']);
+  assert.deepEqual(options(f).slice(0,2),['Jumbo Bone-In Wings $.89 each\nTossed To Order','Boneless Bites $.99 each']);
   assert.equal(decisions(f)[0].outcome,'published');
 });
 test('a description added under a Facebook price is not a staff price: the next poster still updates it',async t=>{
@@ -294,7 +294,7 @@ test('a description added under a Facebook price is not a staff price: the next 
   later(f,'p2',30);
   f.state.candidate=nightPoster('Wing Night — Bone-In $1.05 each / Boneless $1.15 each');
   await f.run();
-  assert.deepEqual(options(f).slice(0,2),['Bone-In Wings $1.05 each\nTossed to order','Boneless Wings $1.15 each']);
+  assert.deepEqual(options(f).slice(0,2),['Bone-In Wings $1.05 each\nTossed To Order','Boneless Wings $1.15 each']);
 });
 test('a staff correction stands against the poster it corrected, until a newer verified poster replaces it',async t=>{
   const f=await wingWeek(t);
@@ -394,7 +394,7 @@ test('unrelated staff edits survive a poster that replaces the price',async t=>{
   live.groups.find(g=>g.id===SAUCES).slots[0].content='Buffalo\nRanch';
   await store.saveCollection(f.env,live);
   await f.run();
-  assert.deepEqual(options(f).slice(0,2),['Jumbo Bone-In Wings $.89 each\nTossed to order','Boneless Bites $.99 each\nHand breaded']);
+  assert.deepEqual(options(f).slice(0,2),['Jumbo Bone-In Wings $.89 each\nTossed To Order','Boneless Bites $.99 each\nHand Breaded']);
   assert.deepEqual(sauces(f),['Buffalo','Ranch']);
   const saved=f.sql("SELECT title,schedule FROM special_collections WHERE id='wing-wednesday'")[0];
   assert.deepEqual({...saved},{title:'Wing Night Special',schedule:'Wednesdays 5–9 PM'});
@@ -406,7 +406,7 @@ test('reordered items each receive their own wing type\'s price',async t=>{
   group.slots[0].content='Boneless Wings\nHand breaded';group.slots[1].content='Bone In Wings\nSmoked';
   await store.saveCollection(f.env,live);
   await f.run();
-  assert.deepEqual(options(f).slice(0,2),['Boneless Wings $.99 each\nHand breaded','Bone In Wings $.89 each\nSmoked']);
+  assert.deepEqual(options(f).slice(0,2),['Boneless Wings $.99 each\nHand Breaded','Bone In Wings $.89 each\nSmoked']);
   assert.equal(decisions(f)[0].outcome,'published');
 });
 test('a reordered section still holds only the uncertain type, using the right slot',async t=>{

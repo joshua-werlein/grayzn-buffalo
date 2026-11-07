@@ -5,6 +5,7 @@ import {chicagoDayWindow} from './worker.js';
 import {offerKey,reconcilePosters} from './reconcile.js';
 import {loadTs} from '../../tests/load-ts.mjs';
 import {pruneImportHistory} from './guarded-auto.js';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 const store=loadTs('src/lib/specials-store.ts');
 const wing='Wing Night — Bone-In $.89 each / Boneless $.99 each';
 const wingCanonical='Wing Night!\nBone-In Wings $.89 each\nBoneless Wings $.99 each';
@@ -27,7 +28,7 @@ for (const [day,date] of [[1,'2030-01-07'],[3,'2030-01-09'],[5,'2030-01-11']]) {
     const f=harness(t,{now:date+'T23:00:00Z',caption:'Specials',candidate:nightFirst?nightPoster(day):dayPoster(day)});
     f.state.posts[0].created_time=date+'T14:00:00Z';f.state.posts[0].updated_time=date+'T14:00:00Z';
     await f.run();
-    const expectedPair=day===3 && nightFirst ? nightPoster(day).offers.slice(1).map(o=>o.content) : pair.map(o=>o.content);
+    const expectedPair=day===3 && nightFirst ? nightPoster(day).offers.slice(1).map(o=>normalizeMenuCase(o.content)) : pair.map(o=>o.content);
     if (nightFirst) {if(day===3) assert.deepEqual(contents(f,day,'all-day'),[...expectedPair,'','']);else assert.ok(contents(f,day,'all-day').every(s=>s===''));assert.equal(contents(f,day,'nightly')[0],day===3?wingCanonical:'');}
     const established=contents(f,day,'all-day');
     f.state.posts.push({...f.state.posts[0],id:'p2',created_time:date+'T20:00:00Z',updated_time:date+'T20:00:00Z'});
@@ -73,7 +74,7 @@ for(const [name,content,origin,lock,baseline,expected] of [
 for(const [value,expectedLock] of [['Bartender correction',0],['',0]]) test(`admin save ${JSON.stringify(value)} wins`,async t=>{
   const f=harness(t);await f.run();const w=await store.readWeek(f.env,9000);w.collection.groups.find(g=>g.day_of_week===3&&g.service==='nightly').slots[0].content=value;
   await store.saveCollection(f.env,w.collection,{start:w.week_start_date,end:w.week_end_date});
-  f.state.posts[0].updated_time='2030-01-09T14:30:00Z';await f.run();assert.equal(f.slots()[0].content,value);assert.equal(f.slots()[0].manual_locked,expectedLock);
+  f.state.posts[0].updated_time='2030-01-09T14:30:00Z';await f.run();assert.equal(f.slots()[0].content,normalizeMenuCase(value));assert.equal(f.slots()[0].manual_locked,expectedLock);
 });
 test('concurrent unchanged claims extract once; changed source replaces only its previous evidence',async t=>{
   const f=harness(t,{candidate:dayPoster(3)});await Promise.all([f.run(),f.run()]);assert.equal(f.state.aiCalls,1);
@@ -200,7 +201,7 @@ test('Monday 4-offer fallback fills blank slots with manual_locked=1,origin=manu
   f.sql('UPDATE special_slots SET manual_locked=1,origin=?,content=? WHERE group_id=?','manual','',nightGroup.id);
   f.sql('UPDATE special_slots SET manual_locked=1,origin=?,content=? WHERE group_id=?','manual','',allDayGroup.id);
   await f.run();
-  assert.equal(f.slots(1,'nightly')[0].content,'Offer A');
+  assert.equal(f.slots(1,'nightly')[0].content,'Offer a');
   assert.equal(f.slots(1,'all-day')[0].content,'Offer C');
 });
 test('populated manual_locked=1 slot blocks write to that specific group while others fill',async t=>{
@@ -273,7 +274,7 @@ test('arm 3: Monday 4-offer fallback replaces a recurring default slot',async t=
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position IN (1,2)','Default AD special','manual',0,allDayGroup.id);
   await f.run();
   // Arm 3 fires: recurring defaults replaced by current-day Facebook evidence
-  assert.equal(f.slots(1,'nightly')[0].content,'Offer A');
+  assert.equal(f.slots(1,'nightly')[0].content,'Offer a');
   assert.equal(f.slots(1,'all-day')[0].content,'Offer C');
 });
 test('arm 3: Friday 4-offer fallback replaces a recurring default slot',async t=>{
@@ -287,7 +288,7 @@ test('arm 3: Friday 4-offer fallback replaces a recurring default slot',async t=
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position IN (1,2)','Friday default all-day','manual',0,allDayGroup.id);
   await f.run();
   // Arm 3 fires: recurring defaults replaced by current-day Facebook evidence
-  assert.equal(f.slots(5,'nightly')[0].content,'Fri A');
+  assert.equal(f.slots(5,'nightly')[0].content,'Fri a');
   assert.equal(f.slots(5,'all-day')[0].content,'Fri C');
 });
 test('arm 3: confirmed manual entry in a nightly slot blocks the entire nightly group write',async t=>{
@@ -327,7 +328,7 @@ test('per-slot: Monday nightly pos-1 blank, pos-2 protected → pos-1 filled, po
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=2','Staff B','manual',1,nightGroup.id);
   f.sql('UPDATE special_slots SET manual_locked=1,origin=?,content=? WHERE group_id=?','manual','',allDayGroup.id);
   await f.run();
-  assert.equal(f.slots(1,'nightly')[0].content,'Offer A');
+  assert.equal(f.slots(1,'nightly')[0].content,'Offer a');
   assert.equal(f.slots(1,'nightly')[1].content,'Staff B');
   assert.equal(f.slots(1,'all-day')[0].content,'Offer C');
 });

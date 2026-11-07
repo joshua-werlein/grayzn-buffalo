@@ -35,7 +35,7 @@ for (const [time,price,remaining] of [
   assert.equal(normalized.offers[0].content,`Fish sandwich ${price}`);
   assert.equal(normalized.offers[0].service_time,remaining);
   assert.deepEqual(validateEvidence(normalized),normalized);
-  assert.deepEqual(reconcilePosters([lunch('Fish sandwich',time)],5),[{day_of_week:5,service:'lunch',items:[{content:`Fish sandwich ${price}`}]}]);
+  assert.deepEqual(reconcilePosters([lunch('Fish sandwich',time)],5),[{day_of_week:5,service:'lunch',items:[{content:`Fish Sandwich ${price}`}]}]);
 });
 test('existing correct price is not duplicated, and multiple existing prices are never rewritten',()=>{
   const p=lunch('Fish $10.25','$10.25');

@@ -2,6 +2,7 @@ import {mergeMexicanMenu, storedMexicanGroups, accessoryGroup, scheduleKey} from
 import {protectedMexicanSlots} from './mexican-night-defaults.js';
 import {automaticWeekRange} from './auto-week.js';
 import {composeMexicanItem,normalizeMexicanPrices} from '../../src/lib/mexican-item.js';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 // The Worker owns only automatic writes. Manual saves remain in specials-store.ts.
 // Every write, revision bump and acceptance audit commits in one D1 batch.
 import {reconcilePosterEvidence,validateWeeklyLunch,applySharedWeeklyLunchPrice,validateMexicanNight,canonicalizeSlotContent,singleDayLunchEvidence,singleDayLunchEvidenceV2} from './reconcile.js';
@@ -341,7 +342,7 @@ async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=
     // An untouched automation value is the same poster row read without its
     // shared heading price; adding that price is the only permitted upgrade.
     const priceUpgrade = typeof entry.base_content === 'string' && slot.origin === 'automation' && slot.manual_locked === 0
-      && slot.content === slot.last_auto_value && slot.content === canonicalizeSlotContent(entry.base_content, entry.day_of_week, 'lunch');
+      && slot.content === slot.last_auto_value && canonicalizeSlotContent(slot.content, entry.day_of_week, 'lunch') === canonicalizeSlotContent(entry.base_content, entry.day_of_week, 'lunch');
     // Fill blanks or replace untouched recurring defaults. Preserve existing
     // Facebook evidence (including the more specific daily poster) and staff edits.
     if (slot.content !== '' && slot.content !== null && !(slot.origin === 'manual' && slot.manual_locked === 0) && !priceUpgrade) {
@@ -354,7 +355,7 @@ async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=
       // deleted/superseded weekly poster wrote. A daily poster's value, a staff
       // edit/lock or any value of unknown provenance is never replaced.
       if (automated && slot.content !== canonicalContent && !protectedDays.has(entry.day_of_week)
-          && replaceable?.get(entry.day_of_week)?.has(slot.content)) {
+          && replaceable?.get(entry.day_of_week)?.has(canonicalizeSlotContent(slot.content, entry.day_of_week, 'lunch'))) {
         // The newest poster controls, even without a price; staff are notified.
         rows.push({group_id: dest.id, position: 1, content: canonicalContent, old: slot, replaced: true,
           priceRemoved: hasPrintedPrice(slot.content) && !hasPrintedPrice(canonicalContent)});
@@ -587,19 +588,24 @@ async function applyMexicanNight(env, source, evidence, weekStart) {
     ]);
     return stage(reason);
   }
+  const storedCurrent=storedMexicanGroups(currentGroups,currentSlots);
   let groups;
   try {
     const recurring=storedMexicanGroups(defaultGroups,defaultSlots);
     const current=collection.section_week_start===weekStart || !collection.section_week_start
       ? storedMexicanGroups(currentGroups,currentSlots) : [];
-    groups=mergeMexicanMenu(evidence.groups,mergeMexicanMenu(current,recurring));
+    // Normalize newly published groups. A completely retained group stays byte
+    // for byte intact, including split prices, blank slots and ownership. The
+    // reviewed backfill handles its existing casing without rebuilding it.
+    groups=mergeMexicanMenu(evidence.groups,mergeMexicanMenu(current,recurring)).map(g=>
+      storedCurrent.some(old=>old.id===g.id && old.label===g.label && JSON.stringify(old.items)===JSON.stringify(g.items)) ? g
+        : {...g,label:normalizeMenuCase(g.label),items:g.items.map(item=>({...item,title:normalizeMenuCase(item.title),description:normalizeMenuCase(item.description)}))});
   } catch(error) { return stage(error.message); }
   const token = crypto.randomUUID();
   const prepare = (sql, ...args) => env.DB.prepare(sql).bind(...args);
   const gate = "EXISTS(SELECT 1 FROM special_collections WHERE id='mexican-night' AND mutation_token=?1)";
   const sourcePrefix = source.id.slice(0, 8);
-  const storedCurrent=storedMexicanGroups(currentGroups,currentSlots);
-  const retainedIds=groups.filter(g=>g.id && storedCurrent.some(old=>old.id===g.id && JSON.stringify(old.items)===JSON.stringify(g.items))).map(g=>g.id);
+  const retainedIds=groups.filter(g=>g.id && storedCurrent.some(old=>old.id===g.id && old.label===g.label && JSON.stringify(old.items)===JSON.stringify(g.items))).map(g=>g.id);
   const newGroupRows = groups.map((g, i) => [currentGroups.some(old=>old.id===g.id) ? g.id : `mn:${sourcePrefix}:${i}`, g.label, i]);
   const newSlotRows = groups.flatMap((g, i) => g.items.map((item, j) => {
     const price = accessoryGroup(g.label) ? normalizeMexicanPrices : text => text;

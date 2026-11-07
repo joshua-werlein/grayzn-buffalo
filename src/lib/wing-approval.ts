@@ -1,5 +1,6 @@
 import {readCollection,SpecialConflict} from './specials-store';
 import {composeMexicanItem,splitMexicanItem} from './mexican-item.js';
+import {normalizeMenuCase} from './text-case.js';
 import {WING_OPTIONS_GROUP,splitWingPrice,wingOptionPositions,wingWednesdayVisible,wingWeekFor} from './wing-wednesday.js';
 import {readWingAttention,wingAttentionQuery} from '../../workers/fb-feed/wing-review.js';
 
@@ -21,7 +22,7 @@ export async function approveWingImport(env: any,{importId,revision,boneIn,bonel
   const spots=wingOptionPositions(group.slots);
   const entries=[[boneIn,spots.boneIn,'bone-in wings'],[boneless,spots.boneless,'boneless wings']].flatMap(([value,position,label])=>value==null ? [] : [{
     position:position as number,
-    content:composeMexicanItem(option(value,label as string),splitMexicanItem(group.slots.find(slot=>slot.position===position)?.content).description),
+    content:composeMexicanItem(normalizeMenuCase(option(value,label as string)),splitMexicanItem(group.slots.find(slot=>slot.position===position)?.content).description),
   }]);
   const mask=entries.reduce((mask,{position})=>mask | (1 << (position-1)),0);
   if(!mask || (mask & held.unresolved_mask)!==mask) throw Error('Choose an unresolved Wing Wednesday price.');

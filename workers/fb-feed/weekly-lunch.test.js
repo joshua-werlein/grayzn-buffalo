@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {normalizeMenuCase} from '../../src/lib/text-case.js';
 import assert from 'node:assert/strict';
 import {validateWeeklyLunch} from './reconcile.js';
 import {harness} from './test-fixture.js';
@@ -92,7 +93,7 @@ test('Mon-Fri weekly lunch poster populates all five Lunch slots', async t => {
   f.state.posts[0].created_time = '2030-01-07T14:00:00Z';
   await f.run();
   for (const entry of entries) {
-    assert.equal(f.slots(entry.day_of_week, 'lunch')[0].content, entry.content);
+    assert.equal(f.slots(entry.day_of_week, 'lunch')[0].content, normalizeMenuCase(entry.content));
   }
   [1,2,3,4,5].forEach(d => {
     assert.ok(f.slots(d, 'all-day').every(s => s.content === ''), `all-day day ${d} should be empty`);
@@ -147,7 +148,7 @@ test('staff/manual Monday Lunch is preserved; safe Tue-Fri Lunch slots populate'
   assert.equal(f.slots(1, 'lunch')[0].content, 'Staff Monday Special');
   // Tue-Fri should be populated
   for (const entry of entries.slice(1)) {
-    assert.equal(f.slots(entry.day_of_week, 'lunch')[0].content, entry.content);
+    assert.equal(f.slots(entry.day_of_week, 'lunch')[0].content, normalizeMenuCase(entry.content));
   }
 });
 
@@ -246,7 +247,7 @@ test('Sunday-posted weekly lunch poster populates once the upcoming week is crea
     'next-week', day, service
   );
   for (const entry of entries) {
-    assert.equal(nwSlots(entry.day_of_week, 'lunch')[0].content, entry.content,
+    assert.equal(nwSlots(entry.day_of_week, 'lunch')[0].content, normalizeMenuCase(entry.content),
       `next-week lunch day ${entry.day_of_week} should be populated`);
   }
 });

@@ -138,20 +138,20 @@ test('complete grouped prices format consistently regardless of weekday', () => 
 
 // ── 6. Mexican Night path is untouched ───────────────────────────────────────
 
-test('canonicalizeSlotContent: Mexican Night-style multiline item is only whitespace-collapsed, no canonical override', () => {
+test('canonicalizeSlotContent: Mexican Night-style multiline item gets only house capitalization and whitespace collapsing, no canonical override', () => {
   // The Mexican Night collection never calls canonicalizeSlotContent; its items
   // go through composeMexicanItem and applyMexicanNight. Verifying that passing
   // such content directly to canonicalizeSlotContent does not trigger any
-  // day-specific override (it only whitespace-normalizes).
+  // day-specific override (it only capitalizes and whitespace-normalizes).
   const raw = 'Burrito $9.00\nMeat and refried beans';
   // weekday=-1, service='custom' — Mexican Night slot attributes
-  assert.equal(canonicalizeSlotContent(raw, -1, 'custom'), 'Burrito $9.00 Meat and refried beans');
-  // No exception pattern fires; the function only collapses whitespace
+  assert.equal(canonicalizeSlotContent(raw, -1, 'custom'), 'Burrito $9.00 Meat and Refried Beans');
+  // No exception pattern fires; only case and whitespace change
 });
 
 test('canonicalizeSlotContent: Tuesday (Mexican Night day) nightly content is not pizza/wing/stirfry', () => {
   const raw = 'Tacos $8.00\nWith choice of meat';
-  assert.equal(canonicalizeSlotContent(raw, 2, 'nightly'), 'Tacos $8.00 With choice of meat');
+  assert.equal(canonicalizeSlotContent(raw, 2, 'nightly'), 'Tacos $8.00 with Choice of Meat');
 });
 
 // ── 7. Manual-locked slots remain untouched by automation ────────────────────
@@ -181,7 +181,7 @@ test('manual-locked Thursday nightly slot is protected from canonical Pizza Nigh
   assert.equal(f.slots(4, 'nightly')[0].manual_locked, 1);
 });
 
-// ── 8. ALL CAPS normalization ─────────────────────────────────────────────────
+// ── 8. House capitalization (src/lib/text-case.js) ───────────────────────────
 
 // Required weekly-lunch regression cases (this week's uppercase Facebook poster)
 test('ALL CAPS: CHICKEN STRIPS W/ FRENCH FRIES & DRINK — $9.75 → title case, W/ lowercase, price preserved', () => {
@@ -250,7 +250,7 @@ test('already title-cased content is not modified', () => {
   );
 });
 
-test('mixed-case content (not all-caps) passes through whitespace-collapsing only', () => {
+test('mixed-case content takes the house capitalization and collapses whitespace', () => {
   assert.equal(
     canonicalizeSlotContent('Grilled Chicken Caesar Wrap  w/ Waffle Fries', 2, 'lunch'),
     'Grilled Chicken Caesar Wrap w/ Waffle Fries'
@@ -268,7 +268,7 @@ test('ALL CAPS with $10.25 price preserved exactly', () => {
 test('ALL CAPS with $.89 price preserved exactly', () => {
   assert.equal(
     canonicalizeSlotContent('WING SPECIAL $.89 EACH', 1, 'all-day'),
-    'Wing Special $.89 Each'
+    'Wing Special $.89 each'
   );
 });
 
@@ -316,7 +316,7 @@ test('ALL CAPS with lowercase w/: exact October 25 Grilled Ham and Cheese', () =
   );
 });
 
-test('ALL CAPS: and/or/of connectors are lowercase except as the first word', () => {
+test('a, an, the, and, or, of and with are lowercase except as the first word', () => {
   assert.equal(
     canonicalizeSlotContent('2) CHEESEBURGER OR FISH SANDWICH W/ SIDE SALAD OR COLESLAW $10.25', 5, 'lunch'),
     '2) Cheeseburger or Fish Sandwich w/ Side Salad or Coleslaw $10.25'
@@ -324,14 +324,14 @@ test('ALL CAPS: and/or/of connectors are lowercase except as the first word', ()
   assert.equal(canonicalizeSlotContent('OR CHILI', 1, 'custom'), 'Or Chili');
 });
 
-test('lowercase w/ never makes otherwise mixed-case text eligible for title case', () => {
-  for (const content of [
-    'Hang Over Burger w/ Side Salad, Soup Or Coleslaw $10.25',
-    'McRib Style BBQ Sandwich w/ FF $9.75',
-    'Philly cheesesteak w/ fries $11',
-    'w/ fries',
-    'Chili w/o onions',
-  ]) assert.equal(canonicalizeSlotContent(content, 2, 'all-day'), content);
+test('every special takes the house capitalization; w/, w/o, acronyms and brands keep their form', () => {
+  for (const [content, expected] of [
+    ['Hang Over Burger w/ Side Salad, Soup Or Coleslaw $10.25', 'Hang Over Burger w/ Side Salad, Soup or Coleslaw $10.25'],
+    ['McRib Style bbq Sandwich w/ ff $9.75', 'McRib Style BBQ Sandwich w/ FF $9.75'],
+    ['Philly cheesesteak w/ fries $11', 'Philly Cheesesteak w/ Fries $11'],
+    ['w/ fries', 'w/ Fries'],
+    ['Chili W/O onions', 'Chili w/o Onions'],
+  ]) assert.equal(canonicalizeSlotContent(content, 2, 'all-day'), expected);
 });
 
 test('ALL CAPS night specials with lowercase w/ keep prices and abbreviations', () => {
@@ -349,10 +349,10 @@ test('ALL CAPS night specials with lowercase w/ keep prices and abbreviations', 
   );
 });
 
-test('Mexican Night and Wing Night slot text is unaffected', () => {
+test('Mexican Night heading takes the house capitalization; Wing Night ignores the case of w/', () => {
   assert.equal(
-    canonicalizeSlotContent('Mexican Night! Ask to see our Menu!', 2, 'nightly'),
-    'Mexican Night! Ask to see our Menu!'
+    canonicalizeSlotContent('Mexican Night! Ask To See Our Menu!', 2, 'nightly'),
+    'Mexican Night! Ask To See Our Menu!'
   );
   assert.equal(
     canonicalizeSlotContent('WING NIGHT w/ $.89 BONELESS', 3, 'nightly'),
