@@ -1,11 +1,11 @@
 ---
 import {splitMexicanItem,MEXICAN_ITEM_LIMIT} from '../lib/mexican-item.js';
-interface Props { content: string; prefix: string; fieldId: string; priceFree?: boolean }
-const {content, prefix, fieldId, priceFree=false} = Astro.props;
+interface Props { content: string; prefix: string; fieldId: string; priceFree?: boolean; sectionName?: string }
+const {content, prefix, fieldId, priceFree=false, sectionName='Mexican Night'} = Astro.props;
 const {title, description} = splitMexicanItem(content);
 ---
-<div class="mexican-item-fields" data-price-free={priceFree ? 'true' : undefined}>
-  <label for={fieldId}>{priceFree ? 'Item name / sizes (no prices)' : 'Item / price'}<input id={fieldId} name={prefix+'title'} value={title} maxlength={MEXICAN_ITEM_LIMIT} data-mexican-title /></label>
+<div class="mexican-item-fields" data-price-free={priceFree ? 'true' : undefined} data-section-name={sectionName}>
+  <label for={fieldId}>{priceFree ? 'Item name / sizes (no prices)' : sectionName === 'Wing Wednesday' ? 'Item name' : 'Item / price'}<input id={fieldId} name={prefix+'title'} value={title} maxlength={MEXICAN_ITEM_LIMIT} data-mexican-title /></label>
   <label for={fieldId+'-description'}>Description (optional)<textarea id={fieldId+'-description'} name={prefix+'description'} rows="3" maxlength={MEXICAN_ITEM_LIMIT} data-mexican-description>{description}</textarea></label>
   <output data-mexican-count>{content.length} / {MEXICAN_ITEM_LIMIT} total</output>
 </div>
@@ -25,7 +25,7 @@ const {title, description} = splitMexicanItem(content);
       slot.querySelector('output')!.textContent = `${length} / ${MEXICAN_ITEM_LIMIT} total`;
       try {
         const content=composeMexicanItem(title.value, description.value);
-        if (slot.dataset.priceFree === 'true') assertPriceFreeMexicanDefault(content);
+        if (slot.dataset.priceFree === 'true') assertPriceFreeMexicanDefault(content,slot.dataset.sectionName);
         title.setCustomValidity('');
       }
       catch (error) { title.setCustomValidity((error as Error).message); }

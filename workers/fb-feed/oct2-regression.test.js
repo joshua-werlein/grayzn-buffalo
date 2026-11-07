@@ -84,8 +84,8 @@ for (const defaults of [false,true]) test(`Oct 2 all three offers reconcile norm
 test('all destinations protected still records conflict without writing specials; repeats are idempotent',async t=>{
   const f=setup(t);
   f.sql("UPDATE special_slots SET content='Staff',origin='manual',manual_locked=1 WHERE group_id IN (?,?) AND position<=2",f.slots(5,'lunch')[0].group_id,f.slots(5,'all-day')[0].group_id);
-  const before=f.sql('SELECT * FROM special_slots');
-  await f.run();assert.deepEqual(f.sql('SELECT * FROM special_slots'),before);
+  const before=f.sql("SELECT * FROM special_slots WHERE group_id NOT LIKE 'ww-%'");
+  await f.run();assert.deepEqual(f.sql("SELECT * FROM special_slots WHERE group_id NOT LIKE 'ww-%'"),before);
   assert.match(audit(f).at(-1).detail,/GUARDED_AUTO_CONFLICT/);
   const rev=revision(f),events=audit(f);await f.run();assert.equal(revision(f),rev);assert.deepEqual(audit(f),events);
 });
@@ -113,8 +113,8 @@ test('existing parser 16 staged evidence recovers prices without another AI extr
 test('failed partial-conflict transaction rolls back writes, revision and audit',async t=>{
   const f=setup(t);
   f.sql("UPDATE special_slots SET content='Staff',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",f.slots(5,'all-day')[0].group_id);
-  const before=f.sql('SELECT * FROM special_slots'),batch=f.env.DB.batch;
+  const before=f.sql("SELECT * FROM special_slots WHERE group_id NOT LIKE 'ww-%'"),batch=f.env.DB.batch;
   f.env.DB.batch=statements=>batch(statements[0].sql.startsWith('UPDATE special_collections') ? [...statements,{sql:'INSERT INTO missing_table VALUES(1)',args:[]}] : statements);
   await assert.rejects(()=>f.run());
-  assert.deepEqual(f.sql('SELECT * FROM special_slots'),before);assert.equal(revision(f),0);assert.deepEqual(audit(f),[]);
+  assert.deepEqual(f.sql("SELECT * FROM special_slots WHERE group_id NOT LIKE 'ww-%'"),before);assert.equal(revision(f),0);assert.deepEqual(audit(f),[]);
 });

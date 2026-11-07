@@ -12,6 +12,7 @@ export const ALERT_CODES = Object.freeze({
   delivery_failed: 'Confirmed delivery evidence could not be activated automatically.',
   automation_failed: 'Facebook automation encountered a persistent technical failure.',
   weekly_lunch_failed: 'Weekly Lunch Facebook evidence could not be fully published.',
+  wing_wednesday_failed: 'A Wing Wednesday Facebook post needs staff review.',
 });
 
 function timestamp(value) {

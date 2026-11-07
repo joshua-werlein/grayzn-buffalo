@@ -87,7 +87,7 @@ test('parser 3 source claim cannot block parser 4 extraction',async t=>{
 for(const mode of ['OFF','DRY_RUN','UNKNOWN']) test(`${mode} never writes specials or creates weeks`,async t=>{
   const f=harness(t,{mode,week:false});const before=f.sql('SELECT * FROM weekly_specials');await f.run();assert.deepEqual(f.sql('SELECT * FROM weekly_specials'),before);assert.equal(f.state.aiCalls,mode==='DRY_RUN'?1:0);
 });
-for(const failure of ['wrong day','conflicting weekdays','no image','malformed JSON','invalid image','two wings','non-wing Wednesday','conflicting service']) test(`${failure} fails closed`,async t=>{
+for(const failure of ['wrong day','conflicting weekdays','no image','malformed JSON','invalid image','two wings','conflicting service']) test(`${failure} fails closed`,async t=>{
   const f=harness(t);
   if(failure==='wrong day') f.state.candidate.day_of_week=4;
   if(failure==='conflicting weekdays') f.state.candidate.day_evidence='Wednesday Thursday';
@@ -95,9 +95,12 @@ for(const failure of ['wrong day','conflicting weekdays','no image','malformed J
   if(failure==='malformed JSON') f.env.AI.run=async()=>({response:'bad'});
   if(failure==='invalid image') t.mock.method(globalThis,'fetch',async input=>String(input).includes('graph.facebook.com')?Response.json({data:f.state.posts}):new Response('bad',{headers:{'content-type':'image/jpeg'}}));
   if(failure==='two wings') f.state.candidate.offers.push(offer('Wing Night $5','Wing Night'));
-  if(failure==='non-wing Wednesday') f.state.candidate=poster(3,'Night Specials',[offer('Dinner $14','Night')]);
   if(failure==='conflicting service') f.state.candidate.offers[0].service_time='Lunch Night';
   await f.run();assert.equal(f.slots()[0].content,'');
+});
+test('non-wing Wednesday poster publishes as the ordinary nightly special',async t=>{
+  const f=harness(t);f.state.candidate=poster(3,'Night Specials',[offer('Dinner $14','Night')]);
+  await f.run();assert.equal(f.slots()[0].content,'Dinner $14');
 });
 test('missing printed weekday uses verified same-day timestamp without discarding a matching numeric day',async t=>{
   const f=harness(t);f.state.candidate.day_evidence='';
@@ -115,7 +118,7 @@ for(const condition of ['overlap','missing group','disabled group','duplicate gr
   if(condition==='missing group') f.sql("DELETE FROM special_groups WHERE collection_id='auto-week' AND day_of_week=3 AND service='nightly'");
   if(condition==='disabled group') f.sql("UPDATE special_groups SET enabled=0 WHERE collection_id='auto-week'");
   if(condition==='duplicate group') f.sql("INSERT INTO special_groups(id,collection_id,day_of_week,service,label) VALUES('extra','auto-week',3,'nightly','Extra')");
-  const before=f.sql('SELECT * FROM special_slots ORDER BY group_id,position');await f.run();assert.deepEqual(f.sql('SELECT * FROM special_slots ORDER BY group_id,position'),before);
+  const before=f.sql("SELECT * FROM special_slots WHERE group_id NOT LIKE 'ww-%' ORDER BY group_id,position");await f.run();assert.deepEqual(f.sql("SELECT * FROM special_slots WHERE group_id NOT LIKE 'ww-%' ORDER BY group_id,position"),before);
 });
 test('manual race invalidates the whole plan; transaction failure rolls back writes and audit',async t=>{
   const f=harness(t,{candidate:dayPoster(3)});const batch=f.env.DB.batch;

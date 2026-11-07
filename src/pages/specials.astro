@@ -6,14 +6,16 @@ import EventSpecials from '../components/EventSpecials.astro';
 import { readVisibleEvents } from '../lib/special-events';
 import {isSoupGroup} from '../lib/daily-soup.js';
 import MexicanNightMenu from '../components/MexicanNightMenu.astro';
+import WingWednesdayMenu from '../components/WingWednesdayMenu.astro';
 import { getSetting } from '../lib/db';
 import { readAutomaticDelivery, resolveDeliveryDisplay } from '../lib/delivery.js';
-import { getWeeklySpecialsForDateRange, getMexicanNight, visibleGroups, DAY_NAMES } from '../lib/specials-store';
+import { getWeeklySpecialsForDateRange, readPublicSections, visibleGroups, DAY_NAMES } from '../lib/specials-store';
 import { chicagoCalendarDate, formatWeeklyDateRange } from '../lib/weekly-specials';
-import { mexicanNightDetailVisible } from '../lib/mexican-night-visibility.js';
 const env = (Astro.locals as any).runtime?.env ?? {};
 const today=chicagoCalendarDate();
-const [weeklySpecials,deliveryDisplaySetting,automaticDelivery,mexican]=await Promise.all([getWeeklySpecialsForDateRange(env,today,'9999-12-31'),getSetting(env,'delivery_display','auto'),readAutomaticDelivery(env),getMexicanNight(env)]);
+const eventNow=(Astro.locals as any).runtime?.now ?? new Date();
+const [weeklySpecials,deliveryDisplaySetting,automaticDelivery,publicSections]=await Promise.all([getWeeklySpecialsForDateRange(env,today,'9999-12-31'),getSetting(env,'delivery_display','auto'),readAutomaticDelivery(env),readPublicSections(env,eventNow)]);
+const {wing,mexicanGroups,wingGroups,mexicanVisible:mexicanNightVisible,wingVisible,sectionsFor,wingOptions}=publicSections;
 // Same resolution as the site banner: manual choices win; Automatic expires at 1:30 PM.
 const deliveryDisplay=resolveDeliveryDisplay(deliveryDisplaySetting,automaticDelivery);
 const weekDateFor=(start:string,dow:number) => {const date=new Date(`${start}T12:00:00Z`); date.setUTCDate(date.getUTCDate()+((dow-date.getUTCDay()+7)%7)); return date.toISOString().slice(0,10);};
@@ -22,17 +24,12 @@ const weeks=weeklySpecials.flatMap(week=>{
     .filter(day=>day.date>=today && day.date<=week.week_end_date && day.groups.length).sort((a,b)=>a.date.localeCompare(b.date));
   return days.length ? [{...week,days}] : [];
 });
-const mexicanGroups=mexican ? visibleGroups(mexican.groups) : [];
-const eventNow=(Astro.locals as any).runtime?.now ?? new Date();
 const events=await readVisibleEvents(env,eventNow);
 
-// Show the detailed Mexican Night section only when this week's menu has been
-// published (updated_at falls in the current Sun–Sat week) and it is still
-// within the visible window: Sun–Tue all day, Wed before 2 AM Chicago time.
-// The recurring "Mexican Night" card stays visible all week regardless.
-const mexicanNightVisible = mexicanGroups.length > 0 && mexicanNightDetailVisible(mexican?.updated_at, (Astro.locals as any).runtime?.now ?? new Date());
+// Sections are visible through readPublicSections, which also decides every link
+// to them. The recurring cards stay all week; they link only while visible.
 
-const recurring=[{name:'Lunch Specials',when:'11 AM – 1:30 PM'},{name:'Nightly Specials',when:'5 – 10 PM'},{name:'Friday Fish',when:'Fridays · 5 – 10 PM'},{name:'Happy Hour',when:'Mon–Fri · 5 – 6:30 PM'},{name:'Mexican Night',when:'Every Tuesday • 5–10 PM'}];
+const recurring=[{name:'Lunch Specials',when:'11 AM – 1:30 PM'},{name:'Nightly Specials',when:'5 – 10 PM'},{name:'Friday Fish',when:'Fridays · 5 – 10 PM'},{name:'Happy Hour',when:'Mon–Fri · 5 – 6:30 PM'},{name:'Mexican Night',when:'Every Tuesday • 5–10 PM'},{name:'Wing Wednesday',when:'Every Wednesday • 5–10 PM'}];
 
 // Helpers
 const cardDate = (dateStr: string) => new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',timeZone:'UTC'}).format(new Date(`${dateStr}T12:00:00Z`));
@@ -90,7 +87,7 @@ const PC = ['denim','brick','saddle'] as const;
               </div>
               <div class="today-body">
                 <div class="today-food">
-                {todayCard.groups.filter(group=>!isSoupGroup(group)).map(group=><SpecialGroup group={group} mexicanAvailable={mexicanNightVisible}/>)}
+                {todayCard.groups.filter(group=>!isSoupGroup(group)).map(group=><SpecialGroup group={group} sections={sectionsFor(todayCard.date)} wing={wingOptions}/>)}
                 </div>
                 <DailySoup groups={todayCard.groups}/>
               </div>
@@ -108,7 +105,7 @@ const PC = ['denim','brick','saddle'] as const;
                     </div>
                     <div class="card-body">
                       <div class="card-food">
-                      {groups.filter(group=>!isSoupGroup(group)).map(group=><SpecialGroup group={group} mexicanAvailable={mexicanNightVisible}/>)}
+                      {groups.filter(group=>!isSoupGroup(group)).map(group=><SpecialGroup group={group} sections={sectionsFor(date)} wing={wingOptions}/>)}
                       </div>
                       <DailySoup groups={groups}/>
                     </div>
@@ -135,6 +132,20 @@ const PC = ['denim','brick','saddle'] as const;
       </article>
     )}
 
+    {wingVisible && <div id="wing-wednesday" class="mex-anchor"/>}
+    {wingVisible && (
+      <article class="placard placard--wing" aria-labelledby="wing-title">
+        <div class="mex-hd">
+          <span class="mex-kicker">{wing?.schedule}</span>
+          <h2 id="wing-title" class="mex-title">{wing?.title}</h2>
+          <span class="mex-rule" aria-hidden="true"/>
+        </div>
+        <div class="mex-body">
+          <WingWednesdayMenu groups={wingGroups}/>
+        </div>
+      </article>
+    )}
+
     <section class="recurring-section" aria-label="Recurring specials">
       <div class="recurring-hd">
         <span class="kicker">Every week</span>
@@ -143,7 +154,7 @@ const PC = ['denim','brick','saddle'] as const;
       <ul class="recurring-grid">
         {recurring.map(item=>(
           <li class="rec-placard">
-            <span class="rec-name">{item.name==='Mexican Night' && mexicanNightVisible ? <a href="#mexican-night">{item.name}</a> : item.name}</span>
+            <span class="rec-name">{item.name==='Mexican Night' && mexicanNightVisible ? <a href="#mexican-night">{item.name}</a> : item.name==='Wing Wednesday' && wingVisible ? <a href="#wing-wednesday">{item.name}</a> : item.name}</span>
             <span class="rec-when">{item.when}</span>
           </li>
         ))}
@@ -239,7 +250,7 @@ const PC = ['denim','brick','saddle'] as const;
   box-shadow:4px 5px 0 rgba(0,0,0,.3);
   margin-bottom:clamp(10px,2vw,16px);
   --sg-label:var(--ochre);--sg-time:rgba(244,229,197,.65);
-  --sg-text:#f0ddb8;--sg-rule:rgba(244,229,197,.14);--sg-link:var(--ochre);
+  --sg-text:#f0ddb8;--sg-rule:rgba(244,229,197,.14);--sg-link:#f0c97a;
 }
 .today-hd{
   display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
@@ -283,7 +294,7 @@ const PC = ['denim','brick','saddle'] as const;
 .placard--denim{
   background:#1a3d50;box-shadow:3px 4px 0 rgba(0,0,0,.24);
   --sg-label:var(--ochre);--sg-time:rgba(244,229,197,.6);
-  --sg-text:#ecd8b4;--sg-rule:rgba(244,229,197,.12);--sg-link:var(--ochre);
+  --sg-text:#ecd8b4;--sg-rule:rgba(244,229,197,.12);--sg-link:#f0c97a;
 }
 .placard--denim .placard-day{color:#f0ddb8}
 .placard--denim .placard-date{color:rgba(244,229,197,.6)}
@@ -331,7 +342,7 @@ const PC = ['denim','brick','saddle'] as const;
   background-image:linear-gradient(150deg,rgba(180,60,40,.12),transparent 50%,rgba(160,60,30,.08) 90%,transparent);
   border:2px solid var(--ochre);box-shadow:4px 5px 0 rgba(0,0,0,.38);
   --sg-label:var(--ochre);--sg-time:rgba(244,229,197,.6);
-  --sg-text:var(--cream);--sg-rule:rgba(244,229,197,.14);--sg-link:var(--ochre);
+  --sg-text:var(--cream);--sg-rule:rgba(244,229,197,.14);--sg-link:#f0c97a;
 }
 .mex-hd{
   text-align:center;
@@ -352,6 +363,18 @@ const PC = ['denim','brick','saddle'] as const;
   background:linear-gradient(90deg,transparent,var(--ochre),transparent);
 }
 .mex-body{padding:clamp(18px,3vw,36px) clamp(16px,3.5vw,48px) clamp(22px,4vw,44px)}
+
+/* ── Wing Wednesday: Mexican Night's layout on a denim field ── */
+.placard--wing{
+  --wing-accent:#d9a95c;
+  margin:clamp(18px,3vw,36px) 0 clamp(14px,2.5vw,26px);
+  background:#122f3d;
+  background-image:linear-gradient(150deg,rgba(90,150,170,.12),transparent 50%,rgba(60,120,140,.08) 90%,transparent);
+  border:2px solid var(--wing-accent);box-shadow:4px 5px 0 rgba(0,0,0,.38);
+}
+.placard--wing .mex-hd{border-bottom-color:rgba(217,169,92,.3)}
+.placard--wing .mex-kicker{color:var(--wing-accent)}
+.placard--wing .mex-rule{background:linear-gradient(90deg,transparent,var(--wing-accent),transparent)}
 
 /* ── On the Regular ── */
 .recurring-section{margin-top:clamp(22px,3.5vw,38px);padding:0}

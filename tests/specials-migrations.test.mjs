@@ -20,8 +20,8 @@ test('production-shaped migration preserves all six weeks, 42 days and every leg
     }
   }
   assert.equal(f.sql("SELECT count(*) n FROM special_collections WHERE kind='week'")[0].n,6);
-  assert.equal(f.sql("SELECT count(*) n FROM special_groups WHERE collection_id<>'defaults'")[0].n,126);
-  assert.equal(f.sql('SELECT count(*) n FROM special_slots')[0].n,(42+7)*3*4);
+  assert.equal(f.sql("SELECT count(*) n FROM special_groups WHERE collection_id<>'defaults' AND collection_id NOT LIKE 'wing-wednesday%'")[0].n,126);
+  assert.equal(f.sql("SELECT count(*) n FROM special_slots WHERE group_id NOT LIKE 'ww-%'")[0].n,(42+7)*3*4);
   assert.deepEqual(f.sql('SELECT * FROM special_migration_checks'),[{version:15,mismatches:0}]);
   assert.ok(source.days.some(d=>d.nightly_content.includes('\n')));
   assert.ok(source.days.some(d=>d.lunch_content===''));

@@ -28,7 +28,7 @@ const HOLIDAYS=[
 const GAME=/\bgame\s*day\b|\bgame\s+specials?\b|\bkick\s*-?\s*off\b|\btailgate\b|\bwatch\s+party\b/;
 const GENERIC=/\bspecial\s+event\b|\bone\s+day\s+only\b|\bfundraiser\b|\bbenefit\b/;
 // Recurring house promotions and plural "<day>/<service> specials" templates are never events.
-const REGULAR=[/\bwing\s+night\b/,/\bpizza\s+night\b/,/\bfish\s+fry\b/,/\bfriday\s+fish\b/,/\bmexican\s+night\b/,/\btaco\s+tuesday\b/,
+const REGULAR=[/\bwing\s+(?:night|wednesday)\b/,/\bpizza\s+night\b/,/\bfish\s+fry\b/,/\bfriday\s+fish\b/,/\bmexican\s+night\b/,/\btaco\s+tuesday\b/,
   /\b(?:daily|lunch|night(?:ly)?|weekly|weekend|all[\s-]+day)\s+specials\b/,
   new RegExp(String.raw`\b(?:${DAYS.join('|')})(?:'s)?\s+(?:(?:lunch|night(?:ly)?|all[\s-]+day)\s+)?specials\b`)];
 const CANCELLED=/\bcancel+ed\b|\bpostponed\b|\bno\s+longer\b/;

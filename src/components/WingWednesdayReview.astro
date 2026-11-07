@@ -1,0 +1,59 @@
+---
+// One Facebook post's Wing Wednesday decision, on its Automation Review card. The
+// daily specials on the same card keep their own status and approval.
+interface Props { id: string; wing: any }
+const {id,wing}=Astro.props;
+---
+<section class="wing-review" data-wing-review data-import-id={id} data-revision={wing.revision} aria-label="Wing Wednesday">
+  <h4>Wing Wednesday section</h4>
+  {wing.attention ? <p class="wing-review__why"><strong>Needs review:</strong> {wing.reason}.</p>
+    : <p>{wing.outcome==='published' ? 'Published to the Wing Wednesday section.'
+      : wing.outcome==='approved' ? 'Staff approved these Wing Wednesday values.'
+      : `Review closed. Original reason: ${wing.reason}.`}</p>}
+  {wing.proposed.length>0 && <><p class="wing-review__label">What the Facebook post said</p><ul>{wing.proposed.map((line: string)=><li>{line}</li>)}</ul></>}
+  <p class="wing-review__label">Wing Wednesday now shows</p>
+  <ul>{wing.current.map((line: string)=><li>{line}</li>)}</ul>
+  {wing.attention && <>
+    <form data-wing-approve>
+      <p class="wing-review__label">Approve corrected options</p>
+      {!!(wing.unresolvedMask & wing.boneInBit) && <label for={`wing-${id}-bone-in`}>Bone-in wings and price<input id={`wing-${id}-bone-in`} name="boneIn" placeholder={wing.boneIn} maxlength="300"/></label>}
+      {!!(wing.unresolvedMask & wing.bonelessBit) && <label for={`wing-${id}-boneless`}>Boneless wings and price<input id={`wing-${id}-boneless`} name="boneless" placeholder={wing.boneless} maxlength="300"/></label>}
+      <p class="wing-review__hint">Enter the options you have verified. A newer verified Facebook poster can still update them.</p>
+      <button class="btn btn-primary" type="submit">Approve &amp; Publish to Wing Wednesday</button>
+      <p data-wing-status role="status" aria-live="polite"></p>
+    </form>
+  </>}
+  <a href={wing.editor}>Edit This Week’s Wing Wednesday</a>
+</section>
+<script>
+  document.querySelectorAll<HTMLElement>('[data-wing-review]').forEach(root=>{
+    const form=root.querySelector<HTMLFormElement>('[data-wing-approve]');
+    if(!form) return;
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();
+      const status=form.querySelector<HTMLElement>('[data-wing-status]')!,button=form.querySelector('button')!;
+      button.disabled=true;status.textContent='Publishing…';
+      try {
+        const values=new FormData(form);
+        const response=await fetch('/admin/automation/wing',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({importId:root.dataset.importId,revision:Number(root.dataset.revision),boneIn:values.get('boneIn') || null,boneless:values.get('boneless') || null})});
+        const result=await response.json();
+        if(!response.ok) throw Error(result.error);
+        location.reload();
+      } catch(error) {status.textContent=(error as Error).message || 'That didn’t work. Reload and try again.';button.disabled=false;}
+    });
+  });
+</script>
+<style>
+  .wing-review{margin:14px 0;padding:14px;border:1px solid rgba(24,62,80,.35);border-left:5px solid var(--denim);border-radius:8px;background:#f4f8f9}
+  .wing-review h4{margin:0 0 6px;color:var(--denim)}
+  .wing-review p{margin:0 0 8px}
+  .wing-review ul{margin:0 0 10px;padding-left:1.2rem}
+  .wing-review li{white-space:pre-wrap}
+  .wing-review__label{font-weight:700}
+  .wing-review__hint{font-size:.92rem;color:var(--ink-2)}
+  .wing-review form{display:grid;gap:8px;margin:0 0 10px}
+  .wing-review label{display:grid;gap:4px;font-weight:600}
+  .wing-review input{box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:10px;border:2px solid rgba(36,22,16,.3);border-radius:8px;background:var(--cream);font:inherit;font-size:16px}
+  .wing-review button{justify-self:start;margin:0}
+</style>

@@ -4,6 +4,7 @@
 // stored slot text is reduced to short plain words with links removed.
 // Nothing here writes, logs or affects publication.
 import {deliveryWindow,resolveDeliveryDisplay,compatibleDeliveryExpiration} from '../../src/lib/delivery.js';
+import {WING_HOLD_REASONS} from './wing-review.js';
 export const SITE = 'https://grayznbuffalo.com';
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const EDITOR_DAY_ORDER = [1,2,3,4,5,6,0]; // DAY_NUMBERS in src/lib/specials-store.ts
@@ -229,6 +230,31 @@ export function weeklyAlertDetail({day, data, sources=[], failures=[], inspectio
       editorUrl: week ? `${SITE}/admin/specials?week=${week.id}${first ? `#weekly-day-${EDITOR_DAY_ORDER.indexOf(first)}` : ''}` : `${SITE}/admin/specials`};
   } catch { return null; }
 }
+const fixedWingReason = reason => WING_HOLD_REASONS.has(reason) ? reason : 'Wing Wednesday publication held';
+// One held post. Reasons are fixed text and the poster line is reduced to plain words.
+export function wingAlertDetail({day, source, reason, proposed=[]}) {
+  try {
+    if (!isDate(day)) return null;
+    const ms = Date.parse(source?.fb_created_time);
+    const postUrl = /^\d{1,30}_\d{1,30}$/.test(source?.fb_post_id ?? '') ? `https://www.facebook.com/${source.fb_post_id.split('_')[0]}/posts/${source.fb_post_id.split('_')[1]}` : null;
+    return {scope:'wing', day, weekday:DAY_NAMES[new Date(`${day}T12:00:00Z`).getUTCDay()], reason:fixedWingReason(reason),
+      proposed:proposed.slice(0,MAX_LINES).map(line=>plainValue(line)).filter(Boolean),
+      post:Number.isFinite(ms) ? {time:chicagoTime(ms),url:postUrl} : null,
+      reviewUrl:/^[a-zA-Z0-9_-]{1,100}$/.test(source?.id ?? '') ? `${SITE}/admin/automation?date=${day}#import-${source.id}` : `${SITE}/admin/automation?date=${day}`,
+      editorUrl:`${SITE}/admin/specials#wing-form`};
+  } catch { return null; }
+}
+function formatWingText({day, summary, detail:d, firstSeenMs}) {
+  const lines = [`Wing Wednesday: ${summary}`, `Date: ${d.weekday}, ${day} (Chicago)`];
+  if (Number.isSafeInteger(firstSeenMs) && firstSeenMs>0) lines.push(`First detected: ${chicagoTime(firstSeenMs)}`);
+  lines.push('Affected destination: Wing Wednesday section', `Reason: ${d.reason}`);
+  if (d.post) lines.push(`Facebook posted: ${day}, ${d.post.time} (Chicago)${d.post.url ? ` — ${d.post.url}` : ''}`);
+  for (const line of d.proposed) lines.push(`Facebook proposed: ${line}`);
+  lines.push('', 'The saved Wing Wednesday section is unchanged. Daily specials are reported separately.');
+  lines.push('', 'Correction: needed. Approve corrected values in Automation Review, or edit this week’s Wing Wednesday directly.');
+  lines.push(`Review: ${d.reviewUrl}`, `Open: ${d.editorUrl}`);
+  return lines.join('\n');
+}
 function formatWeeklyText({day, code, summary, detail:d, firstSeenMs}) {
   const lines = [`Weekly Lunch: ${summary}`, `Date: ${d.weekday}, ${day} (Chicago)`];
   if (Number.isSafeInteger(firstSeenMs) && firstSeenMs>0) lines.push(`First detected: ${chicagoTime(firstSeenMs)}`);
@@ -260,6 +286,7 @@ const STAGE_FOR_CODE = {import_failed:'import',validation_rejected:'validation',
 export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
   const d = detail && detail.day===day ? detail : null;
   if (d?.scope==='weekly') return formatWeeklyText({day, code, summary, detail:d, firstSeenMs});
+  if (d?.scope==='wing') return formatWingText({day, summary, detail:d, firstSeenMs});
   const lines = [summary];
   lines.push(`Date: ${d ? `${d.weekday}, ` : ''}${day} (Chicago)`);
   if (Number.isSafeInteger(firstSeenMs) && firstSeenMs>0) lines.push(`First detected: ${chicagoTime(firstSeenMs)}`);
@@ -295,6 +322,7 @@ export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
     for(const e of v.evidence) lines.push(`Delivery evidence (${e.status}): ${e.value || '(not available)'}`);
     if(v.reconciliation==='expired') lines.push('Delivery window has ended; this snapshot does not establish whether delivery was active earlier.');
   }
+  if(d?.wingWednesday) lines.push('','Also affected: Wing Wednesday section',`Wing Wednesday reason: ${d.wingWednesday.reason}`,`Wing Wednesday editor: ${d.wingWednesday.editorUrl}`);
   lines.push('', `Automatic retry: ${RETRY[code] ?? 'none pending'}`);
   if (code==='delivery_failed') {
     lines.push('Correction: check the Delivery display setting.', `Open: ${SITE}/admin#delivery-display`);
@@ -312,6 +340,7 @@ export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
 }
 export function alertSubjectSuffix(detail) {
   if (detail?.scope==='weekly') return ' (Weekly Lunch)';
+  if (detail?.scope==='wing') return ' (Wing Wednesday)';
   const categories = [...new Set((detail?.holds ?? []).map(h=>h.category))].slice(0,3);
   return categories.length ? ` (${categories.join(', ')})` : '';
 }

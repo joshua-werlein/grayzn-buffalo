@@ -5,13 +5,17 @@ import EventAdminEntry from '../../components/EventAdminEntry.astro';
 import { isAuthed } from '../../lib/auth';
 import { isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from '../../lib/weekly-specials';
 import { EventConflict, eventDraftFromForm, eventInputFromForm, readAdminEvents, readEvent, removeEvent, saveEvent, type EventInput, type SpecialEvent } from '../../lib/special-events';
-import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, readCollection, readWeek, currentSavedWeekId, collectionFromForm, saveCollection, SpecialConflict, type SpecialCollection } from '../../lib/specials-store';
+import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, wingEditorValues, readCollection, readWeek, currentSavedWeekId, collectionFromForm, saveCollection, SpecialConflict, type SpecialCollection } from '../../lib/specials-store';
 import {withSoupControls} from '../../lib/daily-soup.js';
+import {readWingAttention} from '../../../workers/fb-feed/wing-review.js';
+import {wingWeekFor} from '../../lib/wing-wednesday.js';
 const env = (Astro.locals as any).runtime?.env ?? {};
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 const empty = (kind: SpecialCollection['kind'], id=''): SpecialCollection => ({ id,kind,weekly_special_id:null,title:'',schedule:'',revision:0,groups:[] });
-let defaults: SpecialCollection | null = null, mexican: SpecialCollection | null = null, mexicanDefaults: SpecialCollection | null = null;
-let mexicanDefaultsError='';
+let defaults: SpecialCollection | null = null, mexican: SpecialCollection | null = null, mexicanDefaults: SpecialCollection | null = null, wing: SpecialCollection | null = null, wingDefaults: SpecialCollection | null = null;
+let mexicanDefaultsError='', wingDefaultsError='';
+const wingNow=()=>(Astro.locals as any).runtime?.now ?? new Date(Date.now());
+let wingFormWeek=wingWeekFor(wingNow()).weekStart;
 let weekly = empty('week'), weekStart='', weekEnd='', editingId='', notice='', error='', recurringError='';
 let activeDay=0, weeklyDirty=false, weeklySaveAttempted=false, weeklyScrollY=0, weeklySaveError='';
 let ready=true;
@@ -20,6 +24,8 @@ let eventError='', eventErrorFor='', eventDraft: EventInput | null = null;
 try { defaults=withSoupControls(await readCollection(env,'defaults')); } catch { recurringError='Recurring defaults are unavailable. New weeks cannot be initialized.'; }
 try { mexican=await readCollection(env,'mexican-night'); } catch { /* Weekly editing does not depend on section availability. */ }
 try { mexicanDefaults=await readCollection(env,'mexican-night-defaults'); } catch { mexicanDefaultsError='Recurring Mexican Night Defaults are unavailable. Reload or contact support before changing future menus.'; }
+try { wing=await readCollection(env,'wing-wednesday'); } catch { /* Weekly editing does not depend on section availability. */ }
+try { wingDefaults=await readCollection(env,'wing-wednesday-defaults'); } catch { wingDefaultsError='Recurring Wing Wednesday Defaults are unavailable. Reload or contact support before changing future weeks.'; }
 let requestedId = Number(Astro.url.searchParams.get('week') ?? '');
 if (!Astro.url.searchParams.has('week') && !Astro.url.searchParams.has('new')) {
   try { requestedId = (await currentSavedWeekId(env)) ?? 0; } catch { /* Preserve existing fallback. */ }
@@ -52,13 +58,19 @@ if (Astro.request.method==='POST') {
       weeklyScrollY=Math.max(0,Math.min(100000,Number(form.get('weekly_scroll_y')) || 0));
       const saved=await saveCollection(env,weekly,{start:weekStart,end:weekEnd});
       return Astro.redirect(`/admin/specials?week=${saved.id}&saved=1`,303);
-    } else if (['save-recurring-defaults','save-mexican-night','save-mexican-night-defaults'].includes(action)) {
-      const baseline=action==='save-recurring-defaults' ? defaults : action==='save-mexican-night-defaults' ? mexicanDefaults : mexican;
+    } else if (['save-recurring-defaults','save-mexican-night','save-mexican-night-defaults','save-wing-wednesday','save-wing-wednesday-defaults'].includes(action)) {
+      const baseline=action==='save-recurring-defaults' ? defaults : action==='save-mexican-night-defaults' ? mexicanDefaults : action==='save-wing-wednesday-defaults' ? wingDefaults : action==='save-wing-wednesday' ? wing : mexican;
       if (!baseline) throw new Error('This editor is unavailable. Reload before saving.');
       const next=collectionFromForm(form,baseline);
+      if (action==='save-wing-wednesday') wingFormWeek=String(form.get('wing_week') ?? '');
       if (action==='save-recurring-defaults') defaults=next;
       else if (action==='save-mexican-night-defaults') mexicanDefaults=next;
+      else if (action==='save-wing-wednesday-defaults') wingDefaults=next;
+      else if (action==='save-wing-wednesday') wing=next;
       else mexican=next;
+      // A tab opened for an earlier week still holds that week's prices. The revision
+      // can't catch this before the rollover has run.
+      if (action==='save-wing-wednesday' && wingFormWeek!==wingWeekFor(wingNow()).weekStart) throw new SpecialConflict();
       const saved=await saveCollection(env,next);
       if (json) return Response.json({ok:true,message:'Saved.',revision:saved.revision,groupIds:saved.groupIds});
       return Astro.redirect('/admin/specials?saved=1',303);
@@ -100,11 +112,24 @@ const DAYS=DAY_NUMBERS.map(day=>DAY_NAMES[day]);
 const savedWeeksExpanded=savedWeeks.findIndex(week=>String(week.id)===editingId)>=4;
 if (mexican && !mexican.groups.length) mexican.groups=[blankGroup(-1)];
 if (mexicanDefaults && !mexicanDefaults.groups.length) mexicanDefaults.groups=[blankGroup(-1)];
+if (wing && !wing.groups.length) wing.groups=[blankGroup(-1)];
+// A failed save keeps what staff typed; everything else shows the values a save would hold.
+if (wing && Astro.request.method==='GET') {
+  const week=await env.DB.prepare("SELECT section_week_start FROM special_collections WHERE id='wing-wednesday'").first().catch(()=>null);
+  wing=wingEditorValues(wing,wingDefaults,week?.section_week_start ?? null,(Astro.locals as any).runtime?.now ?? new Date());
+}
+if (wingDefaults && !wingDefaults.groups.length) wingDefaults.groups=[blankGroup(-1)];
+let wingHold: {detail: string; permalink_url: string | null; fb_created_time: string; import_id: string} | null=null;
+try { wingHold=await readWingAttention(env); } catch { /* The notice is optional; the editor works without it. */ }
 const mexicanEditors=[
   {collection:mexicanDefaults,prefix:'mexican-defaults',action:'save-mexican-night-defaults',heading:'Recurring Mexican Night Defaults',
     copy:'These values prefill future Mexican Night weeks only. Changing them does not change the currently published Mexican Night. Keep item names, descriptions, sizes, schedule, substitutions and add-ons without prices. Current prices come from Facebook.',save:'Save Recurring Mexican Night Defaults'},
   {collection:mexican,prefix:'mexican',action:'save-mexican-night',heading:'This Week’s Mexican Night',
-    copy:'This is the current-week menu shown during the Mexican Night publishing window. Facebook normally updates it with current poster prices. Saving a manual change here protects this week from Facebook replacement. It does not change recurring defaults for future weeks.',save:'Save This Week’s Mexican Night'},
+    copy:'This is the current-week menu shown during the Mexican Night publishing window. Facebook normally updates it with current poster prices. Saving a manual change here protects this week from Facebook replacement. It does not change recurring defaults for future weeks.',save:'Save This Week’s Mexican Night',view:'/specials#mexican-night',viewLabel:'View published Mexican Night'},
+  {collection:wingDefaults,prefix:'wing-defaults',action:'save-wing-wednesday-defaults',heading:'Recurring Wing Wednesday Defaults',
+    copy:'These values prefill future Wing Wednesdays only. Changing them does not change the currently published Wing Wednesday. Keep wing options, descriptions and sauces without prices. Current prices come from Facebook or from staff in this week’s editor.',save:'Save Recurring Wing Wednesday Defaults'},
+  {collection:wing,prefix:'wing',action:'save-wing-wednesday',heading:'This Week’s Wing Wednesday',
+    copy:'This section shows from Sunday at 7 PM until Thursday at 2 AM. Facebook sets each wing price from a verified poster and keeps your names, descriptions and sauces. Each item name needs to say bone-in or boneless so its price lands on the right item. You can type a price into an item name when needed; a newer verified poster replaces it. Next week starts from the recurring defaults.',save:'Save This Week’s Wing Wednesday',view:'/specials#wing-wednesday',viewLabel:'View published Wing Wednesday'},
 ];
 ---
 <Base title="Admin · Specials — Grayz'n Buffalo">
@@ -113,10 +138,12 @@ const mexicanEditors=[
   {recurringError && <p class="error">{recurringError}</p>}
   {defaults && <form method="post" id="recurring-defaults-form" class="recurring-defaults-form"><input type="hidden" name="action" value="save-recurring-defaults"/><input type="hidden" name="revision" value={defaults.revision}/><input type="hidden" name="group_count" value={defaults.groups.length}/><details class="recurring-defaults"><summary>Recurring Defaults</summary><div class="recurring-defaults__content"><p>These values prefill new weeks only. Saved weeks and intentional blanks are never changed. Leave a field empty to remove its default.</p>{DAY_NUMBERS.map(day=><details class="default-day"><summary>{DAY_NAMES[day]}</summary>{defaults!.groups.map((group,index)=>group.day_of_week===day && <GroupFields group={group} index={index} defaults formPrefix="defaults"/>)}</details>)}<p class="rd-flash" id="rd-flash" role="status" hidden/><button class="btn btn-primary recurring-defaults__save" type="submit" name="action" value="save-recurring-defaults">Save Recurring Defaults</button></div></details></form>}
   {mexicanDefaultsError && <p class="error" role="alert">{mexicanDefaultsError}</p>}
-  {mexicanEditors.map(({collection,prefix,action,heading,copy,save})=>collection && <form method="post" id={`${prefix}-form`} class="recurring-defaults-form" data-mexican-editor data-editor-name={heading}>
-    <input type="hidden" name="action" value={action}/><input type="hidden" name="revision" value={collection.revision}/><input type="hidden" name="group_count" value={collection.groups.length}/>
+  {wingDefaultsError && <p class="error" role="alert">{wingDefaultsError}</p>}
+  {mexicanEditors.map(({collection,prefix,action,heading,copy,save,view,viewLabel})=>collection && <form method="post" id={`${prefix}-form`} class="recurring-defaults-form" data-mexican-editor data-editor-name={heading}>
+    <input type="hidden" name="action" value={action}/><input type="hidden" name="revision" value={collection.revision}/><input type="hidden" name="group_count" value={collection.groups.length}/>{prefix==='wing' && <input type="hidden" name="wing_week" value={wingFormWeek}/>}
     <details class="recurring-defaults"><summary>{heading}</summary><div class="recurring-defaults__content">
-      <p>{copy}</p>{prefix==='mexican' && <p><a href="/specials#mexican-night">View published Mexican Night</a></p>}
+      <p>{copy}</p>{view && <p><a href={view}>{viewLabel}</a></p>}
+      {prefix==='wing' && wingHold && <p class="error" role="alert">Facebook poster held for review: {wingHold.detail}. Nothing was published from it. Correct it here or <a href={`/admin/automation#import-${wingHold.import_id}`}>review the post</a>.</p>}
       <label>Title<input name="title" maxlength="80" value={collection.title}/></label><label>Schedule<input name="schedule" maxlength="80" value={collection.schedule}/></label>
       <div class="section-groups">{collection.groups.map((group,index)=><GroupFields group={group} index={index} formPrefix={prefix}/>)}<button type="button" class="btn btn-ghost" data-add-group="-1" data-group-template={`${prefix}-group-template`}>Add menu group</button></div>
       <p id={`${prefix}-status`} data-editor-status role="status"/><button class="btn btn-primary" type="submit">{save}</button>
@@ -335,7 +362,7 @@ const mexicanEditors=[
     }
     // Saving the week navigates away too; it does not save recurring edits.
     updateRecurringDirty();
-    if ((recurringDirty || sectionsDirty()) && !window.confirm('Recurring Defaults or Mexican Night editors contain unsaved changes. Save the week and leave without saving those changes?')) {
+    if ((recurringDirty || sectionsDirty()) && !window.confirm('Recurring Defaults, Mexican Night or Wing Wednesday editors contain unsaved changes. Save the week and leave without saving those changes?')) {
       event.preventDefault();
       return;
     }
@@ -463,7 +490,7 @@ const mexicanEditors=[
     try {
       const response = await fetch('/admin/specials', { method:'POST', headers:{ accept:'application/json' }, body });
       const result = await response.json();
-      if (!response.ok || !result.ok) throw new Error(result.error || 'Could not save Mexican Night.');
+      if (!response.ok || !result.ok) throw new Error(result.error || `Could not save ${sectionForm.dataset.editorName}.`);
       // Newly created group IDs are returned so a second save edits the same rows.
       if (JSON.stringify([...new FormData(sectionForm)]) === submitted) dirtySections.delete(sectionForm);
       for (const [temporary, saved] of Object.entries(result.groupIds || {})) {

@@ -4,6 +4,7 @@ import {fixture} from '../../tests/specials-fixture.mjs';
 import {automaticWeekRange,ensureAutomaticWeek} from './auto-week.js';
 import {harness} from './test-fixture.js';
 import {loadTs} from '../../tests/load-ts.mjs';
+import {priceFreeWingDefault} from '../../src/lib/section-links.js';
 const store=loadTs('src/lib/specials-store.ts');
 
 for(const [date,day,hour,start,end] of [
@@ -66,7 +67,8 @@ for(const [day,name] of DAYS.entries()) test(`${name} new-week defaults: non-emp
   for(const ds of defSlots) {
     const s=slots.find(s=>s.service===ds.service && s.position===ds.position);
     assert.ok(s,`${name} missing ${ds.service} pos ${ds.position}`);
-    assert.equal(s.content,ds.content??'',`${name} ${ds.service} pos ${ds.position} content`);
+    // Copied exactly, except a wing price: no new week inherits one.
+    assert.equal(s.content,priceFreeWingDefault({day_of_week:day,service:ds.service},ds)??ds.content??'',`${name} ${ds.service} pos ${ds.position} content`);
   }
 });
 test('overlapping week fails closed; existing exact week is never changed',async t=>{

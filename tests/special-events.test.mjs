@@ -154,13 +154,13 @@ test('admin: no Events navigation item or link to a separate events page',async 
   assert.doesNotMatch(readFileSync('src/layouts/Base.astro','utf8'),/\/admin\/events/);
 });
 
-test('admin: four matching collapsible sections in order, Special Events collapsed by default, Weekly Specials below',async t=>{
+test('admin: six matching collapsible sections in order, Special Events collapsed by default, Weekly Specials below',async t=>{
   const f=setup(t);seed(f,{id:'evt:today'});
   const html=await render(adminPage,f,'/admin/specials');
   const summaries=[...html.matchAll(/<details class="recurring-defaults"[^>]*>\s*<summary[^>]*>([^<]+)<\/summary>/g)].map(m=>m[1]);
-  assert.deepEqual(summaries,['Recurring Defaults','Recurring Mexican Night Defaults','This Week’s Mexican Night','Special Events']);
+  assert.deepEqual(summaries,['Recurring Defaults','Recurring Mexican Night Defaults','This Week’s Mexican Night','Recurring Wing Wednesday Defaults','This Week’s Wing Wednesday','Special Events']);
   assert.ok(html.indexOf('>Special Events</summary>')<html.search(/<h3[^>]*>Weekly Specials<\/h3>/));
-  // Same white container class and the same cream summary details as the other three.
+  // Same white container class and the same cream summary details as the others.
   assert.match(html,/<section id="special-events" class="recurring-defaults-form special-events-admin"[^>]*>\s*<details class="recurring-defaults"(?![^>]*\bopen\b)[^>]*>/);
 });
 

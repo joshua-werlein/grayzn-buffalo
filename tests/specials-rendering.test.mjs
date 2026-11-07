@@ -18,7 +18,6 @@ const container=await AstroContainer.create();
 test('compiled home banner and specials accept the legacy Worker deadline only before 1:30 PM, with manual overrides intact',async t=>{
   const f=fixture(t);
   f.sql(readFileSync('migrations/0022_delivery_automation.sql','utf8'));
-  f.sql('CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT)');
   f.sql("INSERT OR REPLACE INTO settings(key,value) VALUES('delivery_display','auto')");
   f.sql("INSERT INTO delivery_automation(id,day,active,expires_at,observed_at,source_ids) VALUES(1,'2026-10-28',1,'2026-10-28T20:00:00.000Z','2026-10-28T16:16:00.000Z','[]')");
   let now=Date.parse('2026-10-28T18:29:59Z');

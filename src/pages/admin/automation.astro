@@ -7,6 +7,7 @@ import {approvalModel,approvalPageContext} from '../../lib/automation-approval';
 import AutomationApproval from '../../components/AutomationApproval.astro';
 import ImportDismiss from '../../components/ImportDismiss.astro';
 import ImportOffers from '../../components/ImportOffers.astro';
+import WingWednesdayReview from '../../components/WingWednesdayReview.astro';
 const env = (Astro.locals as any).runtime?.env ?? {};
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 Astro.response.headers.set('Cache-Control','no-store');
@@ -28,7 +29,12 @@ if(review && today) for(const item of active) {
 // A panel whose specials are all approved already has nothing left to do.
 const openPanel=(id: string)=>approvalPanels.has(id) && approvalPanels.get(id).entries.some((e: any)=>!e.done);
 const needsAttention=(tone: string)=>tone==='review' || tone==='failed';
-const attentionCount=active.filter(item=>needsAttention(statusBadge(item.status).tone)).length;
+// A daily post that published can still need staff for Wing Wednesday.
+const badgeFor=(item: {status: string; wing: any})=>{
+  const badge=statusBadge(item.status);
+  return item.wing?.attention && !needsAttention(badge.tone) ? {...statusBadge('Partially Published'),help:'The daily specials from this post are done. Wing Wednesday still needs a look.'} : badge;
+};
+const attentionCount=active.filter(item=>needsAttention(badgeFor(item).tone)).length;
 ---
 <Base title="Automation Review — Grayz'n Buffalo Staff">
 <section class="automation-review">
@@ -71,7 +77,8 @@ const attentionCount=active.filter(item=>needsAttention(statusBadge(item.status)
 
     <ul class="import-list">
       {active.map(item=>{
-        const badge=statusBadge(item.status),attention=needsAttention(badge.tone),posted=reviewLocalTime(item.created);
+        const badge=badgeFor(item),attention=needsAttention(badge.tone),posted=reviewLocalTime(item.created);
+        const dailyDone=!needsAttention(statusBadge(item.status).tone);
         const canApprove=openPanel(item.id);
         const offers=<ImportOffers values={item.values}/>;
         const link=item.link && <a class="fb-link" href={item.link} target="_blank" rel="noopener noreferrer">View the Facebook post ↗</a>;
@@ -85,18 +92,20 @@ const attentionCount=active.filter(item=>needsAttention(statusBadge(item.status)
           </div>
           {attention ? <>
             <p class="help">{badge.help}</p>
-            <p class="why"><strong>Why:</strong> {item.reason}</p>
-            {canApprove ? <AutomationApproval model={approvalPanels.get(item.id)}/> : <>
+            {!dailyDone && <p class="why"><strong>Why:</strong> {item.reason}</p>}
+            {dailyDone ? offers : canApprove ? <AutomationApproval model={approvalPanels.get(item.id)}/> : <>
               {offers}
               <p class="next-step">{today ? 'This post can’t be approved here.' : 'Past posts can’t be approved here.'} Fix this day in the Specials editor.</p>
               <a class="btn btn-primary" href={item.editor}>Fix in Specials editor</a>
             </>}
+            {item.wing && <WingWednesdayReview id={item.id} wing={item.wing}/>}
             {link}
           </> : <details class="done">
             <summary>Show specials</summary>
             <p class="help">{badge.help}</p>
             {offers}
             {canApprove && <AutomationApproval model={approvalPanels.get(item.id)}/>}
+            {item.wing && <WingWednesdayReview id={item.id} wing={item.wing}/>}
             {link}
             <a href={item.editor}>Change in Specials editor</a>
           </details>}

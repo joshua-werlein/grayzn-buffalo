@@ -2,7 +2,7 @@ import {composeMexicanItem} from '../../src/lib/mexican-item.js';
 import {promotionalHeading} from './mexican-menu.js';
 import {trailingDailyPrice,normalizeMexicanSizeItem} from './evidence.js';
 import {standaloneSoup,hasStandaloneSoupLabel} from '../../src/lib/daily-soup.js';
-import {formatWingNight,validateWingNight} from './wing-night.js';
+import {formatWingNight,validateWingNight,isWingOffer,WING_HEADING} from './wing-night.js';
 import {planDailyEvidence} from './evidence.js';
 // Evidence is persisted separately from the website's final group structure.
 // A poster-level night heading does NOT make every offer a night-only offer.
@@ -19,7 +19,7 @@ function normalizeInchMarks(content) {
 
 export function canonicalizeSlotContent(content, weekday, service) {
   // Wednesday prices always come from complete labelled source amounts.
-  if (weekday === 3 && service === 'nightly' && /\bwing\s+night\b/i.test(content))
+  if (weekday === 3 && service === 'nightly' && WING_HEADING.test(content))
     return formatWingNight(content);
   content = normalizeInchMarks(content);
   if(weekday>=0 && !(weekday===2 && service==='nightly')) content = trailingDailyPrice(content);
@@ -423,7 +423,7 @@ function mapPosters(posters,weekday,existingAllDay,unresolvedTargets) {
     const night=p.offers.filter(o=>o.service==='nightly');
     const meals=p.offers.filter(o=>o.service==='unknown');
     p.wednesdayPair=weekday===3 && p.isExplicitToday && ['unknown','nightly'].includes(p.service) && p.offers.length===3
-      && night.length===1 && /\bwing\s+night\b/i.test(`${night[0].content} ${night[0].evidence}`)
+      && night.length===1
       && meals.length===2 && meals.every(o=>serviceOf(o.content)==='unknown' && ['unknown','all-day'].includes(serviceOf(o.evidence)));
     if (p.wednesdayPair) { proposals['all-day'].push(meals); continue; }
     const orderedDaytime=p.offers.length===3 &&
@@ -491,7 +491,8 @@ function mapPosters(posters,weekday,existingAllDay,unresolvedTargets) {
     const count=[1,5].includes(weekday)?2:1;
     if (p.service==='nightly' && p.offers.length===count && !explicit.length) nightly=p.offers;
     nightly=nightly.filter(o=>!repeatKeys.has(offerKey(o.content)));
-    if (weekday===3 && !nightly.every(o=>/\bwing\s+night\b/i.test(`${o.content} ${o.evidence}`))) nightly=[];
+    // Wings beside another night offer can't both have the one Wednesday slot.
+    if (weekday===3 && nightly.some(isWingOffer) && !nightly.every(isWingOffer)) nightly=[];
     if (![0,2,6].includes(weekday) && nightly.length) proposals.nightly.push(nightly);
   }
   const result=[];
@@ -501,7 +502,8 @@ function mapPosters(posters,weekday,existingAllDay,unresolvedTargets) {
     if (wing) {
       // Validate every source before comparing normalized item-to-price associations.
       // Invalid evidence cannot disappear to manufacture agreement.
-      sets=sets.map(items=>items.map(o=>({...o,content:validateWingNight(o.content,o.evidence)})));
+      // A Wednesday poster for another promotion is an ordinary nightly special.
+      sets=sets.map(items=>items.map(o=>isWingOffer(o) ? {...o,wing:true,content:validateWingNight(o.content,o.evidence)} : o));
       if (sets.flat().some(o=>!o.content)) {
         unresolvedTargets.push({service,position:1,content:proposals.nightly.flat()[0].content,reason:'Missing, malformed or ambiguous Wing Night prices'});
         continue;
@@ -514,7 +516,7 @@ function mapPosters(posters,weekday,existingAllDay,unresolvedTargets) {
         ambiguous.forEach(o=>unresolvedTargets.push({service,position:items.indexOf(o)+1,content:o.content,reason:'Missing, malformed or ambiguous printed choice prices'}));
         continue;
       }
-      result.push({day_of_week:weekday,service,items:items.map(o=>({content:wing ? o.content : canonicalizeSlotContent(o.content,weekday,service)}))});
+      result.push({day_of_week:weekday,service,items:items.map(o=>({content:o.wing ? o.content : canonicalizeSlotContent(o.content,weekday,service)}))});
     }
     else if (proposals[service].length) unresolvedTargets.push({service,position:1,content:'',reason:'Conflicting or unresolved service evidence'});
   }

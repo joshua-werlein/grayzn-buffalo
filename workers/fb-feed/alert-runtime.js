@@ -8,7 +8,9 @@ import {deliveryWindow,resolveDeliveryDisplay} from '../../src/lib/delivery.js';
 import {dailyPublicationObservation,importAlertObservation} from './alert-policy.js';
 import {ALERT_GRACE_MS,dispatchAlert,alertEvidenceFence} from './alert-store.js';
 import {alertTransport} from './alert-email.js';
-import {dailyAlertDetail,deliveryAlertDetail,weeklyAlertDetail} from './alert-detail.js';
+import {dailyAlertDetail,deliveryAlertDetail,weeklyAlertDetail,wingAlertDetail} from './alert-detail.js';
+import {readWingAttention} from './wing-review.js';
+import {isWingOffer} from './wing-night.js';
 
 const MODES=['OBSERVE','MOCK','EMAIL'];
 const FRESH_MS=90*60*1000;
@@ -226,6 +228,25 @@ async function assessWeekly(env,scan,snap,now,sourceIds) {
   return result(suppressedDays ? 'suppressed' : 'resolved');
 }
 
+// Wing Wednesday: only a post from today's scan that still needs staff (the same
+// decision the review page shows). No poster, protected values and blanks never get here.
+async function assessWing(env,scan,snap,now) {
+  const outcome=(state,extra={})=>({state,cause:'wing_wednesday_failed',detail:null,...extra});
+  const sources=snap.data[0].filter(s=>currentSource(s,scan,now) && ['pending','accepted'].includes(s.review_status));
+  if(!sources.length) return outcome('suppressed');
+  if(sources.some(s=>['pending','processing'].includes(s.processing_status))) return outcome('pending');
+  const held=await readWingAttention(env);
+  const source=held && sources.find(s=>s.id===held.import_id);
+  if(!source) return outcome('resolved');
+  let offers=[];
+  try {offers=JSON.parse(unfence(source.candidate_json ?? source.extracted_json))?.offers?.filter(isWingOffer) ?? [];} catch { /* Text is only for display and identity. */ }
+  // A reposted poster with the same reading is the same incident, not a new one.
+  const identity=offers.length ? offers.map(o=>factKey(String(o.content))) : [source.image_hash ?? source.fb_post_id];
+  const proposed=offers.map(o=>String(o.content));
+  return outcome('attention',{reason:held.detail,proposed,fingerprint:(await digest([held.detail,identity])).slice(0,16),
+    detail:wingAlertDetail({day:scan.day,source,reason:held.detail,proposed})});
+}
+
 function intentional(s,data,weekday) {
   const [,weeks,collections,groups,slots]=data;
   if(weeks.length!==1 || !s.target_service) return false;
@@ -288,26 +309,37 @@ async function assess(env,scan,snap) {
   if(detail) detail.delivery=deliveryDetail;
   delivery.detail={scope:'delivery',day:scan.day,weekday:detail?.weekday,delivery:deliveryDetail};
   const weekly=await assessWeekly(env,scan,snap,now,sourceIds);
-  return {daily:{state:food.state,cause,detail},delivery,weekly};
+  let wing={state:'pending',cause:'wing_wednesday_failed',detail:null};
+  try {wing=await assessWing(env,scan,snap,now);} catch {safeError();}
+  // The same held poster as an unsent daily alert: one email that names both.
+  // Once the daily email has gone, Wing Wednesday needs its own.
+  if(wing.state==='attention' && food.state==='attention' && detail) {
+    const dailyOpen=await env.DB.prepare(`SELECT 1 FROM facebook_alert_incidents WHERE incident_key=?1 AND dispatch_state<>'ready'`).bind(`${scan.day}:daily:publication_blocked`).first();
+    if(!dailyOpen) {
+      detail.wingWednesday={reason:wing.detail?.reason,editorUrl:wing.detail?.editorUrl};
+      wing={...wing,state:'suppressed',fingerprint:undefined,detail:null};
+    }
+  }
+  return {daily:{state:food.state,cause,detail},delivery,weekly,wing};
 }
 
-// Weekly Lunch: the current failure has its own fingerprinted key. Every other
-// weekly incident of the day takes the current state (superseded by a newer,
+// Weekly Lunch and Wing Wednesday: the current failure has its own fingerprinted key.
+// Every other incident of the day in that scope takes the current state (superseded by a newer,
 // different failure, or resolved/pending/suppressed), so an unsent stale
 // failure cannot send and a resolution clears all of them.
-function recordWeekly(env,scan,observation,evidence) {
+function recordFingerprinted(env,scan,scope,code,observation,evidence) {
   const fence=alertEvidenceFence(evidence,6);
-  const key=observation.state==='attention' && observation.fingerprint ? `${scan.day}:weekly:weekly_lunch_failed:${observation.fingerprint}` : '';
+  const key=observation.state==='attention' && observation.fingerprint ? `${scan.day}:${scope}:${code}:${observation.fingerprint}` : '';
   const others=env.DB.prepare(`UPDATE facebook_alert_incidents SET state=?3,observed_ms=?4
-    WHERE day=?1 AND scope='weekly' AND incident_key<>?2 AND observed_ms<=?4
+    WHERE day=?1 AND scope='${scope}' AND incident_key<>?2 AND observed_ms<=?4
       AND EXISTS(SELECT 1 FROM facebook_alert_scans WHERE day=?1 AND token=?5 AND completed_ms IS NOT NULL)
       ${fence.sql}`).bind(scan.day,key,observation.state==='attention'?'suppressed':observation.state,scan.started_ms,scan.token,...fence.args);
-  return key ? [others,recordVerified(env,scan,'weekly',observation,evidence,key)] : [others];
+  return key ? [others,recordVerified(env,scan,scope,observation,evidence,key)] : [others];
 }
 
 function recordVerified(env,scan,scope,observation,evidence,incidentKey=null) {
   const {hash}=evidence,fence=alertEvidenceFence(evidence,10);
-  const code=scope==='daily'?'publication_blocked':scope==='weekly'?'weekly_lunch_failed':'delivery_failed';
+  const code=scope==='daily'?'publication_blocked':scope==='weekly'?'weekly_lunch_failed':scope==='wing'?'wing_wednesday_failed':'delivery_failed';
   const deliveryEnd=Date.parse(deliveryWindow(new Date(scan.completed_ms)).expiresAt);
   const proof=JSON.stringify({version:1,token:scan.token,hash,cause:observation.cause,parser:scan.parser,
     ...(observation.fingerprint?{fingerprint:observation.fingerprint}:{}),
@@ -342,9 +374,9 @@ export async function revalidateAlert(env,row,{withEvidence=false}={}) {
   if(!before || before.hash!==proof.hash) return false;
   const outcome=(await assess(env,scan,before))[row.scope];
   const after=await snapshot(env,scan);
-  // A weekly proof authorizes only the same failure fingerprint.
+  // A weekly or Wing Wednesday proof authorizes only the same failure fingerprint.
   const valid=outcome?.state==='attention' && outcome.cause===proof.cause && after?.hash===proof.hash
-    && (row.scope!=='weekly' || (!!proof.fingerprint && outcome.fingerprint===proof.fingerprint && row.incident_key.endsWith(`:${proof.fingerprint}`)));
+    && (!['weekly','wing'].includes(row.scope) || (!!proof.fingerprint && outcome.fingerprint===proof.fingerprint && row.incident_key.endsWith(`:${proof.fingerprint}`)));
   return valid && withEvidence?{...after,detail:outcome.detail ?? null}:valid;
 }
 
@@ -409,13 +441,14 @@ export async function finishAlertScan(env,context,sourceIds,options={}) {
     const fence=alertEvidenceFence(before,4);
     const persisted=await env.DB.batch([
       ...['daily','delivery'].map(scope=>recordVerified(env,scan,scope,outcomes[scope],before)),
-      ...recordWeekly(env,scan,outcomes.weekly,before),
+      ...recordFingerprinted(env,scan,'weekly','weekly_lunch_failed',outcomes.weekly,before),
+      ...recordFingerprinted(env,scan,'wing','wing_wednesday_failed',outcomes.wing,before),
       env.DB.prepare(`UPDATE facebook_alert_scans SET evaluated_ms=?3,evaluation_state='complete',evaluation_error=NULL
         WHERE day=?1 AND token=?2 ${fence.sql}`)
         .bind(scan.day,scan.token,Date.now(),...fence.args),
     ]);
     if(persisted.at(-1).meta?.changes!==1) {await mark('skipped','evidence_changed');return;}
-    console.log('Facebook alert observation',{daily:outcomes.daily.state,delivery:outcomes.delivery.state,weekly:outcomes.weekly.state});
+    console.log('Facebook alert observation',{daily:outcomes.daily.state,delivery:outcomes.delivery.state,weekly:outcomes.weekly.state,wing:outcomes.wing.state});
     await dispatchVerifiedAlerts(env,options);
     console.log('Facebook alert health',await readAlertHealth(env,now));
     // Bounded retention, never deletes this day's sent deduplication records.

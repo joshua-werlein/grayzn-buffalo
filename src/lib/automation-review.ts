@@ -7,6 +7,10 @@ import { plainValue } from '../../workers/fb-feed/alert-detail.js';
 import { applySharedWeeklyLunchPrice, validateWeeklyLunch } from '../../workers/fb-feed/reconcile.js';
 import { normalizeWeeklyRange, factKey } from '../../workers/fb-feed/evidence.js';
 import {approvalEvents} from '../../workers/fb-feed/staff-review.js';
+import {readWingAttention,wingHoldReason} from '../../workers/fb-feed/wing-review.js';
+import {isWingOffer} from '../../workers/fb-feed/wing-night.js';
+import {splitMexicanItem} from './mexican-item.js';
+import {WING_OPTIONS_GROUP,wingOptionPositions} from './wing-wednesday.js';
 
 const MAX_IMPORTS = 30, MAX_JSON = 24000;
 // Facebook stores offsets as +0000; SQLite date functions only accept +00:00, Z or no offset.
@@ -139,6 +143,30 @@ export function protectedValue(slot: any): string {
   if (!slot.content || slot.origin === 'automation' || slot.origin === 'manual') return 'No staff lock; other publication safeguards still apply';
   return 'Yes — existing legacy value';
 }
+// Each post's Wing Wednesday decision. It is optional: a failure here leaves the daily,
+// weekly and Mexican Night review exactly as it was.
+async function readWingDecisions(env: any, query: (sql: string, ...args: any[]) => Promise<any[]>, ids: string) {
+  try {
+    const [decisions,attention,slots]=await Promise.all([
+      query('SELECT import_id,outcome,detail FROM wing_wednesday_decisions WHERE import_id IN (SELECT value FROM json_each(?1)) LIMIT 31',ids),
+      readWingAttention(env),
+      query('SELECT position,content FROM special_slots WHERE group_id=?1 ORDER BY position LIMIT 4',WING_OPTIONS_GROUP),
+    ]);
+    const current=slots.filter((s: any)=>(s.content??'').trim());
+    const title=(position: number)=>splitMexicanItem(slots.find((s: any)=>s.position===position)?.content ?? '').title;
+    const spots=wingOptionPositions(slots);
+    return (source: any)=>{
+      const decision=decisions.find((d: any)=>d.import_id===source.id);
+      if(!decision) return null;
+      const raw=parseReviewEvidence(source.candidate_json)??parseReviewEvidence(source.extracted_json);
+      const offers=Array.isArray(raw?.offers) ? raw.offers.filter(isWingOffer) : [];
+      return {outcome:decision.outcome,reason:reviewText(wingHoldReason(decision.detail),300),attention:attention?.import_id===source.id,revision:attention?.revision ?? 0,
+        unresolvedMask:attention?.unresolved_mask ?? 0,
+        proposed:offers.flatMap((o: any)=>[o.content,o.evidence].filter((v: unknown)=>typeof v==='string' && v.trim()).map((v: string)=>reviewText(v))).filter((v: string,i: number,all: string[])=>all.indexOf(v)===i),
+        current:current.map((s: any)=>reviewText(s.content)),boneIn:title(spots.boneIn),boneless:title(spots.boneless),boneInBit:1<<(spots.boneIn-1),bonelessBit:1<<(spots.boneless-1),editor:'/admin/specials#wing-form'};
+    };
+  } catch { return ()=>null; }
+}
 export async function readAutomationReview(env: any, day: string, now = new Date()) {
   reviewDate(day, now);
   const query = async (sql: string, ...args: any[]) => (await env.DB.prepare(sql).bind(...args).all()).results ?? [];
@@ -186,6 +214,7 @@ export async function readAutomationReview(env: any, day: string, now = new Date
     specialEvents = specialEvents.map(e=>({...e,title:reviewText(e.title),reason:reviewText(e.review_reason,600),values:offers.filter((o: any)=>o.event_id===e.id).map((o: any)=>reviewText(o.content)),visibility:e.status==='published' && eventState(e,now)!=='expired'?'Visible on the public site':'Saved; not currently visible',editor:'/admin/specials#special-events'}));
   } catch { eventsUnavailable=true; specialEvents=[]; }
   const editor = week ? `/admin/specials?week=${week.id}#weekly-day-${[1,2,3,4,5,6,0].indexOf(calendarDayOfWeek(day))}` : '/admin/specials';
+  const wingFor = await readWingDecisions(env,query,ids);
   const history = selected.map((source: any)=>{
     const extracted=extractedForDay(source,day,week), audit=events.filter((e: any)=>e.import_id===source.id);
     const linkedEvents=specialEvents.filter(e=>e.source_import_id===source.id);
@@ -196,7 +225,7 @@ export async function readAutomationReview(env: any, day: string, now = new Date
       values:extracted.values.map((value: string)=>({value,onWebsite:current.some((v: string)=>factKey(v)===factKey(value))})),
       editor:linkedEvents.length?'/admin/specials#special-events':extracted.scope==='Mexican Night'?'/admin/specials#mexican-form':editor,
       audits:audit.slice(0,4).map((e: any)=>({type:reviewText(e.event_type,30),at:reviewTimestamp(e.occurred_at),detail:reviewReason(e.detail)})),
-      relevant:extracted.relevant || linkedEvents.length>0};
+      wing:wingFor(source),relevant:extracted.relevant || linkedEvents.length>0};
   }).filter((i: any)=>i.relevant);
   return {day,dayName:DAY_NAMES[calendarDayOfWeek(day)],editor,history,groups:currentGroups,specialEvents,eventsUnavailable,truncated:imports.length>MAX_IMPORTS,ambiguousWeek:weeks.length>1};
 }

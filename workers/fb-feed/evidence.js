@@ -1,7 +1,7 @@
 // Evidence contract 2: pure normalization and planning, with no database or AI access.
 // Original extracted_json remains immutable; candidate_json can store this richer shape.
 import {standaloneSoup} from '../../src/lib/daily-soup.js';
-import {validateWingNight} from './wing-night.js';
+import {validateWingNight,isWingOffer,WING_HEADING} from './wing-night.js';
 
 export const EVIDENCE_VERSION=2;
 const clock=String.raw`(?:1[0-2]|[1-9])(?::[0-5]\d)?\s*(?:[ap]\.?m\.?)?`;
@@ -292,9 +292,11 @@ function houseLayout(p,isExplicitToday,weekday,known,explicit,verifiedSameDay=fa
   if(meals.length===3 && headingNames(p,/\bspecials?\b/i) && ['unknown','lunch'].includes(heading) && !meals.some(nightText))
     return agree(['lunch','all-day','all-day']);
   if(isExplicitToday!==true && !sameDayNight) return null;
-  // Wednesday Wing Night poster: the Wing Night offer plus two daytime meals.
+  // Wednesday night poster: one Nightly offer, named Wing Night or Wing Wednesday or
+  // printed with its own night time, plus two daytime meals.
   if(isExplicitToday===true && weekday===3 && meals.length===3 && ['unknown','nightly'].includes(heading)) {
-    const wing=meals.filter(i=>/\bwing\s+night\b/i.test(`${p.offers[i].content} ${p.offers[i].evidence}`));
+    const named=meals.filter(i=>WING_HEADING.test(`${p.offers[i].content} ${p.offers[i].evidence}`));
+    const wing=named.length?named:meals.filter(i=>explicit[i]==='nightly');
     const others=meals.filter(i=>!wing.includes(i));
     if(wing.length===1 && ['unknown','nightly'].includes(explicit[wing[0]]) && !others.some(nightText))
       return agree(meals.map(i=>i===wing[0]?'nightly':'all-day'));
@@ -480,7 +482,7 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
         if(!repeat && unresolved.some(u=>u<i && (positions.get(service)??0)<capacity)) {hold('Unresolved sibling could compete for this slot');continue;}
       }
       let content=service==='soup'?readSoup(o):o.content;
-      if(weekday===3 && service==='nightly') content=validateWingNight(o.content,o.evidence);
+      if(weekday===3 && service==='nightly' && isWingOffer(o)) content=validateWingNight(o.content,o.evidence);
       if(!content) {hold('Missing, malformed or ambiguous Wing Night prices');continue;}
       const items=sourceItems.get(service)??[];
       content=canonicalize(content,weekday,service==='soup'?'custom':service);

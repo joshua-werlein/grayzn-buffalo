@@ -80,7 +80,7 @@ for(const date of ['2026-10-11','10/11/2026','Oct 11, 2026']) test(`matching pri
 for(const day of [0,6,1]) test(`${names[day]} normal scan reuses staged evidence, replaces defaults and is idempotent`,async t=>{
   const p=clone();p.day_of_week=day;p.poster_evidence=`${names[day]} Specials`;
   const f=setup(t,{day,candidate:p});await stage(f);const saved=f.imports()[0];
-  const unrelated=f.sql('SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id<>? OR g.day_of_week<>?', 'auto-week',day);
+  const unrelated=f.sql("SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE (g.collection_id<>? OR g.day_of_week<>?) AND s.group_id NOT LIKE 'ww-%'", 'auto-week',day);
   const nightly=f.slots(day,'nightly');await f.run();
   assert.equal(f.slots(day,'lunch')[0].content,meals[0]);
   assert.deepEqual(f.slots(day,'all-day').map(s=>s.content),[...meals.slice(1),'','']);
@@ -91,7 +91,7 @@ for(const day of [0,6,1]) test(`${names[day]} normal scan reuses staged evidence
     assert.equal(s.origin,'automation');assert.equal(s.manual_locked,0);assert.equal(s.last_auto_value,s.content);assert.equal(s.price,'');
   }
   assert.deepEqual(f.slots(day,'nightly'),nightly);
-  assert.deepEqual(f.sql('SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id<>? OR g.day_of_week<>?', 'auto-week',day),unrelated);
+  assert.deepEqual(f.sql("SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE (g.collection_id<>? OR g.day_of_week<>?) AND s.group_id NOT LIKE 'ww-%'", 'auto-week',day),unrelated);
   assert.equal(f.state.aiCalls,1);assert.deepEqual(f.imports()[0],saved);
   assert.match(f.sql("SELECT detail FROM special_import_events WHERE event_type='review'")[0].detail,/4 slot\(s\)/);
   const before=snapshot(f);await f.run();await f.run();assert.deepEqual(snapshot(f),before);

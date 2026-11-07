@@ -1,11 +1,12 @@
 // Shared whole-collection protection: a complete poster replaces the whole menu,
 // so one protected item must block the entire replacement, not just that item.
-export const protectedMexicanSlots = `EXISTS(SELECT 1 FROM special_slots s
-  JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='mexican-night'
+export const protectedSectionSlots = id => `EXISTS(SELECT 1 FROM special_slots s
+  JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='${id}'
   AND (s.manual_locked<>0 OR NOT (
     (s.origin='manual' AND s.manual_locked=0) OR
     (s.origin='automation' AND s.content IS s.last_auto_value) OR
     (COALESCE(s.content,'')='' AND s.last_auto_value IS NULL))))`;
+export const protectedMexicanSlots = protectedSectionSlots('mexican-night');
 
 export function mexicanNightSeedStatements(env,{start,end,now}) {
   const token=crypto.randomUUID();

@@ -2,6 +2,7 @@ import {buildExtractionRequest, buildWeeklyLunchExtractionRequest, buildMexicanN
 import {analyzeDailyEvidence,normalizeEvidenceOffer,factKey,serviceFromEvidence,normalizeWeeklyRange,weeklyEntryEvidence,sameMealFacts,sameMenuItemFacts,hasUnresolvedUncertainty} from './evidence.js';
 import { classifyCaption, parserVersionFor } from './classify.js';
 import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexicanNight } from './guarded-auto.js';
+import {reconcileWingWednesday,recordWingScan} from './wing-wednesday.js';
 import {ensureAutomaticWeek} from './auto-week.js';
 import {MAX_IMPORT_ATTEMPTS,OWNS_ATTEMPT_SQL,isTransientFailure,claimImportAttempt,attemptEvent,saveAttemptImage,finishImportAttempt,retireImportAttempts} from './recovery.js';
 import {validateEvidence, validateWeeklyLunch, validateMexicanNight, singleDayLunchEvidence, singleDayLunchEvidenceV2, validateCurrentDay, hasWeeklyLunchEvidence, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR, WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
@@ -781,6 +782,11 @@ export async function runImportPipeline(env,alertOptions={}) {
   }
   // Register the COMPLETE scan before processing, so recovery never publishes a
   // single new poster while another known current source is still pending.
+  let wingScanToken;
+  if(mode==='GUARDED_AUTO' && window.weekday<=3) {
+    try { wingScanToken=await recordWingScan(env,now.getTime()); }
+    catch { console.error('Wing Wednesday scan fence unavailable'); }
+  }
   for (const raw of rawPosts) {
     const caption = cleanMessage(raw.message ?? '');
     const classification = classifyCaption(caption);
@@ -840,6 +846,8 @@ export async function runImportPipeline(env,alertOptions={}) {
     catch(err) { console.error('Weekly lunch reconcile error',String(err)); }
     try { await reconcileMexicanNight(env); }
     catch(err) { console.error('Mexican Night reconcile error',String(err)); }
+    try { await reconcileWingWednesday(env,{sourceIds,today:window.today,scanToken:wingScanToken}); }
+    catch(err) { console.error('Wing Wednesday reconcile error',String(err)); }
     await finishAlertScan(env,alertScan,sourceIds,alertOptions);
   }
   try { await pruneImportImages(env); }

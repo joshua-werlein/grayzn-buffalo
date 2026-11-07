@@ -138,7 +138,6 @@ test('other weekday, weekly schedule and recurring menus cannot establish delive
 
 test('contract 2 activates without extra inference; automated writes never touch staff settings',async t=>{
   const f=setup(t);
-  f.sql('CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT)');
   f.sql("INSERT INTO settings VALUES('delivery_display','hidden')");
   Object.assign(f.env,{SPECIALS_EVIDENCE_VERSION:'2',SPECIALS_VERIFICATION_STRATEGY:'conditional'});
   f.state.candidate.offers.forEach(o=>Object.assign(o,{service_evidence:'Wing Night',date_evidence:'',uncertainties:[]}));

@@ -1,4 +1,6 @@
 import {mexicanNightSeedStatements} from './mexican-night-defaults.js';
+import {wingWednesdaySeedStatements} from './wing-wednesday-defaults.js';
+import {priceFreeWingDefault} from '../../src/lib/section-links.js';
 
 export function automaticWeekRange(today,weekday,hour) {
   const offset=weekday===0 && hour>=19 ? 1 : -((weekday+6)%7);
@@ -17,6 +19,16 @@ export async function ensureAutomaticWeek(env,{today,weekday,hour}) {
   const collectionId=crypto.randomUUID(), token=crypto.randomUUID();
   const prepare=(sql,...args)=>env.DB.prepare(sql).bind(...args);
   const gate='EXISTS(SELECT 1 FROM special_collections WHERE id=?1 AND mutation_token=?2)';
+  // A new week never inherits a wing price. Each update matches the exact value read
+  // here, and a recurring save can't introduce a new priced value in between.
+  const {results:priced}=await env.DB.prepare(`SELECT s.group_id,s.position,s.content,s.price,s.section_link,g.day_of_week,g.service
+    FROM special_slots s JOIN special_groups g ON g.id=s.group_id
+    WHERE g.collection_id='defaults' AND (s.content LIKE '%$%' OR s.price<>'')`).all();
+  const wingFixes=(priced ?? []).flatMap(slot=>{
+    const text=priceFreeWingDefault(slot,slot);
+    return text===null ? [] : [prepare(`UPDATE special_slots SET content=?3,price='' WHERE group_id=?1||':'||?4 AND position=?5 AND content=?6 AND price=?7
+      AND ${gate}`,collectionId,token,text,slot.group_id,slot.position,slot.content,slot.price)];
+  });
   // Read the template inside the transaction, so a simultaneous manual save
   // cannot produce a mixture of two template revisions. No schema changes.
   await env.DB.batch([
@@ -38,7 +50,9 @@ export async function ensureAutomaticWeek(env,{today,weekday,hour}) {
         s.position,COALESCE(s.content,''),s.price,s.section_link,
         'manual',0,NULL
       FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='defaults' AND ${gate}`,collectionId,token),
+    ...wingFixes,
     ...(weekday!==0 || hour>=19
-      ? mexicanNightSeedStatements(env,{start,end,now:new Date(Date.now()).toISOString()}) : []),
+      ? [...mexicanNightSeedStatements(env,{start,end,now:new Date(Date.now()).toISOString()}),
+        ...wingWednesdaySeedStatements(env,{start,end,now:new Date(Date.now()).toISOString()})] : []),
   ]);
 }

@@ -1,8 +1,14 @@
 import { chicagoCalendarDate, isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from './weekly-specials';
-import {composeMexicanItem,assertPriceFreeMexicanDefault,MEXICAN_ITEM_LIMIT} from './mexican-item.js';
+import {composeMexicanItem,splitMexicanItem,assertPriceFreeMexicanDefault,MEXICAN_ITEM_LIMIT} from './mexican-item.js';
 import {isSoupGroup,soupGroupId} from './daily-soup.js';
+import {mexicanNightDetailVisible} from './mexican-night-visibility.js';
+import {isWingSauceGroup,wingPriceText,wingWednesdayVisible,wingWeekFor,WING_OPTIONS_GROUP} from './wing-wednesday.js';
+import {priceFreeWingDefault} from './section-links.js';
 
 export const SPECIAL_LIMIT = 150;
+// Sections whose items carry a separate title and description, and full poster text.
+const ITEM_SECTIONS = ['mexican-night','mexican-night-defaults','wing-wednesday','wing-wednesday-defaults'];
+const PRICE_FREE_DEFAULTS: Record<string,string> = {'mexican-night-defaults':'Mexican Night','wing-wednesday-defaults':'Wing Wednesday'};
 export const DAY_NUMBERS = [1, 2, 3, 4, 5, 6, 0];
 export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export type SpecialSlot = {
@@ -52,7 +58,8 @@ export function newWeekFromDefaults(defaults: SpecialCollection): SpecialCollect
   return { id: '', kind: 'week', weekly_special_id: null, title: '', schedule: '', revision: 0,
     groups: defaults.groups.map(group => ({ ...group, id: isSoupGroup(group) ? soupGroupId('',group.day_of_week) : `new:${crypto.randomUUID()}`,
       slots: group.slots.map(slot => {
-        const content = slot.content ?? '';
+        const priceFree = priceFreeWingDefault(group, slot);
+        const content = priceFree ?? slot.content ?? '';
         // Blank default slots are immediately eligible for automation.
         // Populated default slots carry unlocked 'manual' origin so automation may replace
         // them with current-date Facebook evidence (manual_locked=0), but are
@@ -60,7 +67,7 @@ export function newWeekFromDefaults(defaults: SpecialCollection): SpecialCollect
         if (!content.trim()) {
           return { ...slot, content: '', origin: 'legacy' as const, manual_locked: 0, last_auto_value: null };
         }
-        return { ...slot, content, origin: 'manual' as const, manual_locked: 0, last_auto_value: null };
+        return { ...slot, content, price: priceFree === null ? slot.price : '', origin: 'manual' as const, manual_locked: 0, last_auto_value: null };
       }) })) };
 }
 
@@ -93,6 +100,41 @@ export async function getWeeklySpecialsForDateRange(env: any, start: string, end
 }
 export async function getMexicanNight(env: any): Promise<SpecialCollection | null> {
   try { return await readCollection(env, 'mexican-night'); } catch { return null; }
+}
+export async function getWingWednesday(env: any): Promise<(SpecialCollection & {section_week_start: string | null; section_service_date: string | null; section_source: string}) | null> {
+  try {
+    const collection = await readCollection(env, 'wing-wednesday');
+    const row = await env.DB.prepare("SELECT section_week_start,section_service_date,section_source FROM special_collections WHERE id='wing-wednesday'").first();
+    return {...collection, section_week_start: row?.section_week_start ?? null, section_service_date: row?.section_service_date ?? null, section_source: row?.section_source ?? ''};
+  } catch { return null; }
+}
+
+// Until the weekly rollover, last week's section is about to be replaced. The editor
+// shows what the coming Wednesday will start from, so a save holds exactly what staff
+// saw instead of carrying last week's prices forward. Display only.
+export function wingEditorValues(wing: SpecialCollection, defaults: SpecialCollection | null, weekStart: string | null, now = new Date()): SpecialCollection {
+  const target = wingWeekFor(now);
+  if (!defaults || (weekStart && weekStart >= target.weekStart)) return wing;
+  return {...wing, title: defaults.title, schedule: defaults.schedule, groups: wing.groups.map(group => {
+    const from = defaults.groups.find(d => `ww-live:${d.id}` === group.id);
+    return {...group, label: from?.label ?? group.label, slots: group.slots.map(slot => ({...slot, price: '', content: from?.slots.find(s => s.position === slot.position)?.content ?? ''}))};
+  })};
+}
+
+// The single decision for each section and every link pointing to it.
+export async function readPublicSections(env: any, now = new Date()) {
+  const [mexican,wing] = await Promise.all([getMexicanNight(env),getWingWednesday(env)]);
+  const mexicanGroups = mexican ? visibleGroups(mexican.groups) : [];
+  const wingGroups = wing ? visibleGroups(wing.groups) : [];
+  const mexicanVisible = mexicanGroups.length > 0 && mexicanNightDetailVisible(mexican?.updated_at, now);
+  const wingVisible = wingGroups.length > 0 && wingWednesdayVisible(wing?.section_service_date, now);
+  const wingLines = wingGroups.filter(group => !isWingSauceGroup(group)).flatMap(group => visibleSlots(group).map(slot => splitMexicanItem(displayedSpecial(slot)).title));
+  const addFries = await env.DB.prepare("SELECT 1 FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='defaults' AND g.day_of_week=3 AND g.service='nightly' AND g.enabled=1 AND s.content LIKE '%add fries%' LIMIT 1").first().catch(() => null);
+  return {wing,mexicanGroups,wingGroups,mexicanVisible,wingVisible,
+    // The Wing section describes one Wednesday; a later one on the board isn't it.
+    sectionsFor:(date: string) => [...(mexicanVisible ? ['mexican-night'] : []),...(wingVisible && date === wing?.section_service_date ? ['wing-wednesday'] : [])],
+    wingOptions:{lines:wingLines,priced:wingLines.some(line => line.includes('$')),source:wing?.section_source ?? '',
+      corrected:wingGroups.some(group=>group.id===WING_OPTIONS_GROUP && group.slots.some(slot=>slot.manual_edited_at)),addFries:!!addFries}};
 }
 
 // ── Import review ─────────────────────────────────────────────────────────────
@@ -387,7 +429,7 @@ export function collectionFromForm(form: FormData, baseline: SpecialCollection):
       service_time: soup ? '' : value(p+'time'), sort: old?.sort ?? index, enabled: soup ? (baseline.kind==='week' && (form.has(p+'hide') || clearedSoup) ? 0 : 1) : form.has(p+'enabled') ? 1 : 0,
       slots: [1,2,3,4].map(position => {
         const prior = old?.slots.find(s => s.position === position);
-        const splitFields = ['mexican-night','mexican-night-defaults'].includes(baseline.id) && form.has(p+position+'_title');
+        const splitFields = ITEM_SECTIONS.includes(baseline.id) && form.has(p+position+'_title');
         // Weekly specials are replaceable by newer Facebook posts unless staff lock
         // them. Soup, recurring defaults and sections keep their own ownership rules.
         const lockable = baseline.kind === 'week' && !soup;
@@ -417,16 +459,23 @@ export function collectionFromForm(form: FormData, baseline: SpecialCollection):
     schedule: baseline.kind==='section' ? value('schedule') : baseline.schedule, groups };
 }
 export function validateCollection(next: SpecialCollection, previous?: SpecialCollection): void {
-  if (next.id === 'mexican-night-defaults') {
-    for (const text of [next.title,next.schedule,...next.groups.flatMap(g => [g.label,g.service_time,...g.slots.map(s => s.content ?? '')])]) assertPriceFreeMexicanDefault(text);
-    if (next.groups.some(g => g.slots.some(s => s.price.trim()))) throw new Error('Recurring Mexican Night defaults cannot include prices. Clear the recurring price.');
+  const priceFreeName = PRICE_FREE_DEFAULTS[next.id];
+  // A legacy priced value left untouched can't block an unrelated save: new weeks drop
+  // it when copying. Anything newly typed here is rejected.
+  if (next.id === 'defaults') for (const group of next.groups) for (const slot of group.slots) {
+    const old = previous?.groups.find(g => g.id === group.id)?.slots.find(s => s.position === slot.position);
+    if (priceFreeWingDefault(group, slot) !== null && (!old || slotValue(old) !== slotValue(slot))) assertPriceFreeMexicanDefault(displayedSpecial(slot),'Wing Wednesday');
+  }
+  if (priceFreeName) {
+    for (const text of [next.title,next.schedule,...next.groups.flatMap(g => [g.label,g.service_time,...g.slots.map(s => s.content ?? '')])]) assertPriceFreeMexicanDefault(text,priceFreeName);
+    if (next.groups.some(g => g.slots.some(s => s.price.trim()))) throw new Error(`Recurring ${priceFreeName} defaults cannot include prices. Clear the recurring price.`);
   }
   if (!Number.isSafeInteger(next.revision) || next.revision < 0) throw new Error('Invalid saved revision.');
   if (next.title.length > 80 || next.schedule.length > 80) throw new Error('Title and schedule allow 80 characters each.');
   if (next.kind === 'section' && !next.title.trim()) throw new Error('Enter a section title.');
   const ids = new Set<string>();
-  // Mexican Night items carry full poster descriptions; every other special keeps SPECIAL_LIMIT.
-  const itemLimit = ['mexican-night','mexican-night-defaults'].includes(next.id) ? MEXICAN_ITEM_LIMIT : SPECIAL_LIMIT;
+  // Section items carry full poster descriptions; every other special keeps SPECIAL_LIMIT.
+  const itemLimit = ITEM_SECTIONS.includes(next.id) ? MEXICAN_ITEM_LIMIT : SPECIAL_LIMIT;
   for (const group of next.groups) {
     if (ids.has(group.id)) throw new Error('Duplicate group.');
     ids.add(group.id);
@@ -453,6 +502,16 @@ export function validateCollection(next: SpecialCollection, previous?: SpecialCo
   }
 }
 
+const wingNamePrice = (content: string | null | undefined) => wingPriceText(splitMexicanItem(content ?? '').title);
+// Marks a price staff entered, which ends the review of that option and stays until a
+// newer verified poster replaces it. A name, description or sauce edit doesn't mark one.
+const wingOptionLocked = (slot: SpecialSlot, old: SpecialSlot | undefined, claiming: boolean) => {
+  const price = wingNamePrice(slot.content);
+  if(!price) return 0;
+  if(claiming || price!==wingNamePrice(old?.content)) return 1;
+  return old?.manual_locked ?? 0;
+};
+
 /** One transactional batch; every dependent write requires the same unique
  * mutation token. A failed compare-and-swap makes ALL later writes no-ops. */
 export async function saveCollection(env: any, next: SpecialCollection, dates?: { start: string; end: string }): Promise<{ id: number | null; collectionId: string; groupIds: Record<string,string>; revision: number }> {
@@ -477,15 +536,26 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
   const writes: any[] = [];
   const groupIds: Record<string,string> = {};
   const prepare = (sql: string, ...args: any[]) => env.DB.prepare(sql).bind(...args);
+  let claimingWing = false;
   if (!fresh) {
     if (next.kind !== 'week') throw new Error('Unknown collection.');
     writes.push(prepare('INSERT INTO weekly_specials(id,week_start_date,week_end_date) SELECT ?1,?2,?3 WHERE NOT EXISTS(SELECT 1 FROM weekly_specials WHERE week_start_date<=?3 AND week_end_date>=?2)',weekId,dates!.start,dates!.end));
     writes.push(prepare("INSERT INTO special_collections(id,kind,weekly_special_id,revision,mutation_token) SELECT ?1,'week',?2,1,?3 WHERE EXISTS(SELECT 1 FROM weekly_specials WHERE id=?2)",collectionId,weekId,token));
   } else {
     const overlap = next.kind==='week' ? ' AND NOT EXISTS(SELECT 1 FROM weekly_specials WHERE id<>?6 AND week_start_date<=?8 AND week_end_date>=?7)' : '';
-    const sectionFields = next.kind === 'section' ? ",updated_at=CURRENT_TIMESTAMP" + (next.id === 'mexican-night' ? ",section_source='manual'" : '') : '';
+    // A Wing Wednesday save claims its week, so a later rollover for that same week
+    // can't replace it. It never claims backward: a week already started stays put.
+    const wingWeek = next.id === 'wing-wednesday' ? wingWeekFor(new Date(Date.now())) : null;
+    const wingRow = wingWeek ? await env.DB.prepare("SELECT section_week_start FROM special_collections WHERE id='wing-wednesday'").first() : null;
+    claimingWing = !!wingWeek && (!wingRow?.section_week_start || wingRow.section_week_start < wingWeek.weekStart);
+    const oldOptions = fresh.groups.find(g => g.id === WING_OPTIONS_GROUP);
+    const staffPriced = !!wingWeek && !!next.groups.find(g => g.id === WING_OPTIONS_GROUP)?.slots.some(s => wingOptionLocked(s,oldOptions?.slots.find(o => o.position === s.position),claimingWing));
+    const sectionOwner = next.id === 'mexican-night' || staffPriced ? ",section_source='manual'"
+      : !wingWeek ? '' : claimingWing ? ",section_source='recurring'" : ",section_source=CASE WHEN section_source='manual' THEN 'recurring' ELSE section_source END";
+    const claimWeek = wingWeek ? ",section_week_start=CASE WHEN section_week_start IS NULL OR section_week_start<?6 THEN ?6 ELSE section_week_start END,section_service_date=CASE WHEN section_week_start IS NULL OR section_week_start<?6 THEN ?7 ELSE section_service_date END" : '';
+    const sectionFields = next.kind === 'section' ? ",updated_at=CURRENT_TIMESTAMP" + sectionOwner + claimWeek : '';
     writes.push(prepare('UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3'+sectionFields+' WHERE id=?4 AND revision=?5'+overlap,
-      ...[token,next.title,next.schedule,collectionId,next.revision,...(next.kind==='week' ? [weekId,dates!.start,dates!.end] : [])]));
+      ...[token,next.title,next.schedule,collectionId,next.revision,...(next.kind==='week' ? [weekId,dates!.start,dates!.end] : []),...(wingWeek ? [wingWeek.weekStart,wingWeek.serviceDate] : [])]));
   }
   const gate = 'EXISTS(SELECT 1 FROM special_collections WHERE id=?1 AND mutation_token=?2)';
   if (next.kind==='week') writes.push(prepare(`UPDATE weekly_specials SET week_start_date=?3,week_end_date=?4,updated_at=CURRENT_TIMESTAMP WHERE id=?5 AND ${gate}`,collectionId,token,dates!.start,dates!.end,weekId));
@@ -503,6 +573,13 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
     for (const slot of group.slots) {
       const old = previous?.slots.find(s=>s.position===slot.position);
       const isPopulated = (slot.content ?? '').trim().length > 0;
+      if (old && next.id === 'wing-wednesday' && group.id === WING_OPTIONS_GROUP && slot.position<=2) {
+        const locked=wingOptionLocked(slot,old,claimingWing);
+        const priceChanged=wingNamePrice(old.content)!==wingNamePrice(slot.content);
+        if (claimingWing || slotValue(old) !== slotValue(slot) || locked!==old.manual_locked) slotRows.push([groupId,slot.position,slot.content,slot.price,slot.section_link,old.last_auto_value ?? null,
+          locked,isPopulated ? 'manual' : 'legacy',priceChanged || locked!==old.manual_locked ? editedAt : old.manual_edited_at ?? null]);
+        continue;
+      }
       if (old && slotValue(old)===slotValue(slot)) {
         if (!lockable || !isPopulated || old.manual_locked===slot.manual_locked) continue;
         // Lock control only. An unchanged automation value stays automation-owned.
@@ -537,6 +614,8 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
     FROM json_each(?3) WHERE ${gate}
     ON CONFLICT(group_id,position) DO UPDATE SET content=excluded.content,price=excluded.price,section_link=excluded.section_link,origin=excluded.origin,manual_locked=excluded.manual_locked,manual_edited_at=excluded.manual_edited_at`,
     collectionId,token,JSON.stringify(slotRows)));
+  // A claimed week owes nothing to last week's poster.
+  if (claimingWing) writes.push(prepare(`UPDATE special_slots SET origin='manual',last_auto_value=NULL,manual_edited_at=NULL WHERE group_id=?3 AND ${gate}`,collectionId,token,WING_OPTIONS_GROUP));
   writes.push(prepare('SELECT id FROM special_collections WHERE id=?1 AND mutation_token=?2',collectionId,token));
   const results = await env.DB.batch(writes);
   if (!results.at(-1)?.results?.length) throw new SpecialConflict();

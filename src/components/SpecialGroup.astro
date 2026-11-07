@@ -1,16 +1,20 @@
 ---
-import { displayedSpecial, visibleSlots, type SpecialGroup } from '../lib/specials-store';
-interface Props { group: SpecialGroup; showTime?: boolean; mexicanAvailable?: boolean }
-const { group, showTime = true, mexicanAvailable = false } = Astro.props;
-const tuesdayNightly = group.day_of_week === 2 && group.service === 'nightly';
-const slots = (group.enabled ? visibleSlots(group) : []).map(slot =>
-  tuesdayNightly && mexicanAvailable && /^Mexican Night!\s*Ask to see our Menu!$/i.test((slot.content ?? '').trim())
-    ? {...slot, content: 'Mexican Night!', section_link: slot.section_link || 'mexican-night'}
-    : slot);
+import { visibleSlots, type SpecialGroup } from '../lib/specials-store';
+import {presentHomeSpecial,presentSpecial} from '../lib/section-links.js';
+interface Props { group: SpecialGroup; showTime?: boolean; sections?: string[]; wing?: {lines: string[]; priced: boolean; source: string} | null; homeCard?: boolean }
+const { group, showTime = true, sections = [], wing = null, homeCard = false } = Astro.props;
+const present = homeCard ? presentHomeSpecial : presentSpecial;
+// One link per promotion: a second special naming it reads normally.
+const linked = new Set<string>();
+const slots = (group.enabled ? visibleSlots(group) : []).map(slot => {
+  const shown = present(group, slot, sections.filter(id => !linked.has(id)), wing);
+  if (shown.link) linked.add(shown.link.id);
+  return shown;
+});
 ---
 {slots.length > 0 && <section class="special-group">
   <p class="special-group__label">{group.label}{showTime && group.service_time && <span>{group.service_time}</span>}</p>
-  <ul class="special-group__items">{slots.map(slot => <li><span>{displayedSpecial(slot)}</span>{slot.section_link === 'mexican-night' && mexicanAvailable && <a class:list={{'special-group__menu-cta': tuesdayNightly}} href="/specials#mexican-night">{tuesdayNightly ? 'View the Menu →' : 'View Mexican Night menu →'}</a>}</li>)}</ul>
+  <ul class="special-group__items">{slots.map(({link, text}) => <li>{link && <a class="special-group__section-link" href={link.href} data-section-link={link.id}>{link.label}</a>}{text && <span class:list={{'special-group__linked-text': link}}>{text}</span>}</li>)}</ul>
 </section>}
 <style>
 .special-group{min-width:0;align-self:start}
@@ -32,14 +36,12 @@ const slots = (group.enabled ? visibleSlots(group) : []).map(slot =>
   color:var(--sg-text,#291912);
 }
 .special-group__items li+li{border-top:1px dashed var(--sg-rule,rgba(41,25,18,.16));padding-top:10px}
-.special-group__items a{
-  display:inline-block;margin-top:5px;
-  font:600 .78rem var(--label);letter-spacing:.07em;text-transform:uppercase;
-  color:var(--sg-link,var(--brick));text-underline-offset:3px;
+.special-group__section-link{
+  display:inline-block;max-width:100%;padding:4px 0;
+  font:700 1.2rem/1.3 var(--label);letter-spacing:.04em;
+  color:var(--sg-link,var(--brick));
+  text-decoration:underline;text-decoration-thickness:1.5px;text-underline-offset:3px;
 }
-.special-group__items a.special-group__menu-cta{
-  display:inline;margin:0 0 0 .35em;font:inherit;letter-spacing:inherit;
-  text-transform:none;text-decoration:underline;text-decoration-thickness:1.5px;
-}
-.special-group__menu-cta:focus-visible{outline:3px solid currentColor;outline-offset:3px}
+.special-group__section-link:focus-visible{outline:3px solid currentColor;outline-offset:3px}
+.special-group__linked-text{display:block;margin-top:4px}
 </style>
