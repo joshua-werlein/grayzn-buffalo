@@ -3,6 +3,7 @@ import Base from '../../layouts/Base.astro';
 import { isAuthed } from '../../lib/auth';
 import { thumbKey } from '../../lib/db';
 import { normalizeMenuCase } from '../../lib/text-case.js';
+import { getPizzaOptions, savePizzaOptions, pizzaOptionsFromForm, PIZZA_SIZES, PIZZA_CRUSTS } from '../../lib/pizza-options.js';
 
 const env = (Astro.locals as any).runtime?.env ?? {};
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -32,6 +33,7 @@ const SM_MESSAGES: Record<string, { ok: boolean; text: string }> = {
 };
 let notice = '';
 let problem = '';
+let pizzaDraft: FormData | null = null;
 // The saved item text, returned so the editor shows the house capitalization.
 let saved: { name: string; description: string } | null = null;
 const wantsJson = Astro.request.headers.get('accept')?.includes('application/json');
@@ -43,7 +45,16 @@ if (Astro.request.method === 'POST') {
   const action = f.get('action');
   const isSectionAction = ['add-section', 'edit-section', 'reorder-sections', 'delete-section'].includes(String(action));
   try {
-    if (action === 'section-details') {
+    if (action === 'pizza-options') {
+      if (Astro.request.headers.get('origin') !== Astro.url.origin) {
+        return new Response('Invalid request origin.', { status: 403 });
+      }
+      pizzaDraft = f;
+      const options = pizzaOptionsFromForm(f);
+      try { await savePizzaOptions(env, options); }
+      catch { throw new Error('Could not save pizza options. Please try again.'); }
+      return Astro.redirect('/admin/menu?pizza=saved#pizza-options', 303);
+    } else if (action === 'section-details') {
       const id = Number(f.get('category_id'));
       if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid section.');
       await env.DB.prepare('UPDATE categories SET subtitle = ?2, note = ?3 WHERE id = ?1')
@@ -174,6 +185,11 @@ try {
   categories = (await env.DB.prepare('SELECT * FROM categories ORDER BY sort').all()).results ?? [];
   items = (await env.DB.prepare('SELECT * FROM items ORDER BY category_id, sort').all()).results ?? [];
 } catch {}
+const pizzaOptions = await getPizzaOptions(env);
+const pizzaEditor = pizzaDraft ? {
+  sizes: pizzaDraft.getAll('pizza_sizes'), crusts: pizzaDraft.getAll('pizza_crusts'),
+  toppingsText: String(pizzaDraft.get('pizza_toppings') ?? ''),
+} : { ...pizzaOptions, toppingsText: pizzaOptions.toppings.join('\n') };
 ---
 <Base title="Admin · Menu — Grayz'n Buffalo">
 <section class="menu-admin">
@@ -185,6 +201,18 @@ try {
   </div>
 
   <div class="admin-wrap">
+    <details class="pizza-manager" id="pizza-options" open={Astro.url.searchParams.get('pizza') === 'saved' || !!problem}>
+      <summary>Pizza sizes, crusts &amp; additional toppings</summary>
+      {Astro.url.searchParams.get('pizza') === 'saved' && <p class="flash ok" role="status">Pizza options saved.</p>}
+      <form method="post" class="card pizza-form">
+        <input type="hidden" name="action" value="pizza-options" />
+        <p>These choices apply to all pizzas on the Daily and Late Night menus. Pizza Fries is excluded and keeps its own sizes. Keep each pizza’s ingredients in its item description below.</p>
+        <fieldset><legend>Pizza sizes</legend><div class="pizza-checks">{PIZZA_SIZES.map(size => <label><input type="checkbox" name="pizza_sizes" value={size} checked={pizzaEditor.sizes.includes(size)} /> {size}</label>)}</div></fieldset>
+        <fieldset><legend>Crust options</legend><div class="pizza-checks">{PIZZA_CRUSTS.map(crust => <label><input type="checkbox" name="pizza_crusts" value={crust} checked={pizzaEditor.crusts.includes(crust)} /> {crust}</label>)}</div></fieldset>
+        <div class="field"><label for="pizza-toppings">Additional topping choices</label><textarea id="pizza-toppings" name="pizza_toppings" rows="8" maxlength="3240" aria-describedby="pizza-toppings-help">{pizzaEditor.toppingsText}</textarea><p id="pizza-toppings-help">One topping name per line, up to 40 toppings (80 characters each). The starting list contains the 20 choices from the original printed menu. Edit this list when choices change.</p></div>
+        <button class="btn btn-primary" type="submit">Save pizza options</button>
+      </form>
+    </details>
     <details class="add-disclosure" id="add-item-panel">
       <summary>Add Item <span aria-hidden="true">＋</span></summary>
     <form method="post" class="card add-form" id="add-item-form">
@@ -570,7 +598,7 @@ try {
   // Existing items update in place. Adding is deliberately different: its
   // redirect is what reveals the newly created item in its section.
   document.querySelectorAll<HTMLFormElement>('form[method="post"]').forEach((form) => {
-    if (form === addForm || form.closest('.section-manager') || !form.querySelector('input[name="action"]')) return;
+    if (form === addForm || form.closest('.section-manager') || form.closest('.pizza-manager') || !form.querySelector('input[name="action"]')) return;
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -823,6 +851,16 @@ try {
 </script>
 
 <style>
+  .pizza-manager{margin-bottom:20px;border:2px solid var(--ink);border-radius:10px;background:#fff}
+  .pizza-manager>summary{padding:14px;min-height:52px;cursor:pointer;font:700 1.05rem var(--label)}
+  .pizza-form{display:grid;gap:16px;box-shadow:none}
+  .pizza-form p{line-height:1.5;overflow-wrap:anywhere}
+  .pizza-form fieldset{min-width:0;border:1px solid var(--ink-2);padding:12px}
+  .pizza-form legend{font-weight:700;padding:0 6px}
+  .pizza-checks{display:flex;gap:8px 20px;flex-wrap:wrap}
+  .pizza-checks label{display:flex;align-items:center;gap:8px;min-height:48px;cursor:pointer}
+  .pizza-checks input{width:22px;height:22px;accent-color:var(--crimson)}
+  .pizza-form button{justify-self:start;min-height:48px}
   .admin-wrap{max-width:780px;margin:0 auto}
 
   .flash{font-family:var(--label);font-weight:700;letter-spacing:.04em;

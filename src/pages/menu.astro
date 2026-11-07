@@ -1,9 +1,12 @@
 ---
 import Base from '../layouts/Base.astro';
 import { getMenu, thumbKey } from '../lib/db';
+import PizzaOptions from '../components/PizzaOptions.astro';
+import { getPizzaOptions, isPizzaCategory } from '../lib/pizza-options.js';
  
 const env = (Astro.locals as any).runtime?.env ?? {};
 const { categories, items } = await getMenu(env);
+const pizzaOptions = await getPizzaOptions(env);
  
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
  
@@ -113,6 +116,7 @@ const lateNightColumns = [lateNight.filter((group) => !lateNightRight.includes(g
               <h2>{g.cat.name}</h2>
               {g.cat.subtitle && <p class="category-subtitle">{g.cat.subtitle}</p>}
               {g.cat.note && <p class="category-note">{g.cat.note}</p>}
+              {isPizzaCategory(g.cat.name) && <PizzaOptions options={pizzaOptions} />}
               <ul class="menu-list">
                 {g.items.map((it) => (
                   <li class="item" id={`menu-item-${it.id}`}>
@@ -149,6 +153,7 @@ const lateNightColumns = [lateNight.filter((group) => !lateNightRight.includes(g
                 <h2>{g.cat.name}</h2>
                 {g.cat.subtitle && <p class="category-subtitle">{g.cat.subtitle}</p>}
                 {g.cat.note && <p class="category-note">{g.cat.note}</p>}
+                {isPizzaCategory(g.cat.name) && <PizzaOptions options={pizzaOptions} />}
                 <ul class="menu-list">
                   {g.items.map((it) => (
                     <li class="item">

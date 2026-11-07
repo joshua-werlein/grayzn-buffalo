@@ -1,13 +1,16 @@
 import type { APIRoute } from 'astro';
 import { getMenu } from '../lib/db';
+import { getPizzaOptions, isPizzaCategory, PIZZA_SCOPE } from '../lib/pizza-options.js';
 
 export const GET: APIRoute = async ({ locals }) => {
   const env = (locals as any).runtime?.env ?? {};
   const { categories, items } = await getMenu(env);
+  const pizzaOptions = await getPizzaOptions(env);
   const sections = categories.map((category) => ({
     name: category.name,
     subtitle: category.subtitle || undefined,
     note: category.note || undefined,
+    ...(isPizzaCategory(category.name) ? { pizzaOptions: { ...pizzaOptions, scope: PIZZA_SCOPE } } : {}),
     items: items
       .filter((item) => item.category_id === category.id)
       .map((item) => ({
