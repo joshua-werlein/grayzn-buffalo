@@ -97,10 +97,17 @@ and rehearses both files on that copy before reporting success.
    record can have both its name and description changed. Obtain approval for
    that exact export and generated SQL; regenerate if writes have resumed.
 
-4. After approval, apply:
+4. After approval, apply through the fail-closed guard, passing the SHA-256 of the
+   approved `apply.sql`. It checks `apply.sql` against `changes.json` and the hash,
+   proves every guard matches exactly one live row (read-only `--command` queries),
+   and only then runs the write. Any failed, unparseable, missing or unexpected
+   preflight result stops it non-zero before the write. Never run the write
+   separately or chain separate Wrangler preflight and apply commands. Run
+   `--preflight-only` first, with its own approval. Arguments, approvals and the
+   mandatory stop conditions are in [preflight-fail-closed.md](preflight-fail-closed.md).
 
    ```sh
-   npx wrangler d1 execute grayzn-db --config workers/fb-feed/wrangler.toml --remote --file backups/menu-case/apply.sql
+   node scripts/d1-guarded-apply.mjs --plan backups/menu-case --confirm <sha256 of apply.sql>
    ```
 
 5. Compare each statement's affected-row count with the approved manifest. A
@@ -127,8 +134,11 @@ written, so the Mexican Night visibility window and staff-edit times are unaffec
 
 ### Rollback
 
-With writes still paused, apply `rollback.sql` using the same explicit config as
-step 4 and `--file backups/menu-case/rollback.sql`. It restores only matching
+`scripts/d1-guarded-apply.mjs` does not yet guard `rollback.sql`. Running it is a
+manual production write that needs JJ's explicit approval for that rollback, outside
+the guarded procedure; see the limitations in
+[preflight-fail-closed.md](preflight-fail-closed.md). With writes still paused, it is
+run with the explicit config from step 4 and `--file backups/menu-case/rollback.sql`. It restores only matching
 backfilled values whose metadata/revision still match the backup. Verify exact
 equality with the export before resuming. Later staff edits are deliberately
 skipped: reconcile those rows manually. A whole-database restore can discard

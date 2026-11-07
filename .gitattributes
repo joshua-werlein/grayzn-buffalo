@@ -1,0 +1,2 @@
+# Byte-exact capture of Wrangler output (CRLF) used by the November 7 preflight regression test.
+tests/fixtures/wrangler-remote-file-aggregate-20261107.txt -text -diff -whitespace
