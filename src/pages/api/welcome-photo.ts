@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { isAuthed } from '../../lib/auth';
 import { thumbKey } from '../../lib/db';
+import { isWebpUpload } from '../../lib/photo-upload';
 
 export const prerender = false;
 
@@ -76,14 +77,18 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
     if (full.type !== 'image/webp' || thumb.type !== 'image/webp') {
       return json({ ok: false, error: 'That photo was not converted properly. Reload the page and try again.' }, 400);
     }
+    const [fullBytes, thumbBytes] = await Promise.all([full.arrayBuffer(), thumb.arrayBuffer()]);
+    if (!isWebpUpload(fullBytes) || !isWebpUpload(thumbBytes)) {
+      return json({ ok: false, error: 'That photo was not converted properly. Reload the page and try again.' }, 400);
+    }
 
     const key = `welcome/${crypto.randomUUID()}.webp`;
     const meta = { httpMetadata: { contentType: 'image/webp' } };
 
     // Write both new objects before D1 points at them; a failure can only
     // leave an orphan, never a Welcome slot that references a missing image.
-    await env.PHOTOS.put(key, await full.arrayBuffer(), meta);
-    await env.PHOTOS.put(thumbKey(key), await thumb.arrayBuffer(), meta);
+    await env.PHOTOS.put(key, fullBytes, meta);
+    await env.PHOTOS.put(thumbKey(key), thumbBytes, meta);
     await env.DB.prepare(
       'INSERT INTO welcome_photos (slot, photo_key, alt, caption, orientation) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(slot) DO UPDATE SET photo_key = ?2, alt = ?3, caption = ?4, orientation = ?5'
     ).bind(slot, key, alt, caption, orientation).run();
@@ -95,7 +100,7 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
       thumbUrl: `/img/${thumbKey(key)}`,
       message: 'Welcome photo saved.',
     });
-  } catch (error: any) {
-    return json({ ok: false, error: error?.message ?? 'Upload failed. Check your connection and try again.' }, 500);
+  } catch {
+    return json({ ok: false, error: 'Upload failed. Check your connection and try again.' }, 500);
   }
 };

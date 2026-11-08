@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { isAuthed } from '../../lib/auth';
 import { thumbKey } from '../../lib/db';
+import { isWebpUpload } from '../../lib/photo-upload';
 
 export const prerender = false;
 
@@ -69,6 +70,10 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
     if (full.type !== 'image/webp' || thumb.type !== 'image/webp') {
       return json({ ok: false, error: 'That photo was not converted properly. Reload the page and try again.' }, 400);
     }
+    const [fullBytes, thumbBytes] = await Promise.all([full.arrayBuffer(), thumb.arrayBuffer()]);
+    if (!isWebpUpload(fullBytes) || !isWebpUpload(thumbBytes)) {
+      return json({ ok: false, error: 'That photo was not converted properly. Reload the page and try again.' }, 400);
+    }
 
     const previous: any = await env.DB.prepare('SELECT photo_key FROM items WHERE id = ?1').bind(id).first();
     const orientation = photoOrientation(f);
@@ -77,8 +82,8 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
 
     // Write new, point the row at it, then clean up the old. In that order a
     // failure leaves an orphaned object rather than a row with a dead key.
-    await env.PHOTOS.put(key, await full.arrayBuffer(), meta);
-    await env.PHOTOS.put(thumbKey(key), await thumb.arrayBuffer(), meta);
+    await env.PHOTOS.put(key, fullBytes, meta);
+    await env.PHOTOS.put(thumbKey(key), thumbBytes, meta);
     await env.DB.prepare('UPDATE items SET photo_key = ?1, photo_orientation = ?2 WHERE id = ?3').bind(key, orientation, id).run();
     await dropPhoto(env, previous?.photo_key);
 
@@ -89,7 +94,7 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
       fullUrl: `/img/${key}`,
       message: 'Photo saved.',
     });
-  } catch (e: any) {
-    return json({ ok: false, error: e?.message ?? 'Upload failed. Check your connection and try again.' }, 500);
+  } catch {
+    return json({ ok: false, error: 'Upload failed. Check your connection and try again.' }, 500);
   }
 };
