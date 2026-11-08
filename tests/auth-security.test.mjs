@@ -162,7 +162,9 @@ test('compiled staff pages reject unauthenticated and expired sessions before lo
         } } },
       });
       assert.equal(response.status, 302);
-      assert.equal(response.headers.get('location'), '/admin');
+      // Menu sends staff back to itself after sign-in and says an unsaved change was lost.
+      const expected = name !== 'menu' ? '/admin' : method === 'POST' ? '/admin?next=/admin/menu&expired=1' : '/admin?next=/admin/menu';
+      assert.equal(response.headers.get('location'), expected);
     }
   }
 });

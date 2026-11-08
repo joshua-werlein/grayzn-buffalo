@@ -3,13 +3,29 @@ import Base from '../layouts/Base.astro';
 import { getMenu, thumbKey } from '../lib/db';
 import PizzaOptions from '../components/PizzaOptions.astro';
 import { getPizzaOptions, isPizzaCategory } from '../lib/pizza-options.js';
-import { getMenuSauces, getSaucesSort, saucesIndex, saucesSectionName, MENU_SAUCE_NOTE, SAUCES_ANCHOR } from '../lib/menu-sauces';
+import SaucesPanel from '../components/SaucesPanel.astro';
+import SubstituteSidesPanel from '../components/SubstituteSidesPanel.astro';
+import WrapOptions from '../components/WrapOptions.astro';
+import SaladOptions from '../components/SaladOptions.astro';
+import { getMenuSauces } from '../lib/menu-sauces';
+import { SAUCES_SECTION, SIDES_SECTION, getSectionSort, sectionIndex, sectionName, interleave, type VirtualSection } from '../lib/menu-sections';
+import { getMenuOptions, hasShell, isSaladCategory, isWrapCategory, SALAD_OPTIONS_KEY, SALAD_SHELL_MARK, SUBSTITUTE_SIDES_KEY, WRAP_OPTIONS_KEY } from '../lib/menu-options.js';
  
 const env = (Astro.locals as any).runtime?.env ?? {};
 const { categories, items } = await getMenu(env);
-const pizzaOptions = await getPizzaOptions(env);
-const [sauces, saucesSort] = await Promise.all([getMenuSauces(env), getSaucesSort(env)]);
-const saucesName = saucesSectionName(categories);
+const [pizzaOptions, sauces, saucesSort, sidesSort, wrapOptions, saladOptions, sidesOptions] = await Promise.all([
+  getPizzaOptions(env), getMenuSauces(env), getSectionSort(env, SAUCES_SECTION), getSectionSort(env, SIDES_SECTION),
+  getMenuOptions(env, WRAP_OPTIONS_KEY), getMenuOptions(env, SALAD_OPTIONS_KEY), getMenuOptions(env, SUBSTITUTE_SIDES_KEY),
+]);
+const saucesName = sectionName(categories, SAUCES_SECTION);
+const sidesName = sectionName(categories, SIDES_SECTION);
+const sides = sidesOptions.sides as string[];
+// Shell daggers only mark Salads items (never Mexican Night's Taco Salad).
+type Named = { name: string };
+const shell = (cat: Named, it: Named) => isSaladCategory(cat.name) && hasShell(saladOptions, it.name);
+const saladShells = (g: { cat: Named; items: Named[] }) => g.items.some((it) => shell(g.cat, it));
+const showSalad = (g: { cat: Named; items: Named[] }) =>
+  isSaladCategory(g.cat.name) && (saladOptions.dressings.length > 0 || saladOptions.greens.length > 0 || saladShells(g));
  
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
  
@@ -39,23 +55,32 @@ const dailyColumns = splitColumns(daily);
 const lateNightRight = lateNight.filter((group) => ['Burgers', 'Pizzas'].includes(group.cat.name));
 const lateNightColumns = [lateNight.filter((group) => !lateNightRight.includes(group)), lateNightRight];
 
-// Sauces is its own section, placed by its saved order number. It goes directly after
-// the section before it in that order, in that section's column, so every other
-// section keeps its existing column. Hidden when the Wing Wednesday list is empty.
-const SAUCES = { sauces: true } as const;
-type Block = Group | typeof SAUCES;
-const isSauces = (block: Block): block is typeof SAUCES => block === SAUCES;
-const withSauces = (groups: Group[], columns: Group[][]): Block[][] => {
-  if (!sauces.length) return columns;
-  const before = groups[saucesIndex(groups.map((g) => g.cat), saucesSort) - 1];
-  return columns.map((column, i) => before
-    ? column.flatMap((g): Block[] => (g === before ? [g, SAUCES] : [g]))
-    : i === 0 ? [SAUCES, ...column] : column);
+// Sauces and Substitute Sides are their own sections, placed by saved order numbers.
+// Each goes directly after the section before it in that order, in that section's
+// column, so every other section keeps its existing column. Sauces shows on both tabs
+// (hidden when the Wing Wednesday list is empty); Substitute Sides on Daily, and on
+// Late Night only when staff turn that on (hidden when its list is empty).
+type Virtual = { kind: 'sauces' | 'sides'; section: VirtualSection; name: string };
+const SAUCES: Virtual = { kind: 'sauces', section: SAUCES_SECTION, name: saucesName };
+const SIDES: Virtual = { kind: 'sides', section: SIDES_SECTION, name: sidesName };
+type Block = Group | Virtual;
+const isVirtual = (block: Block): block is Virtual => 'kind' in block;
+const placed = (groups: Group[], virtuals: Virtual[]) => virtuals.map((block) => ({
+  block, index: sectionIndex(groups.map((g) => g.cat), block === SAUCES ? saucesSort : sidesSort, block.section),
+}));
+const withVirtual = (groups: Group[], columns: Group[][], virtuals: Virtual[]): Block[][] => {
+  const at = placed(groups, virtuals);
+  return columns.map((column, i) => [
+    ...(i === 0 ? at.filter((p) => p.index === 0).map((p) => p.block) : []),
+    ...column.flatMap((g): Block[] => [g, ...at.filter((p) => groups[p.index - 1] === g).map((p) => p.block)]),
+  ]);
 };
-const dailyBlocks = withSauces(daily, dailyColumns);
-const lateNightBlocks = withSauces(lateNight, lateNightColumns);
-const dailyChips: { name: string; href: string }[] = daily.map((g) => ({ name: g.cat.name, href: `#sec-${slug(g.cat.name)}` }));
-if (sauces.length) dailyChips.splice(saucesIndex(daily.map((g) => g.cat), saucesSort), 0, { name: saucesName, href: `#${SAUCES_ANCHOR}` });
+const dailyVirtual = [...(sauces.length ? [SAUCES] : []), ...(sides.length ? [SIDES] : [])];
+const dailyBlocks = withVirtual(daily, dailyColumns, dailyVirtual);
+const lateNightVirtual = [...(sauces.length ? [SAUCES] : []), ...(sides.length && sidesOptions.lateNight ? [SIDES] : [])];
+const lateNightBlocks = withVirtual(lateNight, lateNightColumns, lateNightVirtual);
+const dailyChips: { name: string; href: string }[] = interleave(daily, placed(daily, dailyVirtual))
+  .map((b) => (isVirtual(b) ? { name: b.name, href: `#${b.section.anchor}` } : { name: b.cat.name, href: `#sec-${slug(b.cat.name)}` }));
 ---
 <Base
   title="Menu — Grayz'n Buffalo Bar & Grill"
@@ -132,11 +157,10 @@ if (sauces.length) dailyChips.splice(saucesIndex(daily.map((g) => g.cat), sauces
     <div class="menu-columns">
       {dailyBlocks.map((column) => (
         <div class="menu-column">
-          {column.map((g) => isSauces(g) ? (
-            <section class="cat-section sauces-section" id={SAUCES_ANCHOR}>
-              <h2>{saucesName}</h2>
-              <p class="category-note">{MENU_SAUCE_NOTE}</p>
-              <ul class="sauce-list">{sauces.map((sauce) => <li>{sauce}</li>)}</ul>
+          {column.map((g) => isVirtual(g) ? (
+            <section class={`cat-section ${g.kind === 'sauces' ? 'sauces-section' : 'substitute-sides-section'}`} id={g.section.anchor} tabindex="-1">
+              <h2>{g.name}</h2>
+              {g.kind === 'sauces' ? <SaucesPanel sauces={sauces} /> : <SubstituteSidesPanel sides={sides} />}
             </section>
           ) : (
             <section class="cat-section" id={`sec-${slug(g.cat.name)}`}>
@@ -144,6 +168,8 @@ if (sauces.length) dailyChips.splice(saucesIndex(daily.map((g) => g.cat), sauces
               {g.cat.subtitle && <p class="category-subtitle">{g.cat.subtitle}</p>}
               {g.cat.note && <p class="category-note">{g.cat.note}</p>}
               {isPizzaCategory(g.cat.name) && <PizzaOptions options={pizzaOptions} />}
+              {isWrapCategory(g.cat.name) && wrapOptions.notes.length > 0 && <WrapOptions notes={wrapOptions.notes} sidesHref={sides.length ? `#${SIDES_SECTION.anchor}` : undefined} />}
+              {showSalad(g) && <SaladOptions options={saladOptions} shells={saladShells(g)} />}
               <ul class="menu-list">
                 {g.items.map((it) => (
                   <li class="item" id={`menu-item-${it.id}`}>
@@ -153,7 +179,7 @@ if (sauces.length) dailyChips.splice(saucesIndex(daily.map((g) => g.cat), sauces
                       </button>
                     )}
                       <div class="item-copy">
-                      <strong>{g.cat.name === 'Burgers' ? `*${it.name}` : it.name}</strong>
+                      <strong>{shell(g.cat, it) && <span aria-hidden="true">{SALAD_SHELL_MARK}</span>}{g.cat.name === 'Burgers' ? `*${it.name}` : it.name}{shell(g.cat, it) && <span class="sr-only"> (comes with a shell)</span>}</strong>
                       {it.description && <span>{it.description}</span>}
                     </div>
                   </li>
@@ -175,11 +201,10 @@ if (sauces.length) dailyChips.splice(saucesIndex(daily.map((g) => g.cat), sauces
       <div class="menu-columns">
         {lateNightBlocks.map((column) => (
           <div class="menu-column">
-            {column.map((g) => isSauces(g) ? (
-              <section class="cat-section sauces-section">
-                <h2>{saucesName}</h2>
-                <p class="category-note">{MENU_SAUCE_NOTE}</p>
-                <ul class="sauce-list">{sauces.map((sauce) => <li>{sauce}</li>)}</ul>
+            {column.map((g) => isVirtual(g) ? (
+              <section class={`cat-section ${g.kind === 'sauces' ? 'sauces-section' : 'substitute-sides-section'}`} id={`late-${g.section.anchor}`} tabindex="-1">
+                <h2>{g.name}</h2>
+                {g.kind === 'sauces' ? <SaucesPanel sauces={sauces} /> : <SubstituteSidesPanel sides={sides} />}
               </section>
             ) : (
               <section class="cat-section">
@@ -187,6 +212,8 @@ if (sauces.length) dailyChips.splice(saucesIndex(daily.map((g) => g.cat), sauces
                 {g.cat.subtitle && <p class="category-subtitle">{g.cat.subtitle}</p>}
                 {g.cat.note && <p class="category-note">{g.cat.note}</p>}
                 {isPizzaCategory(g.cat.name) && <PizzaOptions options={pizzaOptions} />}
+                {isWrapCategory(g.cat.name) && wrapOptions.notes.length > 0 && <WrapOptions notes={wrapOptions.notes} sidesHref={sides.length ? `#${sidesOptions.lateNight ? "late-" : ""}${SIDES_SECTION.anchor}` : undefined} />}
+                {showSalad(g) && <SaladOptions options={saladOptions} shells={saladShells(g)} />}
                 <ul class="menu-list">
                   {g.items.map((it) => (
                     <li class="item">
@@ -196,7 +223,7 @@ if (sauces.length) dailyChips.splice(saucesIndex(daily.map((g) => g.cat), sauces
                         </button>
                       )}
                       <div class="item-copy">
-                      <strong>{g.cat.name === 'Burgers' ? `*${it.name}` : it.name}</strong>
+                      <strong>{shell(g.cat, it) && <span aria-hidden="true">{SALAD_SHELL_MARK}</span>}{g.cat.name === 'Burgers' ? `*${it.name}` : it.name}{shell(g.cat, it) && <span class="sr-only"> (comes with a shell)</span>}</strong>
                       {it.description && <span>{it.description}</span>}
                       </div>
                     </li>
@@ -217,8 +244,6 @@ if (sauces.length) dailyChips.splice(saucesIndex(daily.map((g) => g.cat), sauces
 <style>
   .category-subtitle{margin:8px 0;font-family:var(--label);font-size:1.1rem;font-weight:700;color:var(--brick)}
   .category-note{margin:8px 0 14px;line-height:1.45;color:#583e30}
-  .sauce-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px}
-  .sauce-list li{padding:9px 0;border-bottom:1px solid rgba(88,62,48,.2);color:#291912;font-family:var(--label);font-size:1.05rem;font-weight:700;line-height:1.25;overflow-wrap:anywhere}
   .menu-top{
     --footer-blend-height:clamp(40px,3vw,56px);
     padding:clamp(28px,5vw,68px) clamp(14px,4vw,56px) calc(var(--footer-blend-height) + clamp(12px,1.5vw,20px));
@@ -415,7 +440,8 @@ if (sauces.length) dailyChips.splice(saucesIndex(daily.map((g) => g.cat), sauces
   .item-photo{display:block;width:72px;height:56px;object-fit:cover;border:3px solid #f8ecd3;background:rgba(41,25,18,.08);box-shadow:0 0 0 1px rgba(41,25,18,.38),2px 2px 0 rgba(41,25,18,.17)}
   .item-copy{min-width:0;overflow-wrap:anywhere}
   .item-copy strong{display:block;color:#291912;font-family:var(--label);font-size:1.12rem;font-weight:700;line-height:1.2}
-  .item-copy span{display:block;margin-top:3px;color:#583e30;font-size:.94rem;line-height:1.43}
+  /* Descriptions only: marks inside the name (the salad dagger) stay inline. */
+  .item-copy > span{display:block;margin-top:3px;color:#583e30;font-size:.94rem;line-height:1.43}
 
   .late-note{max-width:720px;margin:0 auto 12px;padding:0 10px 14px;border-bottom:1px solid rgba(41,25,18,.28);color:#583e30;text-align:center;font-family:var(--label);font-size:.95rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
   .empty{max-width:720px;margin:26px auto;text-align:center;color:#583e30}
@@ -506,6 +532,20 @@ if (sauces.length) dailyChips.splice(saucesIndex(daily.map((g) => g.cat), sauces
   categoryJump?.addEventListener('change', () => {
     if (categoryJump.value) location.hash = categoryJump.value;
   });
+
+  function followSides(hash: string) {
+    if (hash !== '#menu-substitute-sides' && hash !== '#late-menu-substitute-sides') return;
+    const target = document.getElementById(hash.slice(1));
+    if (!target) return;
+    show(target.closest('#panel-late-night') ? 'late-night' : 'daily');
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: 'start' });
+  }
+  document.querySelectorAll<HTMLAnchorElement>('[data-sides-link]').forEach(link => {
+    link.addEventListener('click', () => followSides(link.hash));
+  });
+  window.addEventListener('hashchange', () => followSides(location.hash));
+  followSides(location.hash);
 
   // Deep links: #late-night opens that tab; a #sec-* chip link stays on Daily.
   if (location.hash === '#late-night') {

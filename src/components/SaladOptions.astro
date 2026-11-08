@@ -1,0 +1,15 @@
+---
+import OptionsPanel from './OptionsPanel.astro';
+import { greensText, SALAD_SHELL_MARK, SALAD_SHELL_NOTE } from '../lib/menu-options.js';
+interface Props { options: { dressings: string[]; greens: string[] }; shells: boolean }
+// `shells`: at least one listed salad is marked, so the dagger needs explaining.
+const { options, shells } = Astro.props;
+const greens = greensText(options.greens);
+---
+<OptionsPanel class="salad-options" label="Salad options">
+  <dl>
+    {options.dressings.length > 0 && <div><dt>Dressings</dt><dd><ul class="options-list">{options.dressings.map(dressing => <li>{dressing}</li>)}</ul></dd></div>}
+    {greens && <div><dt>Greens</dt><dd>{greens}</dd></div>}
+    {shells && <div><dt>Shells</dt><dd><p><span aria-hidden="true">{SALAD_SHELL_MARK}</span><span class="sr-only">Salads marked with a dagger:</span>{SALAD_SHELL_NOTE.slice(SALAD_SHELL_MARK.length)}</p></dd></div>}
+  </dl>
+</OptionsPanel>

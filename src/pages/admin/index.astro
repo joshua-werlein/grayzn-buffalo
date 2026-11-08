@@ -10,14 +10,20 @@ const turnstileOn = Boolean(sitekey && env.TURNSTILE_SECRET);
 let authed = await isAuthed(Astro.cookies, env);
 let error = '';
 let notice = '';
+// Staff pages send people here with ?next= when a session is missing or expired.
+// Only a same-site staff page path is honored, never an arbitrary URL.
+const safeNext = (value: unknown) => (typeof value === 'string' && /^\/admin\/[a-z-]+$/.test(value) ? value : null);
+let next = safeNext(Astro.url.searchParams.get('next'));
+const expired = Astro.url.searchParams.get('expired') === '1';
 
 if (Astro.request.method === 'GET' && authed && !Astro.url.searchParams.has('settings')) {
-  return Astro.redirect('/admin/specials', 302);
+  return Astro.redirect(next ?? '/admin/specials', 302);
 }
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = form.get('action');
+  next = safeNext(form.get('next')) ?? next;
 
   if (action === 'login') {
     // Turnstile FIRST — a bot without a valid token never reaches the password
@@ -32,7 +38,7 @@ if (Astro.request.method === 'POST') {
     } else if (!human) {
       error = 'Verification failed. Reload the page and try again.';
     } else if (await login(String(form.get('password') ?? ''), Astro.cookies, env)) {
-      return Astro.redirect('/admin/specials', 303);
+      return Astro.redirect(next ?? '/admin/specials', 303);
     } else {
       error = 'Wrong password.';
     }
@@ -135,6 +141,8 @@ const deliveryDisplay = authed ? await getSetting(env, 'delivery_display', 'auto
   ) : (
     <form method="post" class="panel">
       <input type="hidden" name="action" value="login" />
+      {next && <input type="hidden" name="next" value={next} />}
+      {expired && <p class="warn" role="alert">Your session expired, so your last change was not saved. Sign in to return to the page and make it again.</p>}
       <label for="password">Password</label>
       <input id="password" type="password" name="password" required autocomplete="current-password" />
       {turnstileOn

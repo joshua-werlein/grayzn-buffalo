@@ -3,12 +3,40 @@ import Base from '../../layouts/Base.astro';
 import { isAuthed } from '../../lib/auth';
 import { thumbKey } from '../../lib/db';
 import { normalizeMenuCase } from '../../lib/text-case.js';
-import { getPizzaOptions, savePizzaOptions, pizzaOptionsFromForm, PIZZA_SIZES, PIZZA_CRUSTS } from '../../lib/pizza-options.js';
-import { getMenuSauces, getSaucesSort, saucesIndex, effectiveSaucesSort, validSaucesSort, saveSaucesSortStatement, saucesSectionName } from '../../lib/menu-sauces';
+import { getPizzaOptions, pizzaOptionsFromForm, PIZZA_SIZES, PIZZA_CRUSTS } from '../../lib/pizza-options.js';
+import { getMenuSauces } from '../../lib/menu-sauces';
+import { SAUCES_SECTION, SIDES_SECTION, getSectionSort, sectionIndex, sectionName, effectiveSectionSort, validSectionSort, saveSectionSortStatement, interleave } from '../../lib/menu-sections';
+import {
+  getMenuOptions, wrapOptionsFromForm, saladOptionsFromForm, substituteSidesFromForm, isSaladCategory,
+  WRAP_OPTIONS_KEY, SALAD_OPTIONS_KEY, SUBSTITUTE_SIDES_KEY, SALAD_SHELL_NOTE, SUBSTITUTE_SIDES_NOTE,
+} from '../../lib/menu-options.js';
 
 const env = (Astro.locals as any).runtime?.env ?? {};
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
+const wantsJson = Astro.request.headers.get('accept')?.includes('application/json');
+const jsonResponse = (body: Record<string, unknown>, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+if (!(await isAuthed(Astro.cookies, env))) {
+  // In-page saves need JSON, not the sign-in page's HTML. Nothing was saved either way.
+  if (wantsJson) return jsonResponse({ ok: false, code: 'auth', error: 'Your session expired, so this change was not saved. Sign in again, then make the change again.' }, 401);
+  return Astro.redirect(Astro.request.method === 'POST' ? '/admin?next=/admin/menu&expired=1' : '/admin?next=/admin/menu');
+}
+// Line breaks arrive as CRLF from forms but LF from page attributes; compare without CR.
+const noCr = (value: unknown) => String(value ?? '').replace(/\r/g, '');
+async function saveOptions(key: string, value: unknown, form: FormData) {
+  const loaded = form.get('options_snapshot');
+  const conflict = 'Someone else changed these options since you opened the page. Your changes were not saved. Refresh the page to review the latest options.';
+  if (loaded === null) throw new Error(conflict);
+  let result;
+  try {
+    result = await env.DB.prepare(
+      "INSERT INTO settings (key, value) SELECT ?1, ?2 WHERE COALESCE((SELECT value FROM settings WHERE key = ?1), '') = ?3 ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+    ).bind(key, JSON.stringify(value), String(loaded)).run();
+  } catch {
+    throw new Error('Could not save these options. Please try again.');
+  }
+  if (!Number(result.meta?.changes ?? 0)) throw new Error(conflict);
+}
 
 /** Remove both variants from R2. Never throws — an orphaned object is not
  *  worth failing a request over, and the row is already gone by then. */
@@ -32,13 +60,20 @@ const SM_MESSAGES: Record<string, { ok: boolean; text: string }> = {
   e4: { ok: false, text: 'Remove all items from this section before deleting it.' },
   e5: { ok: false, text: 'Something went wrong. Check the database connection — see README.' },
   e6: { ok: false, text: 'Sauces order must be a whole number from 0 to 999.' },
+  e7: { ok: false, text: 'Substitute Sides order must be a whole number from 0 to 999.' },
+  e8: { ok: false, text: 'That section was deleted by someone else. Nothing was saved.' },
+  e9: { ok: false, text: 'Someone else changed this section since you opened the page. Your changes were not saved. Review the section below and make your change again.' },
+  e10: { ok: false, text: 'Someone else changed the section order since you opened the page. Nothing was saved. Review the order below and try again.' },
 };
+// Thrown inside the order batch when a section moved or was deleted since the page loaded.
+const STALE_ORDER = 'Section order changed.';
 let notice = '';
 let problem = '';
 let pizzaDraft: FormData | null = null;
+// Shared Menu options (Wraps, Salads, Substitute Sides): the form being corrected after an error.
+let optionsDraft: { action: string; form: FormData } | null = null;
 // The saved item text, returned so the editor shows the house capitalization.
-let saved: { name: string; description: string } | null = null;
-const wantsJson = Astro.request.headers.get('accept')?.includes('application/json');
+let saved: Record<string, unknown> | null = null;
 
 // Photo upload/remove goes to /api/menu-photo so the page can update in place.
 // These handlers cover everything else.
@@ -53,15 +88,21 @@ if (Astro.request.method === 'POST') {
       }
       pizzaDraft = f;
       const options = pizzaOptionsFromForm(f);
-      try { await savePizzaOptions(env, options); }
-      catch { throw new Error('Could not save pizza options. Please try again.'); }
+      await saveOptions('menu_pizza_options', options, f);
       return Astro.redirect('/admin/menu?pizza=saved#pizza-options', 303);
+    } else if (action === 'wrap-options' || action === 'salad-options' || action === 'substitute-sides') {
+      if (Astro.request.headers.get('origin') !== Astro.url.origin) {
+        return new Response('Invalid request origin.', { status: 403 });
+      }
+      optionsDraft = { action, form: f };
+      const [key, read, anchor] = action === 'wrap-options' ? [WRAP_OPTIONS_KEY, wrapOptionsFromForm, 'wrap-options']
+        : action === 'salad-options' ? [SALAD_OPTIONS_KEY, saladOptionsFromForm, 'salad-options']
+        : [SUBSTITUTE_SIDES_KEY, substituteSidesFromForm, 'substitute-sides-options'];
+      const value = read(f);
+      await saveOptions(key, value, f);
+      return Astro.redirect(`/admin/menu?options=${anchor}#${anchor}`, 303);
     } else if (action === 'section-details') {
-      const id = Number(f.get('category_id'));
-      if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid section.');
-      await env.DB.prepare('UPDATE categories SET subtitle = ?2, note = ?3 WHERE id = ?1')
-        .bind(id, String(f.get('subtitle') ?? '').trim(), String(f.get('note') ?? '').trim()).run();
-      return Astro.redirect('/admin/menu');
+      throw new Error('This page is out of date. Nothing was saved. Refresh the page, then edit the section in Manage Sections.');
     } else if (action === 'add') {
       const result = await env.DB.prepare(
         'INSERT INTO items (category_id, name, description, late_night, sort) VALUES (?1, ?2, ?3, ?4, COALESCE((SELECT MAX(sort)+1 FROM items WHERE category_id=?1), 0))'
@@ -81,28 +122,63 @@ if (Astro.request.method === 'POST') {
       notice = 'Item added.';
 
     } else if (action === 'edit') {
-      saved = { name: normalizeMenuCase(String(f.get('name'))), description: normalizeMenuCase(String(f.get('description') ?? '')) };
-      await env.DB.prepare(
-        'UPDATE items SET name = ?2, description = ?3, category_id = ?4, late_night = ?5 WHERE id = ?1'
-      ).bind(
-        Number(f.get('id')),
-        saved.name,
-        saved.description,
-        Number(f.get('category_id')),
-        f.get('late_night') ? 1 : 0
-      ).run();
-      notice = 'Changes saved.';
+      const id = Number(f.get('id'));
+      const categoryId = Number(f.get('category_id'));
+      const lateNight = f.get('late_night') ? 1 : 0;
+      const name = normalizeMenuCase(String(f.get('name')));
+      const description = normalizeMenuCase(String(f.get('description') ?? ''));
+      // The editor sends the values it loaded. The row is updated only if it still holds
+      // them, so an older tab cannot overwrite a newer save. A section change puts the
+      // item at the end of its new section, where the page also shows it.
+      const loaded = ['was_name', 'was_description', 'was_category_id', 'was_late_night'].map(k => f.get(k));
+      let changes = 0;
+      if (!loaded.includes(null)) {
+        try {
+          const result = await env.DB.prepare(
+            `UPDATE items SET name = ?2, description = ?3, late_night = ?5, category_id = ?4,
+               sort = CASE WHEN category_id = ?4 THEN sort ELSE COALESCE((SELECT MAX(sort) + 1 FROM items WHERE category_id = ?4), 0) END
+             WHERE id = ?1 AND REPLACE(name, char(13), '') = ?6 AND REPLACE(COALESCE(description, ''), char(13), '') = ?7 AND category_id = ?8 AND late_night = ?9`
+          ).bind(id, name, description, categoryId, lateNight,
+            noCr(loaded[0]), noCr(loaded[1]), Number(loaded[2]), Number(loaded[3]) ? 1 : 0).run();
+          changes = Number(result.meta?.changes ?? 0);
+        } catch (e: any) {
+          if (/FOREIGN KEY/i.test(String(e?.message))) throw new Error('That section was deleted by someone else. Your changes were not saved. Refresh the page and choose another section.');
+          throw e;
+        }
+      }
+      if (!changes) {
+        const exists = await env.DB.prepare('SELECT 1 AS found FROM items WHERE id = ?1').bind(id).first();
+        const error = !exists
+          ? 'This item was deleted by someone else. Your changes were not saved.'
+          : loaded.includes(null)
+            ? 'This page is out of date. Your changes were not saved. Refresh the page, then make your change again.'
+            : 'Someone else changed this item since you opened it. Your changes were not saved. Refresh the page to see the latest version, then make your change again.';
+        if (wantsJson) return jsonResponse({ ok: false, code: exists ? 'conflict' : 'deleted', error }, exists ? 409 : 404);
+        throw new Error(error);
+      }
+      saved = { name, description, category_id: categoryId, late_night: lateNight };
+      notice = 'Saved.';
 
     } else if (action === 'delete') {
       const id = Number(f.get('id'));
       const row: any = await env.DB.prepare('SELECT photo_key FROM items WHERE id = ?1').bind(id).first();
-      await env.DB.prepare('DELETE FROM items WHERE id = ?1').bind(id).run();
+      const result = await env.DB.prepare('DELETE FROM items WHERE id = ?1').bind(id).run();
+      if (!Number(result.meta?.changes ?? 0)) throw new Error('This item was deleted by someone else. Nothing was removed.');
       await dropPhoto(row?.photo_key);
       notice = 'Item removed.';
 
     } else if (action === 'toggle') {
-      await env.DB.prepare('UPDATE items SET active = 1 - active WHERE id = ?1').bind(Number(f.get('id'))).run();
-      notice = 'Item updated.';
+      // The button sends the visibility staff asked for, so repeating Hide keeps an item hidden.
+      const active = f.get('active');
+      if (active !== '0' && active !== '1') throw new Error('This page is out of date. Refresh the page, then try again.');
+      const result = await env.DB.prepare('UPDATE items SET active = ?2 WHERE id = ?1').bind(Number(f.get('id')), Number(active)).run();
+      if (!Number(result.meta?.changes ?? 0)) {
+        const error = 'This item was deleted by someone else.';
+        if (wantsJson) return jsonResponse({ ok: false, code: 'deleted', error }, 404);
+        throw new Error(error);
+      }
+      saved = { active: Number(active) };
+      notice = active === '1' ? 'Item shown.' : 'Item hidden.';
 
     } else if (action === 'add-section') {
       const name = normalizeMenuCase(String(f.get('name') ?? '').trim());
@@ -119,31 +195,76 @@ if (Astro.request.method === 'POST') {
       const name = normalizeMenuCase(String(f.get('name') ?? '').trim());
       if (!name) throw new Error('Section name is required.');
       if (name.length > 60) throw new Error('Section name must be 60 characters or fewer.');
-      await env.DB.prepare(
-        'UPDATE categories SET name = ?2, subtitle = ?3, note = ?4 WHERE id = ?1'
-      ).bind(id, name, String(f.get('subtitle') ?? '').trim(), String(f.get('note') ?? '').trim()).run();
+      // Updated only if the section still has the values the edit panel loaded.
+      const loaded = ['was_name', 'was_subtitle', 'was_note'].map(k => f.get(k));
+      if (loaded.includes(null)) throw new Error(SM_MESSAGES.e9.text);
+      const result = await env.DB.prepare(
+        `UPDATE categories SET name = ?2, subtitle = ?3, note = ?4
+         WHERE id = ?1 AND REPLACE(name, char(13), '') = ?5 AND REPLACE(subtitle, char(13), '') = ?6 AND REPLACE(note, char(13), '') = ?7`
+      ).bind(id, name, String(f.get('subtitle') ?? '').trim(), String(f.get('note') ?? '').trim(),
+        noCr(loaded[0]), noCr(loaded[1]), noCr(loaded[2])).run();
+      if (!Number(result.meta?.changes ?? 0)) {
+        const exists = await env.DB.prepare('SELECT 1 AS found FROM categories WHERE id = ?1').bind(id).first();
+        throw new Error(exists ? SM_MESSAGES.e9.text : SM_MESSAGES.e8.text);
+      }
       return Astro.redirect('/admin/menu?sm=s2', 303);
 
     } else if (action === 'reorder-sections') {
-      const updates = Array.from(f.entries())
+      const rows = Array.from(f.entries())
         .filter(([key]) => key.startsWith('sort_'))
         .map(([key, val]) => {
           const id = Number(key.slice(5));
           const sort = Number(val);
           if (!Number.isInteger(id) || id <= 0 || !Number.isFinite(sort) || sort < 0) return null;
-          return { id, sort: Math.round(sort) };
+          const was = f.get(`was_${id}`);
+          return { id, sort: Math.round(sort), was: was === null ? null : Number(was) };
         })
-        .filter(Boolean) as { id: number; sort: number }[];
-      // Sauces is not a category; its number is kept in settings. Saved only once staff
-      // change it, so until then it keeps following Appetizers.
-      const sauces = f.has('sort_sauces') ? validSaucesSort(f.get('sort_sauces')) : undefined;
-      if (sauces === null) throw new Error('Sauces order must be a whole number from 0 to 999.');
-      const saveSauces = sauces !== undefined && String(sauces) !== String(f.get('sort_sauces_was') ?? '').trim();
+        .filter(Boolean) as { id: number; sort: number; was: number | null }[];
+      // Only numbers staff changed are written, and only if those sections still have the
+      // numbers this page showed, so an older tab cannot undo someone else's reorder.
+      const updates = rows.filter(r => r.was !== null && r.sort !== r.was);
+      const unchangedSince = updates.map((_, i) => `(id = ?${i * 2 + 1} AND sort = ?${i * 2 + 2})`).join(' OR ');
+      const unchangedArgs = updates.flatMap(r => [r.id, r.was]);
+      const countUnchanged = () => env.DB.prepare(`SELECT COUNT(*) AS n FROM categories WHERE ${unchangedSince}`).bind(...unchangedArgs);
+      // Runs first in the batch (one transaction): json('stale') raises an error that rolls the
+      // whole batch back when any changed section moved or was deleted since the page loaded.
+      const guard = updates.length ? [env.DB.prepare(
+        `SELECT json(CASE WHEN (SELECT COUNT(*) FROM categories WHERE ${unchangedSince}) = ?${unchangedArgs.length + 1} THEN '0' ELSE 'stale' END) AS guard`
+      ).bind(...unchangedArgs, updates.length)] : [];
+      const virtualGuards: any[] = [];
+      const virtualStatements: any[] = [];
+      for (const [field, section, label] of [['sort_sauces', SAUCES_SECTION, 'Sauces'], ['sort_sides', SIDES_SECTION, 'Substitute Sides']] as const) {
+        if (!f.has(field)) continue;
+        const sort = validSectionSort(f.get(field));
+        if (sort === null) throw new Error(`${label} order must be a whole number from 0 to 999.`);
+        if (String(sort) === String(f.get(`${field}_was`) ?? '').trim()) continue;
+        // Compare the raw saved setting, including an absent row, inside the same transaction.
+        const loaded = f.get(`${field}_snapshot`);
+        if (loaded === null) throw new Error(STALE_ORDER);
+        virtualGuards.push(env.DB.prepare(
+          "SELECT json(CASE WHEN COALESCE((SELECT value FROM settings WHERE key = ?1), '') = ?2 THEN '0' ELSE 'stale' END) AS guard"
+        ).bind(section.sortKey, String(loaded)));
+        virtualStatements.push(saveSectionSortStatement(env, section, sort));
+      }
+      // A form without the loaded numbers (a tab opened before this check) may not change any.
+      if (rows.some(r => r.was === null)) {
+        const current = new Map(((await env.DB.prepare('SELECT id, sort FROM categories').all()).results ?? []).map((c: any) => [Number(c.id), Number(c.sort)]));
+        if (rows.some(r => r.was === null && current.get(r.id) !== r.sort)) throw new Error(STALE_ORDER);
+      }
       const statements = [
+        ...guard,
+        ...virtualGuards,
         ...updates.map(({ id, sort }) => env.DB.prepare('UPDATE categories SET sort = ?2 WHERE id = ?1').bind(id, sort)),
-        ...(saveSauces ? [saveSaucesSortStatement(env, sauces!)] : []),
+        ...virtualStatements,
       ];
-      if (statements.length) await env.DB.batch(statements);
+      if (statements.length) {
+        try { await env.DB.batch(statements); }
+        catch (e) {
+          if (/malformed JSON/i.test(String((e as any)?.message))) throw new Error(STALE_ORDER);
+          if (updates.length && Number((await countUnchanged().first())?.n) !== updates.length) throw new Error(STALE_ORDER);
+          throw e;
+        }
+      }
       return Astro.redirect('/admin/menu?sm=s3', 303);
 
     } else if (action === 'delete-section') {
@@ -153,7 +274,8 @@ if (Astro.request.method === 'POST') {
         'SELECT COUNT(*) as n FROM items WHERE category_id = ?1'
       ).bind(id).first();
       if (Number(itemCount?.n ?? 1) > 0) throw new Error('Remove all items from this section before deleting it.');
-      await env.DB.prepare('DELETE FROM categories WHERE id = ?1').bind(id).run();
+      const result = await env.DB.prepare('DELETE FROM categories WHERE id = ?1').bind(id).run();
+      if (!Number(result.meta?.changes ?? 0)) throw new Error(SM_MESSAGES.e8.text);
       return Astro.redirect('/admin/menu?sm=s4', 303);
     }
     if (wantsJson) {
@@ -170,6 +292,10 @@ if (Astro.request.method === 'POST') {
       else if (msg === 'Invalid section.') code = 'e3';
       else if (msg === 'Remove all items from this section before deleting it.') code = 'e4';
       else if (msg === 'Sauces order must be a whole number from 0 to 999.') code = 'e6';
+      else if (msg === SM_MESSAGES.e8.text) code = 'e8';
+      else if (msg === SM_MESSAGES.e9.text) code = 'e9';
+      else if (msg === STALE_ORDER) code = 'e10';
+      else if (msg === 'Substitute Sides order must be a whole number from 0 to 999.') code = 'e7';
       return Astro.redirect(`/admin/menu?sm=${code}`, 303);
     }
     problem = msg || 'Something went wrong. Check the database connection — see README.';
@@ -190,17 +316,49 @@ const sectionProblem = smResult && !smResult.ok ? smResult.text : '';
 
 let categories: any[] = [], items: any[] = [];
 try {
-  categories = (await env.DB.prepare('SELECT * FROM categories ORDER BY sort').all()).results ?? [];
-  items = (await env.DB.prepare('SELECT * FROM items ORDER BY category_id, sort').all()).results ?? [];
+  categories = (await env.DB.prepare('SELECT * FROM categories ORDER BY sort, id').all()).results ?? [];
+  items = (await env.DB.prepare('SELECT * FROM items ORDER BY category_id, sort, id').all()).results ?? [];
 } catch {}
-const pizzaOptions = await getPizzaOptions(env);
+// Display values and concurrency tokens come from one read, so a save between two
+// reads can never pair old form values with a newer token.
+const settingsKeys = ['menu_pizza_options', WRAP_OPTIONS_KEY, SALAD_OPTIONS_KEY, SUBSTITUTE_SIDES_KEY, SAUCES_SECTION.sortKey, SIDES_SECTION.sortKey];
+let settingsRows: { key: string; value: string }[] = [];
+try {
+  settingsRows = (await env.DB.prepare(`SELECT key, value FROM settings WHERE key IN (${settingsKeys.map((_, i) => `?${i + 1}`).join(',')})`).bind(...settingsKeys).all()).results ?? [];
+} catch {}
+const optionsSnapshots = Object.fromEntries(settingsKeys.map(key => [key, String(settingsRows.find(row => row.key === key)?.value ?? '')]));
+const settingsView = { DB: { prepare: () => ({ bind: (key: string) => ({ first: async () => settingsRows.find(row => row.key === key) ?? null }) }) } };
+const pizzaOptions = await getPizzaOptions(settingsView);
 // The Sauces row in Manage Sections, at the position the public Menu uses.
-const [menuSauces, savedSaucesSort] = await Promise.all([getMenuSauces(env), getSaucesSort(env)]);
-const saucesOrder = effectiveSaucesSort(categories, savedSaucesSort) ?? categories.at(-1)?.sort ?? 0;
+const [menuSauces, savedSaucesSort, savedSidesSort, wrapOptions, saladOptions, sidesOptions] = await Promise.all([
+  getMenuSauces(env), getSectionSort(settingsView, SAUCES_SECTION), getSectionSort(settingsView, SIDES_SECTION),
+  getMenuOptions(settingsView, WRAP_OPTIONS_KEY), getMenuOptions(settingsView, SALAD_OPTIONS_KEY), getMenuOptions(settingsView, SUBSTITUTE_SIDES_KEY),
+]);
+const saucesSnapshot = optionsSnapshots[SAUCES_SECTION.sortKey];
+const sidesSnapshot = optionsSnapshots[SIDES_SECTION.sortKey];
+const saucesOrder = effectiveSectionSort(categories, savedSaucesSort, SAUCES_SECTION);
+const sidesOrder = effectiveSectionSort(categories, savedSidesSort, SIDES_SECTION);
 const SAUCES_ROW = { sauces: true } as const;
-const saucesName = saucesSectionName(categories);
-const orderRows: any[] = [...categories];
-orderRows.splice(saucesIndex(categories, savedSaucesSort), 0, SAUCES_ROW);
+const SIDES_ROW = { sides: true } as const;
+const saucesName = sectionName(categories, SAUCES_SECTION);
+const sidesName = sectionName(categories, SIDES_SECTION);
+const orderRows: any[] = interleave<any, object>(categories, [
+  { index: sectionIndex(categories, savedSaucesSort, SAUCES_SECTION), block: SAUCES_ROW },
+  { index: sectionIndex(categories, savedSidesSort, SIDES_SECTION), block: SIDES_ROW },
+]);
+// Option editors show what staff typed after a failed save, otherwise the saved values.
+const draftFor = (action: string) => (optionsDraft?.action === action ? optionsDraft.form : null);
+const lines = (form: FormData | null, name: string, saved: string[]) => (form ? String(form.get(name) ?? '') : saved.join('\n'));
+const wrapNotesText = lines(draftFor('wrap-options'), 'wrap_notes', wrapOptions.notes);
+const saladDressingsText = lines(draftFor('salad-options'), 'salad_dressings', saladOptions.dressings);
+const saladGreensText = lines(draftFor('salad-options'), 'salad_greens', saladOptions.greens);
+const saladShellNames: string[] = draftFor('salad-options')?.getAll('salad_shells').map(String) ?? saladOptions.shells;
+const saladItems = items.filter((i: any) => categories.some((c: any) => c.id === i.category_id && isSaladCategory(c.name)));
+const isShell = (name: string) => saladShellNames.some(n => n.trim().toLowerCase() === name.trim().toLowerCase());
+const sidesText = lines(draftFor('substitute-sides'), 'substitute_sides', sidesOptions.sides);
+const sidesLateNight = draftFor('substitute-sides') ? draftFor('substitute-sides')!.get('substitute_sides_late_night') === 'on' : sidesOptions.lateNight;
+const optionsSaved = Astro.url.searchParams.get('options');
+const optionsProblem = (action: string) => (optionsDraft?.action === action ? problem : '');
 const pizzaEditor = pizzaDraft ? {
   sizes: pizzaDraft.getAll('pizza_sizes'), crusts: pizzaDraft.getAll('pizza_crusts'),
   toppingsText: String(pizzaDraft.get('pizza_toppings') ?? ''),
@@ -216,16 +374,52 @@ const pizzaEditor = pizzaDraft ? {
   </div>
 
   <div class="admin-wrap">
-    <details class="pizza-manager" id="pizza-options" open={Astro.url.searchParams.get('pizza') === 'saved' || !!problem}>
+    <details class="pizza-manager" id="pizza-options" open={Astro.url.searchParams.get('pizza') === 'saved' || (!!problem && !!pizzaDraft)}>
       <summary>Pizza sizes, crusts &amp; additional toppings</summary>
       {Astro.url.searchParams.get('pizza') === 'saved' && <p class="flash ok" role="status">Pizza options saved.</p>}
       <form method="post" class="card pizza-form">
-        <input type="hidden" name="action" value="pizza-options" />
+        <input type="hidden" name="action" value="pizza-options" /><input type="hidden" name="options_snapshot" value={pizzaDraft ? String(pizzaDraft.get('options_snapshot') ?? '') : optionsSnapshots['menu_pizza_options']} />
         <p>These choices apply to all pizzas on the Daily and Late Night menus. Pizza Fries is excluded and keeps its own sizes. Keep each pizza’s ingredients in its item description below.</p>
         <fieldset><legend>Pizza sizes</legend><div class="pizza-checks">{PIZZA_SIZES.map(size => <label><input type="checkbox" name="pizza_sizes" value={size} checked={pizzaEditor.sizes.includes(size)} /> {size}</label>)}</div></fieldset>
         <fieldset><legend>Crust options</legend><div class="pizza-checks">{PIZZA_CRUSTS.map(crust => <label><input type="checkbox" name="pizza_crusts" value={crust} checked={pizzaEditor.crusts.includes(crust)} /> {crust}</label>)}</div></fieldset>
         <div class="field"><label for="pizza-toppings">Additional topping choices</label><textarea id="pizza-toppings" name="pizza_toppings" rows="8" maxlength="3240" aria-describedby="pizza-toppings-help">{pizzaEditor.toppingsText}</textarea><p id="pizza-toppings-help">One topping name per line, up to 40 toppings (80 characters each). The starting list contains the 20 choices from the original printed menu. Edit this list when choices change.</p></div>
         <button class="btn btn-primary" type="submit">Save pizza options</button>
+      </form>
+    </details>
+    <details class="pizza-manager options-manager" id="wrap-options" open={optionsSaved === 'wrap-options' || !!optionsProblem('wrap-options')}>
+      <summary>Wrap options</summary>
+      {optionsSaved === 'wrap-options' && <p class="flash ok" role="status">Wrap options saved.</p>}
+      <form method="post" class="card pizza-form">
+        <input type="hidden" name="action" value="wrap-options" /><input type="hidden" name="options_snapshot" value={draftFor('wrap-options') ? String(draftFor('wrap-options')!.get('options_snapshot') ?? '') : optionsSnapshots[WRAP_OPTIONS_KEY]} />
+        <p>Shown in a panel above the wraps on the public Menu. Keep each wrap’s ingredients in its item description. Leave empty to hide the panel.</p>
+        <div class="field"><label for="wrap-notes">Wrap notes</label><textarea id="wrap-notes" name="wrap_notes" rows="4" maxlength="1200" aria-describedby="wrap-notes-help">{wrapNotesText}</textarea><p id="wrap-notes-help">One note per line, up to 6 notes (160 characters each), saved as typed. The starting notes come from the printed menu. No prices.</p></div>
+        <button class="btn btn-primary" type="submit">Save wrap options</button>
+      </form>
+    </details>
+    <details class="pizza-manager options-manager" id="salad-options" open={optionsSaved === 'salad-options' || !!optionsProblem('salad-options')}>
+      <summary>Salad dressings, greens &amp; shells</summary>
+      {optionsSaved === 'salad-options' && <p class="flash ok" role="status">Salad options saved.</p>}
+      <form method="post" class="card pizza-form">
+        <input type="hidden" name="action" value="salad-options" /><input type="hidden" name="options_snapshot" value={draftFor('salad-options') ? String(draftFor('salad-options')!.get('options_snapshot') ?? '') : optionsSnapshots[SALAD_OPTIONS_KEY]} />
+        <p>Shown in a panel above the salads on the public Menu. Keep each salad’s ingredients in its item description.</p>
+        <div class="field"><label for="salad-dressings">Dressing choices</label><textarea id="salad-dressings" name="salad_dressings" rows="8" maxlength="3000" aria-describedby="salad-dressings-help">{saladDressingsText}</textarea><p id="salad-dressings-help">One dressing per line, up to 30 (80 characters each). The starting list is the 12 dressings on the printed menu.</p></div>
+        <div class="field"><label for="salad-greens">Greens choices</label><textarea id="salad-greens" name="salad_greens" rows="3" maxlength="400" aria-describedby="salad-greens-help">{saladGreensText}</textarea><p id="salad-greens-help">One per line, up to 6. Shown as “Choice of Iceberg or Spinach Mix.”</p></div>
+        <fieldset><legend>Salads that come with a shell</legend>
+          <p>Marked with † on the Menu, with “{SALAD_SHELL_NOTE}”</p>
+          {saladItems.length ? <div class="pizza-checks">{saladItems.map((i: any) => <label><input type="checkbox" name="salad_shells" value={i.name} checked={isShell(i.name)} /> {i.name}</label>)}</div> : <p>There are no items in Salads yet.</p>}
+        </fieldset>
+        <button class="btn btn-primary" type="submit">Save salad options</button>
+      </form>
+    </details>
+    <details class="pizza-manager options-manager" id="substitute-sides-options" open={optionsSaved === 'substitute-sides-options' || !!optionsProblem('substitute-sides')}>
+      <summary>Substitute sides</summary>
+      {optionsSaved === 'substitute-sides-options' && <p class="flash ok" role="status">Substitute sides saved.</p>}
+      <form method="post" class="card pizza-form">
+        <input type="hidden" name="action" value="substitute-sides" /><input type="hidden" name="options_snapshot" value={draftFor('substitute-sides') ? String(draftFor('substitute-sides')!.get('options_snapshot') ?? '') : optionsSnapshots[SUBSTITUTE_SIDES_KEY]} />
+        <p>Shown as the {sidesName} section on the Daily Menu, under “{SUBSTITUTE_SIDES_NOTE}” Set its position in Manage Sections. Leave empty to hide the section.</p>
+        <fieldset><legend>Late Night Menu</legend><div class="pizza-checks"><label><input type="checkbox" name="substitute_sides_late_night" checked={sidesLateNight} /> Also show {sidesName} on the Late Night Menu</label></div></fieldset>
+        <div class="field"><label for="substitute-sides">Substitute side choices</label><textarea id="substitute-sides" name="substitute_sides" rows="5" maxlength="1200" aria-describedby="substitute-sides-help">{sidesText}</textarea><p id="substitute-sides-help">One line per choice group, up to 8 lines (120 characters each), saved as typed. The starting list comes from the printed menu. No prices.</p></div>
+        <button class="btn btn-primary" type="submit">Save substitute sides</button>
       </form>
     </details>
     <details class="add-disclosure" id="add-item-panel">
@@ -281,7 +475,7 @@ const pizzaEditor = pizzaDraft ? {
         {sectionNotice && <p class="flash ok sm-flash">{sectionNotice}</p>}
         {sectionProblem && <p class="flash bad sm-flash">{sectionProblem}</p>}
 
-        <form method="post" id="sm-order-form" class="sm-order-form">
+        <form method="post" id="sm-order-form" class="sm-order-form" autocomplete="off">
           <input type="hidden" name="action" value="reorder-sections" />
           <p class="sm-hint">Edit order numbers and save, or use the Edit button to rename, add details, or delete a section.</p>
           <table class="sm-table">
@@ -289,13 +483,19 @@ const pizzaEditor = pizzaDraft ? {
             <tbody>
               {orderRows.map((c: any) => c === SAUCES_ROW ? (
                 <tr class="sm-sauces-row">
-                  <td><input class="sm-sort-input" type="number" name="sort_sauces" value={saucesOrder} min="0" max="999" step="1" aria-label={`Sort order for ${saucesName}`} /><input type="hidden" name="sort_sauces_was" value={saucesOrder} /></td>
+                  <td><input class="sm-sort-input" type="number" name="sort_sauces" value={saucesOrder} min="0" max="999" step="1" aria-label={`Sort order for ${saucesName}`} /><input type="hidden" name="sort_sauces_was" value={saucesOrder} /><input type="hidden" name="sort_sauces_snapshot" value={saucesSnapshot} /></td>
                   <td class="sm-name-cell">{saucesName}<span class="sm-sub">{menuSauces.length ? `${menuSauces.length} sauces from Wing Wednesday · goes after sections with the same or a lower number` : 'Hidden on the Menu: the Wing Wednesday sauce list is empty'}{saucesName !== 'Sauces' && ' · named this because another section is called Sauces'}</span></td>
                   <td><a class="sm-sauces-link" href="/admin/specials">Edit sauces</a></td>
                 </tr>
+              ) : c === SIDES_ROW ? (
+                <tr class="sm-sides-row">
+                  <td><input class="sm-sort-input" type="number" name="sort_sides" value={sidesOrder} min="0" max="999" step="1" aria-label={`Sort order for ${sidesName}`} /><input type="hidden" name="sort_sides_was" value={sidesOrder} /><input type="hidden" name="sort_sides_snapshot" value={sidesSnapshot} /></td>
+                  <td class="sm-name-cell">{sidesName}<span class="sm-sub">{sidesOptions.sides.length ? `${sidesOptions.sides.length} choices · ${sidesOptions.lateNight ? 'Daily and Late Night' : 'Daily Menu'} · goes after sections with the same or a lower number` : 'Hidden on the Menu: the substitute sides list is empty'}{sidesName !== 'Substitute Sides' && ' · named this because another section is called Substitute Sides'}</span></td>
+                  <td><a class="sm-sauces-link" href="#substitute-sides-options">Edit sides</a></td>
+                </tr>
               ) : (
                 <tr>
-                  <td><input class="sm-sort-input" type="number" name={`sort_${c.id}`} value={c.sort} min="0" max="999" aria-label={`Sort order for ${c.name}`} /></td>
+                  <td><input class="sm-sort-input" type="number" name={`sort_${c.id}`} value={c.sort} min="0" max="999" aria-label={`Sort order for ${c.name}`} /><input type="hidden" name={`was_${c.id}`} value={c.sort} /></td>
                   <td class="sm-name-cell">{c.name}{c.subtitle && <span class="sm-sub">{c.subtitle}</span>}</td>
                   <td><button type="button" class="sm-edit-btn" data-id={String(c.id)} data-name={c.name} data-subtitle={c.subtitle ?? ''} data-note={c.note ?? ''}>Edit</button></td>
                 </tr>
@@ -307,8 +507,9 @@ const pizzaEditor = pizzaDraft ? {
 
         <div class="sm-edit-panel" id="sm-edit-panel" hidden>
           <h3 class="sm-panel-heading">Edit section</h3>
-          <form method="post" id="sm-edit-form">
+          <form method="post" id="sm-edit-form" autocomplete="off">
             <input type="hidden" name="category_id" id="sm-edit-id" />
+            <input type="hidden" name="was_name" id="sm-was-name" /><input type="hidden" name="was_subtitle" id="sm-was-subtitle" /><input type="hidden" name="was_note" id="sm-was-note" />
             <div class="field"><label for="sm-name">Section name</label><input id="sm-name" name="name" required maxlength="60" /></div>
             <div class="field"><label for="sm-subtitle">Subtitle / Serving Hours <span class="hint">optional</span></label><input id="sm-subtitle" name="subtitle" maxlength="120" /></div>
             <div class="field"><label for="sm-note">Section note <span class="hint">optional</span></label><textarea id="sm-note" name="note" rows="2" maxlength="240"></textarea></div>
@@ -383,9 +584,10 @@ const pizzaEditor = pizzaDraft ? {
                     : <span class="desc muted">No description yet</span>}
                 </div>
                 <div class="row-actions">
-                  <form method="post">
+                  <form method="post" autocomplete="off">
                     <input type="hidden" name="action" value="toggle" />
                     <input type="hidden" name="id" value={i.id} />
+                    <input type="hidden" name="active" value={i.active ? '0' : '1'} />
                     <button type="submit">{i.active ? 'Hide' : 'Show'}</button>
                   </form>
 
@@ -395,9 +597,14 @@ const pizzaEditor = pizzaDraft ? {
               <details class="editor">
                 <summary aria-label={`Edit ${i.name}`}>Edit item &amp; photo</summary>
 
-                <form method="post" class="edit-form">
+                <form method="post" class="edit-form" autocomplete="off">
                   <input type="hidden" name="action" value="edit" />
                   <input type="hidden" name="id" value={i.id} />
+                  {/* The values this editor loaded; the save is refused if someone else changed them. */}
+                  <input type="hidden" name="was_name" value={i.name} />
+                  <input type="hidden" name="was_description" value={i.description ?? ''} />
+                  <input type="hidden" name="was_category_id" value={i.category_id} />
+                  <input type="hidden" name="was_late_night" value={i.late_night ? '1' : '0'} />
                   <div class="field">
                     <label for={`n-${i.id}`}>Item name</label>
                     <input id={`n-${i.id}`} name="name" value={i.name} required />
@@ -572,7 +779,7 @@ const pizzaEditor = pizzaDraft ? {
     body.append('height', String(height));
 
     const res = await fetch('/api/menu-photo', { method: 'POST', body });
-    const data = await res.json();
+    const data = await readJson(res);
     if (!res.ok || !data.ok) throw new Error(data.error ?? 'Upload failed. Try again.');
     return data as { thumbUrl: string; fullUrl: string; message?: string };
   }
@@ -590,7 +797,7 @@ const pizzaEditor = pizzaDraft ? {
         headers: { accept: 'application/json' },
         body: new FormData(addForm),
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (!res.ok || !data.ok || !data.id) throw new Error(data.error ?? 'Could not add the item.');
 
       createdId = Number(data.id);
@@ -618,8 +825,17 @@ const pizzaEditor = pizzaDraft ? {
 
   // Existing items update in place. Adding is deliberately different: its
   // redirect is what reveals the newly created item in its section.
+  /** A save's JSON reply. An expired session or an unexpected HTML page becomes a clear
+   *  error instead of a JSON parse failure; nothing is ever reported as saved. */
+  async function readJson(res: Response): Promise<any> {
+    const data = res.headers.get('content-type')?.includes('application/json') ? await res.json().catch(() => null) : null;
+    if (res.status === 401) throw new Error(data?.error ?? 'Your session expired, so this change was not saved. Sign in again, then make the change again.');
+    if (!data) throw new Error('This change could not be confirmed as saved. Refresh the page to check, then try again.');
+    return data;
+  }
+
   document.querySelectorAll<HTMLFormElement>('form[method="post"]').forEach((form) => {
-    if (form === addForm || form.closest('.section-manager') || form.closest('.pizza-manager') || !form.querySelector('input[name="action"]')) return;
+    if (form === addForm || form.closest('.section-manager') || form.closest('.pizza-manager') || form.closest('.options-manager') || !form.querySelector('input[name="action"]')) return;
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -638,38 +854,67 @@ const pizzaEditor = pizzaDraft ? {
           headers: { accept: 'application/json' },
           body: submitted,
         });
-        const data = await res.json();
+        const data = await readJson(res);
         if (!res.ok || !data.ok) throw new Error(data.error ?? 'Could not update the item.');
 
         const item = document.getElementById(`item-${id}`);
         if (action === 'delete') {
           item?.remove();
         } else if (action === 'toggle') {
-          const isNowActive = submit?.textContent?.trim() === 'Show';
+          // The server reports the visibility it saved; the button then offers the opposite.
+          const isNowActive = Number(data.active) === 1;
           item?.classList.toggle('inactive', !isNowActive);
           if (item) item.dataset.active = isNowActive ? '1' : '0';
           const hiddenBadge = item?.querySelector<HTMLElement>('.hidden-badge');
           if (hiddenBadge) hiddenBadge.hidden = isNowActive;
+          const nextState = form.querySelector<HTMLInputElement>('input[name="active"]');
+          if (nextState) nextState.value = isNowActive ? '0' : '1';
           if (submit) submit.textContent = isNowActive ? 'Hide' : 'Show';
         } else if (action === 'edit') {
           // Show the saved text, which uses the house capitalization.
           const nameInput = form.querySelector<HTMLInputElement>('input[name="name"]');
           const descInput = form.querySelector<HTMLTextAreaElement>('textarea[name="description"]');
+          const select = form.querySelector<HTMLSelectElement>('select[name="category_id"]');
+          const lateBox = form.querySelector<HTMLInputElement>('input[name="late_night"]');
+          // Submitted line breaks are CRLF; the textarea's own value uses LF.
+          const lines = (value: unknown) => String(value ?? '').replace(/\r\n?/g, '\n');
+          const savedName = typeof data.name === 'string' ? data.name : String(submitted.get('name') ?? '');
+          const savedDescription = typeof data.description === 'string' ? data.description : String(submitted.get('description') ?? '');
+          const lateNight = data.late_night !== undefined ? Number(data.late_night) === 1 : submitted.get('late_night') !== null;
+          const categoryId = String(data.category_id ?? submitted.get('category_id') ?? '');
           // A response must not replace a newer draft typed while it was saving.
-          if (nameInput && nameInput.value === submitted.get('name') && typeof data.name === 'string') nameInput.value = data.name;
-          if (descInput && descInput.value === submitted.get('description') && typeof data.description === 'string') descInput.value = data.description;
-          const name = typeof data.name === 'string' ? data.name.trim() : String(submitted.get('name') ?? '').trim();
-          const description = typeof data.description === 'string' ? data.description.trim() : String(submitted.get('description') ?? '').trim();
-          const lateNight = form.querySelector<HTMLInputElement>('input[name="late_night"]')?.checked ?? false;
-          const categoryId = form.querySelector<HTMLSelectElement>('select[name="category_id"]')?.value;
+          const nameKept = !!nameInput && nameInput.value !== submitted.get('name');
+          const descKept = !!descInput && lines(descInput.value) !== lines(submitted.get('description'));
+          if (nameInput && !nameKept) nameInput.value = savedName;
+          if (descInput && !descKept) descInput.value = lines(savedDescription);
+          const newerDraft = nameKept || descKept || (!!select && select.value !== submitted.get('category_id')) ||
+            (!!lateBox && lateBox.checked !== (submitted.get('late_night') !== null));
+          // The next save from this editor must match what is saved now.
+          const loaded: Record<string, string> = { was_name: savedName, was_description: savedDescription, was_category_id: categoryId, was_late_night: lateNight ? '1' : '0' };
+          for (const [field, value] of Object.entries(loaded)) {
+            const input = form.querySelector<HTMLInputElement>(`input[name="${field}"]`);
+            if (input) input.value = value;
+          }
+          if (!newerDraft) {
+            // Saved values become the editor's starting point, then the editor closes.
+            if (nameInput) nameInput.defaultValue = nameInput.value;
+            if (descInput) descInput.defaultValue = descInput.value;
+            if (lateBox) lateBox.defaultChecked = lateBox.checked;
+            if (select) for (const option of select.options) option.defaultSelected = option.selected;
+            const editor = form.closest<HTMLDetailsElement>('details.editor');
+            if (editor) editor.open = false;
+          }
+          const name = savedName.trim();
+          const description = savedDescription.trim();
           const strong = item?.querySelector<HTMLElement>('.who strong');
           const desc = item?.querySelector<HTMLElement>('.desc');
           if (strong) strong.textContent = name;
           if (item) {
             item.dataset.itemName = name; item.dataset.description = description;
-            item.dataset.section = categoryId ?? ''; item.dataset.late = lateNight ? '1' : '0';
+            item.dataset.section = categoryId; item.dataset.late = lateNight ? '1' : '0';
             const categoryLabel = item.querySelector<HTMLElement>('.item-section');
-            if (categoryLabel) categoryLabel.textContent = form.querySelector<HTMLSelectElement>('select[name="category_id"]')?.selectedOptions[0]?.textContent ?? '';
+            const categoryOption = select ? [...select.options].find(option => option.value === categoryId) : null;
+            if (categoryLabel && categoryOption) categoryLabel.textContent = categoryOption.textContent ?? '';
             item.querySelector('summary')?.setAttribute('aria-label', `Edit ${name}`);
           }
           if (desc) {
@@ -800,7 +1045,7 @@ const pizzaEditor = pizzaDraft ? {
         body.append('id', id);
         body.append('remove', '1');
         const res = await fetch('/api/menu-photo', { method: 'POST', body });
-        const data = await res.json();
+        const data = await readJson(res);
         if (!res.ok || !data.ok) throw new Error(data.error ?? 'Could not remove the photo.');
         paint(id, null);
         toast(data.message ?? 'Photo removed.', 'ok');
@@ -826,22 +1071,55 @@ const pizzaEditor = pizzaDraft ? {
         (visibilityFilter.value === 'all' || (item.dataset.active === '1') === (visibilityFilter.value === 'visible')) &&
         (!lateFilter.checked || item.dataset.late === '1');
       if (match) matches++;
-      // Keep an open editor accessible when a save moves the item outside a filter.
-      item.hidden = !match && !item.querySelector<HTMLDetailsElement>('.editor')?.open;
+      // Filters apply to every item, including one whose editor is open.
+      item.hidden = !match;
     });
     document.querySelectorAll<HTMLElement>('.cat').forEach(category => {
       const hasVisible = [...category.querySelectorAll<HTMLElement>('.menu-item')].some(item => !item.hidden);
       const noFilters = !query && !sectionFilter.value && visibilityFilter.value === 'all' && !lateFilter.checked;
-      category.hidden = !hasVisible && !noFilters && category.dataset.categoryId !== sectionFilter.value && !category.querySelector('details[open]');
+      category.hidden = !hasVisible && !noFilters && category.dataset.categoryId !== sectionFilter.value;
     });
-    if (filterCount) filterCount.textContent = `${matches} matching item${matches === 1 ? '' : 's'}. Open editors stay visible.`;
+    if (filterCount) filterCount.textContent = `${matches} matching item${matches === 1 ? '' : 's'}.`;
   }
-  [search, sectionFilter, visibilityFilter, lateFilter].forEach(control => control.addEventListener('input', applyFilters));
+  /** Whether an editor form differs from the values it was loaded or last saved with. */
+  function isDirty(form: HTMLFormElement) {
+    return [...form.elements].some((el) => {
+      if (el instanceof HTMLInputElement) return el.type === 'checkbox' ? el.checked !== el.defaultChecked : el.type !== 'hidden' && el.value !== el.defaultValue;
+      if (el instanceof HTMLTextAreaElement) return el.value !== el.defaultValue;
+      if (el instanceof HTMLSelectElement) {
+        const options = [...el.options];
+        const hasDefault = options.some(option => option.defaultSelected);
+        return options.some((option, index) => option.selected !== (hasDefault ? option.defaultSelected : index === 0));
+      }
+      return false;
+    });
+  }
+  /** Close every open item editor, resetting it to its saved values. Unsaved changes are
+   *  discarded only after staff confirm; returns false when they choose to keep them. */
+  function closeItemEditors() {
+    const open = [...document.querySelectorAll<HTMLDetailsElement>('.menu-item .editor[open]')];
+    const unsaved = open.filter(editor => { const form = editor.querySelector<HTMLFormElement>('form.edit-form'); return !!form && isDirty(form); });
+    if (unsaved.length) {
+      const names = unsaved.map(editor => editor.closest<HTMLElement>('.menu-item')?.dataset.itemName).filter(Boolean).join(', ');
+      if (!confirm(`Discard your unsaved changes to ${names}?`)) return false;
+    }
+    open.forEach(editor => { editor.querySelector<HTMLFormElement>('form.edit-form')?.reset(); editor.open = false; });
+    return true;
+  }
+  // Choosing another section clears the item being edited, so only that section's items show.
+  let currentSection = sectionFilter.value;
+  sectionFilter.addEventListener('input', () => {
+    if (sectionFilter.value === currentSection) return;
+    if (!closeItemEditors()) { sectionFilter.value = currentSection; return; }
+    currentSection = sectionFilter.value;
+    applyFilters();
+  });
+  [search, visibilityFilter, lateFilter].forEach(control => control.addEventListener('input', applyFilters));
   document.getElementById('clear-filters')?.addEventListener('click', () => {
-    search.value = ''; sectionFilter.value = ''; visibilityFilter.value = 'all'; lateFilter.checked = false;
+    if (sectionFilter.value && !closeItemEditors()) return;
+    search.value = ''; sectionFilter.value = ''; currentSection = ''; visibilityFilter.value = 'all'; lateFilter.checked = false;
     applyFilters(); search.focus();
   });
-  document.querySelectorAll<HTMLDetailsElement>('.editor').forEach(editor => editor.addEventListener('toggle', applyFilters));
   document.querySelector<HTMLElement>('#menu-filters')!.hidden = false;
   if (createdItem && /^\d+$/.test(createdItem)) {
     const editor = document.getElementById(`item-${createdItem}`)?.querySelector<HTMLDetailsElement>('.editor');
@@ -855,12 +1133,15 @@ const pizzaEditor = pizzaDraft ? {
   const smName = document.getElementById('sm-name') as HTMLInputElement | null;
   const smSubtitle = document.getElementById('sm-subtitle') as HTMLInputElement | null;
   const smNote = document.getElementById('sm-note') as HTMLTextAreaElement | null;
+  const smLoaded = (id: string, value: string | undefined) => { const input = document.getElementById(id) as HTMLInputElement | null; if (input) input.value = value ?? ''; };
   document.querySelectorAll<HTMLButtonElement>('.sm-edit-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       if (smEditId) smEditId.value = btn.dataset.id ?? '';
       if (smName) smName.value = btn.dataset.name ?? '';
       if (smSubtitle) smSubtitle.value = btn.dataset.subtitle ?? '';
       if (smNote) smNote.value = btn.dataset.note ?? '';
+      // The values the page loaded; the save is refused if someone else changed them.
+      smLoaded('sm-was-name', btn.dataset.name); smLoaded('sm-was-subtitle', btn.dataset.subtitle); smLoaded('sm-was-note', btn.dataset.note);
       if (smEditPanel) { smEditPanel.hidden = false; smEditPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
     });
   });
@@ -868,6 +1149,24 @@ const pizzaEditor = pizzaDraft ? {
   document.getElementById('sm-edit-form')?.addEventListener('submit', (e) => {
     const clickedAction = (e.submitter as HTMLButtonElement | null)?.value;
     if (clickedAction === 'delete-section' && !confirm('Delete this section? This only works if the section has no menu items.')) e.preventDefault();
+  });
+  // A full-page options save or navigation must not silently lose another draft.
+  const draftForms = () => [...document.querySelectorAll<HTMLFormElement>('.pizza-form, form.edit-form, #add-item-form, #sm-order-form, #sm-edit-form')]
+    .filter(form => !form.hidden && isDirty(form));
+  let leavingAfterSave = false;
+  document.addEventListener('submit', (event) => {
+    const form = event.target as HTMLFormElement;
+    if (!form.closest('.pizza-manager, .section-manager')) return;
+    const others = draftForms().filter(other => other !== form);
+    if (others.length && !confirm('Discard your other unsaved menu changes and save this form?')) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+    queueMicrotask(() => { leavingAfterSave = !event.defaultPrevented; });
+  }, true);
+  window.addEventListener('beforeunload', (event) => {
+    if (!leavingAfterSave && draftForms().length) { event.preventDefault(); event.returnValue = ''; }
   });
 </script>
 

@@ -1,0 +1,15 @@
+---
+import OptionsPanel from './OptionsPanel.astro';
+interface Props { notes: string[]; sidesHref?: string }
+const { notes, sidesHref } = Astro.props;
+const phrase = 'See Substitute Sides';
+---
+<OptionsPanel class="wrap-options" label="Wrap options">
+  <ul class="options-lines">{notes.map(note => <li>{sidesHref && note.includes(phrase)
+    ? <>{note.slice(0, note.indexOf(phrase))}<a href={sidesHref} data-sides-link>{phrase}</a>{note.slice(note.indexOf(phrase) + phrase.length)}</>
+    : note}</li>)}</ul>
+</OptionsPanel>
+<style>
+  a{color:inherit;text-decoration:underline;text-underline-offset:3px}
+  a:focus-visible{outline:3px solid var(--brick);outline-offset:3px}
+</style>

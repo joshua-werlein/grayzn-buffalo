@@ -245,10 +245,11 @@ test('compiled menu editor saves item names, descriptions and section names in t
   assert.equal((await (await post({action:'add',category_id:'1',name:'BBQ BACON BURGER',description:'bacon, cheddar AND bbq sauce. lettuce OR tomato.'})).json()).ok,true);
   const added=f.sql('SELECT id,name,description FROM items')[0];
   assert.deepEqual([added.name,added.description],['BBQ Bacon Burger','Bacon, Cheddar and BBQ Sauce. Lettuce or Tomato.']);
-  const edited=await (await post({action:'edit',id:String(added.id),category_id:'1',name:"grayz'n burger",description:'ham, cheddar AND swiss'})).json();
+  const loaded={was_name:added.name,was_description:added.description,was_category_id:'1',was_late_night:'0'};
+  const edited=await (await post({action:'edit',id:String(added.id),category_id:'1',name:"grayz'n burger",description:'ham, cheddar AND swiss',...loaded})).json();
   assert.deepEqual([edited.name,edited.description],["Grayz'n Burger",'Ham, Cheddar and Swiss'],'the editor shows the saved text');
   assert.deepEqual(f.sql('SELECT name,description FROM items WHERE id=?',added.id)[0],{name:"Grayz'n Burger",description:'Ham, Cheddar and Swiss'});
-  await post({action:'edit-section',category_id:'1',name:'on the lighter side',subtitle:'Tuesdays · 5–10 pm',note:'ask about substitutions'});
+  await post({action:'edit-section',category_id:'1',name:'on the lighter side',subtitle:'Tuesdays · 5–10 pm',note:'ask about substitutions',was_name:'Burgers',was_subtitle:'',was_note:''});
   assert.deepEqual(f.sql('SELECT name,subtitle,note FROM categories WHERE id=1')[0],{name:'On the Lighter Side',subtitle:'Tuesdays · 5–10 pm',note:'ask about substitutions'});
 });
 

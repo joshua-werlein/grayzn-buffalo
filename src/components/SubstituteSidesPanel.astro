@@ -1,0 +1,10 @@
+---
+import OptionsPanel from './OptionsPanel.astro';
+import { SUBSTITUTE_SIDES_NOTE } from '../lib/menu-options.js';
+interface Props { sides: string[] }
+const { sides } = Astro.props;
+---
+<OptionsPanel class="substitute-sides-options" label="Substitute side choices">
+  <p class="options-note">{SUBSTITUTE_SIDES_NOTE}</p>
+  <ul class="options-lines">{sides.map(side => <li>{side}</li>)}</ul>
+</OptionsPanel>

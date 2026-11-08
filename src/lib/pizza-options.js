@@ -1,7 +1,9 @@
 import { normalizeMenuCase } from './text-case.js';
 
 export const PIZZA_OPTIONS_KEY = 'menu_pizza_options';
-export const PIZZA_SIZES = ['Personal', '12 Inch', '16 Inch'];
+export const PIZZA_SIZES = ['6"', '12"', '16"'];
+// Labels saved by earlier releases read as today's, so no D1 rewrite is needed.
+const LEGACY_SIZES = { Personal: '6"', '6 Inch': '6"', '12 Inch': '12"', '16 Inch': '16"' };
 export const PIZZA_CRUSTS = ['Thin', 'Regular', 'Deep Dish'];
 // Original printed-menu choices confirmed by JJ; no historical pricing imported.
 export const PIZZA_TOPPINGS = [
@@ -16,6 +18,7 @@ const defaults = () => ({ sizes: [...PIZZA_SIZES], crusts: [...PIZZA_CRUSTS], to
 
 function validate(value) {
   if (!value || typeof value !== 'object') throw new Error('Invalid pizza options.');
+  if (Array.isArray(value.sizes)) value = { ...value, sizes: value.sizes.map(size => (Object.hasOwn(LEGACY_SIZES, size) ? LEGACY_SIZES[size] : size)) };
   for (const [key, allowed] of [['sizes', PIZZA_SIZES], ['crusts', PIZZA_CRUSTS]]) {
     if (!Array.isArray(value[key]) || value[key].some(entry => !allowed.includes(entry))) {
       throw new Error('Choose only the listed pizza sizes and crusts.');

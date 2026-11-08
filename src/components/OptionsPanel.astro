@@ -1,0 +1,18 @@
+---
+// The light bordered options panel shared by Pizzas, Sauces, Wraps, Salads and
+// Substitute Sides. Headings and dividers stay outside it; menu items never go in it.
+interface Props { class?: string; label: string }
+const { class: className, label } = Astro.props;
+---
+<aside class={className} data-options-panel aria-label={label}><slot /></aside>
+<style is:global>
+  [data-options-panel]{margin:14px 0 10px;padding:14px;border:1px solid #80634f;background:rgba(255,255,255,.3);color:#583e30;overflow-wrap:anywhere}
+  [data-options-panel] dl{margin:0;display:grid;gap:12px}
+  [data-options-panel] dt{font:700 1rem var(--label);color:#291912}
+  [data-options-panel] dd{margin:3px 0 0;line-height:1.5}
+  [data-options-panel] dd p{margin:0}
+  [data-options-panel] .options-note{margin:0 0 12px;font-size:.88rem;line-height:1.5}
+  [data-options-panel] .options-list{list-style:none;display:flex;gap:6px 16px;flex-wrap:wrap;margin:0;padding:0}
+  [data-options-panel] .options-columns{list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 16px;margin:0;padding:0;line-height:1.5}
+  [data-options-panel] .options-lines{list-style:none;display:grid;gap:6px;margin:0;padding:0;line-height:1.5}
+</style>

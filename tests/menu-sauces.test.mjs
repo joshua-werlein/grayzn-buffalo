@@ -42,6 +42,7 @@ const saved = f => f.sql('SELECT value FROM settings WHERE key=?', SAUCES_SORT_K
 async function reorder(f, fields) {
   const body = new FormData();
   body.set('action', 'reorder-sections');
+  body.set('sort_sauces_snapshot', saved(f) ?? '');
   for (const [id, sort] of Object.entries(sortsOf(f))) body.set(`sort_${id}`, String(sort));
   for (const [key, value] of Object.entries(fields)) body.set(key, String(value));
   const response = await container.renderToResponse(admin, request(f, '/admin/menu', { method: 'POST', headers: { origin: 'http://localhost' }, body }));
@@ -62,7 +63,7 @@ const options = html => [...html.matchAll(/<option value="(#[^"]+)"[^>]*>([^<]+)
 const left = (columns, name) => columns.findIndex(c => c.includes(name));
 const after = (columns, first, second) => { const c = columns.find(col => col.includes(first)); return !!c && c.indexOf(second) === c.indexOf(first) + 1; };
 
-test('position rules: tie goes after, default after Appetizers, inputs are whole numbers 0–999', () => {
+test('position rules: tie goes after, default after Appetizers, inputs are whole numbers 0â€“999', () => {
   const cats = [{ name: 'Appetizers', sort: 0 }, { name: 'Baskets', sort: 1 }, { name: 'Pizzas', sort: 5 }];
   assert.equal(saucesIndex(cats, null), 1);
   assert.equal(saucesIndex(cats, 0), 1);
@@ -84,11 +85,13 @@ test('default: one Sauces section per tab, right after Appetizers, styled as a s
     assert.match(section, /<h2[^>]*>Sauces<\/h2>/);
     assert.ok(section.includes(NOTE.replace(/'/g, '&#39;')) || section.includes(NOTE));
     assert.deepEqual([...section.matchAll(/<li[^>]*>(.*?)<\/li>/g)].map(m => decode(m[1])), seeded);
-    assert.doesNotMatch(section, /\$|¢|price|charg|surcharge|\bfree\b|every appetizer|all appetizers|included/i);
+    assert.doesNotMatch(section, /\$|Â¢|price|charg|surcharge|\bfree\b|every appetizer|all appetizers|included/i);
   }
   assert.equal((html.match(/id="menu-sauces"/g) ?? []).length, 1, 'one anchor, on the Daily tab');
   assert.doesNotMatch(html, /id="sec-sauces"/, 'never a category-style anchor');
-  assert.doesNotMatch(html, /class="sauce-options"/, 'no longer nested inside Appetizers');
+  // The panel lives inside the Sauces section only, never inside Appetizers.
+  assert.equal((html.match(/class="sauce-options"/g) ?? []).length, 2);
+  for (const section of found) assert.match(section, /<aside class="sauce-options" data-options-panel aria-label="Sauce choices"/);
   const daily = layout(html, 'daily'), late = layout(html, 'late-night');
   assert.ok(after(daily, 'Appetizers', 'Sauces') && after(late, 'Appetizers', 'Sauces'));
   assert.equal(chips(html).slice(0, 3).join('|'), 'Appetizers|Sauces|Baskets');
@@ -131,7 +134,7 @@ test('reordering persists in D1, survives later requests, and applies to both ta
     const html = await render(f);
     const daily = layout(html, 'daily'), late = layout(html, 'late-night');
     assert.ok(after(daily, 'Pizzas', 'Sauces'), JSON.stringify(daily));
-    assert.ok(after(late, 'Pizzas', 'Sauces'), 'Late Night follows the same order, in Pizzas’ column');
+    assert.ok(after(late, 'Pizzas', 'Sauces'), 'Late Night follows the same order, in Pizzasâ€™ column');
     assert.equal(sauceSections(html).length, 2);
     const order = chips(html);
     assert.equal(order[order.indexOf('Pizzas') + 1], 'Sauces');
@@ -172,7 +175,9 @@ test('invalid Sauces numbers are rejected and change nothing', async t => {
   }
   assert.match(await render(f, admin, '/admin/menu?sm=e6'), /Sauces order must be a whole number from 0 to 999\./);
   // A post without the Sauces field (an older page) still saves category order.
-  const body = new FormData(); body.set('action', 'reorder-sections'); body.set(`sort_${baseline.categories[1].id}`, '30');
+  const body = new FormData(); body.set('action', 'reorder-sections');
+  body.set('sort_sauces_snapshot', saved(f) ?? ''); body.set(`sort_${baseline.categories[1].id}`, '30');
+  body.set(`was_${baseline.categories[1].id}`, String(before[baseline.categories[1].id]));
   await container.renderToResponse(admin, request(f, '/admin/menu', { method: 'POST', headers: { origin: 'http://localhost' }, body }));
   assert.equal(sortsOf(f)[baseline.categories[1].id], 30);
   assert.equal(saved(f), null);
@@ -219,7 +224,7 @@ test('sauce text is escaped', async t => {
   assert.match(sauceSections(html)[0], /&lt;img src=x onerror=alert\(1\)&gt;/);
 });
 
-// ── Collision with an ordinary category named "Sauces" (Sol's review) ────────
+// â”€â”€ Collision with an ordinary category named "Sauces" (Sol's review) â”€â”€â”€â”€â”€â”€â”€â”€
 async function section(f, action, fields) {
   const body = new FormData();
   body.set('action', action);
@@ -283,7 +288,7 @@ test('COLLISION: renaming a section to "sauces" in any case, and older mixed-cas
   const f = menuFixture(t);
   assert.equal(await section(f, 'add-section', { name: 'Dips', subtitle: '', note: '' }), '/admin/menu?sm=s1');
   const id = addStaffItem(f, 'Dips');
-  assert.equal(await section(f, 'edit-section', { category_id: id, name: '  sauces ', subtitle: 'House made', note: '' }), '/admin/menu?sm=s2');
+  assert.equal(await section(f, 'edit-section', { category_id: id, name: '  sauces ', subtitle: 'House made', note: '', was_name: 'Dips', was_subtitle: '', was_note: '' }), '/admin/menu?sm=s2');
   assert.equal(f.sql('SELECT name FROM categories WHERE id=?', id)[0].name, 'Sauces');
   await assertNoCollision(f, 'Sauces');
   // Data saved before house capitalization, or edited elsewhere.
@@ -311,5 +316,5 @@ test('COLLISION: saved order still moves only the Wing Wednesday sauce section; 
   for (const tab of ['daily', 'late-night']) assert.ok(after(layout(html, tab), 'Pizzas', wingName), tab);
   const names = (await json(f)).map(s => s.name);
   assert.equal(names[names.indexOf('Pizzas') + 1], wingName);
-  assert.equal(names.at(-1), 'Sauces', 'the staff section stays at its own position (added last)');
+  assert.equal(names.filter(n => n !== 'Substitute Sides').at(-1), 'Sauces', 'the staff section stays at its own position (added last)');
 });

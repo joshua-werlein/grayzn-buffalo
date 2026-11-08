@@ -6,14 +6,14 @@ Reference: JJ’s supplied transcription and clarification of the original print
 
 ## Final behavior
 
-- Sizes: Personal, 12 Inch, 16 Inch.
+- Sizes: 6", 12", 16". (Corrected November 2026 from JJ's printed menu: the first size was shown as Personal. A previously saved Personal reads as 6", so no D1 rewrite is needed.)
 - Crusts: Thin, Regular, Deep Dish.
 - Additional toppings: Sausage, Pepperoni, Canadian Bacon, Beef, Bacon, Diced Chicken, Onions, Green Peppers, Tomatoes, Sauerkraut, Jalapenos, Green Olives, Black Olives, Mushrooms, Pineapple, Banana Peppers, Pickles, Spinach, Feta Cheese, Bleu Cheese Crumbles.
 - These choices apply generally to all actual pizzas. The public panel explicitly excludes Pizza Fries, which keeps its own sizes and existing record.
 - The new options section contains no prices, topping charges, crust surcharges, pricing placeholders, or requests to ask about pricing. The existing site-wide no-price policy remains unchanged.
 - Both Daily and Late Night Pizzas show the choices. `/menu.json` exposes matching options and the Pizza Fries exclusion.
 - Bartenders can change size/crust selections and edit topping names. The editor starts with the 20 confirmed toppings and preserves the existing capitalization normalization. Saves use the existing `settings` table, require authentication and same-origin requests, and reload persisted values. Invalid input and database failures retain drafts in HTML responses.
-- Size validation accepts only Personal, 12 Inch, and 16 Inch; old numeric-inch labels are rejected. Topping limits remain 40 entries and 80 characters per entry, allowing future staff changes.
+- Size validation accepts only 6", 12", and 16" (a saved Personal is read as 6 Inch). Topping limits remain 40 entries and 80 characters per entry, allowing future staff changes.
 - No category or item rows are rewritten. All 17 Pizzas entries, descriptions, stored pricing information, ordering, visibility, Late Night flags and photo keys remain intact. Existing item/section/photo editing remains separate.
 - No schema change or migration. No Facebook Pizza Night, Specials, or execution-control script changes.
 

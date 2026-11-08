@@ -1,0 +1,10 @@
+---
+import OptionsPanel from './OptionsPanel.astro';
+import { MENU_SAUCE_NOTE } from '../lib/menu-sauces';
+interface Props { sauces: string[] }
+const { sauces } = Astro.props;
+---
+<OptionsPanel class="sauce-options" label="Sauce choices">
+  <p class="options-note">{MENU_SAUCE_NOTE}</p>
+  <ul class="options-columns">{sauces.map(sauce => <li>{sauce}</li>)}</ul>
+</OptionsPanel>

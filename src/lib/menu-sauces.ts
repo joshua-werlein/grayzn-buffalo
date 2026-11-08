@@ -4,30 +4,17 @@
 // on the same number scale as categories.sort.
 import { getWingWednesday, visibleGroups, visibleSlots } from './specials-store';
 import { isWingSauceGroup, parseWingSauces } from './wing-wednesday.js';
+import { SAUCES_SECTION, SECTION_SORT_MAX, sectionName, validSectionSort, getSectionSort, saveSectionSortStatement, effectiveSectionSort, sectionIndex } from './menu-sections';
 
 // Owner-confirmed: every sauce goes with anything on the menu, every day, and the
 // list is complete. No prices or surcharges are stated.
 export const MENU_SAUCE_NOTE = 'Pair any sauce with anything on the menu. Available every day.';
-// Category anchors are always `sec-<slug>`, so this one can never collide with them.
-export const SAUCES_ANCHOR = 'menu-sauces';
-const sectionSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-
-/**
- * The heading for the Wing Wednesday sauce section. Staff may have their own category
- * called "Sauces" (any case or punctuation); that category is never changed, so this
- * section takes a distinct name instead, keeping headings, links and menu.json unambiguous.
- */
-export function saucesSectionName(categories: { name: string }[]) {
-  const taken = new Set(categories.map(c => sectionSlug(String(c.name ?? ''))));
-  if (!taken.has('sauces')) return 'Sauces';
-  for (let n = 1; ; n++) {
-    const name = n === 1 ? 'Wing Wednesday Sauces' : `Wing Wednesday Sauces ${n}`;
-    if (!taken.has(sectionSlug(name))) return name;
-  }
-}
-export const SAUCES_SORT_KEY = 'menu_sauces_sort';
-export const SAUCES_SORT_MAX = 999;
-const isAppetizers = (name: string) => name.trim().toLowerCase() === 'appetizers';
+// Position, heading and anchor rules are shared with other virtual sections (menu-sections.ts).
+export const SAUCES_ANCHOR = SAUCES_SECTION.anchor;
+/** "Sauces", or a distinct name when a staff category is already called Sauces (any case). */
+export const saucesSectionName = (categories: { name: string }[]) => sectionName(categories, SAUCES_SECTION);
+export const SAUCES_SORT_KEY = SAUCES_SECTION.sortKey;
+export const SAUCES_SORT_MAX = SECTION_SORT_MAX;
 
 /** Empty when the Wing Wednesday schema, group or content is missing; never throws. */
 export async function getMenuSauces(env: any): Promise<string[]> {
@@ -39,42 +26,13 @@ export async function getMenuSauces(env: any): Promise<string[]> {
   } catch { return []; }
 }
 
-export const validSaucesSort = (value: unknown) => {
-  if (typeof value !== 'string' || !/^\d{1,3}$/.test(value.trim())) return null;
-  const sort = Number(value);
-  return sort <= SAUCES_SORT_MAX ? sort : null;
-};
-
+type Cat = { name: string; sort: number };
+export const validSaucesSort = validSectionSort;
 /** The saved position, or null (unsaved or unreadable: the default after Appetizers applies). */
-export async function getSaucesSort(env: any): Promise<number | null> {
-  try {
-    const row = await env.DB.prepare('SELECT value FROM settings WHERE key = ?1').bind(SAUCES_SORT_KEY).first();
-    return row ? validSaucesSort(String(row.value)) : null;
-  } catch { return null; }
-}
-
+export const getSaucesSort = (env: any) => getSectionSort(env, SAUCES_SECTION);
 /** The INSERT for a validated position, so it can join the category sort batch. */
-export function saveSaucesSortStatement(env: any, sort: number) {
-  return env.DB.prepare('INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?2')
-    .bind(SAUCES_SORT_KEY, String(sort));
-}
-
+export const saveSaucesSortStatement = (env: any, sort: number) => saveSectionSortStatement(env, SAUCES_SECTION, sort);
 /** The number shown in the admin order field: the saved one, or Appetizers' (its default spot). */
-export function effectiveSaucesSort(categories: { name: string; sort: number }[], saved: number | null) {
-  return saved ?? categories.find(c => isAppetizers(c.name))?.sort ?? null;
-}
-
-/**
- * Where Sauces goes in an ordered category list: after every category whose sort is at
- * or below its own (so a tie with Appetizers' number sits right after Appetizers).
- * Unsaved: right after Appetizers, or last when there is no Appetizers section.
- */
-export function saucesIndex(categories: { name: string; sort: number }[], saved: number | null) {
-  if (saved === null) {
-    const at = categories.findIndex(c => isAppetizers(c.name));
-    return at < 0 ? categories.length : at + 1;
-  }
-  let index = 0;
-  categories.forEach((c, i) => { if (c.sort <= saved) index = i + 1; });
-  return index;
-}
+export const effectiveSaucesSort = (categories: Cat[], saved: number | null) => effectiveSectionSort(categories, saved, SAUCES_SECTION);
+/** After every category at or below its number (ties after); unsaved, right after Appetizers, else last. */
+export const saucesIndex = (categories: Cat[], saved: number | null) => sectionIndex(categories, saved, SAUCES_SECTION);

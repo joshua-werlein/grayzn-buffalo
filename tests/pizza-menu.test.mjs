@@ -37,13 +37,13 @@ function fixture(t) {
       bind: (...args) => query(args),
       first: async () => statement.get(...args) ?? null,
       all: async () => ({ results: statement.all(...args) }),
-      run: async () => ({ meta: { last_row_id: Number(statement.run(...args).lastInsertRowid) } }),
+      run: async () => ({ meta: { ...(() => { const r = statement.run(...args); return {last_row_id: Number(r.lastInsertRowid), changes: Number(r.changes)}; })() } }),
     });
     return query([]);
   } } };
   return { db, env, rows };
 }
-const form = (sizes = ['Personal', '12 Inch', '16 Inch'], crusts = ['Thin', 'Regular', 'Deep Dish'], toppings = '') => {
+const form = (sizes = ['6"', '12"', '16"'], crusts = ['Thin', 'Regular', 'Deep Dish'], toppings = '') => {
   const f = new FormData();
   f.set('action', 'pizza-options');
   for (const size of sizes) f.append('pizza_sizes', size);
@@ -54,9 +54,11 @@ const form = (sizes = ['Personal', '12 Inch', '16 Inch'], crusts = ['Thin', 'Reg
 const render = (component, f, path = '/menu') => container.renderToString(component, {
   request: new Request('http://localhost' + path, { headers: { cookie } }), locals: { runtime: { env: f.env } },
 });
-const post = (f, body, headers = { cookie, origin: 'http://localhost' }) => container.renderToResponse(admin, {
+const post = (f, body, headers = { cookie, origin: 'http://localhost' }) => {
+  if (!body.has('options_snapshot')) body.set('options_snapshot', f.db?.prepare('SELECT value FROM settings WHERE key=?').get(PIZZA_OPTIONS_KEY)?.value ?? '');
+  return container.renderToResponse(admin, {
   request: new Request('http://localhost/admin/menu', { method: 'POST', headers, body }), locals: { runtime: { env: f.env } },
-});
+}); };
 
 test('printed-menu defaults show only confirmed options, exclude Pizza Fries, and preserve every item', async t => {
   const f = fixture(t);
@@ -64,7 +66,9 @@ test('printed-menu defaults show only confirmed options, exclude Pizza Fries, an
   assert.equal(settingsRow(), undefined, 'the production settings key need not exist');
   const html = await render(menu, f);
   assert.equal((html.match(/aria-label="Pizza choices"/g) ?? []).length, 2);
-  assert.match(html, /Personal · 12 Inch · 16 Inch/);
+  assert.match(html, /6&quot; · 12&quot; · 16&quot;/);
+  assert.doesNotMatch(html, /\d+ Inch/, 'no word labels left');
+  assert.doesNotMatch(html, /Personal/, 'the old size label is gone');
   assert.match(html, /Thin · Regular · Deep Dish/);
   const sections = [...html.matchAll(/<aside class="pizza-options"[\s\S]*?<\/aside>/g)].map(match => match[0]);
   assert.equal(sections.length, 2);
@@ -72,10 +76,10 @@ test('printed-menu defaults show only confirmed options, exclude Pizza Fries, an
     assert.deepEqual([...section.matchAll(/<dt[^>]*>(.*?)<\/dt>/g)].map(match => match[1]), ['Sizes', 'Crusts', 'Additional toppings']);
     assert.deepEqual([...section.matchAll(/<li[^>]*>(.*?)<\/li>/g)].map(match => match[1]), printedToppings);
     assert.match(section, /For all pizzas\. Excludes Pizza Fries, which has its own sizes\./);
-    assert.doesNotMatch(section, /\$|€|£|price|charg|surcharge|ask at the bar|\b6(?:&quot;|&#34;| Inch)/i);
+    assert.doesNotMatch(section, /\$|€|£|price|charg|surcharge|ask at the bar|personal/i);
   }
   assert.deepEqual(await getPizzaOptions(f.env), {
-    sizes: ['Personal', '12 Inch', '16 Inch'], crusts: ['Thin', 'Regular', 'Deep Dish'], toppings: printedToppings,
+    sizes: ['6"', '12"', '16"'], crusts: ['Thin', 'Regular', 'Deep Dish'], toppings: printedToppings,
   });
   const adminHtml = await render(admin, f, '/admin/menu');
   assert.ok(adminHtml.includes(printedToppings.join('\n')));
@@ -96,15 +100,15 @@ test('authenticated save persists across requests, normalizes extras, updates pu
   const f = fixture(t);
   const before = { items: f.rows('items'), categories: f.rows('categories') };
   // Test input only: these are not seeded or approved additional toppings.
-  const response = await post(f, form(['12 Inch'], ['Thin'], 'TEST TOPPING AND BBQ\ntest topping and bbq'));
+  const response = await post(f, form(['12"'], ['Thin'], 'TEST TOPPING AND BBQ\ntest topping and bbq'));
   assert.equal(response.status, 303);
   assert.equal(response.headers.get('location'), '/admin/menu?pizza=saved#pizza-options');
   assert.deepEqual(JSON.parse(f.db.prepare('SELECT value FROM settings WHERE key=?').get(PIZZA_OPTIONS_KEY).value),
-    { sizes: ['12 Inch'], crusts: ['Thin'], toppings: ['Test Topping and BBQ'] });
+    { sizes: ['12"'], crusts: ['Thin'], toppings: ['Test Topping and BBQ'] });
   const adminHtml = await render(admin, f, '/admin/menu?pizza=saved');
   assert.match(adminHtml, /Pizza options saved/);
   assert.match(adminHtml, /Test Topping and BBQ/);
-  assert.match(adminHtml, /value="12 Inch" checked/);
+  assert.match(adminHtml, /value="12&#34;" checked/);
   assert.doesNotMatch(adminHtml, /value="Personal" checked/);
   const html = await render(menu, f);
   assert.equal((html.match(/Test Topping and BBQ/g) ?? []).length, 2);
@@ -122,7 +126,7 @@ test('invalid input, missing sessions and cross-origin saves cannot alter saved 
   const f = fixture(t);
   await post(f, form());
   const before = await getPizzaOptions(f.env);
-  for (const body of [form(['6"']), form(['12"']), form(['16"']), form(['18"']), form([], ['Stuffed']), form([], [], 'x'.repeat(81)), form([], [], Array(41).fill('Test').join('\n'))]) {
+  for (const body of [form(['8"']), form(['18"']), form(['Large']), form(['6 inches']), form([], ['Stuffed']), form([], [], 'x'.repeat(81)), form([], [], Array(41).fill('Test').join('\n'))]) {
     const response = await post(f, body, { cookie, origin: 'http://localhost', accept: 'application/json' });
     assert.equal((await response.json()).ok, false);
   }
@@ -149,10 +153,37 @@ test('topping markup is escaped in Menu and admin, and database errors never rep
 test('failed HTML saves keep the topping draft available for correction', async t => {
   const f = fixture(t);
   const draft = 'x'.repeat(81);
-  const html = await (await post(f, form(['Personal'], ['Regular'], draft))).text();
+  const html = await (await post(f, form(['6"'], ['Regular'], draft))).text();
   assert.ok(html.includes(draft));
   assert.match(html, /80 characters or fewer/);
   assert.match(html, /value="Regular" checked/);
+});
+
+test('previously saved "Personal" and "N Inch" sizes show as 6" / 12" / 16", keep saved crusts and toppings, and rewrite nothing', async t => {
+  const f = fixture(t);
+  const stored = JSON.stringify({ sizes: ['Personal', '16 Inch'], crusts: ['Thin'], toppings: ['Sausage', 'Pineapple'] });
+  f.db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run(PIZZA_OPTIONS_KEY, stored);
+  assert.deepEqual(await getPizzaOptions(f.env), { sizes: ['6"', '16"'], crusts: ['Thin'], toppings: ['Sausage', 'Pineapple'] });
+  const html = await render(menu, f);
+  assert.equal((html.match(/6&quot; · 16&quot;/g) ?? []).length, 2, 'Daily and Late Night');
+  assert.doesNotMatch(html, /Personal/);
+  assert.match(html, /<li[^>]*>Pineapple<\/li>/, 'saved toppings are not replaced by defaults');
+  const adminHtml = await render(admin, f, '/admin/menu');
+  assert.match(adminHtml, /value="6&#34;" checked/);
+  assert.match(adminHtml, /value="12&#34;"(?! checked)/);
+  assert.doesNotMatch(adminHtml, /value="Personal"/);
+  assert.equal(f.db.prepare('SELECT value FROM settings WHERE key=?').get(PIZZA_OPTIONS_KEY).value, stored, 'reading never writes D1');
+  const json = await (await menuJson.GET({ locals: { runtime: { env: f.env } } })).json();
+  assert.deepEqual(json.sections.find(s => s.name === 'Pizzas').pizzaOptions.sizes, ['6"', '16"']);
+  // Saving from the editor stores the new label.
+  assert.equal((await post(f, form(['6"', '16"'], ['Thin'], 'Sausage'))).status, 303);
+  assert.deepEqual(JSON.parse(f.db.prepare('SELECT value FROM settings WHERE key=?').get(PIZZA_OPTIONS_KEY).value).sizes, ['6"', '16"']);
+  // Every label an earlier release could have saved reads as today's.
+  f.db.prepare('UPDATE settings SET value=? WHERE key=?').run(JSON.stringify({ sizes: ['6 Inch', '12 Inch', '16 Inch'], crusts: ['Regular'], toppings: [] }), PIZZA_OPTIONS_KEY);
+  assert.deepEqual((await getPizzaOptions(f.env)).sizes, ['6"', '12"', '16"']);
+  // An unknown size is still refused on save.
+  assert.equal((await post(f, form(['8"'], ['Thin'], 'Sausage'))).status, 200);
+  assert.deepEqual((await getPizzaOptions(f.env)).sizes, ['6"', '12"', '16"']);
 });
 
 // Optional fixture export includes the build's actual styles and scripts.
