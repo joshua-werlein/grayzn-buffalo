@@ -4,6 +4,7 @@ import { isAuthed } from '../../lib/auth';
 import { thumbKey } from '../../lib/db';
 import { normalizeMenuCase } from '../../lib/text-case.js';
 import { getPizzaOptions, savePizzaOptions, pizzaOptionsFromForm, PIZZA_SIZES, PIZZA_CRUSTS } from '../../lib/pizza-options.js';
+import { getMenuSauces, getSaucesSort, saucesIndex, effectiveSaucesSort, validSaucesSort, saveSaucesSortStatement, saucesSectionName } from '../../lib/menu-sauces';
 
 const env = (Astro.locals as any).runtime?.env ?? {};
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -30,6 +31,7 @@ const SM_MESSAGES: Record<string, { ok: boolean; text: string }> = {
   e3: { ok: false, text: 'Invalid section.' },
   e4: { ok: false, text: 'Remove all items from this section before deleting it.' },
   e5: { ok: false, text: 'Something went wrong. Check the database connection — see README.' },
+  e6: { ok: false, text: 'Sauces order must be a whole number from 0 to 999.' },
 };
 let notice = '';
 let problem = '';
@@ -132,11 +134,16 @@ if (Astro.request.method === 'POST') {
           return { id, sort: Math.round(sort) };
         })
         .filter(Boolean) as { id: number; sort: number }[];
-      if (updates.length) {
-        await env.DB.batch(
-          updates.map(({ id, sort }) => env.DB.prepare('UPDATE categories SET sort = ?2 WHERE id = ?1').bind(id, sort))
-        );
-      }
+      // Sauces is not a category; its number is kept in settings. Saved only once staff
+      // change it, so until then it keeps following Appetizers.
+      const sauces = f.has('sort_sauces') ? validSaucesSort(f.get('sort_sauces')) : undefined;
+      if (sauces === null) throw new Error('Sauces order must be a whole number from 0 to 999.');
+      const saveSauces = sauces !== undefined && String(sauces) !== String(f.get('sort_sauces_was') ?? '').trim();
+      const statements = [
+        ...updates.map(({ id, sort }) => env.DB.prepare('UPDATE categories SET sort = ?2 WHERE id = ?1').bind(id, sort)),
+        ...(saveSauces ? [saveSaucesSortStatement(env, sauces!)] : []),
+      ];
+      if (statements.length) await env.DB.batch(statements);
       return Astro.redirect('/admin/menu?sm=s3', 303);
 
     } else if (action === 'delete-section') {
@@ -162,6 +169,7 @@ if (Astro.request.method === 'POST') {
       else if (msg === 'Section name must be 60 characters or fewer.') code = 'e2';
       else if (msg === 'Invalid section.') code = 'e3';
       else if (msg === 'Remove all items from this section before deleting it.') code = 'e4';
+      else if (msg === 'Sauces order must be a whole number from 0 to 999.') code = 'e6';
       return Astro.redirect(`/admin/menu?sm=${code}`, 303);
     }
     problem = msg || 'Something went wrong. Check the database connection — see README.';
@@ -186,6 +194,13 @@ try {
   items = (await env.DB.prepare('SELECT * FROM items ORDER BY category_id, sort').all()).results ?? [];
 } catch {}
 const pizzaOptions = await getPizzaOptions(env);
+// The Sauces row in Manage Sections, at the position the public Menu uses.
+const [menuSauces, savedSaucesSort] = await Promise.all([getMenuSauces(env), getSaucesSort(env)]);
+const saucesOrder = effectiveSaucesSort(categories, savedSaucesSort) ?? categories.at(-1)?.sort ?? 0;
+const SAUCES_ROW = { sauces: true } as const;
+const saucesName = saucesSectionName(categories);
+const orderRows: any[] = [...categories];
+orderRows.splice(saucesIndex(categories, savedSaucesSort), 0, SAUCES_ROW);
 const pizzaEditor = pizzaDraft ? {
   sizes: pizzaDraft.getAll('pizza_sizes'), crusts: pizzaDraft.getAll('pizza_crusts'),
   toppingsText: String(pizzaDraft.get('pizza_toppings') ?? ''),
@@ -272,7 +287,13 @@ const pizzaEditor = pizzaDraft ? {
           <table class="sm-table">
             <thead><tr><th>Order</th><th>Name</th><th></th></tr></thead>
             <tbody>
-              {categories.map((c: any) => (
+              {orderRows.map((c: any) => c === SAUCES_ROW ? (
+                <tr class="sm-sauces-row">
+                  <td><input class="sm-sort-input" type="number" name="sort_sauces" value={saucesOrder} min="0" max="999" step="1" aria-label={`Sort order for ${saucesName}`} /><input type="hidden" name="sort_sauces_was" value={saucesOrder} /></td>
+                  <td class="sm-name-cell">{saucesName}<span class="sm-sub">{menuSauces.length ? `${menuSauces.length} sauces from Wing Wednesday · goes after sections with the same or a lower number` : 'Hidden on the Menu: the Wing Wednesday sauce list is empty'}{saucesName !== 'Sauces' && ' · named this because another section is called Sauces'}</span></td>
+                  <td><a class="sm-sauces-link" href="/admin/specials">Edit sauces</a></td>
+                </tr>
+              ) : (
                 <tr>
                   <td><input class="sm-sort-input" type="number" name={`sort_${c.id}`} value={c.sort} min="0" max="999" aria-label={`Sort order for ${c.name}`} /></td>
                   <td class="sm-name-cell">{c.name}{c.subtitle && <span class="sm-sub">{c.subtitle}</span>}</td>
@@ -1071,6 +1092,8 @@ const pizzaEditor = pizzaDraft ? {
   .sm-sub{display:block;font-size:.8rem;font-weight:400;color:var(--ink-2);margin-top:2px}
   .sm-edit-btn{min-height:38px;padding:6px 12px;border:1px solid var(--ink-2);border-radius:6px;background:transparent;font:600 .82rem var(--label);letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
   .sm-edit-btn:hover{background:rgba(36,22,16,.06)}
+  .sm-sauces-link{display:inline-flex;align-items:center;min-height:38px;padding:6px 12px;border:1px solid var(--ink-2);border-radius:6px;color:inherit;font:600 .82rem var(--label);letter-spacing:.06em;text-transform:uppercase;text-decoration:none;white-space:nowrap}
+  .sm-sauces-link:hover{background:rgba(36,22,16,.06)}
   .sm-save-order{margin-top:12px}
   .sm-edit-panel{padding:16px;background:var(--cream);border-radius:8px;border:2px solid var(--gold)}
   .sm-edit-panel[hidden]{display:none}

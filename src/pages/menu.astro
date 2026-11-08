@@ -3,10 +3,13 @@ import Base from '../layouts/Base.astro';
 import { getMenu, thumbKey } from '../lib/db';
 import PizzaOptions from '../components/PizzaOptions.astro';
 import { getPizzaOptions, isPizzaCategory } from '../lib/pizza-options.js';
+import { getMenuSauces, getSaucesSort, saucesIndex, saucesSectionName, MENU_SAUCE_NOTE, SAUCES_ANCHOR } from '../lib/menu-sauces';
  
 const env = (Astro.locals as any).runtime?.env ?? {};
 const { categories, items } = await getMenu(env);
 const pizzaOptions = await getPizzaOptions(env);
+const [sauces, saucesSort] = await Promise.all([getMenuSauces(env), getSaucesSort(env)]);
+const saucesName = saucesSectionName(categories);
  
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
  
@@ -35,6 +38,24 @@ const dailyColumns = splitColumns(daily);
 // Keep the two shorter sections together in the Late Night right column.
 const lateNightRight = lateNight.filter((group) => ['Burgers', 'Pizzas'].includes(group.cat.name));
 const lateNightColumns = [lateNight.filter((group) => !lateNightRight.includes(group)), lateNightRight];
+
+// Sauces is its own section, placed by its saved order number. It goes directly after
+// the section before it in that order, in that section's column, so every other
+// section keeps its existing column. Hidden when the Wing Wednesday list is empty.
+const SAUCES = { sauces: true } as const;
+type Block = Group | typeof SAUCES;
+const isSauces = (block: Block): block is typeof SAUCES => block === SAUCES;
+const withSauces = (groups: Group[], columns: Group[][]): Block[][] => {
+  if (!sauces.length) return columns;
+  const before = groups[saucesIndex(groups.map((g) => g.cat), saucesSort) - 1];
+  return columns.map((column, i) => before
+    ? column.flatMap((g): Block[] => (g === before ? [g, SAUCES] : [g]))
+    : i === 0 ? [SAUCES, ...column] : column);
+};
+const dailyBlocks = withSauces(daily, dailyColumns);
+const lateNightBlocks = withSauces(lateNight, lateNightColumns);
+const dailyChips: { name: string; href: string }[] = daily.map((g) => ({ name: g.cat.name, href: `#sec-${slug(g.cat.name)}` }));
+if (sauces.length) dailyChips.splice(saucesIndex(daily.map((g) => g.cat), saucesSort), 0, { name: saucesName, href: `#${SAUCES_ANCHOR}` });
 ---
 <Base
   title="Menu — Grayz'n Buffalo Bar & Grill"
@@ -95,23 +116,29 @@ const lateNightColumns = [lateNight.filter((group) => !lateNightRight.includes(g
   <div id="panel-daily" role="tabpanel" class="panel" aria-labelledby="tab-daily" tabindex="0">
     <nav class="chips" aria-label="Jump to a section">
       <div class="chip-links">
-        {daily.map((g) => (
-          <a href={`#sec-${slug(g.cat.name)}`}>{g.cat.name}</a>
+        {dailyChips.map((chip) => (
+          <a href={chip.href}>{chip.name}</a>
         ))}
       </div>
       <label class="sr-only" for="category-jump">Jump to a menu section</label>
       <select class="chip-select" id="category-jump">
         <option value="" selected disabled>Jump to a section</option>
-        {daily.map((g) => (
-          <option value={`#sec-${slug(g.cat.name)}`}>{g.cat.name}</option>
+        {dailyChips.map((chip) => (
+          <option value={chip.href}>{chip.name}</option>
         ))}
       </select>
     </nav>
  
     <div class="menu-columns">
-      {dailyColumns.map((column) => (
+      {dailyBlocks.map((column) => (
         <div class="menu-column">
-          {column.map((g) => (
+          {column.map((g) => isSauces(g) ? (
+            <section class="cat-section sauces-section" id={SAUCES_ANCHOR}>
+              <h2>{saucesName}</h2>
+              <p class="category-note">{MENU_SAUCE_NOTE}</p>
+              <ul class="sauce-list">{sauces.map((sauce) => <li>{sauce}</li>)}</ul>
+            </section>
+          ) : (
             <section class="cat-section" id={`sec-${slug(g.cat.name)}`}>
               <h2>{g.cat.name}</h2>
               {g.cat.subtitle && <p class="category-subtitle">{g.cat.subtitle}</p>}
@@ -146,9 +173,15 @@ const lateNightColumns = [lateNight.filter((group) => !lateNightRight.includes(g
       <p class="empty">Late-night items are being set up. Check back soon.</p>
     ) : (
       <div class="menu-columns">
-        {lateNightColumns.map((column) => (
+        {lateNightBlocks.map((column) => (
           <div class="menu-column">
-            {column.map((g) => (
+            {column.map((g) => isSauces(g) ? (
+              <section class="cat-section sauces-section">
+                <h2>{saucesName}</h2>
+                <p class="category-note">{MENU_SAUCE_NOTE}</p>
+                <ul class="sauce-list">{sauces.map((sauce) => <li>{sauce}</li>)}</ul>
+              </section>
+            ) : (
               <section class="cat-section">
                 <h2>{g.cat.name}</h2>
                 {g.cat.subtitle && <p class="category-subtitle">{g.cat.subtitle}</p>}
@@ -184,6 +217,8 @@ const lateNightColumns = [lateNight.filter((group) => !lateNightRight.includes(g
 <style>
   .category-subtitle{margin:8px 0;font-family:var(--label);font-size:1.1rem;font-weight:700;color:var(--brick)}
   .category-note{margin:8px 0 14px;line-height:1.45;color:#583e30}
+  .sauce-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px}
+  .sauce-list li{padding:9px 0;border-bottom:1px solid rgba(88,62,48,.2);color:#291912;font-family:var(--label);font-size:1.05rem;font-weight:700;line-height:1.25;overflow-wrap:anywhere}
   .menu-top{
     --footer-blend-height:clamp(40px,3vw,56px);
     padding:clamp(28px,5vw,68px) clamp(14px,4vw,56px) calc(var(--footer-blend-height) + clamp(12px,1.5vw,20px));

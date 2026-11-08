@@ -10,7 +10,7 @@ A recurring `/specials` section built on the Mexican Night section tables, with 
 | Recurring template | `wing-wednesday-defaults` |
 | Live section | `wing-wednesday` |
 | Options | group `ww-live:ww-default:wings`: slots 1–2 hold bone-in and boneless in either order, slots 3–4 open and left empty by Facebook |
-| Sauces | group `ww-live:ww-default:sauces`: slot 1, one sauce per line |
+| Sauces | group `ww-live:ww-default:sauces`: slot 1, one sauce per line. The same list is also the public Menu's Sauces section (both tabs and `menu.json`, `src/lib/menu-sauces.ts`), without prices, whenever the group is enabled and not empty. Its position is set in Admin › Menu › Manage Sections (stored as `settings.menu_sauces_sort`; right after Appetizers until changed). If staff also have their own section named Sauces (any case), that section is left exactly as is and this one is headed "Wing Wednesday Sauces"; its anchor is always `#menu-sauces` |
 | Facebook decisions | `wing_wednesday_decisions`: `published`, `held` or `approved` |
 
 ## Links
