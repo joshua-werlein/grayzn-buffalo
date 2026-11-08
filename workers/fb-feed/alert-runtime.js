@@ -8,7 +8,8 @@ import {deliveryWindow,resolveDeliveryDisplay} from '../../src/lib/delivery.js';
 import {dailyPublicationObservation,importAlertObservation} from './alert-policy.js';
 import {ALERT_GRACE_MS,dispatchAlert,alertEvidenceFence} from './alert-store.js';
 import {alertTransport} from './alert-email.js';
-import {dailyAlertDetail,deliveryAlertDetail,weeklyAlertDetail,wingAlertDetail} from './alert-detail.js';
+import {dailyAlertDetail,deliveryAlertDetail,weeklyAlertDetail,wingAlertDetail,imageAlertDetail} from './alert-detail.js';
+import {imageImportObservation} from './image-alert.js';
 import {readWingAttention} from './wing-review.js';
 import {isWingOffer} from './wing-night.js';
 
@@ -320,7 +321,22 @@ async function assess(env,scan,snap) {
       wing={...wing,state:'suppressed',fingerprint:undefined,detail:null};
     }
   }
-  return {daily:{state:food.state,cause,detail},delivery,weekly,wing};
+  const images={};
+  for(const source of sources) {
+    const scope=`image_${(await digest(source.fb_post_id)).slice(0,24)}`;
+    const caption=classifyCaption(source.caption);
+    // Known daily/weekly/section failures keep their existing alert route.
+    // Wrong-day evidence and staff decisions also retain their suppression.
+    let covered=dedicated(source) || weeklySource(source) || caption.kind==='section' || intentional(source,snap.data,w.weekday)
+      || (caption.day===w.weekday && ['week','ambiguous'].includes(caption.kind));
+    if(Number.isInteger(caption.day) && caption.day>=0) {
+      try {covered ||= !validateCurrentDay({day_of_week:caption.day,day_evidence:source.caption,poster_evidence:source.caption},w.weekday,scan.day);}
+      catch {covered=true;}
+    }
+    const observation=covered?{state:'suppressed',cause:'automation_failed'}:imageImportObservation(source);
+    images[scope]={...observation,detail:imageAlertDetail({day:scan.day,source,category:observation.category})};
+  }
+  return {daily:{state:food.state,cause,detail},delivery,weekly,wing,...images};
 }
 
 // Weekly Lunch and Wing Wednesday: the current failure has its own fingerprinted key.
@@ -339,7 +355,7 @@ function recordFingerprinted(env,scan,scope,code,observation,evidence) {
 
 function recordVerified(env,scan,scope,observation,evidence,incidentKey=null) {
   const {hash}=evidence,fence=alertEvidenceFence(evidence,10);
-  const code=scope==='daily'?'publication_blocked':scope==='weekly'?'weekly_lunch_failed':scope==='wing'?'wing_wednesday_failed':'delivery_failed';
+  const code=scope.startsWith('image_')?'automation_failed':scope==='daily'?'publication_blocked':scope==='weekly'?'weekly_lunch_failed':scope==='wing'?'wing_wednesday_failed':'delivery_failed';
   const deliveryEnd=Date.parse(deliveryWindow(new Date(scan.completed_ms)).expiresAt);
   const proof=JSON.stringify({version:1,token:scan.token,hash,cause:observation.cause,parser:scan.parser,
     ...(observation.fingerprint?{fingerprint:observation.fingerprint}:{}),
@@ -439,10 +455,19 @@ export async function finishAlertScan(env,context,sourceIds,options={}) {
     // A failed batch rolls back all three, and the token/fence protects against
     // newer scans or business writes between assessment and persistence.
     const fence=alertEvidenceFence(before,4);
+    const imageScopes=Object.keys(outcomes).filter(scope=>scope.startsWith('image_'));
+    const imageFence=alertEvidenceFence(before,5);
     const persisted=await env.DB.batch([
       ...['daily','delivery'].map(scope=>recordVerified(env,scan,scope,outcomes[scope],before)),
       ...recordFingerprinted(env,scan,'weekly','weekly_lunch_failed',outcomes.weekly,before),
       ...recordFingerprinted(env,scan,'wing','wing_wednesday_failed',outcomes.wing,before),
+      // A removed/superseded post cannot leave an unsent technical alert live.
+      env.DB.prepare(`UPDATE facebook_alert_incidents SET state='suppressed',observed_ms=?2
+        WHERE day=?1 AND scope GLOB 'image_*' AND observed_ms<=?2
+          AND scope NOT IN (SELECT value FROM json_each(?3))
+          AND EXISTS(SELECT 1 FROM facebook_alert_scans WHERE day=?1 AND token=?4 AND completed_ms IS NOT NULL)
+          ${imageFence.sql}`).bind(scan.day,scan.started_ms,JSON.stringify(imageScopes),scan.token,...imageFence.args),
+      ...imageScopes.map(scope=>recordVerified(env,scan,scope,outcomes[scope],before)),
       env.DB.prepare(`UPDATE facebook_alert_scans SET evaluated_ms=?3,evaluation_state='complete',evaluation_error=NULL
         WHERE day=?1 AND token=?2 ${fence.sql}`)
         .bind(scan.day,scan.token,Date.now(),...fence.args),

@@ -1,0 +1,11 @@
+{
+  "day_of_week": 0,
+  "day_evidence": "Sunday",
+  "poster_evidence": "Sunday Specials",
+  "delivery": {"status":"none","evidence":"","date_evidence":"","uncertainties":[]},
+  "offers": [
+    {"content":"16\" 3-Topping Pizza & 12 Wings $30","evidence":"16\" 3-Topping Pizza & 12 Wings $30","service_time":""},
+    {"content":"Dovi Burger with Side Salad, Chili or Coleslaw $10.25","evidence":"Dovi Burger with Side Salad, Chili or Coleslaw $10.25","service_time":""},
+    {"content":"Grilled Ham & Cheese with Cup of Chili or Coleslaw $7.25","evidence":"Grilled Ham & Cheese with Cup of Chili or Coleslaw $7.25","service_time":""}
+  ]
+}

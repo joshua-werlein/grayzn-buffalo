@@ -278,6 +278,16 @@ function formatWeeklyText({day, code, summary, detail:d, firstSeenMs}) {
 }
 
 const RETRY = {retry_exhausted:'exhausted',ai_budget_exhausted:'paused until the daily AI limit resets'};
+const IMAGE_CATEGORIES=new Set(['AI extraction','AI extraction retries exhausted','Image acquisition','Image acquisition retries exhausted','AI daily limit']);
+export function imageAlertDetail({day,source,category}) {
+  if(!isDate(day)) return null;
+  const id=/^[a-zA-Z0-9_-]{1,100}$/.test(source?.id ?? '')?source.id:null;
+  const post=/^\d{1,30}_\d{1,30}$/.test(source?.fb_post_id ?? '')?source.fb_post_id.split('_'):null;
+  return {scope:'image',day,category:IMAGE_CATEGORIES.has(category)?category:'Image processing',
+    attempts:Number.isInteger(source?.retry_count)&&source.retry_count>=0&&source.retry_count<=3?source.retry_count:null,
+    postUrl:post?`https://www.facebook.com/${post[0]}/posts/${post[1]}`:null,
+    reviewUrl:`${SITE}/admin/automation?date=${day}${id?`#import-${id}`:''}`};
+}
 const STAGE_FOR_CODE = {import_failed:'import',validation_rejected:'validation',ai_budget_exhausted:'AI extraction',
   retry_exhausted:'import retries',delivery_failed:'delivery activation',automation_failed:'automation run'};
 
@@ -285,6 +295,15 @@ const STAGE_FOR_CODE = {import_failed:'import',validation_rejected:'validation',
 // validated number/date, or plainValue() output.
 export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
   const d = detail && detail.day===day ? detail : null;
+  if(d?.scope==='image') {
+    const lines=['A Facebook image import could not be processed.',`Date: ${day} (Chicago)`,
+      `Failure category: ${d.category}`,`Attempts used: ${d.attempts ?? 'unverified'}`,
+      'Image contents: unverified. No particular specials or delivery availability are established by this alert.',
+      'Staff attention: required. Review the failed import. Automatic retries are exhausted, unavailable, or paused; recovery requires review.'];
+    if(d.postUrl) lines.push(`Facebook post: ${d.postUrl}`);
+    lines.push(`Review import: ${d.reviewUrl}`);
+    return lines.join('\n');
+  }
   if (d?.scope==='weekly') return formatWeeklyText({day, code, summary, detail:d, firstSeenMs});
   if (d?.scope==='wing') return formatWingText({day, summary, detail:d, firstSeenMs});
   const lines = [summary];
@@ -339,6 +358,7 @@ export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
   return lines.join('\n');
 }
 export function alertSubjectSuffix(detail) {
+  if (detail?.scope==='image') return ' (Facebook image processing)';
   if (detail?.scope==='weekly') return ' (Weekly Lunch)';
   if (detail?.scope==='wing') return ' (Wing Wednesday)';
   const categories = [...new Set((detail?.holds ?? []).map(h=>h.category))].slice(0,3);

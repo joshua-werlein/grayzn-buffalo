@@ -699,8 +699,11 @@ async function processImportAttempt(env, record, raw, {window,modelId,dailyLimit
     if (!record.image_r2_key) {
       const image = await storeImportImage(env,raw,record.image_source_version,record.attempt_token);
       if (!image.imageR2Key) {
-        if (image.transient) return await retry(image.reason,'transient_image');
-        return await finishImportAttempt(env,record,{status:'skipped',failureKind:'permanent',reason:image.reason ?? 'no image'});
+        // Fixed stage marker permits technical coverage without trusting a
+        // caption or exposing a provider's error text in the notification.
+        const reason=image.reason && image.reason!=='invalid or oversized image' ? `Image acquisition failed: ${image.reason}` : image.reason;
+        if (image.transient) return await retry(reason,'transient_image');
+        return await finishImportAttempt(env,record,{status:'skipped',failureKind:'permanent',reason:reason ?? 'no image'});
       }
       if (!await saveAttemptImage(env,record,image)) return;
       record.image_r2_key=image.imageR2Key;
@@ -709,7 +712,7 @@ async function processImportAttempt(env, record, raw, {window,modelId,dailyLimit
     const result = await runAiExtraction(env,record.image_r2_key,record.caption,modelId,
       {importId:record.id,record,window,dailyLimit});
     if (result.cancelled) return; // Lease/cutoff guards or next cron handle unfinished work.
-    if (result.imageMissing) return await retry('Stored image unavailable','transient_image',{clearImage:true});
+    if (result.imageMissing) return await retry('Image acquisition failed: Stored image unavailable','transient_image',{clearImage:true});
     if (result.budgetExceeded) return await finishImportAttempt(env,record,{
       status:'skipped',failureKind:'budget',reason:'daily AI limit reached',
     });

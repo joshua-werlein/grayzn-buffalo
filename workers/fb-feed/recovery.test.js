@@ -263,3 +263,48 @@ test('transient classification is conservative about semantic and authorization 
   for(const status of [408,425,429,500,502,503,504])assert.equal(isTransientFailure({status}),true);
   for(const code of [3007,3008,3040])assert.equal(isTransientFailure({code}),true);
 });
+
+test('November 8: Workers AI 8005 retries once due, recovers Sunday offers and preserves staff locks',async t=>{
+  const f=harness(t,{now:'2026-11-08T15:58:24Z',caption:''});
+  f.sql("UPDATE weekly_specials SET week_start_date='2026-11-02',week_end_date='2026-11-08' WHERE id=9000");
+  Object.assign(f.state.posts[0],{created_time:'2026-11-08T15:57:06Z',updated_time:'2026-11-08T15:57:06Z'});
+  Object.assign(f.env,{SPECIALS_EVIDENCE_VERSION:'2',SPECIALS_VERIFICATION_STRATEGY:'conditional'});
+  f.state.candidate=JSON.parse(readFileSync(new URL('../../tests/fixtures/nov8-sunday-specials.json',import.meta.url),'utf8'));
+  const id=f.slots(0,'all-day')[0].group_id;
+  f.sql("UPDATE special_slots SET content='Staff correction',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",id);
+  const run=f.env.AI.run;let first=true;
+  f.env.AI.run=async(...args)=>{if(first){first=false;f.state.aiCalls++;throw Error('AiError: 8005: Internal server error');}return run(...args);};
+  await f.run();assert.equal(row(f).processing_status,'pending');assert.equal(row(f).failure_kind,'transient_ai');
+  assert.equal(row(f).retry_count,1);assert.equal(Date.parse(row(f).next_attempt_at),f.state.now+IMPORT_RETRY_MS);
+  f.state.now+=IMPORT_RETRY_MS-1;await f.run();assert.equal(f.state.aiCalls,1);
+  f.state.now++;await Promise.all([f.run(),f.run()]);
+  assert.equal(row(f).processing_status,'staged');assert.equal(row(f).retry_count,2);assert.equal(f.state.aiCalls,2);
+  assert.match(f.slots(0,'lunch')[0].content,/Pizza.*\$30/);
+  assert.match(f.slots(0,'all-day')[0].content,/Dovi Burger.*Chili.*\$10.25/);
+  assert.equal(f.slots(0,'all-day')[1].content,'Staff correction');
+  const saved=f.sql('SELECT * FROM special_slots ORDER BY group_id,position');await f.run();
+  assert.deepEqual(f.sql('SELECT * FROM special_slots ORDER BY group_id,position'),saved);
+});
+
+test('November 8: repeated 8005 failures exhaust exactly three attempts',async t=>{
+  const f=harness(t);f.env.AI.run=async()=>{f.state.aiCalls++;throw Object.assign(Error('AiError: 8005: Internal server error'),{code:8005});};
+  for(let i=0;i<3;i++){await f.run();if(i<2)advance(f);}
+  assert.equal(row(f).processing_status,'failed');assert.equal(row(f).failure_kind,'exhausted');assert.equal(row(f).retry_count,3);
+  assert.equal(row(f).next_attempt_at,null);advance(f);await f.run();assert.equal(f.state.aiCalls,3);
+});
+
+test('November 8: 8005 recognition is narrow and never overrides explicit permanent status/schema errors',()=>{
+  for(const error of [Error('AiError: 8005: Internal server error'),{code:8005}])assert.equal(isTransientFailure(error),true);
+  for(const error of [Error('AiError: 8006: unknown'),Error('JSON schema failure 8005'),
+    ...[400,401,403,404].map(status=>({code:8005,status})),{code:5007,status:500}])assert.equal(isTransientFailure(error),false);
+});
+
+test('November 8: complete Sunday evidence publishes all three offers without substituting Soup for Chili',async t=>{
+  const candidate=JSON.parse(readFileSync(new URL('../../tests/fixtures/nov8-sunday-specials.json',import.meta.url),'utf8'));
+  const f=harness(t,{now:'2026-11-08T16:30:25Z',caption:'',candidate});
+  f.sql("UPDATE weekly_specials SET week_start_date='2026-11-02',week_end_date='2026-11-08' WHERE id=9000");
+  Object.assign(f.state.posts[0],{created_time:'2026-11-08T15:57:06Z',updated_time:'2026-11-08T15:57:06Z'});
+  Object.assign(f.env,{SPECIALS_EVIDENCE_VERSION:'2',SPECIALS_VERIFICATION_STRATEGY:'conditional'});
+  await f.run();assert.equal(row(f).processing_status,'staged');
+  assert.deepEqual([f.slots(0,'lunch')[0].content,...f.slots(0,'all-day').slice(0,2).map(s=>s.content)],candidate.offers.map(o=>o.content));
+});

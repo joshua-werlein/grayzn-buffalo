@@ -8,7 +8,8 @@ import {runImportPipeline} from './worker.js';
 import {beginAlertScan,finishAlertScan,dispatchVerifiedAlerts,revalidateAlert,readAlertHealth} from './alert-runtime.js';
 import {ALERT_GRACE_MS,dispatchAlert} from './alert-store.js';
 import {reconcileToday} from './guarded-auto.js';
-import {emailTransport} from './alert-email.js';
+import {emailTransport,alertTransport,alertMessage} from './alert-email.js';
+import {imageAlertDetail} from './alert-detail.js';
 
 function setup(t) {
   let db;t.after(()=>db?.close());
@@ -135,7 +136,8 @@ test('Worker: unknown image, old-day caption, weekly and Mexican sources do not 
     f.state.posts[0].message=caption;f.advance(1);await f.run();
     // An explicit weekly lunch caption with a permanent extraction failure is a
     // Weekly Lunch incident (its own scope), never a daily terminal failure.
-    assert.deepEqual(f.all().filter(r=>r.state==='attention').map(r=>r.scope),caption==='Weekly Lunch Specials'?['weekly']:[]);
+    assert.deepEqual(f.all().filter(r=>r.state==='attention' && !r.scope.startsWith('image_')).map(r=>r.scope),caption==='Weekly Lunch Specials'?['weekly']:[]);
+    assert.equal(f.all().filter(r=>r.state==='attention' && r.scope.startsWith('image_')).length,caption==='Hello friends'?1:0,caption);
     assert.equal(f.sent.length,0);
   }
 });
@@ -556,4 +558,92 @@ test('newer source inserted after revalidation invalidates the previously curren
       .run(...keys.map(k=>k==='id'?source.id+'-new':source[k]));
   });
   await f.send();assert.equal(f.sent.length,0);assert.equal(f.row().dispatch_state,'ready');
+});
+
+const imageIncidents=f=>f.all().filter(r=>r.scope.startsWith('image_'));
+function imageFailure(t,{exhaust=false}={}) {
+  const f=setup(t);f.state.posts[0].message='';
+  f.env.AI.run=async()=>{throw exhaust?Error('AiError: 8005: Internal server error'):Object.assign(Error('private-provider-detail'),{status:401});};
+  return f;
+}
+test('November 8: captionless terminal image failure creates a technical incident, honors grace and sends once',async t=>{
+  const f=imageFailure(t);await f.run();assert.equal(imageIncidents(f).length,1);
+  assert.equal(imageIncidents(f)[0].state,'attention');assert.equal(imageIncidents(f)[0].code,'automation_failed');
+  assert.equal(f.sent.length,0);f.advance(ALERT_GRACE_MS-1);await f.send();assert.equal(f.sent.length,0);
+  f.advance(1);await Promise.all([f.send(),f.send()]);assert.equal(f.sent.length,1);
+  const m=alertMessage(f.sent[0].day,f.sent[0].code,f.sent[0]);
+  assert.match(m.text,/Image contents.*unverified/i);assert.match(m.text,/AI extraction/);assert.match(m.text,/Staff attention: required/);
+  assert.match(m.text,/#import-/);assert.ok(!m.text.includes('private-provider-detail'));assert.ok(!m.text.includes('Wing Night'));
+  await f.run();await f.send();assert.equal(f.sent.length,1);
+});
+test('November 8: recoverable image errors stay silent until exhaustion, then recovery resolves the same incident',async t=>{
+  const f=imageFailure(t,{exhaust:true});const successful=f.state.candidate;
+  for(let i=0;i<3;i++) {await f.run();assert.equal(imageIncidents(f).length,i<2?0:1);if(i<2)f.advance(30*60000);}
+  assert.equal(imageIncidents(f)[0].state,'attention');assert.equal(f.sent.length,0);
+  f.db.exec("UPDATE special_imports SET processing_status='pending',retry_count=0,next_attempt_at=NULL");
+  f.env.AI.run=async()=>({response:JSON.stringify(successful)});f.advance(1);await f.run();
+  assert.equal(imageIncidents(f)[0].state,'resolved');f.advance(ALERT_GRACE_MS);await f.send();assert.equal(f.sent.length,0);
+});
+test('November 8: successful unrelated image and ambiguous extraction never create technical incidents',async t=>{
+  const f=setup(t);f.state.posts[0].message='';f.state.candidate={day_of_week:-1,day_evidence:'',poster_evidence:'',offers:[]};
+  await f.run();assert.deepEqual(imageIncidents(f),[]);
+  f.state.posts[0].updated_time='2030-01-09T14:01:00Z';f.env.AI.run=async()=>({response:'not valid JSON'});f.advance(1);await f.run();
+  assert.deepEqual(imageIncidents(f),[]);
+});
+test('November 8: dismissed or removed failed image suppresses its unsent technical alert',async t=>{
+  const f=imageFailure(t);await f.run();assert.equal(imageIncidents(f)[0].state,'attention');
+  f.db.exec("UPDATE special_imports SET review_status='dismissed'");f.advance(1);await f.run();
+  assert.equal(imageIncidents(f)[0].state,'suppressed');f.advance(ALERT_GRACE_MS);await f.send();assert.equal(f.sent.length,0);
+  f.state.posts=[];f.advance(1);await f.run();assert.equal(imageIncidents(f)[0].state,'suppressed');
+});
+test('November 8: independent failed images have independent incident identities',async t=>{
+  const f=imageFailure(t);f.state.posts.push({...f.state.posts[0],id:'p2'});await f.run();
+  assert.equal(imageIncidents(f).length,2);f.advance(ALERT_GRACE_MS);await f.send();assert.equal(f.sent.length,2);
+  await f.send();assert.equal(f.sent.length,2);
+});
+test('November 8: technical incident dispatch uses Resend mock and quarantines rejection without resend',async t=>{
+  const f=imageFailure(t);await f.run();f.advance(ALERT_GRACE_MS);
+  const recipient='owner@example.test';const digest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(recipient)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+  let calls=0;const send=await alertTransport({SPECIALS_ALERT_MODE:'EMAIL',SPECIALS_ALERT_PROVIDER:'RESEND',SPECIALS_ALERT_EMAIL_APPROVED:'true',
+    SPECIALS_ALERT_FROM:'alerts@grayznbuffalo.com',SPECIALS_ALERT_TO:recipient,ALERT_RESEND_API_KEY:'re_fakeTestKey_000000000000'},
+    {recipientSha256:digest,fetch:async(url,init)=>{calls++;assert.equal(url,'https://api.resend.com/emails');assert.match(JSON.parse(init.body).text,/Image contents.*unverified/i);return new Response('{}',{status:503});}});
+  await dispatchVerifiedAlerts(f.env,{send});assert.equal(calls,1);assert.equal(imageIncidents(f)[0].dispatch_state,'uncertain');
+  f.advance(10*60000);await dispatchVerifiedAlerts(f.env,{send});assert.equal(calls,1);
+});
+
+test('November 8: image download exhaustion alerts but invalid image content remains an intentional rejection',async t=>{
+  const f=setup(t);f.state.posts[0].message='';const fetch=globalThis.fetch;
+  t.mock.method(globalThis,'fetch',async url=>new URL(url).hostname==='graph.facebook.com'?fetch(url):new Response('',{status:503}));
+  for(let i=0;i<3;i++){await f.run();if(i<2)f.advance(30*60000);}
+  assert.equal(imageIncidents(f).length,1);assert.equal(imageIncidents(f)[0].state,'attention');
+  f.advance(ALERT_GRACE_MS);await f.send();assert.match(f.sent[0].detail.category,/Image acquisition retries exhausted/);
+  f.state.posts[0].updated_time='2030-01-09T14:01:00Z';
+  t.mock.method(globalThis,'fetch',async url=>new URL(url).hostname==='graph.facebook.com'?fetch(url):new Response('not an image',{headers:{'content-type':'image/jpeg'}}));
+  f.advance(1);await f.run();assert.equal(imageIncidents(f)[0].state,'suppressed');
+});
+
+test('November 8: recovered transient captionless image sends no technical email',async t=>{
+  const f=setup(t);f.state.posts[0].message='';const run=f.env.AI.run;let first=true;
+  f.env.AI.run=async(...args)=>{if(first){first=false;throw Error('AiError: 8005: Internal server error');}return run(...args);};
+  await f.run();assert.deepEqual(imageIncidents(f),[]);f.advance(30*60000);await f.run();
+  assert.deepEqual(imageIncidents(f),[]);assert.equal(f.sent.length,0);
+});
+
+test('November 8: successful Resend acceptance for a technical image incident sends once',async t=>{
+  const f=imageFailure(t);await f.run();f.advance(ALERT_GRACE_MS);
+  const recipient='owner@example.test',digest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(recipient)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+  let calls=0;const send=await alertTransport({SPECIALS_ALERT_MODE:'EMAIL',SPECIALS_ALERT_PROVIDER:'RESEND',SPECIALS_ALERT_EMAIL_APPROVED:'true',
+    SPECIALS_ALERT_FROM:'alerts@grayznbuffalo.com',SPECIALS_ALERT_TO:recipient,ALERT_RESEND_API_KEY:'re_fakeTestKey_000000000000'},
+    {recipientSha256:digest,fetch:async()=>{calls++;return Response.json({id:'49a3999c-0ce1-4ea6-ab68-afcd6dc2e794'});}});
+  await dispatchVerifiedAlerts(f.env,{send});await dispatchVerifiedAlerts(f.env,{send});
+  assert.equal(calls,1);assert.equal(imageIncidents(f)[0].dispatch_state,'sent');
+});
+
+test('November 8: technical email uses allowlisted diagnostics and cannot copy raw errors or injected URLs',()=>{
+  const detail=imageAlertDetail({day:'2026-11-08',category:'private credential in raw failure',
+    source:{id:'bad\nBcc: attacker@example.test',fb_post_id:'https://attacker.example',retry_count:999,
+      caption:'private caption',last_error:'private credential'}});
+  const message=alertMessage('2026-11-08','automation_failed',{detail});
+  assert.match(message.text,/Failure category: Image processing/);assert.match(message.text,/Attempts used: unverified/);
+  assert.ok(!/attacker|credential|private caption|Bcc/.test(message.text));
 });

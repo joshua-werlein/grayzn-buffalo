@@ -23,8 +23,14 @@ export function isTransientFailure(error) {
   // Workers AI binding errors may expose only an internal code/message.
   // Account allocation exhaustion (3036) is not temporary capacity (3040).
   // https://developers.cloudflare.com/workers-ai/platform/errors/
-  const code=Number(error?.code ?? message.match(/\b(3003|3006|3007|3008|3023|3036|3039|3040|3041|3042|5004|5005|5007|5016|5018|5019|5035)\b/)?.[1]);
+  const code=Number(error?.code ?? message.match(/\b(3003|3006|3007|3008|3023|3036|3039|3040|3041|3042|5004|5005|5007|5016|5018|5019|5035|8005)\b/)?.[1]);
   if ([3003,3006,3023,3036,3039,3041,3042,5004,5005,5007,5016,5018,5019,5035].includes(code)) return false;
+  // Observed binding error: "AiError: 8005: Internal server error" may
+  // omit HTTP status. An explicit permanent HTTP status still takes precedence.
+  if (code===8005) {
+    const status=Number(error?.status ?? error?.statusCode ?? error?.response?.status ?? message.match(/\b(4\d\d|5\d\d)\b/)?.[1]);
+    return !(status>=400 && status<500 && ![408,425,429].includes(status));
+  }
   if ([3007,3008,3040].includes(code)) return true;
   const status = Number(error?.status ?? error?.statusCode ?? error?.response?.status ??
     message.match(/\b(4\d\d|5\d\d)\b/)?.[1]);
