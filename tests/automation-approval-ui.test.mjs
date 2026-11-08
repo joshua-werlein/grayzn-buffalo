@@ -1,3 +1,4 @@
+import {builtRoute} from './built-output.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -9,7 +10,7 @@ const {statusBadge,protectionLabel}=loadTs('src/lib/automation-review.ts');
 const {confirmationRows}=loadTs('src/lib/approval-confirmation.ts');
 const source=JSON.parse(readFileSync('tests/fixtures/oct27-production.json','utf8'));
 const now=new Date('2026-10-27T21:00:00Z'),day='2026-10-27';
-const page=(await import('../dist/_worker.js/pages/admin/automation.astro.mjs')).page().default;
+const page=(await builtRoute('admin/automation')).default;
 const container=await AstroContainer.create();
 function setup(t,mexican=false) {
   const raw=mexican?source.mexican:source.daily;

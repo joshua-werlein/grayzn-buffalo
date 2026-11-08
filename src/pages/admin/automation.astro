@@ -1,4 +1,5 @@
 ---
+import { runtimeEnv } from '../../lib/runtime-env';
 import Base from '../../layouts/Base.astro';
 import { isAuthed } from '../../lib/auth';
 import { chicagoCalendarDate } from '../../lib/weekly-specials';
@@ -8,7 +9,7 @@ import AutomationApproval from '../../components/AutomationApproval.astro';
 import ImportDismiss from '../../components/ImportDismiss.astro';
 import ImportOffers from '../../components/ImportOffers.astro';
 import WingWednesdayReview from '../../components/WingWednesdayReview.astro';
-const env = (Astro.locals as any).runtime?.env ?? {};
+const env = runtimeEnv(Astro.locals);
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 Astro.response.headers.set('Cache-Control','no-store');
 if (Astro.request.method !== 'GET' && Astro.request.method !== 'HEAD') return new Response('Method not allowed',{status:405,headers:{Allow:'GET, HEAD','Cache-Control':'no-store'}});

@@ -1,4 +1,5 @@
 ---
+import { runtimeEnv } from '../../lib/runtime-env';
 import Base from '../../layouts/Base.astro';
 import GroupFields from '../../components/SpecialGroupFields.astro';
 import EventAdminEntry from '../../components/EventAdminEntry.astro';
@@ -9,7 +10,7 @@ import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, wingEditorValu
 import {withSoupControls} from '../../lib/daily-soup.js';
 import {readWingAttention} from '../../../workers/fb-feed/wing-review.js';
 import {wingWeekFor} from '../../lib/wing-wednesday.js';
-const env = (Astro.locals as any).runtime?.env ?? {};
+const env = runtimeEnv(Astro.locals);
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 const empty = (kind: SpecialCollection['kind'], id=''): SpecialCollection => ({ id,kind,weekly_special_id:null,title:'',schedule:'',revision:0,groups:[] });
 let defaults: SpecialCollection | null = null, mexican: SpecialCollection | null = null, mexicanDefaults: SpecialCollection | null = null, wing: SpecialCollection | null = null, wingDefaults: SpecialCollection | null = null;

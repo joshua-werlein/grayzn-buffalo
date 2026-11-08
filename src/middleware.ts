@@ -1,4 +1,5 @@
 import { defineMiddleware } from 'astro:middleware';
+import { env } from 'cloudflare:workers';
 
 // CSP remains Report-Only: Cloudflare JavaScript Detections injects changing
 // executable inline scripts at the edge. Do not add script-src unsafe-inline.
@@ -18,7 +19,16 @@ const CSP_REPORT_ONLY = [
 ].join('; ');
 
 export const onRequest = defineMiddleware(async (context, next) => {
-  const response = await next();
+  // Astro 7 admits form submissions without Origin; preserve the previous denial.
+  if (env && context.locals) (context.locals as any).cfEnv ??= env;
+  const request = context.request;
+  const formTypes = ['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain'];
+  const type = request?.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
+  const missingOrigin = request && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)
+    && !request.headers.has('origin') && (!type || formTypes.includes(type));
+  const response = missingOrigin
+    ? new Response('Cross-site form submissions are forbidden', { status: 403 })
+    : await next();
   const headers = new Headers(response.headers);
   const pathname = context.url.pathname;
   const isProductionHost = ['grayznbuffalo.com', 'www.grayznbuffalo.com'].includes(context.url.hostname);

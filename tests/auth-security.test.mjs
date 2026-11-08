@@ -1,13 +1,14 @@
+import {builtRoute} from './built-output.mjs';
 // Build first: exercise the compiled login route as well as auth/KV behavior.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { experimental_AstroContainer as AstroContainer } from 'astro/container';
 import { loadTs } from './load-ts.mjs';
-import { createOriginCheckMiddleware } from '../node_modules/astro/dist/core/app/middlewares.js';
+import { createOriginCheckMiddleware } from '../node_modules/astro/dist/core/app/origin-check.js';
 
 const { login, logout, isAuthed, verifyTurnstile } = loadTs('src/lib/auth.ts');
 const { onRequest } = loadTs('src/middleware.ts');
-const admin = (await import('../dist/_worker.js/pages/admin.astro.mjs')).page().default;
+const admin = (await builtRoute('admin')).default;
 const container = await AstroContainer.create();
 const origin = 'https://grayznbuffalo.com';
 
@@ -142,8 +143,8 @@ test('Astro origin protection rejects cross-origin or missing-origin staff form 
         const headers = { 'content-type': contentType };
         if (requestOrigin) headers.origin = requestOrigin;
         const url = new URL(origin + path);
-        const response = await protect({ url, request: new Request(url, { method: 'POST', headers }) },
-          async () => new Response('allowed'));
+        const context = { url, request: new Request(url, { method: 'POST', headers }) };
+        const response = await protect(context, () => onRequest(context, async () => new Response('allowed')));
         assert.equal(response.status, requestOrigin === origin ? 200 : 403);
       }
     }
@@ -152,7 +153,7 @@ test('Astro origin protection rejects cross-origin or missing-origin staff form 
 
 test('compiled staff pages reject unauthenticated and expired sessions before loading data', async () => {
   for (const name of ['menu', 'specials', 'welcome-photos', 'analytics']) {
-    const page = (await import('../dist/_worker.js/pages/admin/' + name + '.astro.mjs')).page().default;
+    const page = (await builtRoute('admin/' + name)).default;
     for (const method of ['GET', 'POST']) {
       const response = await container.renderToResponse(page, {
         request: new Request(origin + '/admin/' + name, {

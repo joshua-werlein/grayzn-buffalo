@@ -12,6 +12,7 @@ export function loadTs(path) {
   const localRequire = createRequire(filename);
   const module = { exports: {} };
   const require = id => {
+    if (id === 'cloudflare:workers') return { env: undefined };
     if (id === 'astro:middleware') return { defineMiddleware: handler => handler };
     const sibling = resolve(dirname(filename), id.endsWith('.js') ? id : id + '.ts');
     return id.startsWith('.') && existsSync(sibling) ? loadTs(sibling) : localRequire(id);

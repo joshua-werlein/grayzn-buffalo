@@ -1,3 +1,4 @@
+import {builtRoute} from './built-output.mjs';
 // Integration-only regressions: real isolated SQLite, compiled pages, no production bindings.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -5,8 +6,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { experimental_AstroContainer as AstroContainer } from 'astro/container';
 const container=await AstroContainer.create();
-const admin=(await import('../dist/_worker.js/pages/admin/menu.astro.mjs')).page().default;
-const menu=(await import('../dist/_worker.js/pages/menu.astro.mjs')).page().default;
+const admin=(await builtRoute('admin/menu')).default;
+const menu=(await builtRoute('menu')).default;
 const baseline=JSON.parse(readFileSync('src/data/menu-baseline.json','utf8'));
 function fixture(t){
  const db=new DatabaseSync(':memory:'); t.after(()=>db.close());
@@ -63,7 +64,7 @@ test('option display values and save tokens share one snapshot even when another
   statement.bind=(...args)=>{const bound=bind(...args);const all=bound.all;bound.all=async()=>{const result=await all();f.db.prepare('UPDATE settings SET value=? WHERE key=?').run(newer,'menu_pizza_options');return result};return bound};
   return statement;
  };
- const html=await load(f);const panel=html.slice(html.indexOf('id="pizza-options"'),html.indexOf('id="wrap-options"'));
+ const html=await load(f);const panel=html.slice(html.indexOf('id="pizza-options"'),html.indexOf('id="wrap-options"')).replaceAll('&quot;', '&#34;');
  assert.match(panel,/value="6&#34;" checked/);assert.doesNotMatch(panel,/value="16&#34;" checked/);
  assert.ok(panel.includes(old.replace(/"/g,'&#34;')));
  const response=await post(f,{action:'pizza-options',pizza_sizes:['12"'],pizza_crusts:['Regular'],pizza_toppings:'Bacon',options_snapshot:old});

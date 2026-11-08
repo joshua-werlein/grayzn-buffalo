@@ -1,3 +1,4 @@
+import {builtRoute} from './built-output.mjs';
 // Shared Menu options panels: Wraps, Salads (dressings, greens, shells) and the reorderable
 // Substitute Sides section. Build first. Local SQLite fixtures only; nothing touches D1.
 import test from 'node:test';
@@ -9,9 +10,9 @@ import { SALAD_OPTIONS_KEY, SUBSTITUTE_SIDES_KEY, WRAP_OPTIONS_KEY, greensText }
 
 const baseline = JSON.parse(readFileSync('src/data/menu-baseline.json', 'utf8'));
 const schema = readFileSync('schema.sql', 'utf8');
-const menu = (await import('../dist/_worker.js/pages/menu.astro.mjs')).page().default;
-const admin = (await import('../dist/_worker.js/pages/admin/menu.astro.mjs')).page().default;
-const menuJson = (await import('../dist/_worker.js/pages/menu.json.astro.mjs')).page();
+const menu = (await builtRoute('menu')).default;
+const admin = (await builtRoute('admin/menu')).default;
+const menuJson = (await builtRoute('menu.json'));
 const container = await AstroContainer.create();
 const cookie = 'gb_session=' + 'a'.repeat(32);
 // From JJ's printed menu.

@@ -1,4 +1,5 @@
 ---
+import { runtimeEnv } from '../lib/runtime-env';
 import Base from '../layouts/Base.astro';
 import SpecialGroup from '../components/SpecialGroup.astro';
 import DailySoup from '../components/DailySoup.astro';
@@ -10,7 +11,7 @@ import { withWingHomeLink } from '../lib/section-links.js';
 import { getMenu, getWeeklySpecialsForDateRange, getWelcomePhotos, thumbKey, type Item, type WelcomePhoto } from '../lib/db';
 import { calendarDatesFrom, calendarDayOfWeek, chicagoCalendarDate, formatWeeklyBoardDate } from '../lib/weekly-specials';
 
-const env = (Astro.locals as any).runtime?.env ?? {};
+const env = runtimeEnv(Astro.locals);
 const { categories, items } = await getMenu(env);
 const today = chicagoCalendarDate();
 const upcomingDates = calendarDatesFrom(today, 7);

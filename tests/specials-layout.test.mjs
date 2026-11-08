@@ -1,3 +1,4 @@
+import {builtRoute,builtManifest,CLIENT_ASSETS} from './built-output.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync,writeFileSync,readFileSync,readdirSync} from 'node:fs';
@@ -7,10 +8,10 @@ import {loadTs} from './load-ts.mjs';
 import {withSoupControls,isSoupGroup} from '../src/lib/daily-soup.js';
 
 const store=loadTs('src/lib/specials-store.ts');
-const home=(await import('../dist/_worker.js/pages/index.astro.mjs')).page().default;
-const specials=(await import('../dist/_worker.js/pages/specials.astro.mjs')).page().default;
+const home=(await builtRoute('index')).default;
+const specials=(await builtRoute('specials')).default;
 const container=await AstroContainer.create();
-const {manifest}=await import('../dist/_worker.js/'+readdirSync('dist/_worker.js').find(n=>/^manifest_.*\.mjs$/.test(n)));
+const manifest=builtManifest();
 const NativeDate=Date;
 const meals=JSON.parse(readFileSync('tests/fixtures/oct10-saturday.json','utf8')).offers.slice(0,3).map(o=>o.content);
 const soup='French Onion, Chili or Beer Cheese Soup';
@@ -62,7 +63,7 @@ for(const day of [6,4]) for(const hasSoup of [false,true])
         const styles=route.styles.map(s=>s.type==='external'?`<link rel="stylesheet" href="${s.src}">`:`<style>${s.content}</style>`).join('');
         const scripts=route.scripts.map(s=>s.type==='external'?`<script type="module" src="${s.src}"></script>`:`<script type="module">${s.content}</script>`).join('');
         const preview=html.replace(/src="(?:file:|[A-Za-z]:)[^"]+\/([^/?.]+)\.astro\?[^"]+"/g,(source,component)=>{
-          const asset=readdirSync('dist/_astro').find(n=>n.startsWith(`${component}.astro_astro_type_script_index_0_`) && n.endsWith('.js'));
+          const asset=readdirSync(CLIENT_ASSETS).find(n=>n.startsWith(`${component}.astro_astro_type_script_index_0_`) && n.endsWith('.js'));
           assert.ok(asset,`Missing compiled script for ${component}`);
           return `src="/_astro/${asset}"`;
         }).replace('</head>',styles+'</head>').replace('</body>',scripts+'</body>');

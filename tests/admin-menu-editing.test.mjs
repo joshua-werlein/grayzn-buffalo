@@ -1,3 +1,4 @@
+import {builtRoute} from './built-output.mjs';
 // Admin Menu editing: the item editor and section filter, saving and refreshing, and staff
 // working from more than one tab. Build first. Local SQLite fixtures only.
 import test from 'node:test';
@@ -8,8 +9,8 @@ import ts from 'typescript';
 import { experimental_AstroContainer as AstroContainer } from 'astro/container';
 import { fixture } from './specials-fixture.mjs';
 
-const admin = (await import('../dist/_worker.js/pages/admin/menu.astro.mjs')).page().default;
-const login = (await import('../dist/_worker.js/pages/admin.astro.mjs')).page().default;
+const admin = (await builtRoute('admin/menu')).default;
+const login = (await builtRoute('admin')).default;
 const container = await AstroContainer.create();
 const baseline = JSON.parse(readFileSync('src/data/menu-baseline.json', 'utf8'));
 const schema = readFileSync('schema.sql', 'utf8');

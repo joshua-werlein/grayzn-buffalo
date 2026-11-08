@@ -1,4 +1,5 @@
 ---
+import { runtimeEnv } from '../../lib/runtime-env';
 import Base from '../../layouts/Base.astro';
 import { isAuthed } from '../../lib/auth';
 import { thumbKey } from '../../lib/db';
@@ -11,7 +12,7 @@ import {
   WRAP_OPTIONS_KEY, SALAD_OPTIONS_KEY, SUBSTITUTE_SIDES_KEY, SALAD_SHELL_NOTE, SUBSTITUTE_SIDES_NOTE,
 } from '../../lib/menu-options.js';
 
-const env = (Astro.locals as any).runtime?.env ?? {};
+const env = runtimeEnv(Astro.locals);
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 const wantsJson = Astro.request.headers.get('accept')?.includes('application/json');
 const jsonResponse = (body: Record<string, unknown>, status = 200) =>

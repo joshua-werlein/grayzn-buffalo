@@ -1,3 +1,4 @@
+import {builtRoute} from './built-output.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadTs } from './load-ts.mjs';
@@ -10,7 +11,7 @@ const reply = value => Response.json({ data: { viewer: { accounts: [value] } } }
 
 test('compiled chart renders covered calendar rows; provider failure keeps metrics unavailable and Facebook clicks independent', async t => {
   const { experimental_AstroContainer: AstroContainer } = await import('astro/container');
-  const page = (await import('../dist/_worker.js/pages/admin/analytics.astro.mjs')).page().default;
+  const page = (await builtRoute('admin/analytics')).default;
   const container = await AstroContainer.create();
   const env = { ...config, SESSIONS: { get: async () => '1' }, DB: { prepare(sql) {
     const statement = { bind() { return statement; }, all: async () => ({ results: [] }),

@@ -1,3 +1,4 @@
+import { runtimeEnv } from '../../lib/runtime-env';
 import type { APIRoute } from 'astro';
 import { isAuthed } from '../../lib/auth';
 import { thumbKey } from '../../lib/db';
@@ -31,7 +32,7 @@ const photoOrientation = (form: FormData) => {
 };
 
 export const POST: APIRoute = async ({ request, cookies, locals }) => {
-  const env = (locals as any).runtime?.env ?? {};
+  const env = runtimeEnv(locals);
   if (!(await isAuthed(cookies, env))) {
     return json({ ok: false, error: 'Your session expired. Reload the page and sign in again.' }, 401);
   }

@@ -1,4 +1,4 @@
-name: Deploy to Cloudflare Pages
+name: Deploy site Worker
 on:
   push:
     branches: [main]
@@ -14,10 +14,18 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: npm ci
+      - name: Check Astro and TypeScript
+        run: npx astro check
       - run: npm run build
+      - name: Application regressions
+        run: node --test --test-concurrency=4 tests/*.test.mjs
+      - name: Facebook automation regressions (local and mocked)
+        run: node --test --test-concurrency=4 workers/fb-feed/*.test.js
       - name: Deploy
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=grayzn-buffalo
+          # Never publish dist/server as public Pages assets.
+          # No routes or public preview are configured before cutover approval.
+          command: deploy

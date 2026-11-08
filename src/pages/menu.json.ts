@@ -1,3 +1,4 @@
+import { runtimeEnv } from '../lib/runtime-env';
 import type { APIRoute } from 'astro';
 import { getMenu } from '../lib/db';
 import { getPizzaOptions, isPizzaCategory, PIZZA_SCOPE } from '../lib/pizza-options.js';
@@ -9,7 +10,7 @@ import {
 } from '../lib/menu-options.js';
 
 export const GET: APIRoute = async ({ locals }) => {
-  const env = (locals as any).runtime?.env ?? {};
+  const env = runtimeEnv(locals);
   const { categories, items } = await getMenu(env);
   const [pizzaOptions, sauces, saucesSort, sidesSort, wrapOptions, saladOptions, sidesOptions] = await Promise.all([
     getPizzaOptions(env), getMenuSauces(env), getSectionSort(env, SAUCES_SECTION), getSectionSort(env, SIDES_SECTION),

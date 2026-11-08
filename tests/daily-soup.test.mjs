@@ -1,3 +1,4 @@
+import {builtRoute,builtComponent} from './built-output.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
@@ -7,12 +8,11 @@ import {loadTs} from './load-ts.mjs';
 import {withSoupControls,isSoupGroup,soupGroupId,blankSoupGroup} from '../src/lib/daily-soup.js';
 const s=loadTs('src/lib/specials-store.ts');
 const dates=loadTs('src/lib/weekly-specials.ts');
-const rendererModule=await import('../dist/_worker.js/chunks/'+readdirSync('dist/_worker.js/chunks').find(n=>/^(?:DailySoup|SpecialGroup|EventSpecials)_/.test(n) && readFileSync('dist/_worker.js/chunks/'+n,'utf8').includes('/DailySoup.astro')));
-const soupModule={$:Object.values(rendererModule).find(component=>component.moduleId?.endsWith('/DailySoup.astro'))};
-const publicPage=(await import('../dist/_worker.js/pages/specials.astro.mjs')).page().default;
-const homePage=(await import('../dist/_worker.js/pages/index.astro.mjs')).page().default;
-const adminPage=(await import('../dist/_worker.js/pages/admin/specials.astro.mjs')).page().default;
-const privacyPage=(await import('../dist/_worker.js/pages/privacy.astro.mjs')).page().default;
+const soupModule={$:await builtComponent('DailySoup')};
+const publicPage=(await builtRoute('specials')).default;
+const homePage=(await builtRoute('index')).default;
+const adminPage=(await builtRoute('admin/specials')).default;
+const privacyPage=(await builtRoute('privacy')).default;
 const container=await AstroContainer.create();
 function formFor(c) {
   const form=new FormData();form.set('revision',String(c.revision));form.set('group_count',String(c.groups.length));

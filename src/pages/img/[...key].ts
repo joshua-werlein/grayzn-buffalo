@@ -1,3 +1,4 @@
+import { runtimeEnv } from '../../lib/runtime-env';
 import type { APIRoute } from 'astro';
 
 export const prerender = false;
@@ -18,7 +19,7 @@ const contentTypeForKey = (key: string) => {
 };
 
 export const GET: APIRoute = async ({ params, locals, request }) => {
-  const env = (locals as any).runtime?.env ?? {};
+  const env = runtimeEnv(locals);
   const key = params.key ?? '';
 
   if (!KEY_RE.test(key)) return new Response('Not found', { status: 404, headers: NO_STORE_HEADERS });

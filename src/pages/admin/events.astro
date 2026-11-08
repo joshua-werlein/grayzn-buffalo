@@ -1,9 +1,10 @@
 ---
+import { runtimeEnv } from '../../lib/runtime-env';
 // Retired standalone editor. Special events are corrected in the Special Events
 // section of /admin/specials. Nothing is read or written here; unauthenticated
 // visitors still go to the sign-in page first.
 import { isAuthed } from '../../lib/auth';
-const env = (Astro.locals as any).runtime?.env ?? {};
+const env = runtimeEnv(Astro.locals);
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 return Astro.redirect('/admin/specials#special-events', 303);
 ---

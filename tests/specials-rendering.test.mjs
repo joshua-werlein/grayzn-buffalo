@@ -1,3 +1,4 @@
+import {builtRoute,builtComponent} from './built-output.mjs';
 // Run npm run build first: exercise the compiled production Astro components.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,12 +9,10 @@ import {loadTs} from './load-ts.mjs';
 import {normalizeMenuCase} from '../src/lib/text-case.js';
 const s=loadTs('src/lib/specials-store.ts');
 const dates=loadTs('src/lib/weekly-specials.ts');
-const rendererChunk=readdirSync('dist/_worker.js/chunks').find(name=>/^(?:SpecialGroup|DailySoup|EventSpecials)_/.test(name) && readFileSync('dist/_worker.js/chunks/'+name,'utf8').includes('/SpecialGroup.astro'));
-const rendererModule=await import('../dist/_worker.js/chunks/'+rendererChunk);
-const groupModule={$:Object.values(rendererModule).find(component=>component.moduleId?.endsWith('/SpecialGroup.astro'))};
-const publicPage=(await import('../dist/_worker.js/pages/specials.astro.mjs')).page().default;
-const homePage=(await import('../dist/_worker.js/pages/index.astro.mjs')).page().default;
-const adminPage=(await import('../dist/_worker.js/pages/admin/specials.astro.mjs')).page().default;
+const groupModule={$:await builtComponent('SpecialGroup')};
+const publicPage=(await builtRoute('specials')).default;
+const homePage=(await builtRoute('index')).default;
+const adminPage=(await builtRoute('admin/specials')).default;
 const container=await AstroContainer.create();
 
 test('compiled home banner and specials accept the legacy Worker deadline only before 1:30 PM, with manual overrides intact',async t=>{

@@ -1,3 +1,4 @@
+import {builtRoute,builtManifest} from './built-output.mjs';
 // Build first. All writes use an isolated local SQLite fixture.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,10 +9,10 @@ import { PIZZA_OPTIONS_KEY, getPizzaOptions, pizzaOptionsFromForm } from '../src
 
 const baseline = JSON.parse(readFileSync('src/data/menu-baseline.json', 'utf8'));
 const schema = readFileSync('schema.sql', 'utf8');
-const page = async name => (await import(`../dist/_worker.js/pages/${name}.astro.mjs`)).page();
+const page = async name => (await builtRoute(name));
 const admin = (await page('admin/menu')).default;
 const menu = (await page('menu')).default;
-const menuJson = (await import('../dist/_worker.js/pages/menu.json.astro.mjs')).page();
+const menuJson = (await builtRoute('menu.json'));
 const container = await AstroContainer.create();
 const cookie = 'gb_session=' + 'a'.repeat(32);
 // JJ's transcription of the original printed menu, independent of app defaults.
@@ -108,7 +109,7 @@ test('authenticated save persists across requests, normalizes extras, updates pu
   const adminHtml = await render(admin, f, '/admin/menu?pizza=saved');
   assert.match(adminHtml, /Pizza options saved/);
   assert.match(adminHtml, /Test Topping and BBQ/);
-  assert.match(adminHtml, /value="12&#34;" checked/);
+  assert.match(adminHtml, /value="12&quot;" checked/);
   assert.doesNotMatch(adminHtml, /value="Personal" checked/);
   const html = await render(menu, f);
   assert.equal((html.match(/Test Topping and BBQ/g) ?? []).length, 2);
@@ -169,8 +170,8 @@ test('previously saved "Personal" and "N Inch" sizes show as 6" / 12" / 16", kee
   assert.doesNotMatch(html, /Personal/);
   assert.match(html, /<li[^>]*>Pineapple<\/li>/, 'saved toppings are not replaced by defaults');
   const adminHtml = await render(admin, f, '/admin/menu');
-  assert.match(adminHtml, /value="6&#34;" checked/);
-  assert.match(adminHtml, /value="12&#34;"(?! checked)/);
+  assert.match(adminHtml, /value="6&quot;" checked/);
+  assert.match(adminHtml, /value="12&quot;"(?! checked)/);
   assert.doesNotMatch(adminHtml, /value="Personal"/);
   assert.equal(f.db.prepare('SELECT value FROM settings WHERE key=?').get(PIZZA_OPTIONS_KEY).value, stored, 'reading never writes D1');
   const json = await (await menuJson.GET({ locals: { runtime: { env: f.env } } })).json();
@@ -190,8 +191,7 @@ test('previously saved "Personal" and "N Inch" sizes show as 6" / 12" / 16", kee
 // PIZZA_REVIEW=1 node --test tests/pizza-menu.test.mjs
 if (process.env.PIZZA_REVIEW) test('export styled local fixture pages for browser review', async t => {
   const f = fixture(t);
-  const manifestFile = readdirSync('dist/_worker.js').find(name => /^manifest_.*\.mjs$/.test(name));
-  const { manifest } = await import(`../dist/_worker.js/${manifestFile}`);
+  const manifest = builtManifest();
   mkdirSync('dist/local-review', { recursive: true });
   for (const [component, path, file] of [[menu, '/menu', 'menu.html'], [admin, '/admin/menu', 'admin.html']]) {
     let html = await render(component, f, path);

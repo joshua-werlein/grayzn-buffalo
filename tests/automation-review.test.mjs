@@ -1,3 +1,4 @@
+import {builtRoute} from './built-output.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -8,7 +9,7 @@ const r=loadTs('src/lib/automation-review.ts');
 const now=new Date('2026-10-26T23:00:00Z');
 const day='2026-10-26';
 const posters=JSON.parse(readFileSync('tests/fixtures/oct26-monday-night.json','utf8'));
-const page=(await import('../dist/_worker.js/pages/admin/automation.astro.mjs')).page().default;
+const page=(await builtRoute('admin/automation')).default;
 const container=await AstroContainer.create();
 const request=(date='',method='GET',authenticated=true)=>new Request('https://grayznbuffalo.com/admin/automation'+date,{method,headers:authenticated?{cookie:'gb_session='+'a'.repeat(32)}:{}});
 const locals=env=>({runtime:{env,now}});

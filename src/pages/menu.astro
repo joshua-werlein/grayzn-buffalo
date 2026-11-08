@@ -1,4 +1,5 @@
 ---
+import { runtimeEnv } from '../lib/runtime-env';
 import Base from '../layouts/Base.astro';
 import { getMenu, thumbKey } from '../lib/db';
 import PizzaOptions from '../components/PizzaOptions.astro';
@@ -11,7 +12,7 @@ import { getMenuSauces } from '../lib/menu-sauces';
 import { SAUCES_SECTION, SIDES_SECTION, getSectionSort, sectionIndex, sectionName, interleave, type VirtualSection } from '../lib/menu-sections';
 import { getMenuOptions, hasShell, isSaladCategory, isWrapCategory, SALAD_OPTIONS_KEY, SALAD_SHELL_MARK, SUBSTITUTE_SIDES_KEY, WRAP_OPTIONS_KEY } from '../lib/menu-options.js';
  
-const env = (Astro.locals as any).runtime?.env ?? {};
+const env = runtimeEnv(Astro.locals);
 const { categories, items } = await getMenu(env);
 const [pizzaOptions, sauces, saucesSort, sidesSort, wrapOptions, saladOptions, sidesOptions] = await Promise.all([
   getPizzaOptions(env), getMenuSauces(env), getSectionSort(env, SAUCES_SECTION), getSectionSort(env, SIDES_SECTION),

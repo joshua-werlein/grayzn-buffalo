@@ -1,10 +1,11 @@
+import { runtimeEnv } from '../../../lib/runtime-env';
 import type {APIRoute} from 'astro';
 import {isAuthed} from '../../../lib/auth';
 import {approveWingImport} from '../../../lib/wing-approval';
 import {SpecialConflict} from '../../../lib/specials-store';
 
 export const POST: APIRoute=async({request,cookies,locals,url})=>{
-  const env=(locals as any).runtime?.env??{};
+  const env=runtimeEnv(locals);
   const reply=(value: any,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store'}});
   if(!await isAuthed(cookies,env)) return reply({error:'Sign in again before approving.'},401);
   if(request.headers.get('origin')!==url.origin || request.headers.get('sec-fetch-site')==='cross-site') return reply({error:'Invalid request origin.'},403);

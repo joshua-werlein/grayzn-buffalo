@@ -1,11 +1,15 @@
 name = "grayzn-buffalo"
 compatibility_date = "2026-01-01"
-pages_build_output_dir = "./dist"
+account_id = "a79e3b4a2bb8dad70c75bceac4b1d3f9"
+# Site Worker is intentionally unrouted pending the owner's cutover approval.
+workers_dev = false
+preview_urls = false
+upload_source_maps = false
 
 [vars]
 CF_ANALYTICS_ACCOUNT_ID = "a79e3b4a2bb8dad70c75bceac4b1d3f9"
 CF_ANALYTICS_SITE_TAG = "55e9cf9f06fd4bffbb3ea50f6f1b0993"
-# CF_ANALYTICS_API_TOKEN is a Pages runtime secret, never committed here.
+# CF_ANALYTICS_API_TOKEN is a runtime secret, never committed here.
 
 [[d1_databases]]
 binding = "DB"

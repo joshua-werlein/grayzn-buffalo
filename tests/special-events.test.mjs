@@ -1,3 +1,4 @@
+import {builtRoute} from './built-output.mjs';
 // Run the production build first: these tests exercise the compiled routes.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -6,10 +7,10 @@ import {experimental_AstroContainer as AstroContainer} from 'astro/container';
 import {fixture} from './specials-fixture.mjs';
 import {loadTs} from './load-ts.mjs';
 const ev=loadTs('src/lib/special-events.ts');
-const homePage=(await import('../dist/_worker.js/pages/index.astro.mjs')).page().default;
-const specialsPage=(await import('../dist/_worker.js/pages/specials.astro.mjs')).page().default;
-const adminPage=(await import('../dist/_worker.js/pages/admin/specials.astro.mjs')).page().default;
-const retiredEventsPage=(await import('../dist/_worker.js/pages/admin/events.astro.mjs')).page().default;
+const homePage=(await builtRoute('index')).default;
+const specialsPage=(await builtRoute('specials')).default;
+const adminPage=(await builtRoute('admin/specials')).default;
+const retiredEventsPage=(await builtRoute('admin/events')).default;
 const container=await AstroContainer.create();
 const cookie='gb_session='+'a'.repeat(32);
 // Friday October 23 2026, 3:30 PM CDT.

@@ -1,3 +1,4 @@
+import {builtRoute} from './built-output.mjs';
 // Run the production build first: these tests exercise the compiled routes.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,9 +9,9 @@ import {ensureAutomaticWeek} from '../workers/fb-feed/auto-week.js';
 import {presentSpecial,sectionIdFor,sectionLinkFor,SECTION_LINKS,wingPriceEligible} from '../src/lib/section-links.js';
 import {mexicanNightDetailVisible} from '../src/lib/mexican-night-visibility.js';
 const store=loadTs('src/lib/specials-store.ts');
-const page=async name=>(await import(`../dist/_worker.js/pages/${name}.astro.mjs`)).page().default;
+const page=async name=>(await builtRoute(name)).default;
 const home=await page('index'),specials=await page('specials'),automation=await page('admin/automation');
-const {POST:approve}=await import('../dist/_worker.js/pages/admin/automation/wing.astro.mjs').then(m=>m.page());
+const {POST:approve}=await builtRoute('admin/automation/wing');
 const container=await AstroContainer.create();
 const cookie='gb_session='+'a'.repeat(32);
 const nightly=day=>({day_of_week:day,service:'nightly'});

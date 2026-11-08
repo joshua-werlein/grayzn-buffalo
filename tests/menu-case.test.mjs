@@ -1,3 +1,4 @@
+import {builtRoute} from './built-output.mjs';
 // House capitalization for Menu and Specials text (src/lib/text-case.js).
 // Run the production build first: the menu admin test exercises the compiled route.
 import test from 'node:test';
@@ -234,7 +235,7 @@ const menuTables=f=>{
 };
 
 test('compiled menu editor saves item names, descriptions and section names in the house capitalization',async t=>{
-  const page=(await import('../dist/_worker.js/pages/admin/menu.astro.mjs')).page().default;
+  const page=(await builtRoute('admin/menu')).default;
   const container=await AstroContainer.create();
   const f=fixture(t);menuTables(f);f.env.SESSIONS={get:async()=>'1'};
   const post=fields=>{

@@ -1,3 +1,4 @@
+import { runtimeEnv } from '../../../lib/runtime-env';
 import type { APIRoute } from 'astro';
 import { isAuthed } from '../../../lib/auth';
 
@@ -21,7 +22,7 @@ function contentTypeForKey(key: string): string {
 }
 
 export const GET: APIRoute = async ({ params, locals, cookies }) => {
-  const env = (locals as any).runtime?.env ?? {};
+  const env = runtimeEnv(locals);
   if (!(await isAuthed(cookies, env))) {
     return new Response('Unauthorized', { status: 401, headers: NO_STORE });
   }

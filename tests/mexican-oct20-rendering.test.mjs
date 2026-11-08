@@ -1,3 +1,4 @@
+import {builtRoute,builtManifest} from './built-output.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync,mkdirSync,writeFileSync} from 'node:fs';
@@ -5,8 +6,8 @@ import {experimental_AstroContainer as AstroContainer} from 'astro/container';
 import {fixture} from './specials-fixture.mjs';
 import {loadTs} from './load-ts.mjs';
 const store=loadTs('src/lib/specials-store.ts');
-const page=(await import('../dist/_worker.js/pages/specials.astro.mjs')).page().default;
-const {manifest}=await import('../dist/_worker.js/'+readdirSync('dist/_worker.js').find(n=>/^manifest_.*\.mjs$/.test(n)));
+const page=(await builtRoute('specials')).default;
+const manifest=builtManifest();
 test('October 20 compiled page renders canonical headings, labelled prices and one advisory',async t=>{
   const f=fixture(t),menu=await store.readCollection(f.env,'mexican-night');
   const rows=JSON.parse(readFileSync('tests/fixtures/mexican-recurring-prices.json','utf8'));

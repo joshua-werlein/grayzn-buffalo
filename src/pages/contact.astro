@@ -1,6 +1,7 @@
 ---
+import { runtimeEnv } from '../lib/runtime-env';
 import Base from '../layouts/Base.astro';
-const env = (Astro.locals as any).runtime?.env ?? {};
+const env = runtimeEnv(Astro.locals);
 const sitekey = env.TURNSTILE_SITEKEY;
 ---
 <Base

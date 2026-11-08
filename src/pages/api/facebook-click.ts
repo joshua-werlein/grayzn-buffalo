@@ -1,3 +1,4 @@
+import { runtimeEnv } from '../../lib/runtime-env';
 import type { APIRoute } from 'astro';
 import { incrementFacebookClicks } from '../../lib/db';
 
@@ -9,7 +10,7 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   // Consume any body; a non-empty body means the client tried to submit data.
   if (await request.text().catch(() => '')) return reply(400);
   try {
-    await incrementFacebookClicks((locals as any).runtime?.env ?? {});
+    await incrementFacebookClicks(runtimeEnv(locals));
     return reply(204);
   } catch { return reply(503); }
 };

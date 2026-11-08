@@ -1,3 +1,4 @@
+import {builtRoute} from './built-output.mjs';
 // Run the production build first: these tests exercise the compiled admin route.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -6,8 +7,8 @@ import {fixture} from './specials-fixture.mjs';
 import {loadTs} from './load-ts.mjs';
 import {ensureAutomaticWeek} from '../workers/fb-feed/auto-week.js';
 const store=loadTs('src/lib/specials-store.ts');
-const admin=(await import('../dist/_worker.js/pages/admin/specials.astro.mjs')).page().default;
-const publicPage=(await import('../dist/_worker.js/pages/specials.astro.mjs')).page().default;
+const admin=(await builtRoute('admin/specials')).default;
+const publicPage=(await builtRoute('specials')).default;
 const container=await AstroContainer.create();
 const cookie='gb_session='+'a'.repeat(32);
 async function setup(t) {

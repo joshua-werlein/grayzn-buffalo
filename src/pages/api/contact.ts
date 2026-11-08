@@ -1,3 +1,4 @@
+import { runtimeEnv } from '../../lib/runtime-env';
 import type { APIRoute } from 'astro';
 
 function escapeHtml(value: unknown): string {
@@ -10,7 +11,7 @@ function escapeHtml(value: unknown): string {
 }
 
 export const POST: APIRoute = async ({ request, locals }) => {
-  const env = (locals as any).runtime?.env ?? {};
+  const env = runtimeEnv(locals);
 
   const json = (data: object, status = 200) =>
     new Response(JSON.stringify(data), {

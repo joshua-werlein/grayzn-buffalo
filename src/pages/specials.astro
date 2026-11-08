@@ -1,4 +1,5 @@
 ---
+import { runtimeEnv } from '../lib/runtime-env';
 import Base from '../layouts/Base.astro';
 import SpecialGroup from '../components/SpecialGroup.astro';
 import DailySoup from '../components/DailySoup.astro';
@@ -11,7 +12,7 @@ import { getSetting } from '../lib/db';
 import { readAutomaticDelivery, resolveDeliveryDisplay } from '../lib/delivery.js';
 import { getWeeklySpecialsForDateRange, readPublicSections, visibleGroups, DAY_NAMES } from '../lib/specials-store';
 import { chicagoCalendarDate, formatWeeklyDateRange } from '../lib/weekly-specials';
-const env = (Astro.locals as any).runtime?.env ?? {};
+const env = runtimeEnv(Astro.locals);
 const today=chicagoCalendarDate();
 const eventNow=(Astro.locals as any).runtime?.now ?? new Date();
 const [weeklySpecials,deliveryDisplaySetting,automaticDelivery,publicSections]=await Promise.all([getWeeklySpecialsForDateRange(env,today,'9999-12-31'),getSetting(env,'delivery_display','auto'),readAutomaticDelivery(env),readPublicSections(env,eventNow)]);

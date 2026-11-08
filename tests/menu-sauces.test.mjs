@@ -1,3 +1,4 @@
+import {builtRoute} from './built-output.mjs';
 // Sauces as its own, reorderable public Menu section. Build first. Local SQLite fixtures only.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,9 +11,9 @@ const { saucesIndex, validSaucesSort, SAUCES_SORT_KEY } = loadTs('src/lib/menu-s
 
 const baseline = JSON.parse(readFileSync('src/data/menu-baseline.json', 'utf8'));
 const schema = readFileSync('schema.sql', 'utf8');
-const menu = (await import('../dist/_worker.js/pages/menu.astro.mjs')).page().default;
-const admin = (await import('../dist/_worker.js/pages/admin/menu.astro.mjs')).page().default;
-const menuJson = (await import('../dist/_worker.js/pages/menu.json.astro.mjs')).page();
+const menu = (await builtRoute('menu')).default;
+const admin = (await builtRoute('admin/menu')).default;
+const menuJson = (await builtRoute('menu.json'));
 const container = await AstroContainer.create();
 const cookie = 'gb_session=' + 'a'.repeat(32);
 // Seeded by migrations/0027_wing_wednesday.sql: the only verified sauce list.

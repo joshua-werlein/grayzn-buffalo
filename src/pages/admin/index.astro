@@ -1,9 +1,10 @@
 ---
+import { runtimeEnv } from '../../lib/runtime-env';
 import Base from '../../layouts/Base.astro';
 import { isAuthed, login, logout, verifyTurnstile } from '../../lib/auth';
 import { getSetting, setSetting } from '../../lib/db';
 
-const env = (Astro.locals as any).runtime?.env ?? {};
+const env = runtimeEnv(Astro.locals);
 const sitekey = env.TURNSTILE_SITEKEY;
 const turnstileOn = Boolean(sitekey && env.TURNSTILE_SECRET);
 

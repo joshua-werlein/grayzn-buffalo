@@ -1,3 +1,4 @@
+import {builtRoute} from './built-output.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -5,7 +6,7 @@ import {experimental_AstroContainer as AstroContainer} from 'astro/container';
 import {fixture} from './specials-fixture.mjs';
 import {loadTs} from './load-ts.mjs';
 const store=loadTs('src/lib/specials-store.ts');
-const admin=(await import('../dist/_worker.js/pages/admin/specials.astro.mjs')).page().default;
+const admin=(await builtRoute('admin/specials')).default;
 test('preset UI, hardcoded options, markers and handlers are removed; both per-day All Day fields remain editable',async t=>{
   const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};
   const before=f.sql('SELECT * FROM special_slots ORDER BY group_id,position');

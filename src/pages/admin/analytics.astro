@@ -1,10 +1,11 @@
 ---
+import { runtimeEnv } from '../../lib/runtime-env';
 import Base from '../../layouts/Base.astro';
 import { isAuthed } from '../../lib/auth';
 import { loadAnalytics, reportingWindow, ANALYTICS_MESSAGES } from '../../lib/analytics';
 import { getFacebookClicks } from '../../lib/db';
 
-const env = (Astro.locals as any).runtime?.env ?? {};
+const env = runtimeEnv(Astro.locals);
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 const now = new Date();
 const window = reportingWindow(now);
