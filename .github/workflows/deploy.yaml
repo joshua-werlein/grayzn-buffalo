@@ -25,6 +25,12 @@ jobs:
         run: node --test --test-concurrency=4 tests/*.test.mjs
       - name: Facebook automation regressions (local and mocked)
         run: node --test --test-concurrency=4 workers/fb-feed/*.test.js
+      - name: Check Worker secrets (names only)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # Fails on a missing runtime secret or a [vars] name duplicated as a secret.
+        run: npx wrangler secret list --name grayzn-buffalo | node scripts/check-worker-secrets.mjs
       - name: Deploy
         uses: cloudflare/wrangler-action@v4
         with:
