@@ -388,10 +388,11 @@ const PC = ['denim','brick','saddle'] as const;
 .recurring-grid{
   list-style:none;margin:0 auto;padding:0;
   max-width:var(--content-wide);
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;
 }
 .rec-placard{
   --rec-tint:var(--denim);
+  min-width:0;overflow-wrap:anywhere;
   padding:16px 18px;
   background:color-mix(in srgb,var(--rec-tint) 6%,rgba(248,236,211,.7));
   border:1px solid rgba(41,25,18,.18);border-top:3px solid var(--denim);
@@ -420,6 +421,12 @@ const PC = ['denim','brick','saddle'] as const;
 .specials-cta{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:32px auto 0}
 
 /* ── Responsive ── */
+@media(max-width:1023px){
+  .recurring-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:520px){
+  .recurring-grid{grid-template-columns:minmax(0,1fr)}
+}
 @media(max-width:760px){
   .specials-page{--footer-blend-height:clamp(32px,10vw,44px);padding:18px 10px calc(var(--footer-blend-height) + 14px)}
   .specials-sheet{padding:28px 16px 44px;border-width:5px;box-shadow:0 8px 20px rgba(53,29,14,.2)}
@@ -437,6 +444,5 @@ const PC = ['denim','brick','saddle'] as const;
   .card-body{padding:12px 14px 16px;gap:12px}
   .card-food{gap:12px;grid-template-columns:minmax(0,1fr)}
   .mex-body{padding:14px 14px 20px}
-  .recurring-grid{grid-template-columns:repeat(2,1fr)}
 }
 </style>
