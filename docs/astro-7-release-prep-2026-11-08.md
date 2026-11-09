@@ -1,6 +1,6 @@
 # Astro 7 Worker release preparation — November 8, 2026
 
-Follow-up to `astro-7-readiness-2026-11-08.md`. Owner-executed so far: the unrouted `grayzn-buffalo` Worker was created, and its secrets were entered. No route, token, DNS, D1/KV/R2, Pages or billing change has been made.
+Follow-up to `astro-7-readiness-2026-11-08.md`. Owner-executed so far: Workers Paid was enabled, the unrouted `grayzn-buffalo` Worker was created, its secrets were entered/reconciled, and the dedicated CI token was created. This independent review made no production deployment, route, DNS, storage, secret or billing changes. See `astro-7-independent-review-2026-11-08.md` for fresh evidence and remaining release gates.
 
 Revised for Cloudflare's updated Workers permissions model: creating a new Worker requires Workers product-level **Admin**, so the owner creates the unrouted Worker with their own administrator access. CI afterwards uses an **Editor-level** token that can only update it.
 
@@ -8,12 +8,12 @@ Revised for Cloudflare's updated Workers permissions model: creating a new Worke
 
 | Gate | Status |
 |---|---|
-| Capacity | **Cleared by owner:** Workers Paid reported Active (approved by Jeff, enabled November 8). Not independently re-read from Billing (browser unavailable). Confirm in Billing → Subscriptions at step 1. |
-| Code/tests | `914d5f6` (Sol) → `f55003a` → `8758391` (secret guard) → final-review commit (workflow line endings, `pipefail`), all fast-forward from `dd10dc2`. |
+| Capacity | **Independently confirmed November 8 CST:** Billing → Subscriptions lists Workers Paid under Subscribed, renewing November 30. Recheck before release. |
+| Code/tests | `914d5f6` → `f55003a` → `8758391` → `57c4ff6` (Claude safeguards) → `c44e546` (responsive grid) → `a8441c3` (contact regressions), followed by independent review documentation. All descend from `dd10dc2`. |
 | Bindings | DB `c998bfd4-…`, SESSIONS `3c315599…`, PHOTOS `grayzn-photos` are identical to the Pages config on main. Pages reads bindings from main's `wrangler.toml`, so there are no dashboard-only bindings. |
 | Plain vars | `CF_ANALYTICS_ACCOUNT_ID` and `CF_ANALYTICS_SITE_TAG` are in `wrangler.toml`. ✅ Duplicate secrets removed by owner. They are absent from live version `253ed164` until the first CI deploy re-adds them. |
 | Worker creation | ✅ Done by owner. Unrouted; workers.dev and previews off (see "Live read-only state"). |
-| CI token | `CLOUDFLARE_WORKERS_DEPLOY_TOKEN` is in GitHub (name verified). Intended scope: account-owned Individual Workers → Editor on `grayzn-buffalo`. Scope not verified in the UI; the first CI run is the proof and fails closed (below). |
+| CI token | `CLOUDFLARE_WORKERS_DEPLOY_TOKEN` is in GitHub (name verified). Dashboard independently shows account-owned Individual Workers → Editor on `grayzn-buffalo` only. GitHub secret name exists; its encrypted value cannot be compared with the dashboard token. Successful CI deployment still requires separate authorization. |
 | Secrets | ✅ Exactly the six runtime secrets (names verified). The guard prints `Worker secrets OK`. |
 | Routing | Unchanged. Generated deploy config: no routes, `workers_dev=false`, `preview_urls=false`. |
 
@@ -87,7 +87,7 @@ A CI failure is safe. The secret check and the pre-upload checks fail before any
 
 ## Worker variable reconciliation
 
-✅ **Resolved November 9:** the owner deleted the two duplicate secrets. Version `253ed164` has the six secrets and no plain vars, and the guard passes. The history below is kept for review.
+✅ **Resolved November 8 CST (November 9 UTC):** the owner deleted the two duplicate secrets. Version `253ed164` has the six secrets and no plain vars, and the guard passes. The history below is kept for review.
 
 State before the fix, from read-only `wrangler versions view` of `181b28cc` and `wrangler secret list`, names only:
 
@@ -98,7 +98,7 @@ State before the fix, from read-only `wrangler versions view` of `181b28cc` and 
   - These two are public identifiers already committed in `wrangler.toml`, so nothing is lost.
   - Don't touch the six runtime secrets.
   - Each deletion creates a new version without those two values. `/admin/analytics` would show "configuration" until the next deploy restores them as plain vars. The Worker is unrouted, so nothing public is affected.
-- **Guard:** the workflow runs `npx wrangler secret list --name grayzn-buffalo | node scripts/check-worker-secrets.mjs` before deploying. It fails if any `[vars]` name is also a secret, if any of the six runtime secrets is missing, or if the output isn't the expected JSON. It reads names only. Against today's Worker it fails, correctly, on the two duplicates.
+- **Guard:** the workflow runs `npx wrangler secret list --name grayzn-buffalo | node scripts/check-worker-secrets.mjs` before deploying. It fails if any `[vars]` name is also a secret, if any of the six runtime secrets is missing, or if the output isn't the expected JSON. It reads names only. It failed on the historical duplicate state; the fresh independent check now passes after the owner removed those duplicates.
 - **Do not** "fix" this by removing `[vars]` from `wrangler.toml`. That would move two public identifiers into untracked dashboard state.
 
 ## Secrets (names only)
@@ -155,7 +155,7 @@ Trigger it on public or admin errors, auth, header or cache regressions, image f
 1. Worker `grayzn-buffalo` → Domains & Routes → remove **only** `grayznbuffalo.com/*`, confirming its recorded route ID. Never touch either Facebook route or any Worker, D1, KV or R2 resource.
 2. Traffic falls back to Pages `d5cfa3ed…` / `dd10dc2`, which still has its own secrets and token. Confirm the public, admin and image pages and the Facebook feed.
 3. Don't restore D1/KV/R2. Writes since cutover are shared and remain valid.
-4. CI can't recreate the route, because config has no routes and the test enforces it. Later pushes only update the unrouted Worker. To make main deploy Pages again, revert the migration merge.
+4. CI can't recreate the route, because config has no routes and the test enforces it. Later pushes only update the unrouted Worker. To make main deploy Pages again, prepare reviewed reversions of the migration-specific workflow/build configuration and dependency changes. The proposed release is a fast-forward, so there is no merge commit to revert. Preserve subsequent application fixes, including the responsive grid, and rerun the Pages build/tests before any separately authorized push.
 
 ## Changes
 
@@ -171,7 +171,7 @@ Trigger it on public or admin errors, auth, header or cache regressions, image f
   - `.github/workflows/deploy.yaml`: the 10 LF-only lines added in `914d5f6`/`f55003a` are normalized to CRLF, matching the rest of the file and main. The parsed YAML is unchanged. `git diff --check` reports CR-at-EOL on added lines only, and `-c core.whitespace=cr-at-eol` is clean.
   - The guard step sets `shell: bash` so `pipefail` applies, and a Wrangler/API error fails the step directly. It already failed closed, because the checker rejects empty or non-JSON input.
 
-## Live read-only state (November 9)
+## Live read-only state (November 8 CST / November 9 UTC)
 
 | Item | Value |
 |---|---|
@@ -189,5 +189,5 @@ Trigger it on public or admin errors, auth, header or cache regressions, image f
 
 - That an account-owned Individual Workers Editor token on `grayzn-buffalo` alone is enough for `wrangler deploy` and `wrangler secret list` with Wrangler 4.158.0, and whether Metadata Read-Only is needed for any read.
 - The Wrangler 4.158.0 route and subdomain analysis above.
-- The zone-injected analytics beacon on Worker-rendered HTML after cutover.
+- The zone-injected analytics beacon on Worker-rendered HTML after an authorized cutover remains an edge verification gate; an unrouted Worker cannot prove it.
 - This pass's workflow, config and test diffs.
