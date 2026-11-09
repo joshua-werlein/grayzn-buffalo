@@ -2,6 +2,10 @@ name: Deploy site Worker
 on:
   push:
     branches: [main]
+# Never let an older run finish after a newer one (or after a rollback commit).
+concurrency:
+  group: deploy-site-worker
+  cancel-in-progress: false
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -24,7 +28,11 @@ jobs:
       - name: Deploy
         uses: cloudflare/wrangler-action@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # Editor-level Workers token: updates the owner-created grayzn-buffalo
+          # Worker only. No route, zone or storage permissions; the site route
+          # is dashboard-managed. The older Pages-only CLOUDFLARE_API_TOKEN
+          # stays untouched for Pages rollback.
+          apiToken: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # Never publish dist/server as public Pages assets.
           # No routes or public preview are configured before cutover approval.

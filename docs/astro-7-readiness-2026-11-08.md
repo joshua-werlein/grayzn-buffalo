@@ -2,6 +2,8 @@
 
 **STOP: not cleared for production cutover on the current Workers Free plan.** Implementation and local validation are complete; capacity and operational release prerequisites below are not all cleared. No site Worker, routing change, plan upgrade, production migration or secret transfer was performed.
 
+> **Update (later November 8):** the owner reports Workers Paid is active, which clears the capacity gate below. The remaining token, secret and cutover steps are in `astro-7-release-prep-2026-11-08.md`.
+
 ## Released security checkpoint
 
 The separately authorized Pages release is committed and pushed as `dd10dc267ce2c7f8c3523c2f782b4906912ec36d` on main. It contains only the two photo routes, shared WebP signature/length validator, twelve regressions and audit report. Fresh release verification: 421 application tests, production build, Astro check (zero errors/warnings), and whitespace review passed.

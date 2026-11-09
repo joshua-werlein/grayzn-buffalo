@@ -2,6 +2,9 @@ name = "grayzn-buffalo"
 compatibility_date = "2026-01-01"
 account_id = "a79e3b4a2bb8dad70c75bceac4b1d3f9"
 # Site Worker is intentionally unrouted pending the owner's cutover approval.
+# The grayznbuffalo.com/* route is dashboard-managed: never add `routes`, `route`
+# or custom domains here. Wrangler PUTs the Worker's full route list whenever
+# routes are configured, which would delete the dashboard route.
 workers_dev = false
 preview_urls = false
 upload_source_maps = false
