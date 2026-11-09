@@ -9,12 +9,12 @@ Revised for Cloudflare's updated Workers permissions model: creating a new Worke
 | Gate | Status |
 |---|---|
 | Capacity | **Cleared by owner:** Workers Paid reported Active (approved by Jeff, enabled November 8). Not independently re-read from Billing (browser unavailable). Confirm in Billing → Subscriptions at step 1. |
-| Code/tests | `914d5f6` (Sol) → `f55003a` → follow-up guard commit, all on `dd10dc2`. |
+| Code/tests | `914d5f6` (Sol) → `f55003a` → `8758391` (secret guard) → final-review commit (workflow line endings, `pipefail`), all fast-forward from `dd10dc2`. |
 | Bindings | DB `c998bfd4-…`, SESSIONS `3c315599…`, PHOTOS `grayzn-photos` are identical to the Pages config on main. Pages reads bindings from main's `wrangler.toml`, so there are no dashboard-only bindings. |
-| Plain vars | `CF_ANALYTICS_ACCOUNT_ID` and `CF_ANALYTICS_SITE_TAG` are in `wrangler.toml`. ⚠️ They are currently duplicated as Worker secrets; see "Worker variable reconciliation". |
+| Plain vars | `CF_ANALYTICS_ACCOUNT_ID` and `CF_ANALYTICS_SITE_TAG` are in `wrangler.toml`. ✅ Duplicate secrets removed by owner. They are absent from live version `253ed164` until the first CI deploy re-adds them. |
 | Worker creation | ✅ Done by owner. Unrouted; workers.dev and previews off (see "Live read-only state"). |
-| CI token | **Owner action:** account-owned Individual Workers → Editor on `grayzn-buffalo` (below). `CLOUDFLARE_WORKERS_DEPLOY_TOKEN` is not yet in GitHub. |
-| Secrets | ✅ All six present (names verified). ⚠️ Two extra duplicates to remove. |
+| CI token | `CLOUDFLARE_WORKERS_DEPLOY_TOKEN` is in GitHub (name verified). Intended scope: account-owned Individual Workers → Editor on `grayzn-buffalo`. Scope not verified in the UI; the first CI run is the proof and fails closed (below). |
+| Secrets | ✅ Exactly the six runtime secrets (names verified). The guard prints `Worker secrets OK`. |
 | Routing | Unchanged. Generated deploy config: no routes, `workers_dev=false`, `preview_urls=false`. |
 
 ## Wrangler route and subdomain behaviour (verified in installed Wrangler 4.158.0)
@@ -87,7 +87,9 @@ A CI failure is safe. The secret check and the pre-upload checks fail before any
 
 ## Worker variable reconciliation
 
-State on November 9, from read-only `wrangler versions view` of `181b28cc` and `wrangler secret list`, names only:
+✅ **Resolved November 9:** the owner deleted the two duplicate secrets. Version `253ed164` has the six secrets and no plain vars, and the guard passes. The history below is kept for review.
+
+State before the fix, from read-only `wrangler versions view` of `181b28cc` and `wrangler secret list`, names only:
 
 - The Worker has **eight secrets and no plain-text vars**.
 - Saving `CF_ANALYTICS_ACCOUNT_ID` and `CF_ANALYTICS_SITE_TAG` as dashboard secrets replaced the plain-text vars that the initial upload created from `wrangler.toml`.
@@ -126,8 +128,8 @@ Enter them after Worker creation: Dashboard → `grayzn-buffalo` → Settings �
    Stop on any difference.
 2. ✅ **Reviewed and committed** (`f55003a`, plus the follow-up commit for this pass).
 3. ✅ **Unrouted Worker created** by the owner (initial version `e9a7a733…`; `181b28cc…` after secret entry).
-4. ✅ **Six secrets entered.** ⚠️ Delete the two duplicate analytics secrets ("Worker variable reconciliation"). Then `npx wrangler secret list --name grayzn-buffalo | node scripts/check-worker-secrets.mjs` (after `npm run build`) must print `Worker secrets OK`.
-5. **Create the Individual Workers Editor token** and add `CLOUDFLARE_WORKERS_DEPLOY_TOKEN` to GitHub. Verify presence with `gh secret list` (names only).
+4. ✅ **Six secrets entered and duplicates deleted** ("Worker variable reconciliation"). Re-check before step 6: `npx wrangler secret list --name grayzn-buffalo | node scripts/check-worker-secrets.mjs` (after `npm run build`) must print `Worker secrets OK`.
+5. ✅ **Create the Individual Workers Editor token** and add `CLOUDFLARE_WORKERS_DEPLOY_TOKEN` to GitHub. Verify presence with `gh secret list` (names only).
 6. **Prove CI while still unrouted.** Fast-forward main to the reviewed commit and push.
    - CI runs Astro check, build, both regression suites (including the deploy-config and secret-check tests), the names-only secret check, then `wrangler deploy` with the Editor token.
    - Confirm the run succeeded, a new version is at 100% in `npx wrangler deployments list --name grayzn-buffalo`, and Domains & Routes is still empty.
@@ -165,14 +167,17 @@ Trigger it on public or admin errors, auth, header or cache regressions, image f
   - `scripts/check-worker-secrets.mjs` and `tests/check-worker-secrets.test.mjs`: names-only secret and vars guard.
   - The workflow step that runs the guard before deploying.
   - This runbook's token and variable sections.
+- Final review:
+  - `.github/workflows/deploy.yaml`: the 10 LF-only lines added in `914d5f6`/`f55003a` are normalized to CRLF, matching the rest of the file and main. The parsed YAML is unchanged. `git diff --check` reports CR-at-EOL on added lines only, and `-c core.whitespace=cr-at-eol` is clean.
+  - The guard step sets `shell: bash` so `pipefail` applies, and a Wrangler/API error fails the step directly. It already failed closed, because the checker rejects empty or non-JSON input.
 
 ## Live read-only state (November 9)
 
 | Item | Value |
 |---|---|
-| `grayzn-buffalo` active version | `181b28cc-1d27-4d81-888a-7e00672a6f01`, 100% |
+| `grayzn-buffalo` active version | `253ed164-ee6b-4aa1-bf0b-ef82f5dd5775`, 100% (after the two secret deletions) |
 | Handlers | `fetch` only |
-| Bindings | DB / SESSIONS / PHOTOS / ASSETS at the Pages resource IDs |
+| Bindings | DB / SESSIONS / PHOTOS / ASSETS at the Pages resource IDs, plus the six `secret_text` secrets. No plain vars until the next deploy. |
 | Subdomain | `enabled: false`, `previews_enabled: false` |
 | Schedules | none |
 | Custom domains | none |

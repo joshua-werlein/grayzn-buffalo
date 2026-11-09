@@ -30,6 +30,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         # Fails on a missing runtime secret or a [vars] name duplicated as a secret.
+        # Explicit bash adds pipefail, so a Wrangler/API error also fails the step.
+        shell: bash
         run: npx wrangler secret list --name grayzn-buffalo | node scripts/check-worker-secrets.mjs
       - name: Deploy
         uses: cloudflare/wrangler-action@v4
