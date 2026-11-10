@@ -242,8 +242,19 @@ export async function loadAnalytics(env: Record<string, any>, now = new Date(), 
       historyStart: new Date(chunks[0][0]).toISOString(), firstRecordedDay: [...byDay.keys()].sort()[0] ?? null,
       daily, calendarMonths: calendarMonths(byDay, chunks[0][0], now), monthly, pages, sources } };
   } catch (error) {
-    const reason = error instanceof AnalyticsError ? error.reason
+    let reason = error instanceof AnalyticsError ? error.reason
       : error instanceof Error && /^(TimeoutError|AbortError)$/.test(error.name) ? 'timeout' : 'network-or-json';
+    // An immediate pre-response failure needs a fixed native-error category.
+    // Inspect locally only; never emit native exception messages or header values.
+    if (reason === 'network-or-json' && phase === 'fetch') {
+      try { new Headers({ Authorization: `Bearer ${token}` }); }
+      catch { reason = 'request-headers'; }
+      if (reason === 'network-or-json' && error instanceof Error) {
+        reason = /illegal invocation/i.test(error.message) ? 'fetch-invocation'
+          : /(?:AbortSignal|fetch).*not a function/i.test(error.message) ? 'runtime-api'
+          : error.name === 'TypeError' ? 'fetch-type' : 'network-or-json';
+      }
+    }
     // This object contains fixed categories and validated limits, never tokens, paths, visitors, or raw errors.
     try { diagnose({ stage, reason, httpStatus: error instanceof AnalyticsError ? error.httpStatus ?? httpStatus : httpStatus,
       limits: verifiedLimits, chunk, phase, elapsedMs: Math.max(0, Date.now() - started),

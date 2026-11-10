@@ -83,3 +83,20 @@ test('normalization failures retain safe response metadata; successful loads emi
     d => successDiagnostics.push(d))).status, 'ok');
   assert.deepEqual(successDiagnostics, []);
 });
+
+test('immediate pre-response failures distinguish invalid headers and native invocation/API errors privately', async () => {
+  for (const [token, error, reason] of [
+    ['private\ncredential', new TypeError('sensitive header contents'), 'request-headers'],
+    ['private-token', new TypeError('Illegal invocation private-token'), 'fetch-invocation'],
+    ['private-token', new TypeError('AbortSignal.timeout is not a function private-token'), 'runtime-api'],
+    ['private-token', new TypeError('sensitive transport contents'), 'fetch-type'],
+  ]) {
+    const diagnostics = [];
+    assert.deepEqual(await loadAnalytics({ ...env, CF_ANALYTICS_API_TOKEN: token }, now,
+      async () => { throw error; }, d => diagnostics.push(d)), { status: 'provider' });
+    assert.equal(diagnostics[0].reason, reason);
+    assert.equal(diagnostics[0].phase, 'fetch');
+    assert.equal(diagnostics[0].httpStatus, undefined);
+    assert.doesNotMatch(JSON.stringify(diagnostics), /private|credential|sensitive|Illegal invocation|AbortSignal/);
+  }
+});
