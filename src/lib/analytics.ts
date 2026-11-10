@@ -27,6 +27,7 @@ class AnalyticsError extends Error {
 export type AnalyticsDiagnostic = {
   stage: 'settings' | 'history' | 'recent' | 'normalize'; reason: string; httpStatus?: number;
   limits?: Limits; chunk?: number;
+  phase: 'fetch' | 'json' | 'validate' | 'normalize'; elapsedMs: number; queryElapsedMs: number;
 };
 
 export function shiftDay(day: string, amount: number): string {
@@ -143,13 +144,23 @@ export async function loadAnalytics(env: Record<string, any>, now = new Date(), 
   let stage: AnalyticsDiagnostic['stage'] = 'settings';
   let verifiedLimits: Limits | undefined;
   let chunk: number | undefined;
+  const started = Date.now();
+  let queryStarted = started;
+  let phase: AnalyticsDiagnostic['phase'] = 'fetch';
+  let httpStatus: number | undefined;
   const gql = async (query: string, variables: object = {}) => {
+    queryStarted = Date.now();
+    phase = 'fetch';
+    httpStatus = undefined;
     const response = await request(ENDPOINT, {
       method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, variables: { account, ...variables } }), signal: AbortSignal.timeout(12_000),
     });
+    httpStatus = response.status;
     if (response.status === 401 || response.status === 403) throw new AnalyticsError('permission', 'http', response.status);
+    phase = 'json';
     const body = await response.json();
+    phase = 'validate';
     if (body.errors?.length) {
       // Inspect messages only to classify them. Never return or log provider text.
       const messages = body.errors.map((e: any) => String(e.message)).join(' ');
@@ -195,6 +206,7 @@ export async function loadAnalytics(env: Record<string, any>, now = new Date(), 
         sources:rumPageloadEventsAdaptiveGroups(limit:$limit,filter:$filter){sum{visits} dimensions{refererHost}}
       }}}`, { filter: publicFilter(site, window.startMs, window.endMs), limit: limits.maxPageSize });
     stage = 'normalize';
+    phase = 'normalize';
     const byDay = new Map<string, number>();
     let historyVisits = 0;
     for (const row of hourly) {
@@ -233,7 +245,9 @@ export async function loadAnalytics(env: Record<string, any>, now = new Date(), 
     const reason = error instanceof AnalyticsError ? error.reason
       : error instanceof Error && /^(TimeoutError|AbortError)$/.test(error.name) ? 'timeout' : 'network-or-json';
     // This object contains fixed categories and validated limits, never tokens, paths, visitors, or raw errors.
-    try { diagnose({ stage, reason, httpStatus: error instanceof AnalyticsError ? error.httpStatus : undefined, limits: verifiedLimits, chunk }); } catch {}
+    try { diagnose({ stage, reason, httpStatus: error instanceof AnalyticsError ? error.httpStatus ?? httpStatus : httpStatus,
+      limits: verifiedLimits, chunk, phase, elapsedMs: Math.max(0, Date.now() - started),
+      queryElapsedMs: Math.max(0, Date.now() - queryStarted) }); } catch {}
     return { status: error instanceof AnalyticsError ? error.status : 'provider' };
   }
 }

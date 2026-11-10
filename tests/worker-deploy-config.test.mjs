@@ -28,6 +28,18 @@ test('site Worker config never manages routes or custom domains', () => {
   assert.equal(generated.route, undefined);
 });
 
+test('private diagnostics persist without invocation logs, query strings, traces or external destinations', () => {
+  assert.equal(generated.observability.enabled, true);
+  assert.equal(generated.observability.redact_query_string, true);
+  assert.equal(generated.observability.logs.enabled, true);
+  assert.equal(generated.observability.logs.persist, true);
+  assert.equal(generated.observability.logs.head_sampling_rate, 1);
+  assert.equal(generated.observability.logs.invocation_logs, false);
+  assert.deepEqual(generated.observability.logs.destinations, []);
+  assert.equal(generated.observability.traces.enabled, false);
+  assert.equal(generated.observability.issues.enabled, false);
+});
+
 test('site Worker keeps the Pages D1/KV/R2 resources and serves only client assets', () => {
   assert.equal(generated.name, 'grayzn-buffalo');
   assert.deepEqual(generated.d1_databases.map(d => [d.binding, d.database_id]),
