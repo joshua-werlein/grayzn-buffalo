@@ -1,6 +1,6 @@
 import {buildExtractionRequest, buildWeeklyLunchExtractionRequest, buildMexicanNightExtractionRequest,buildReliableExtractionRequest} from './extraction.js';
 import {analyzeDailyEvidence,normalizeEvidenceOffer,factKey,serviceFromEvidence,normalizeWeeklyRange,weeklyEntryEvidence,sameMealFacts,sameMenuItemFacts,hasUnresolvedUncertainty} from './evidence.js';
-import { classifyCaption, parserVersionFor } from './classify.js';
+import { classifyCaption, parserVersionFor, confidentMexicanNightCaption } from './classify.js';
 import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexicanNight } from './guarded-auto.js';
 import {reconcileWingWednesday,recordWingScan} from './wing-wednesday.js';
 import {ensureAutomaticWeek} from './auto-week.js';
@@ -397,6 +397,12 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
   let deliveryRecovery=false;
   // Tracks whether a Tuesday empty-offers result has armed the Mexican Night targeted retry.
   let needsMexicanNightRetry = false;
+  // Contract 2: a caption that alone identifies Mexican Night starts with the
+  // Mexican-only request (the generic first reading degenerated on Nov 10) and keeps
+  // that shape for its one reread. If that reading finds no printed Mexican Night
+  // heading, the reread falls back to the generic request. Validation is unchanged.
+  const captionShape=reliable && confidentMexicanNightCaption(caption) ? 'mexican-night' : undefined;
+  const repairShape=()=>captionShape && mexicanHeadingAbsent(priorRaw) ? undefined : priorValidation?.repairShape ?? captionShape;
   for (let attempt=0;attempt<2;attempt++) {
     const now = new Date(Date.now());
     if(deliveryRecovery && !deliveryWindow(now).open) return {...priorOutcome,deliveryConflict:true};
@@ -415,14 +421,15 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
       // Select the most informative retry description and the focused schema.
       const retryDetail = deliveryRecovery ? 'Daily-schema delivery reread after single-day shape recovery' : lastValidationReason === WEEKLY_LUNCH_SHAPE_ERROR
         ? 'Weekly-lunch-specific retry: forcing weekly-lunch shape and schema'
-        : (needsMexicanNightRetry || lastValidationReason === MEXICAN_NIGHT_SHAPE_ERROR)
+        : (needsMexicanNightRetry || lastValidationReason === MEXICAN_NIGHT_SHAPE_ERROR || (reliable && repairShape()==='mexican-night'))
           ? 'Mexican Night targeted retry: determining from image whether poster is Mexican Night'
           : lastValidationReason === WEEKDAY_ENCODING_MISMATCH
             ? `Weekday encoding mismatch retry: ${WEEKDAY_ENCODING_MISMATCH}`
             : 'One retry with identical extraction instructions and schema';
       await attemptEvent(env,budget.record,'retry',retryDetail);
     }
-    const request = reliable ? buildReliableExtractionRequest(caption,image,{reason:attempt?lastValidationReason:'',previous:priorRaw,verify:attempt>0,shape:deliveryRecovery?'daily-delivery':attempt?priorValidation?.repairShape:undefined})
+    const request = reliable ? buildReliableExtractionRequest(caption,image,{reason:attempt?lastValidationReason:'',previous:priorRaw,verify:attempt>0,
+        shape:deliveryRecovery?'daily-delivery':attempt?repairShape():captionShape,first:!attempt && !!captionShape})
       : lastValidationReason === WEEKLY_LUNCH_SHAPE_ERROR
       ? buildWeeklyLunchExtractionRequest(caption,image)
       : (needsMexicanNightRetry || lastValidationReason === MEXICAN_NIGHT_SHAPE_ERROR)
@@ -522,6 +529,15 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
   return outcome;
 }
 
+// A complete Mexican Night-shaped reading that found no printed Mexican Night
+// heading. A truncated or unparseable reading is not evidence of absence.
+function mexicanHeadingAbsent(raw) {
+  try {
+    const parsed=JSON.parse(String(raw).replace(/^```(?:json)?\n?|\n?```$/gm,'').trim());
+    return parsed?.type==='mexican-night' && !/\bmexican\s+night\b/i.test(String(parsed.poster_evidence ?? ''));
+  } catch {return false;}
+}
+
 // Keep actionable provider errors without persisting credentials or echoed images.
 function safeAiError(error, env) {
   let message = String(error);
@@ -587,10 +603,14 @@ export function validateExtraction(extractedJson,reliable=false,window={}) {
     try {
       if(reliable) {
         if(!Array.isArray(parsed.groups)) throw Error('Missing Mexican Night evidence groups');
+        // Any unverified item holds the whole menu. The reason names the actual
+        // cause and item so staff need not re-derive it from the raw reading.
         for(const group of parsed.groups) for(const item of group.items??[]) {
+          const title=JSON.stringify(String(item?.title ?? '').slice(0,80));
           // Compare original facts before moving printed size labels for display.
-          if(typeof item.evidence!=='string'||!item.evidence.trim()||item.uncertainties?.length
-            || !sameMenuItemFacts(item.title,item.description,item.evidence)) throw Error('Mexican Night item facts differ from original evidence');
+          if(typeof item.evidence!=='string'||!item.evidence.trim()) throw Error(`Missing Mexican Night item evidence: ${title}`);
+          if(item.uncertainties?.length) throw Error(`Uncertain Mexican Night item: ${title}`);
+          if(!sameMenuItemFacts(item.title,item.description,item.evidence)) throw Error(`Mexican Night item facts differ from original evidence: ${title}`);
         }
       }
       return {candidateJson:JSON.stringify(validateMexicanNight(parsed)),validationResult:'ok',validationReason:'mexican night evidence'};

@@ -255,6 +255,49 @@ function formatWingText({day, summary, detail:d, firstSeenMs}) {
   lines.push(`Review: ${d.reviewUrl}`, `Open: ${d.editorUrl}`);
   return lines.join('\n');
 }
+// Mexican Night: one current post. Category and explanation are fixed text.
+const MEXICAN_CATEGORIES = {
+  'Publication held': 'The poster was read and validated, but the website menu was not updated.',
+  'Printed schedule differs': 'The printed schedule differs from the recurring schedule, so the website menu was not updated.',
+  'Poster validation': 'The poster reading failed validation, so the website menu was not updated.',
+  'AI extraction': 'The poster image could not be read, so the website menu was not updated.',
+  'Retries exhausted': 'Automatic retries were exhausted, so the website menu was not updated.',
+  'AI daily limit': 'The daily AI limit was reached, so the website menu was not updated.',
+  'Import failed': 'The post could not be imported, so the website menu was not updated.',
+};
+// Missing information, not a failure: the validated poster was published.
+const MEXICAN_UNCONFIRMED = 'Unconfirmed recurring entries';
+export function mexicanAlertDetail({day, source, category, entries=[]}) {
+  try {
+    if (!isDate(day)) return null;
+    const ms = Date.parse(source?.fb_created_time);
+    const post = /^\d{1,30}_\d{1,30}$/.test(source?.fb_post_id ?? '') ? source.fb_post_id.split('_') : null;
+    const id = /^[a-zA-Z0-9_-]{1,100}$/.test(source?.id ?? '') ? source.id : null;
+    return {scope:'mexican', day, weekday:DAY_NAMES[new Date(`${day}T12:00:00Z`).getUTCDay()],
+      category:category===MEXICAN_UNCONFIRMED || Object.hasOwn(MEXICAN_CATEGORIES,category) ? category : 'Publication held',
+      entries:(Array.isArray(entries) ? entries : []).map(e=>plainValue(e)).filter(Boolean),
+      post:Number.isFinite(ms) ? {time:chicagoTime(ms),url:post ? `https://www.facebook.com/${post[0]}/posts/${post[1]}` : null} : null,
+      reviewUrl:`${SITE}/admin/automation?date=${day}${id ? `#import-${id}` : ''}`, editorUrl:`${SITE}/admin/specials#mexican-form`};
+  } catch { return null; }
+}
+function formatMexicanText({day, summary, detail:d, firstSeenMs}) {
+  const lines = [`Mexican Night: ${summary}`, `Date: ${d.weekday}, ${day} (Chicago)`];
+  if (Number.isSafeInteger(firstSeenMs) && firstSeenMs>0) lines.push(`First detected: ${chicagoTime(firstSeenMs)}`);
+  if (d.post) lines.push(`Facebook posted: ${day}, ${d.post.time} (Chicago)${d.post.url ? ` — ${d.post.url}` : ''}`);
+  if (d.category===MEXICAN_UNCONFIRMED) {
+    lines.push('Result: Published — not a validation failure.',
+      'Today’s poster was validated and published. These saved Mexican Night entries were not confirmed by today’s poster, so they show without a current price:');
+    for (const entry of d.entries.slice(0,MAX_LINES)) lines.push(`- ${entry}`);
+    if (d.entries.length>MAX_LINES) lines.push(`- and ${d.entries.length-MAX_LINES} more`);
+    lines.push('', 'Correction: optional but recommended. If an entry is still offered, add its price in This Week’s Mexican Night (a staff save protects this week). If it is no longer offered, remove it from Recurring Mexican Night Defaults.');
+    lines.push(`Open: ${d.editorUrl}`, `Review import: ${d.reviewUrl}`);
+    return lines.join('\n');
+  }
+  lines.push(`Result: ${d.category}`, MEXICAN_CATEGORIES[d.category], 'The website shows the recurring Mexican Night menu or the last published menu, unchanged.');
+  lines.push('', 'Correction: needed. Enter tonight’s prices in This Week’s Mexican Night, or review the import. A staff save protects this week from Facebook replacement.');
+  lines.push(`Open: ${d.editorUrl}`, `Review import: ${d.reviewUrl}`);
+  return lines.join('\n');
+}
 function formatWeeklyText({day, code, summary, detail:d, firstSeenMs}) {
   const lines = [`Weekly Lunch: ${summary}`, `Date: ${d.weekday}, ${day} (Chicago)`];
   if (Number.isSafeInteger(firstSeenMs) && firstSeenMs>0) lines.push(`First detected: ${chicagoTime(firstSeenMs)}`);
@@ -306,6 +349,7 @@ export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
   }
   if (d?.scope==='weekly') return formatWeeklyText({day, code, summary, detail:d, firstSeenMs});
   if (d?.scope==='wing') return formatWingText({day, summary, detail:d, firstSeenMs});
+  if (d?.scope==='mexican') return formatMexicanText({day, summary, detail:d, firstSeenMs});
   const lines = [summary];
   lines.push(`Date: ${d ? `${d.weekday}, ` : ''}${day} (Chicago)`);
   if (Number.isSafeInteger(firstSeenMs) && firstSeenMs>0) lines.push(`First detected: ${chicagoTime(firstSeenMs)}`);
@@ -361,6 +405,7 @@ export function alertSubjectSuffix(detail) {
   if (detail?.scope==='image') return ' (Facebook image processing)';
   if (detail?.scope==='weekly') return ' (Weekly Lunch)';
   if (detail?.scope==='wing') return ' (Wing Wednesday)';
+  if (detail?.scope==='mexican') return detail.category===MEXICAN_UNCONFIRMED ? ' (Mexican Night: unconfirmed entries)' : ' (Mexican Night)';
   const categories = [...new Set((detail?.holds ?? []).map(h=>h.category))].slice(0,3);
   return categories.length ? ` (${categories.join(', ')})` : '';
 }

@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {Miniflare} from 'miniflare';
 import {readFileSync} from 'node:fs';
 import {harness} from './test-fixture.js';
-import {runImportPipeline} from './worker.js';
+import {runImportPipeline,requeueFailedImport,validateExtraction} from './worker.js';
 import {beginAlertScan,finishAlertScan,dispatchVerifiedAlerts,revalidateAlert,readAlertHealth} from './alert-runtime.js';
 import {ALERT_GRACE_MS,dispatchAlert} from './alert-store.js';
 import {reconcileToday} from './guarded-auto.js';
@@ -134,9 +134,10 @@ test('Worker: unknown image, old-day caption, weekly and Mexican sources do not 
   for(const caption of ['Hello friends','Tuesday Night Specials','Weekly Lunch Specials','Mexican Night',
     'Next Wednesday Night Specials','Wednesday Night Specials tomorrow','Wednesday Night Specials 2030-01-16']) {
     f.state.posts[0].message=caption;f.advance(1);await f.run();
-    // An explicit weekly lunch caption with a permanent extraction failure is a
-    // Weekly Lunch incident (its own scope), never a daily terminal failure.
-    assert.deepEqual(f.all().filter(r=>r.state==='attention' && !r.scope.startsWith('image_')).map(r=>r.scope),caption==='Weekly Lunch Specials'?['weekly']:[]);
+    // An explicit weekly lunch or Mexican Night caption with a permanent extraction
+    // failure is an incident in its own scope, never a daily terminal failure.
+    assert.deepEqual(f.all().filter(r=>r.state==='attention' && !r.scope.startsWith('image_')).map(r=>r.scope),
+      caption==='Weekly Lunch Specials'?['weekly']:caption==='Mexican Night'?['mexican']:[]);
     assert.equal(f.all().filter(r=>r.state==='attention' && r.scope.startsWith('image_')).length,caption==='Hello friends'?1:0,caption);
     assert.equal(f.sent.length,0);
   }
@@ -646,4 +647,185 @@ test('November 8: technical email uses allowlisted diagnostics and cannot copy r
   const message=alertMessage('2026-11-08','automation_failed',{detail});
   assert.match(message.text,/Failure category: Image processing/);assert.match(message.text,/Attempts used: unverified/);
   assert.ok(!/attacker|credential|private caption|Bcc/.test(message.text));
+});
+
+// November 10, 2026: the production Mexican Night poster. Its stored (second)
+// reading matched every printed fact, but the model flagged 2 Soft Shell
+// "unreadable text in title"; the whole menu was held and no scope alerted.
+const NOV10=JSON.parse(readFileSync(new URL('../../tests/fixtures/nov10-mexican-night.json',import.meta.url),'utf8'));
+const clean=menu=>({...menu,groups:menu.groups.map(g=>({...g,items:g.items.map(i=>({...i,uncertainties:[]}))}))});
+// Production recurring template; Sunday seeds an unlocked copy into this week.
+// Slots hold at most four items per group.
+const MEXICAN_TEMPLATE=[['Mexican Night Favorites',['2 Soft Shell\nMeat, Shredded Cheese, Lettuce, Onion, Tomato & Black Olives.',
+  'Burrito\nMeat, Refried Beans, Shredded Cheese, Lettuce, Onion & Tomato, Topped with Cheese, Olives & Enchilada Sauce.',
+  'Chimichanga\nMeat, Refried Beans, Shredded Cheese & Onion, Fried and Topped with Enchilada Sauce, Olives & Cheese.',
+  'Enchilada\nMeat, Refried Beans, Shredded Cheese & Onion, Topped with Enchilada Sauce, Olives & Cheese.']],
+  ['Mexican Night Favorites',['Nacho Deluxe\nMeat, Lettuce, Onion, Tomato, Black Olives & Nacho Cheese Over Chips.',
+  'Taco Salad | Large · Small · Mini\nMeat, Shredded Cheese, Lettuce, Onion, Tomato & Black Olives.',
+  'Chips & Salsa or Chips & Cheese\nAdd Nacho Cheese or Salsa']],
+  ['Substitutions & Add-ons',['Substitute Chicken','Add Nacho Cheese','Substitute Queso','Substitute Shredded Cheese For Nacho Cheese']]];
+function november10(t,readings=[NOV10,NOV10],caption='Mexican Night 5-10pm') {
+  const f=setup(t);
+  f.state.now=Date.parse('2026-11-10T21:30:00Z');
+  Object.assign(f.state.posts[0],{id:'583672228384067_1763389068662303',message:caption,created_time:'2026-11-10T21:29:15+0000',updated_time:'2026-11-10T21:29:15+0000'});
+  f.env.SPECIALS_EVIDENCE_VERSION='2';
+  f.db.exec("UPDATE weekly_specials SET week_start_date='2026-11-09',week_end_date='2026-11-15' WHERE id=9000");
+  for(const collection of ['mexican-night-defaults','mexican-night']) MEXICAN_TEMPLATE.forEach(([label,items],sort)=>{
+    const id=`${collection}:${sort}`;
+    f.db.prepare("INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled) VALUES(?,?,-1,'custom',?,'',?,1)").run(id,collection,label,sort);
+    items.forEach((content,i)=>f.db.prepare("INSERT INTO special_slots(group_id,position,content,price,section_link,origin,manual_locked,last_auto_value) VALUES(?,?,?,'','','manual',0,NULL)").run(id,i+1,content));
+  });
+  f.db.exec("UPDATE special_collections SET section_week_start='2026-11-09',section_service_date='2026-11-10',section_source='recurring',updated_at='2026-11-09T01:00:24.461Z' WHERE id='mexican-night'");
+  let call=0;f.requests=[];
+  f.env.AI.run=async(_model,request)=>{f.requests.push(request);return {response:JSON.stringify(readings[Math.min(call++,readings.length-1)])};};
+  f.menu=()=>f.db.prepare("SELECT s.content FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='mexican-night' ORDER BY g.sort,s.position").all().map(s=>s.content);
+  f.mexican=()=>f.all().filter(r=>r.scope==='mexican');
+  f.mexicanSent=()=>f.sent.filter(m=>m.code==='mexican_night_failed');
+  return f;
+}
+
+test('November 10: the production reading holds the whole menu, names the uncertain item and alerts once',async t=>{
+  const f=november10(t);const before=f.menu();await f.run();
+  const row=f.imports()[0];
+  assert.equal(row.processing_status,'failed');assert.equal(row.validation_result,'rejected');assert.equal(row.failure_kind,'permanent');
+  // Uncertainty is reported as uncertainty, naming the item, never as a fact mismatch.
+  assert.equal(row.validation_reason,'Uncertain Mexican Night item: "2 Soft Shell ... $7.75"');
+  // October 27 policy: one unverified item holds every item; nothing is partially published.
+  assert.deepEqual(f.menu(),before);
+  assert.equal(f.db.prepare("SELECT section_source FROM special_collections WHERE id='mexican-night'").get().section_source,'recurring');
+  assert.equal(f.mexican()[0].state,'attention');assert.equal(f.mexicanSent().length,0);
+  f.advance(ALERT_GRACE_MS-1);await f.send();assert.equal(f.mexicanSent().length,0);
+  f.advance(1);await f.run();
+  assert.equal(f.mexicanSent().length,1);
+  const m=alertMessage(f.mexicanSent()[0].day,'mexican_night_failed',f.mexicanSent()[0]);
+  assert.match(m.subject,/\(Mexican Night\)$/);assert.match(m.text,/Result: Poster validation/);
+  assert.match(m.text,/3:29 PM \(Chicago\)/);assert.match(m.text,/#mexican-form/);assert.match(m.text,/#import-/);
+  // Model text never enters the email.
+  assert.ok(!m.text.includes('unreadable'));
+  // Same incident on every later cron: deduplicated for the day.
+  for(let i=0;i<3;i++){f.advance(30*60000);await f.run();}
+  assert.equal(f.mexicanSent().length,1);assert.equal(f.mexican().length,1);
+});
+
+test('November 10: an actual size-price mismatch is reported distinctly from uncertainty',()=>{
+  const swapped=clean(NOV10);swapped.groups[1].items[1].title='Taco Salad ... $8.50 | $9.00 | $6.00';
+  const result=validateExtraction(JSON.stringify(swapped),true,{today:'2026-11-10',weekday:2});
+  assert.equal(result.validationResult,'rejected');assert.equal(result.repairShape,'mexican-night');
+  assert.equal(result.validationReason,'Mexican Night item facts differ from original evidence: "Taco Salad ... $8.50 | $9.00 | $6.00"');
+  const missing=clean(NOV10);delete missing.groups[0].items[1].evidence;
+  assert.match(validateExtraction(JSON.stringify(missing),true,{today:'2026-11-10',weekday:2}).validationReason,/^Missing Mexican Night item evidence: "Enchilada/);
+});
+
+// The complete poster as earlier real readings captured it: the Chips add-on
+// printed beneath that dish continues in a second add-on group.
+const complete=()=>{const m=clean(NOV10);m.groups.push({label:'Substitutions & Add-ons',items:[{title:'Add nacho cheese or salsa +$1.50',description:'',
+  evidence:'Add nacho cheese or salsa +$1.50',uncertainties:[]}]});return m;};
+
+test('November 10: a clean reread publishes every printed price, labelled Taco Salad sizes and standing add-ons',async t=>{
+  const f=november10(t,[NOV10,clean(NOV10)]);await f.run();
+  const row=f.imports()[0];
+  assert.equal(row.processing_status,'staged');assert.equal(row.validation_result,'ok');
+  assert.equal(f.db.prepare("SELECT section_source FROM special_collections WHERE id='mexican-night'").get().section_source,'facebook');
+  const menu=f.menu();
+  for(const price of ['2 Soft Shell ... $7.75','Enchilada ... $9.25','Burrito ... $10.25','Nacho Deluxe ... $9.75','Chimichanga ... $12.25','Chips & Salsa or Chips & Cheese ... $4.00'])
+    assert.ok(menu.some(c=>c.startsWith(price)),price);
+  // Taco Salad sizes are labelled from the printed size line, never bare.
+  assert.ok(menu.some(c=>c.startsWith('Taco Salad ... Large $9.00 | Small $8.50 | Mini $6.00')),JSON.stringify(menu));
+  // Standing substitutions/add-ons keep their individual prices (50c -> $0.50).
+  for(const extra of ['Substitute Chicken $1.50','Add Nacho Cheese $1.50','Substitute Queso $0.50','Substitute Shredded Cheese for Nacho Cheese $0.50'])
+    assert.ok(menu.some(c=>c.toLowerCase()===extra.toLowerCase()),extra);
+});
+
+test('November 10: the complete poster publishes with no Mexican Night incident or email',async t=>{
+  const f=november10(t,[complete()]);await f.run();
+  assert.ok(f.menu().some(c=>/^Add Nacho Cheese or Salsa \+?\$1\.50$/i.test(c)),JSON.stringify(f.menu()));
+  assert.deepEqual(f.mexican(),[]); // Success creates no incident row.
+  f.advance(ALERT_GRACE_MS);await f.run();assert.equal(f.mexicanSent().length,0);
+});
+
+test('November 10: a published menu missing the Chips add-on line alerts once, naming it, as missing information',async t=>{
+  const f=november10(t,[NOV10,clean(NOV10)]);await f.run();
+  // Publication is unchanged: the recurring line stays, without an invented price.
+  assert.ok(f.menu().some(c=>c.startsWith('Chips & Salsa or Chips & Cheese ... $4.00\nAdd Nacho Cheese or Salsa')),JSON.stringify(f.menu()));
+  assert.equal(f.mexican()[0].state,'attention');
+  assert.equal(JSON.parse(f.mexican()[0].proof_json).cause,'mexican_night_incomplete');
+  f.advance(ALERT_GRACE_MS);await f.run();
+  assert.equal(f.sent.length,1);assert.equal(f.sent[0].code,'mexican_night_incomplete');
+  const m=alertMessage(f.sent[0].day,f.sent[0].code,f.sent[0]);
+  assert.match(m.subject,/\(Mexican Night: unconfirmed entries\)$/);
+  assert.match(m.text,/Published — not a validation failure/);assert.match(m.text,/^- Add Nacho Cheese or Salsa$/m);
+  assert.ok(!/Poster validation|could not be fully published/.test(m.text));
+  // Exactly one entry: ingredient descriptions kept from the template are not reported.
+  assert.deepEqual(f.sent[0].detail.entries,['Add Nacho Cheese or Salsa']);
+  for(let i=0;i<3;i++){f.advance(30*60000);await f.run();}
+  assert.equal(f.sent.length,1);assert.equal(f.mexican().length,1);
+});
+
+test('November 10: a recurring dish absent from the published poster is named without inventing a price',async t=>{
+  const reading=complete();reading.groups[0].items=reading.groups[0].items.filter(i=>!i.title.startsWith('Burrito'));
+  const f=november10(t,[reading]);await f.run();
+  assert.ok(f.menu().some(c=>c.startsWith('Burrito\n')));
+  f.advance(ALERT_GRACE_MS);await f.run();
+  assert.deepEqual(f.sent.map(m=>m.code),['mexican_night_incomplete']);assert.deepEqual(f.sent[0].detail.entries,['Burrito']);
+});
+
+test('November 10: a staff price after publication suppresses the unconfirmed-entry email and is never overwritten',async t=>{
+  const f=november10(t,[NOV10,clean(NOV10)]);await f.run();
+  assert.equal(f.mexican()[0].state,'attention');
+  // The staff editor saves the whole section as manual for this week.
+  f.db.exec("UPDATE special_collections SET section_source='manual' WHERE id='mexican-night'");
+  f.db.exec("UPDATE special_slots SET content='Chips & Salsa or Chips & Cheese - $4.00\nAdd Nacho Cheese or Salsa +$1.50',origin='manual' WHERE content LIKE 'Chips & Salsa%'");
+  const before=f.menu();f.advance(60000);await f.run();
+  assert.equal(f.mexican()[0].state,'suppressed');assert.deepEqual(f.menu(),before);
+  f.advance(ALERT_GRACE_MS);await f.run();assert.equal(f.sent.length,0);
+});
+
+test('November 10: the reread is told which item was uncertain, never a generic fact mismatch',async t=>{
+  const f=november10(t,[NOV10,clean(NOV10)]);await f.run();
+  assert.equal(f.requests.length,2);
+  const repair=f.requests[1].messages[1].content[0].text;
+  assert.ok(repair.includes(JSON.stringify('Uncertain Mexican Night item: "2 Soft Shell ... $7.75"')),repair.slice(0,200));
+  assert.ok(!repair.includes('item facts differ'));
+  // The repair keeps the instruction to preserve genuine uncertainty.
+  assert.match(repair,/Preserve uncertainty if the image cannot establish the association/);
+});
+
+test('November 10: a rejected import stays requeueable; recovery before grace resolves without email',async t=>{
+  const f=november10(t);await f.run();
+  const row=f.imports()[0];assert.equal(f.mexican()[0].state,'attention');
+  f.env.AI.run=async()=>({response:JSON.stringify(complete())});
+  await requeueFailedImport(f.env,row.id);f.advance(60000);await f.run();
+  assert.ok(f.menu().some(c=>c.startsWith('2 Soft Shell ... $7.75')));
+  assert.equal(f.mexican()[0].state,'resolved');
+  f.advance(ALERT_GRACE_MS);await f.run();assert.equal(f.mexicanSent().length,0);
+});
+
+test('November 10: a staff correction is never overwritten and suppresses the Mexican Night alert',async t=>{
+  const f=november10(t);
+  f.db.exec("UPDATE special_slots SET content='Burrito - $11.00',manual_locked=1 WHERE group_id='mexican-night:0' AND position=2");
+  const before=f.menu();await f.run();
+  assert.deepEqual(f.menu(),before);
+  assert.notEqual(f.mexican()[0]?.state,'attention');
+  f.advance(ALERT_GRACE_MS);await f.run();assert.equal(f.mexicanSent().length,0);
+});
+
+test('November 10: Tuesdays without a Mexican Night post, or with an unrelated poster, create no Mexican Night incident',async t=>{
+  const f=november10(t,[{day_of_week:2,day_evidence:'TUESDAY',poster_evidence:'TUESDAY SPECIALS',offers:[]},
+    {type:'mexican-night',poster_evidence:'',groups:[]}],'');
+  await f.run();assert.deepEqual(f.mexican().filter(r=>r.state==='attention'),[]);
+  f.state.posts=[];f.advance(60000);await f.run();
+  f.advance(ALERT_GRACE_MS);await f.run();
+  assert.deepEqual(f.mexican().filter(r=>r.state==='attention'),[]);assert.equal(f.mexicanSent().length,0);
+});
+
+test('November 10: Resend rejection of a Mexican Night alert is recorded, never silently dropped or resent',async t=>{
+  const f=november10(t);await f.run();f.advance(ALERT_GRACE_MS);
+  const recipient='owner@example.test',digest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(recipient)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+  let calls=0;const send=await alertTransport({SPECIALS_ALERT_MODE:'EMAIL',SPECIALS_ALERT_PROVIDER:'RESEND',SPECIALS_ALERT_EMAIL_APPROVED:'true',
+    SPECIALS_ALERT_FROM:'alerts@grayznbuffalo.com',SPECIALS_ALERT_TO:recipient,ALERT_RESEND_API_KEY:'re_fakeTestKey_000000000000'},
+    {recipientSha256:digest,fetch:async(url,init)=>{calls++;assert.match(JSON.parse(init.body).subject,/Mexican Night/);return new Response('{}',{status:503});}});
+  await dispatchVerifiedAlerts(f.env,{send});
+  assert.equal(calls,1);assert.equal(f.mexican()[0].dispatch_state,'uncertain');assert.equal(f.mexican()[0].last_error,'send_failed');
+  assert.equal((await readAlertHealth(f.env)).send_failures,1);
+  f.advance(10*60000);await dispatchVerifiedAlerts(f.env,{send});assert.equal(calls,1);
 });

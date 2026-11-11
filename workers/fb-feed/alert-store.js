@@ -13,6 +13,8 @@ export const ALERT_CODES = Object.freeze({
   automation_failed: 'Facebook automation encountered a persistent technical failure.',
   weekly_lunch_failed: 'Weekly Lunch Facebook evidence could not be fully published.',
   wing_wednesday_failed: 'A Wing Wednesday Facebook post needs staff review.',
+  mexican_night_failed: 'A Mexican Night Facebook post could not be fully published.',
+  mexican_night_incomplete: 'Mexican Night was published, but some recurring entries were not confirmed by today’s poster.',
 });
 
 function timestamp(value) {

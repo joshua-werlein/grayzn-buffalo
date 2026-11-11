@@ -29,6 +29,14 @@ Facebook publication uses `section_source=facebook`, `origin=automation`, `manua
 
 See [facebook-specials-auto.md](facebook-specials-auto.md) for the full retry pipeline, including `MEXICAN_NIGHT_SHAPE_ERROR` and the Tuesday empty-offers path.
 
+Contract 2 keeps the October 27 whole-menu policy: any item with missing evidence, a model uncertainty, or facts that differ holds the entire menu. The rejection reason names the cause and item (`Uncertain Mexican Night item: "…"`, `Mexican Night item facts differ from original evidence: "…"`, `Missing Mexican Night item evidence: "…"`), and the same text steers the single targeted reread. See [facebook-specials-nov10-mexican-night.md](facebook-specials-nov10-mexican-night.md).
+
+When the caption alone identifies Mexican Night (no lunch, specials, delivery, other dishes or other weekdays), the first contract-2 reading uses the Mexican-only request and its one reread keeps that shape. A complete reading without a printed Mexican Night heading falls back to the generic reread; all other captions keep the generic first request.
+
+## Alerts
+
+A current post with explicit Mexican Night evidence (its caption or printed heading) has its own alert scope (`<day>:mexican:mexican_night_failed`). A failed import or a validated-but-unpublished menu alerts once per Chicago day after the 30-minute grace. After a normal publication, saved entries the poster did not confirm (still unpriced) are named in a separate "unconfirmed entries" email that is explicitly not a validation failure, sharing the same once-per-day key. No post, complete publication, pending work, or a staff-owned section creates no email.
+
 ## Manual Protection
 
 - One protected item or a manual collection blocks Facebook replacement during its associated week.

@@ -28,3 +28,11 @@ export function classifyCaption(caption) {
   if (days.length === 1 && /\bspecials?\b/i.test(text)) return result('ambiguous',days[0],null,'Day Specials; service not explicit');
   return result('ignored',null,null,'no matching specials pattern');
 }
+// Request selection only, never a write gate: a caption naming Mexican Night with
+// no other specials signal starts with the Mexican Night request. Mixed captions
+// (lunch, specials, delivery, other days or dishes) keep the generic first reading.
+export function confidentMexicanNightCaption(caption) {
+  const text = typeof caption === 'string' ? caption : '';
+  return classifyCaption(text).collectionId === 'mexican-night'
+    && !/\b(?:lunch|specials?|delivery|soups?|wings?|pizzas?|fish|burgers?|weekly|monday|wednesday|thursday|friday|saturday|sunday)\b/i.test(text);
+}

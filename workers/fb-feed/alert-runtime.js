@@ -8,10 +8,12 @@ import {deliveryWindow,resolveDeliveryDisplay} from '../../src/lib/delivery.js';
 import {dailyPublicationObservation,importAlertObservation} from './alert-policy.js';
 import {ALERT_GRACE_MS,dispatchAlert,alertEvidenceFence} from './alert-store.js';
 import {alertTransport} from './alert-email.js';
-import {dailyAlertDetail,deliveryAlertDetail,weeklyAlertDetail,wingAlertDetail,imageAlertDetail} from './alert-detail.js';
+import {dailyAlertDetail,deliveryAlertDetail,weeklyAlertDetail,wingAlertDetail,imageAlertDetail,mexicanAlertDetail} from './alert-detail.js';
 import {imageImportObservation} from './image-alert.js';
 import {readWingAttention} from './wing-review.js';
 import {isWingOffer} from './wing-night.js';
+import {mexicanItemKey} from './mexican-menu.js';
+import {splitMexicanItem} from '../../src/lib/mexican-item.js';
 
 const MODES=['OBSERVE','MOCK','EMAIL'];
 const FRESH_MS=90*60*1000;
@@ -248,6 +250,69 @@ async function assessWing(env,scan,snap,now) {
     detail:wingAlertDetail({day:scan.day,source,reason:held.detail,proposed})});
 }
 
+// Mexican Night: a current post with explicit Mexican Night evidence (its caption
+// or the image's own printed heading) that has not fully published. No post means
+// no incident; staff ownership of the section is precedence, not a failure.
+function mexicanReading(s) {
+  try {
+    const c=JSON.parse(unfence(s.candidate_json || s.extracted_json));
+    return c?.type==='mexican-night' && !('offers' in c) ? c : null;
+  } catch {return null;}
+}
+const mexicanSource=s=>s.target_collection_id==='mexican-night'
+  || /\bmexican\s+night\b/i.test(String(mexicanReading(s)?.poster_evidence ?? ''));
+// Same rule as protectedSectionSlots('mexican-night') in mexican-night-defaults.js.
+const staffOwnedSlot=s=>s.manual_locked!==0 || !((s.origin==='manual' && s.manual_locked===0)
+  || (s.origin==='automation' && s.content===s.last_auto_value) || (!(s.content ?? '') && s.last_auto_value==null));
+// After publication: saved/recurring entries the current poster did not confirm and
+// that therefore still show without a price. (a) a whole item absent from the
+// validated reading; (b) an add-on/substitution line kept under a dish whose poster
+// entry printed no description. Ordinary ingredient fallbacks are not reported.
+const PRICED=/\$\s*\d|\d\s*(?:¢|c\b|cents?\b)/i;
+const ACCESSORY_LINE=/^\s*(?:add|substitute|sub|extra)\b/i;
+function unconfirmedMexicanEntries(reading,groups,slots,ids) {
+  if(!Array.isArray(reading?.groups)) return [];
+  const printed=new Map(reading.groups.flatMap(g=>(g.items??[]).map(i=>[mexicanItemKey(String(i.title ?? '')),String(i.description ?? '')])));
+  const entries=[];
+  for(const g of groups.filter(g=>ids.has(g.id) && g.enabled).sort((a,b)=>a.sort-b.sort || String(a.id).localeCompare(String(b.id))))
+    for(const s of slots.filter(s=>s.group_id===g.id && s.content?.trim()).sort((a,b)=>a.position-b.position)) {
+      const {title,description}=splitMexicanItem(s.content),key=mexicanItemKey(title);
+      if(!printed.has(key)) { if(!PRICED.test(`${title} ${s.price ?? ''}`)) entries.push(title.trim()); continue; }
+      if(printed.get(key).trim()) continue;
+      for(const line of description.split(/\r\n|\r|\n/)) if(ACCESSORY_LINE.test(line) && !PRICED.test(line)) entries.push(line.trim());
+    }
+  return entries;
+}
+const MEXICAN_FAILURE={ai_budget_exhausted:'AI daily limit',retry_exhausted:'Retries exhausted',import_failed:'Import failed',validation_rejected:'Poster validation'};
+async function assessMexican(env,scan,snap,now) {
+  const outcome=(state,extra={})=>({state,cause:'mexican_night_failed',detail:null,...extra});
+  const sources=snap.data[0].filter(s=>currentSource(s,scan,now) && ['pending','accepted'].includes(s.review_status) && mexicanSource(s))
+    .sort((a,b)=>Date.parse(b.fb_created_time)-Date.parse(a.fb_created_time));
+  if(!sources.length) return outcome('suppressed');
+  if(sources.some(s=>['pending','processing'].includes(s.processing_status))) return outcome('pending');
+  const [,,collections,groups,slots]=snap.data;
+  const collection=collections.find(c=>c.id==='mexican-night');
+  const ids=new Set(groups.filter(g=>g.collection_id==='mexican-night').map(g=>g.id));
+  if(collection?.section_source==='manual' || slots.some(s=>ids.has(s.group_id) && staffOwnedSlot(s))) return outcome('suppressed');
+  // The newest post is the current menu evidence, as reconcileMexicanNight uses it.
+  const source=sources[0];
+  const {results:events}=await env.DB.prepare(`SELECT detail FROM special_import_events WHERE import_id=?1 AND event_type='review'
+    AND (detail LIKE 'GUARDED_MEXICAN_NIGHT:%' OR detail LIKE 'REVIEW_REQUIRED_MEXICAN_SCHEDULE:%')`).bind(source.id).all();
+  const attention=category=>outcome('attention',{detail:mexicanAlertDetail({day:scan.day,source,category})});
+  if(source.processing_status==='staged' && source.validation_result==='ok') {
+    if(events.some(e=>e.detail.startsWith('GUARDED_MEXICAN_NIGHT:'))) {
+      // Published normally. Missing information is reported, never treated as a failure.
+      const entries=unconfirmedMexicanEntries(mexicanReading({candidate_json:source.candidate_json}),groups,slots,ids);
+      return entries.length ? outcome('attention',{cause:'mexican_night_incomplete',
+        detail:mexicanAlertDetail({day:scan.day,source,category:'Unconfirmed recurring entries',entries})}) : outcome('resolved');
+    }
+    return attention(events.length ? 'Printed schedule differs' : 'Publication held');
+  }
+  const observed=importAlertObservation(source,{eligible:true,resolution:'unresolved'});
+  if(observed.state!=='attention') return outcome('pending');
+  return attention(String(source.validation_reason ?? '').startsWith('Workers AI extraction failed:') ? 'AI extraction' : MEXICAN_FAILURE[observed.code]);
+}
+
 function intentional(s,data,weekday) {
   const [,weeks,collections,groups,slots]=data;
   if(weeks.length!==1 || !s.target_service) return false;
@@ -312,6 +377,8 @@ async function assess(env,scan,snap) {
   const weekly=await assessWeekly(env,scan,snap,now,sourceIds);
   let wing={state:'pending',cause:'wing_wednesday_failed',detail:null};
   try {wing=await assessWing(env,scan,snap,now);} catch {safeError();}
+  let mexican={state:'pending',cause:'mexican_night_failed',detail:null};
+  try {mexican=await assessMexican(env,scan,snap,now);} catch {safeError();}
   // The same held poster as an unsent daily alert: one email that names both.
   // Once the daily email has gone, Wing Wednesday needs its own.
   if(wing.state==='attention' && food.state==='attention' && detail) {
@@ -336,7 +403,7 @@ async function assess(env,scan,snap) {
     const observation=covered?{state:'suppressed',cause:'automation_failed'}:imageImportObservation(source);
     images[scope]={...observation,detail:imageAlertDetail({day:scan.day,source,category:observation.category})};
   }
-  return {daily:{state:food.state,cause,detail},delivery,weekly,wing,...images};
+  return {daily:{state:food.state,cause,detail},delivery,weekly,wing,mexican,...images};
 }
 
 // Weekly Lunch and Wing Wednesday: the current failure has its own fingerprinted key.
@@ -355,7 +422,7 @@ function recordFingerprinted(env,scan,scope,code,observation,evidence) {
 
 function recordVerified(env,scan,scope,observation,evidence,incidentKey=null) {
   const {hash}=evidence,fence=alertEvidenceFence(evidence,10);
-  const code=scope.startsWith('image_')?'automation_failed':scope==='daily'?'publication_blocked':scope==='weekly'?'weekly_lunch_failed':scope==='wing'?'wing_wednesday_failed':'delivery_failed';
+  const code=scope.startsWith('image_')?'automation_failed':scope==='daily'?'publication_blocked':scope==='weekly'?'weekly_lunch_failed':scope==='wing'?'wing_wednesday_failed':scope==='mexican'?'mexican_night_failed':'delivery_failed';
   const deliveryEnd=Date.parse(deliveryWindow(new Date(scan.completed_ms)).expiresAt);
   const proof=JSON.stringify({version:1,token:scan.token,hash,cause:observation.cause,parser:scan.parser,
     ...(observation.fingerprint?{fingerprint:observation.fingerprint}:{}),
@@ -458,7 +525,7 @@ export async function finishAlertScan(env,context,sourceIds,options={}) {
     const imageScopes=Object.keys(outcomes).filter(scope=>scope.startsWith('image_'));
     const imageFence=alertEvidenceFence(before,5);
     const persisted=await env.DB.batch([
-      ...['daily','delivery'].map(scope=>recordVerified(env,scan,scope,outcomes[scope],before)),
+      ...['daily','delivery','mexican'].map(scope=>recordVerified(env,scan,scope,outcomes[scope],before)),
       ...recordFingerprinted(env,scan,'weekly','weekly_lunch_failed',outcomes.weekly,before),
       ...recordFingerprinted(env,scan,'wing','wing_wednesday_failed',outcomes.wing,before),
       // A removed/superseded post cannot leave an unsent technical alert live.
@@ -473,7 +540,7 @@ export async function finishAlertScan(env,context,sourceIds,options={}) {
         .bind(scan.day,scan.token,Date.now(),...fence.args),
     ]);
     if(persisted.at(-1).meta?.changes!==1) {await mark('skipped','evidence_changed');return;}
-    console.log('Facebook alert observation',{daily:outcomes.daily.state,delivery:outcomes.delivery.state,weekly:outcomes.weekly.state,wing:outcomes.wing.state});
+    console.log('Facebook alert observation',{daily:outcomes.daily.state,delivery:outcomes.delivery.state,weekly:outcomes.weekly.state,wing:outcomes.wing.state,mexican:outcomes.mexican.state});
     await dispatchVerifiedAlerts(env,options);
     console.log('Facebook alert health',await readAlertHealth(env,now));
     // Bounded retention, never deletes this day's sent deduplication records.
