@@ -1,0 +1,39 @@
+---
+// Staff-created special event: "Add Special Event" in /admin/specials, and
+// "Publish as a Special Event" for a held Facebook post in Automation Review.
+// Both post to /admin/specials (same authentication, origin check and server
+// validation). request_id makes a repeated submit save the event only once.
+import EventFields from './EventFields.astro';
+import type { EventInput } from '../lib/special-events';
+interface Props {
+  prefix: string; values: EventInput; requestId: string; summary: string; submit: string;
+  intro: string; open?: boolean; error?: string; display?: boolean; sourceImportId?: string; returnTo?: 'automation';
+}
+const { prefix, values, requestId, summary, submit, intro, open = false, error = '', display = false, sourceImportId = '', returnTo } = Astro.props;
+---
+<details class="event-create" open={open} data-event-create>
+  <summary class="btn btn-primary">{summary}</summary>
+  <form method="post" class="event-create__form" action="/admin/specials#special-events">
+    <input type="hidden" name="action" value="create-event"/>
+    <input type="hidden" name="request_id" value={requestId}/>
+    {sourceImportId && <input type="hidden" name="source_import_id" value={sourceImportId}/>}
+    {returnTo && <input type="hidden" name="return_to" value={returnTo}/>}
+    <p>{intro}</p>
+    {error && <p class="error" role="alert">{error}</p>}
+    <EventFields prefix={prefix} values={values} display={display}/>
+    <p class="event-create__note">Staff events are published right away and Facebook will not change or duplicate them.</p>
+    <button class="btn btn-primary" type="submit">{submit}</button>
+  </form>
+</details>
+<style>
+  .event-create{margin:0 0 14px;min-width:0}
+  .event-create>summary.btn{display:inline-flex;align-items:center;margin:0;min-height:44px;padding:10px 20px;list-style:none;cursor:pointer;
+    font:700 .9rem/1.2 var(--label);letter-spacing:.06em;text-transform:none}
+  .event-create>summary::-webkit-details-marker{display:none}
+  .event-create__form{display:grid;gap:10px;margin-top:10px;padding:14px;border:1px solid rgba(36,22,16,.16);border-radius:8px;background:#fff;min-width:0}
+  .event-create__form>p{margin:0}
+  .event-create__form .btn{justify-self:start;margin:0}
+  .event-create__note{font-size:.9rem;color:var(--ink-2)}
+  .event-create .error{color:var(--crimson)}
+  @media(max-width:680px){.event-create__form{padding:12px}.event-create__form .btn{justify-self:stretch}}
+</style>

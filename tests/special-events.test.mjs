@@ -172,8 +172,8 @@ test('admin: forms are never nested, so event controls cannot submit the Special
   for (const [tag] of html.matchAll(/<\/?form\b/g)) { depth+=tag==='<form'?1:-1; assert.ok(depth===0||depth===1,'nested form'); }
   assert.equal(depth,0);
   const events=section(html);
-  assert.equal((events.match(/<form\b/g)||[]).length,4);   // Edit and Remove for each event
-  for (const form of events.match(/<form[\s\S]*?<\/form>/g)) assert.match(form,/name="action" value="(?:save-event|remove-event)"/);
+  assert.equal((events.match(/<form\b/g)||[]).length,5);   // Add Special Event, then Edit and Remove for each event
+  for (const form of events.match(/<form[\s\S]*?<\/form>/g)) assert.match(form,/name="action" value="(?:create-event|save-event|remove-event)"/);
 });
 
 test('admin: only current and upcoming published events are listed, earliest first, with only Edit and Remove',async t=>{

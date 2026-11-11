@@ -31,7 +31,7 @@ WEBHOOK_TRIGGER_MODE = "RUN"
 # Special events (game days, holidays, one-time promotions), migration 0025:
 # AUTO = route event posters out of the daily specials and publish them
 # automatically when their evidence is sufficient (no staff approval; staff can
-# only edit or remove); OFF = emergency switch, no routing. Any other value,
+# also add, edit or remove events in Admin Specials); OFF = emergency switch, no routing. Any other value,
 # including the retired REVIEW, and a missing special_events table are OFF.
 SPECIAL_EVENTS_MODE = "AUTO"
 # Owner-authorized production failure alerts. Recipient and API key remain

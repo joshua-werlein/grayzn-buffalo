@@ -3,9 +3,10 @@ import { runtimeEnv } from '../../lib/runtime-env';
 import Base from '../../layouts/Base.astro';
 import GroupFields from '../../components/SpecialGroupFields.astro';
 import EventAdminEntry from '../../components/EventAdminEntry.astro';
+import EventCreateForm from '../../components/EventCreateForm.astro';
 import { isAuthed } from '../../lib/auth';
 import { isIsoCalendarDate, mondayForIsoDate, standardWeekEndDate } from '../../lib/weekly-specials';
-import { EventConflict, eventDraftFromForm, eventInputFromForm, readAdminEvents, readEvent, removeEvent, saveEvent, type EventInput, type SpecialEvent } from '../../lib/special-events';
+import { EventConflict, EventDuplicate, createEvent, eventDisplaySupported, eventDraftFromForm, eventInputFromForm, eventValues, readAdminEvents, readEvent, removeEvent, saveEvent, type EventInput, type SpecialEvent } from '../../lib/special-events';
 import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, wingEditorValues, readCollection, readWeek, currentSavedWeekId, collectionFromForm, saveCollection, SpecialConflict, type SpecialCollection } from '../../lib/specials-store';
 import {withSoupControls} from '../../lib/daily-soup.js';
 import {readWingAttention} from '../../../workers/fb-feed/wing-review.js';
@@ -20,8 +21,12 @@ let wingFormWeek=wingWeekFor(wingNow()).weekStart;
 let weekly = empty('week'), weekStart='', weekEnd='', editingId='', notice='', error='', recurringError='';
 let activeDay=0, weeklyDirty=false, weeklySaveAttempted=false, weeklyScrollY=0, weeklySaveError='';
 let ready=true;
-// Special Events section: corrections only (Facebook automation publishes events).
+// Special Events section: Facebook automation publishes events; staff add their
+// own and correct or remove any event.
 let eventError='', eventErrorFor='', eventDraft: EventInput | null = null;
+let createError='', createDraft: EventInput | null = null, createRequestId: string=crypto.randomUUID(), createSourceImport='';
+const eventNow=()=>(Astro.locals as any).runtime?.now ?? new Date();
+const eventDisplay=await eventDisplaySupported(env);
 try { defaults=withSoupControls(await readCollection(env,'defaults')); } catch { recurringError='Recurring defaults are unavailable. New weeks cannot be initialized.'; }
 try { mexican=await readCollection(env,'mexican-night'); } catch { /* Weekly editing does not depend on section availability. */ }
 try { mexicanDefaults=await readCollection(env,'mexican-night-defaults'); } catch { mexicanDefaultsError='Recurring Mexican Night Defaults are unavailable. Reload or contact support before changing future menus.'; }
@@ -82,14 +87,26 @@ if (Astro.request.method==='POST') {
       if (!/^(0|[1-9]\d*)$/.test(rawRevision) || !Number.isSafeInteger(revision)) throw new Error('Invalid saved revision.');
       if (action==='save-event') eventDraft=eventInputFromForm(form);
       if (!(await readEvent(env,eventErrorFor))) throw new Error('That event no longer exists.');
-      if (eventDraft) await saveEvent(env,eventErrorFor,revision,eventDraft);
+      if (eventDraft) await saveEvent(env,eventErrorFor,revision,eventDraft,{display:eventDisplay});
       else await removeEvent(env,eventErrorFor,revision);
       return Astro.redirect(`/admin/specials?event=${eventDraft ? 'saved' : 'removed'}#special-events`,303);
+    } else if (action==='create-event') {
+      // Kept for redisplay if anything below fails; the same request id makes a resubmit idempotent.
+      createRequestId=String(form.get('request_id') ?? '');createSourceImport=String(form.get('source_import_id') ?? '');
+      const input=eventInputFromForm(form);
+      const id=await createEvent(env,input,{requestId:createRequestId,sourceImportId:createSourceImport,display:eventDisplay,now:eventNow()});
+      if (form.get('return_to')==='automation' && createSourceImport) return Astro.redirect(`/admin/automation?event=published#import-${encodeURIComponent(createSourceImport)}`,303);
+      return Astro.redirect(`/admin/specials?event=created#${encodeURIComponent(id)}`,303);
     } else throw new Error('Invalid form action.');
   } catch (caught) {
     const message=caught instanceof Error ? caught.message : 'Could not save specials.';
-    if (json) return Response.json({ok:false,error:message},{status:caught instanceof SpecialConflict || caught instanceof EventConflict ? 409 : 400});
-    if (['save-event','remove-event'].includes(String(form.get('action')))) {
+    if (json) return Response.json({ok:false,error:message},{status:caught instanceof SpecialConflict || caught instanceof EventConflict || caught instanceof EventDuplicate ? 409 : 400});
+    if (form.get('action')==='create-event') {
+      // The Add Special Event form reopens with everything staff typed.
+      createError=message;createDraft=eventDraftFromForm(form);
+      if (!/^[0-9a-f-]{36}$/.test(createRequestId)) createRequestId=crypto.randomUUID();
+      Astro.response.status=caught instanceof EventConflict || caught instanceof EventDuplicate ? 409 : 400;
+    } else if (['save-event','remove-event'].includes(String(form.get('action')))) {
       // Shown inside the Special Events section; staff keep what they typed.
       eventError=message;
       if (form.get('action')==='save-event') eventDraft=eventDraftFromForm(form);
@@ -98,12 +115,14 @@ if (Astro.request.method==='POST') {
   }
 }
 if (Astro.url.searchParams.get('saved')) notice='Specials saved.';
-const EVENT_NOTICES: Record<string,string>={saved:'Event saved. Facebook will not change it.',removed:'Event removed. Facebook will not recreate it.'};
+const EVENT_NOTICES: Record<string,string>={saved:'Event saved. Facebook will not change it.',removed:'Event removed. Facebook will not recreate it.',
+  created:'Event published. Facebook will not change or duplicate it.'};
 const eventNotice=EVENT_NOTICES[Astro.url.searchParams.get('event') ?? ''] ?? '';
 let adminEvents: SpecialEvent[]=[], eventsUnavailable='';
-try { adminEvents=await readAdminEvents(env,(Astro.locals as any).runtime?.now ?? new Date()); }
+try { adminEvents=await readAdminEvents(env,eventNow()); }
 catch { eventsUnavailable='Special events are unavailable right now. Reload the page to try again.'; }
-const eventsOpen=!!(eventError || eventNotice);
+const eventsOpen=!!(eventError || eventNotice || createError);
+const blankEvent: EventInput={title:'',event_date:'',hours:'all-day',time_text:'',start_time:null,end_time:null,display_from:null,offers:[]};
 const savedWeeks: any[] = [];
 try {
   const weeksResult = await env.DB.prepare('SELECT ws.id,ws.week_start_date,ws.week_end_date,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id ORDER BY ws.week_start_date DESC').all();
@@ -152,11 +171,14 @@ const mexicanEditors=[
   </form>)}
   <section id="special-events" class="recurring-defaults-form special-events-admin" aria-label="Special Events">
     <details class="recurring-defaults" open={eventsOpen}><summary>Special Events</summary><div class="recurring-defaults__content">
-      <p>Game days, holidays and other one-time promotions are published automatically from Facebook and shown above the regular specials until their date has passed. Edit an event to correct it; your changes are kept. Remove an event to take it off the website.</p>
+      <p>Game days, holidays and other one-time promotions are shown above the regular specials until they end. Facebook posts publish them automatically, or add your own here, including future events. Edit an event to correct it; your changes are kept. Remove an event to take it off the website.</p>
       {eventNotice && <p class="event-admin-notice" role="status">{eventNotice}</p>}
+      {!eventsUnavailable && <EventCreateForm prefix="new-event" values={createDraft ?? blankEvent} requestId={createRequestId} summary="Add Special Event"
+        submit="Publish Special Event" open={!!createError} error={createError} display={eventDisplay} sourceImportId={createSourceImport}
+        intro="The event shows on the website as soon as you publish it, marked Upcoming until its date. It never changes the regular daily specials."/>}
       {eventError && !adminEvents.some(e=>e.id===eventErrorFor) && <p class="error" role="alert">{eventError}</p>}
       {eventsUnavailable ? <p class="error" role="alert">{eventsUnavailable}</p> : adminEvents.length
-        ? <ul class="event-admin-list">{adminEvents.map(event=><EventAdminEntry event={event} values={eventErrorFor===event.id && eventDraft ? eventDraft : event} error={eventErrorFor===event.id ? eventError : ''} editOpen={eventErrorFor===event.id && !!eventDraft}/>)}</ul>
+        ? <ul class="event-admin-list">{adminEvents.map(event=><EventAdminEntry event={event} values={eventErrorFor===event.id && eventDraft ? eventDraft : eventValues(event)} error={eventErrorFor===event.id ? eventError : ''} editOpen={eventErrorFor===event.id && !!eventDraft} display={eventDisplay} now={eventNow()}/>)}</ul>
         : <p class="event-admin-empty">No current or upcoming special events.</p>}
     </div></details>
   </section>

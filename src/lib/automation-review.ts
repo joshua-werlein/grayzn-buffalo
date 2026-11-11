@@ -4,7 +4,8 @@ import { mexicanNightDetailVisible } from './mexican-night-visibility.js';
 import { chicagoMidnight } from './analytics';
 import { eventState } from './special-events';
 import { plainValue } from '../../workers/fb-feed/alert-detail.js';
-import { applySharedWeeklyLunchPrice, validateWeeklyLunch } from '../../workers/fb-feed/reconcile.js';
+import { applySharedWeeklyLunchPrice, validateWeeklyLunch, canonicalizeSlotContent } from '../../workers/fb-feed/reconcile.js';
+import { routeEventSource, eventCue } from '../../workers/fb-feed/events.js';
 import { normalizeWeeklyRange, factKey } from '../../workers/fb-feed/evidence.js';
 import {approvalEvents} from '../../workers/fb-feed/staff-review.js';
 import {readWingAttention,wingHoldReason} from '../../workers/fb-feed/wing-review.js';
@@ -167,12 +168,32 @@ async function readWingDecisions(env: any, query: (sql: string, ...args: any[]) 
     };
   } catch { return ()=>null; }
 }
+// Prefill for "Publish as a Special Event" on a held daily post. Staff check and
+// correct every field before saving; createEvent() validates it again. When the
+// event classifier recognizes the poster, its title, date and hours are used.
+export function eventDraftFor(source: any, day: string) {
+  const raw = parseReviewEvidence(source.candidate_json) ?? parseReviewEvidence(source.extracted_json);
+  if (!Array.isArray(raw?.offers) || !raw.offers.length) return null;
+  const weekday = calendarDayOfWeek(day);
+  let draft: any = null;
+  try { const routed: any = routeEventSource({candidate: raw, caption: String(source.caption ?? ''), postDate: day, canonicalize: canonicalizeSlotContent}); draft = routed.draft ?? null; }
+  catch { /* Staff fill the fields. */ }
+  const heading = reviewText(String(raw.poster_evidence ?? ''), 80);
+  const offers = draft?.offers?.length ? draft.offers : raw.offers.slice(0,4).flatMap((o: any) => {
+    try { return typeof o?.content === 'string' && o.content.trim() ? [canonicalizeSlotContent(o.content, weekday, 'custom')] : []; } catch { return []; }
+  });
+  return {title: reviewText(draft?.title ?? (eventCue(heading) ? canonicalizeSlotContent(heading, weekday, 'custom') : ''), 80),
+    event_date: draft?.event_date && draft.event_date >= day ? draft.event_date : day,
+    hours: draft?.start_time && draft?.end_time ? 'hours' as const : 'all-day' as const,
+    start_time: draft?.start_time ?? null, end_time: draft?.end_time ?? null, time_text: '', display_from: null,
+    offers: offers.slice(0,4).map((o: string) => reviewText(o, 150)).filter(Boolean)};
+}
 export async function readAutomationReview(env: any, day: string, now = new Date()) {
   reviewDate(day, now);
   const query = async (sql: string, ...args: any[]) => (await env.DB.prepare(sql).bind(...args).all()).results ?? [];
   const from = new Date(mondayForIsoDate(day) + 'T12:00:00Z'); from.setUTCDate(from.getUTCDate()-1);
   const until = calendarDatesFrom(day,2)[1];
-  const imports = await query(`SELECT id,fb_post_id,fb_created_time,fetched_at,processed_at,permalink_url,target_collection_id,
+  const imports = await query(`SELECT id,fb_post_id,fb_created_time,fetched_at,processed_at,permalink_url,target_collection_id,substr(caption,1,1000) caption,
     processing_status,review_status,validation_result,substr(validation_reason,1,600) validation_reason,substr(classification_reason,1,600) classification_reason,
     CASE WHEN length(candidate_json)<=24000 THEN candidate_json END candidate_json,
     CASE WHEN length(extracted_json)<=24000 THEN extracted_json END extracted_json
@@ -207,8 +228,10 @@ export async function readAutomationReview(env: any, day: string, now = new Date
     slots:g.slots.filter((s: any)=>(s.content??'').trim() || s.price).map((s: any)=>({position:s.position,value:reviewText(displayedSpecial(s)),visibility:g.collection_id==='mexican-night' ? (g.enabled===1 && mexicanNightDetailVisible(collections[0]?.updated_at,now)?'Shown in the current Mexican Night window':'Saved — not shown right now') : day<chicagoCalendarDate(now)?'Past date — not shown':publicGroups.some(p=>p.id===g.id && p.slots.some(v=>v.position===s.position))?'Shown on the specials board':'Saved but not shown (hidden or a duplicate)',owner:s.origin==='automation'?'Automation':s.manual_locked===1?'Staff corrected':s.origin==='manual'?'Recurring default':'Older saved value',protection:protectedValue(s)}))}));
   let specialEvents: any[] = [], eventsUnavailable = false;
   try {
-    specialEvents = await query(`SELECT id,title,event_date,end_time,status,origin,manual_locked,source_import_id,source_post_id,review_reason
-      FROM special_events WHERE event_date=?1 ORDER BY id LIMIT 21`,day);
+    // This day's events, and any event linked to one of this day's posts (a staff
+    // event published from a held post may be scheduled for a later date).
+    specialEvents = await query(`SELECT id,title,event_date,start_time,end_time,status,origin,manual_locked,source_import_id,source_post_id,review_reason
+      FROM special_events WHERE event_date=?1 OR source_post_id IN (SELECT value FROM json_each(?2)) ORDER BY id LIMIT 21`,day,JSON.stringify(selected.map((i: any)=>i.fb_post_id)));
     if(specialEvents.length>20) throw Error('Event limit');
     const offers = await query(`SELECT event_id,content FROM special_event_offers WHERE event_id IN (SELECT value FROM json_each(?1)) ORDER BY event_id,position LIMIT 80`,JSON.stringify(specialEvents.map(e=>e.id)));
     specialEvents = specialEvents.map(e=>({...e,title:reviewText(e.title),reason:reviewText(e.review_reason,600),values:offers.filter((o: any)=>o.event_id===e.id).map((o: any)=>reviewText(o.content)),visibility:e.status==='published' && eventState(e,now)!=='expired'?'Visible on the public site':'Saved; not currently visible',editor:'/admin/specials#special-events'}));
@@ -217,11 +240,19 @@ export async function readAutomationReview(env: any, day: string, now = new Date
   const wingFor = await readWingDecisions(env,query,ids);
   const history = selected.map((source: any)=>{
     const extracted=extractedForDay(source,day,week), audit=events.filter((e: any)=>e.import_id===source.id);
-    const linkedEvents=specialEvents.filter(e=>e.source_import_id===source.id);
+    const linkedEvents=specialEvents.filter(e=>e.source_import_id===source.id || (!!e.source_post_id && e.source_post_id===source.fb_post_id));
+    // A post published as a special event is done: its specials are the event's offers.
+    const event=linkedEvents.find(e=>e.status==='published');
+    // An event automation withheld for this post still needs staff (publish it as a special event below).
+    const withheld=linkedEvents.find(e=>e.status==='review' && e.origin==='automation');
+    const outcome=event ? {status:'Published',reason:`Published as a special event: ${event.title}.`}
+      : withheld ? {status:'Held',reason:`Special event held: ${withheld.reason || 'the evidence was incomplete'}`} : importOutcome(source,audit);
     const website=extracted.scope==='Mexican Night' ? currentGroups.filter((g: any)=>g.collection_id==='mexican-night')
       : currentGroups.filter((g: any)=>g.collection_id===week?.collection_id && (extracted.scope!=='Weekly Lunch' || g.service==='lunch'));
     const current = linkedEvents.length ? linkedEvents.flatMap(e=>e.values) : website.flatMap((g: any)=>g.slots.map((s: any)=>s.value));
-    return {id:source.id,source:reviewText(source.fb_post_id,90),created:reviewTimestamp(source.fb_created_time),fetched:reviewTimestamp(source.fetched_at),processed:reviewTimestamp(source.processed_at),link:facebookLink(source.permalink_url),reviewStatus:source.review_status,dismissed:source.review_status==='dismissed',...extracted,...importOutcome(source,audit),
+    return {id:source.id,source:reviewText(source.fb_post_id,90),created:reviewTimestamp(source.fb_created_time),fetched:reviewTimestamp(source.fetched_at),processed:reviewTimestamp(source.processed_at),link:facebookLink(source.permalink_url),reviewStatus:source.review_status,dismissed:source.review_status==='dismissed',...extracted,...outcome,
+      specialEvent:event?{title:event.title,date:event.event_date}:null,
+      eventDraft:linkedEvents.every(e=>e.status==='review' && e.origin==='automation') && day===chicagoCalendarDate(now) && extracted.scope==='Daily specials' ? eventDraftFor(source,day) : null,
       values:extracted.values.map((value: string)=>({value,onWebsite:current.some((v: string)=>factKey(v)===factKey(value))})),
       editor:linkedEvents.length?'/admin/specials#special-events':extracted.scope==='Mexican Night'?'/admin/specials#mexican-form':editor,
       audits:audit.slice(0,4).map((e: any)=>({type:reviewText(e.event_type,30),at:reviewTimestamp(e.occurred_at),detail:reviewReason(e.detail)})),

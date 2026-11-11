@@ -2,8 +2,9 @@
 // collection revision, group or slot is read or written here, and every event
 // write is fenced by that event's own revision. Staff decisions always win.
 // Statuses: published (shown until it expires); review (withheld: evidence was
-// insufficient or contradictory; internal diagnostic only, never shown and never
-// an approval task); rejected (removed by staff, a tombstone); cancelled.
+// insufficient or contradictory; never shown, raises a Special Event alert, and
+// staff may publish it from Automation Review); rejected (removed by staff, a
+// tombstone); cancelled.
 import {eventsModeOf,routeStoredSources} from './events.js';
 import {canonicalizeSlotContent} from './reconcile.js';
 import {parserVersionFor} from './classify.js';

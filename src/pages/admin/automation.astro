@@ -9,6 +9,8 @@ import AutomationApproval from '../../components/AutomationApproval.astro';
 import ImportDismiss from '../../components/ImportDismiss.astro';
 import ImportOffers from '../../components/ImportOffers.astro';
 import WingWednesdayReview from '../../components/WingWednesdayReview.astro';
+import EventCreateForm from '../../components/EventCreateForm.astro';
+import { eventDisplaySupported } from '../../lib/special-events';
 const env = runtimeEnv(Astro.locals);
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 Astro.response.headers.set('Cache-Control','no-store');
@@ -36,6 +38,7 @@ const badgeFor=(item: {status: string; wing: any})=>{
   return item.wing?.attention && !needsAttention(badge.tone) ? {...statusBadge('Partially Published'),help:'The daily specials from this post are done. Wing Wednesday still needs a look.'} : badge;
 };
 const attentionCount=active.filter(item=>needsAttention(badgeFor(item).tone)).length;
+const eventDisplay=review && today ? await eventDisplaySupported(env) : false;
 ---
 <Base title="Automation Review — Grayz'n Buffalo Staff">
 <section class="automation-review">
@@ -50,11 +53,13 @@ const attentionCount=active.filter(item=>needsAttention(badgeFor(item).tone)).le
       <li>Look for posts marked <span class="badge review">Needs Review</span> or <span class="badge failed">Failed</span>.</li>
       <li>Choose <strong>Review Specials</strong>, fix any wording, and check each special is going to the right spot.</li>
       <li>Choose <strong>Review changes</strong>, then <strong>Approve &amp; Publish</strong>.</li>
+      <li>For a holiday, game day or other one-time promotion, choose <strong>Publish as a Special Event</strong> instead. It does not use a Lunch, All Day, Nightly or Soup spot.</li>
     </ol>
     <p class="hint">Posts marked <span class="badge published">Published</span> or <span class="badge approved">Staff Approved</span> are done — nothing to do. If a post is wrong, a duplicate, or already fixed, choose <strong>Dismiss</strong> to remove it from this list.</p>
   </div>
 
   {Astro.url.searchParams.get('approved')==='1' && <p class="notice ok" role="status">Approved and published. The website is updated.</p>}
+  {Astro.url.searchParams.get('event')==='published' && <p class="notice ok" role="status">Published as a special event. It is kept out of today’s regular specials, and Facebook will not change it.</p>}
   {Astro.url.searchParams.get('dismissed')==='1' && <p class="notice ok" role="status">Post removed from your review list. Nothing on the website changed.</p>}
   {Astro.url.searchParams.get('restored')==='1' && <p class="notice ok" role="status">Post restored to your review list.</p>}
 
@@ -99,6 +104,9 @@ const attentionCount=active.filter(item=>needsAttention(badgeFor(item).tone)).le
               <p class="next-step">{today ? 'This post can’t be approved here.' : 'Past posts can’t be approved here.'} Fix this day in the Specials editor.</p>
               <a class="btn btn-primary" href={item.editor}>Fix in Specials editor</a>
             </>}
+            {!dailyDone && item.eventDraft && <EventCreateForm prefix={`event-${item.id}`} values={item.eventDraft} requestId={crypto.randomUUID()}
+              summary="Publish as a Special Event" submit="Publish Special Event" display={eventDisplay} sourceImportId={item.id} returnTo="automation"
+              intro="Use this for a holiday, game day or other one-time promotion. Check the name, date, hours and each price against the Facebook post. The event is shown in Special Events, and this post stays out of today’s regular specials."/>}
             {item.wing && <WingWednesdayReview id={item.id} wing={item.wing}/>}
             {link}
           </> : <details class="done">

@@ -92,7 +92,7 @@ test('events OFF + alerts: without event routing the Brewers poster is a daily i
   assert.equal(f.sent.length,1);
 });
 
-test('events AUTO + alerts: a withheld event (insufficient evidence) is recorded without any incident or email',async t=>{
+test('events AUTO + alerts: a withheld event (insufficient evidence) raises one Special Event alert, never a daily incident',async t=>{
   const f=friday(t,{events:'AUTO'});
   await f.run();f.addNight();await f.run();
   const unpriced=structuredClone(brewersRaw);
@@ -101,7 +101,12 @@ test('events AUTO + alerts: a withheld event (insufficient evidence) is recorded
   f.state.posts.push({...f.state.posts[0],id:'brewers',created_time:'2026-10-23T15:13:45-05:00',updated_time:'2026-10-23T15:13:45-05:00'});
   await f.run();f.advance(ALERT_GRACE_MS+60000);await f.run();f.advance(60000);await f.run();
   assert.deepEqual(f.events(),[{status:'review',origin:'automation'}]);
-  assert.deepEqual(f.attention(),[]);assert.equal(f.sent.length,0);
+  // November 11: staff need to know a recognized promotion is not on the website,
+  // in its own scope; Friday's regular specials are not reported as failing.
+  assert.deepEqual(f.attention(),[{scope:'event',code:'special_event_held'}]);
+  assert.equal(f.sent.length,1);
+  assert.equal(f.sent[0].code,'special_event_held');assert.equal(f.sent[0].detail.scope,'event');
+  assert.match(f.sent[0].detail.reason,/Missing meal price/);
 });
 
 test('events AUTO + alerts: a genuine permanent extraction failure is still detected and sent once',async t=>{

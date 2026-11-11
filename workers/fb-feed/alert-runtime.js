@@ -8,7 +8,8 @@ import {deliveryWindow,resolveDeliveryDisplay} from '../../src/lib/delivery.js';
 import {dailyPublicationObservation,importAlertObservation} from './alert-policy.js';
 import {ALERT_GRACE_MS,dispatchAlert,alertEvidenceFence} from './alert-store.js';
 import {alertTransport} from './alert-email.js';
-import {dailyAlertDetail,deliveryAlertDetail,weeklyAlertDetail,wingAlertDetail,imageAlertDetail,mexicanAlertDetail} from './alert-detail.js';
+import {dailyAlertDetail,deliveryAlertDetail,weeklyAlertDetail,wingAlertDetail,imageAlertDetail,mexicanAlertDetail,eventAlertDetail} from './alert-detail.js';
+import {activeEventsMode} from './event-store.js';
 import {imageImportObservation} from './image-alert.js';
 import {readWingAttention} from './wing-review.js';
 import {isWingOffer} from './wing-night.js';
@@ -54,6 +55,8 @@ export async function beginAlertScan(env,day,started=Date.now()) {
 // its hash is persisted. Content is never copied into the outbox or telemetry.
 async function snapshot(env,scan) {
   const q=(sql,...args)=>env.DB.prepare(sql).bind(...args);
+  // Events linked to this scan's posts: at most one per post (unique source).
+  const events=await activeEventsMode(env)!=='OFF';
   const result=await env.DB.batch([
     q(`SELECT i.*,EXISTS(SELECT 1 FROM special_imports n WHERE n.fb_post_id=i.fb_post_id
       AND n.parser_version=i.parser_version AND n.rowid>i.rowid) AS superseded
@@ -65,6 +68,8 @@ async function snapshot(env,scan) {
     q("SELECT value FROM settings WHERE key='delivery_display'"),
     q('SELECT * FROM delivery_automation ORDER BY id'),
     q('SELECT * FROM special_migration_checks ORDER BY version'),
+    ...(events?[q(`SELECT id,source_post_id,status,origin,manual_locked,revision,event_date,title,review_reason FROM special_events
+      WHERE source_post_id IN (SELECT fb_post_id FROM special_imports WHERE id IN (SELECT value FROM json_each(?1))) ORDER BY id`,scan.source_ids)]:[]),
   ]);
   const data=result.map(r=>r.results);
   if(data[0].length!==JSON.parse(scan.source_ids).length || data[0].some(s=>s.superseded || s.parser_version!==scan.parser)) return null;
@@ -313,6 +318,25 @@ async function assessMexican(env,scan,snap,now) {
   return attention(String(source.validation_reason ?? '').startsWith('Workers AI extraction failed:') ? 'AI extraction' : MEXICAN_FAILURE[observed.code]);
 }
 
+// Special events: a current post the event classifier recognized as a one-time
+// promotion, but whose event was withheld for insufficient or conflicting
+// evidence (date, hours, price). Distinct from the daily specials alert: the
+// post never blocks or alerts the daily specials. Staff publishing, editing or
+// removing the event resolves it; a post that no longer shows an event is not a failure.
+const WITHDRAWN=/^Withheld: the Facebook post no longer shows an event/;
+function assessEvent(scan,snap,now) {
+  const outcome=(state,detail=null)=>({state,cause:'special_event_held',detail});
+  const events=snap.data[8];
+  if(!events) return outcome('suppressed');
+  const sources=snap.data[0].filter(s=>currentSource(s,scan,now) && ['pending','accepted'].includes(s.review_status));
+  const held=events.filter(e=>e.status==='review' && e.origin==='automation' && e.manual_locked===0 && !WITHDRAWN.test(e.review_reason ?? '')
+    && sources.some(s=>s.fb_post_id===e.source_post_id))
+    .sort((a,b)=>String(a.id).localeCompare(String(b.id)));
+  if(!held.length) return outcome('resolved');
+  const source=sources.find(s=>s.fb_post_id===held[0].source_post_id);
+  return outcome('attention',eventAlertDetail({day:scan.day,source,title:held[0].title,eventDate:held[0].event_date,reason:held[0].review_reason,count:held.length}));
+}
+
 function intentional(s,data,weekday) {
   const [,weeks,collections,groups,slots]=data;
   if(weeks.length!==1 || !s.target_service) return false;
@@ -379,6 +403,8 @@ async function assess(env,scan,snap) {
   try {wing=await assessWing(env,scan,snap,now);} catch {safeError();}
   let mexican={state:'pending',cause:'mexican_night_failed',detail:null};
   try {mexican=await assessMexican(env,scan,snap,now);} catch {safeError();}
+  let event={state:'pending',cause:'special_event_held',detail:null};
+  try {event=assessEvent(scan,snap,now);} catch {safeError();}
   // The same held poster as an unsent daily alert: one email that names both.
   // Once the daily email has gone, Wing Wednesday needs its own.
   if(wing.state==='attention' && food.state==='attention' && detail) {
@@ -403,7 +429,7 @@ async function assess(env,scan,snap) {
     const observation=covered?{state:'suppressed',cause:'automation_failed'}:imageImportObservation(source);
     images[scope]={...observation,detail:imageAlertDetail({day:scan.day,source,category:observation.category})};
   }
-  return {daily:{state:food.state,cause,detail},delivery,weekly,wing,mexican,...images};
+  return {daily:{state:food.state,cause,detail},delivery,weekly,wing,mexican,event,...images};
 }
 
 // Weekly Lunch and Wing Wednesday: the current failure has its own fingerprinted key.
@@ -422,7 +448,7 @@ function recordFingerprinted(env,scan,scope,code,observation,evidence) {
 
 function recordVerified(env,scan,scope,observation,evidence,incidentKey=null) {
   const {hash}=evidence,fence=alertEvidenceFence(evidence,10);
-  const code=scope.startsWith('image_')?'automation_failed':scope==='daily'?'publication_blocked':scope==='weekly'?'weekly_lunch_failed':scope==='wing'?'wing_wednesday_failed':scope==='mexican'?'mexican_night_failed':'delivery_failed';
+  const code=scope.startsWith('image_')?'automation_failed':scope==='daily'?'publication_blocked':scope==='weekly'?'weekly_lunch_failed':scope==='wing'?'wing_wednesday_failed':scope==='mexican'?'mexican_night_failed':scope==='event'?'special_event_held':'delivery_failed';
   const deliveryEnd=Date.parse(deliveryWindow(new Date(scan.completed_ms)).expiresAt);
   const proof=JSON.stringify({version:1,token:scan.token,hash,cause:observation.cause,parser:scan.parser,
     ...(observation.fingerprint?{fingerprint:observation.fingerprint}:{}),
@@ -525,7 +551,7 @@ export async function finishAlertScan(env,context,sourceIds,options={}) {
     const imageScopes=Object.keys(outcomes).filter(scope=>scope.startsWith('image_'));
     const imageFence=alertEvidenceFence(before,5);
     const persisted=await env.DB.batch([
-      ...['daily','delivery','mexican'].map(scope=>recordVerified(env,scan,scope,outcomes[scope],before)),
+      ...['daily','delivery','mexican','event'].map(scope=>recordVerified(env,scan,scope,outcomes[scope],before)),
       ...recordFingerprinted(env,scan,'weekly','weekly_lunch_failed',outcomes.weekly,before),
       ...recordFingerprinted(env,scan,'wing','wing_wednesday_failed',outcomes.wing,before),
       // A removed/superseded post cannot leave an unsent technical alert live.
@@ -540,7 +566,7 @@ export async function finishAlertScan(env,context,sourceIds,options={}) {
         .bind(scan.day,scan.token,Date.now(),...fence.args),
     ]);
     if(persisted.at(-1).meta?.changes!==1) {await mark('skipped','evidence_changed');return;}
-    console.log('Facebook alert observation',{daily:outcomes.daily.state,delivery:outcomes.delivery.state,weekly:outcomes.weekly.state,wing:outcomes.wing.state,mexican:outcomes.mexican.state});
+    console.log('Facebook alert observation',{daily:outcomes.daily.state,delivery:outcomes.delivery.state,weekly:outcomes.weekly.state,wing:outcomes.wing.state,mexican:outcomes.mexican.state,event:outcomes.event.state});
     await dispatchVerifiedAlerts(env,options);
     console.log('Facebook alert health',await readAlertHealth(env,now));
     // Bounded retention, never deletes this day's sent deduplication records.

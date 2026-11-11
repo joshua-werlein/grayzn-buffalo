@@ -15,6 +15,7 @@ export const ALERT_CODES = Object.freeze({
   wing_wednesday_failed: 'A Wing Wednesday Facebook post needs staff review.',
   mexican_night_failed: 'A Mexican Night Facebook post could not be fully published.',
   mexican_night_incomplete: 'Mexican Night was published, but some recurring entries were not confirmed by today’s poster.',
+  special_event_held: 'A Facebook special event post was recognized but held for staff review.',
 });
 
 function timestamp(value) {
@@ -29,7 +30,9 @@ function timestamp(value) {
 // evidence is persisted in the alert tables or logged. No business-write triggers
 // are needed (D1 counts their side effects in meta.changes).
 export function alertEvidenceFence({data,sourceIds,day},start) {
-  if(!Array.isArray(data) || data.length!==8 || data.some(rows=>!Array.isArray(rows))) throw Error('Invalid alert evidence');
+  // A ninth set is present only while special events are active (SPECIAL_EVENTS_MODE=AUTO
+  // and migration 0025): the events linked to this scan's posts.
+  if(!Array.isArray(data) || ![8,9].includes(data.length) || data.some(rows=>!Array.isArray(rows))) throw Error('Invalid alert evidence');
   const json=`?${start}`,ids=`?${start+1}`,date=`?${start+2}`;
   // D1 limits expression depth to 100. Keep wide source-row comparisons balanced
   // rather than building a left-deep chain across every schema column.
@@ -38,7 +41,8 @@ export function alertEvidenceFence({data,sourceIds,day},start) {
   const tables=[['special_imports',`t.id IN (SELECT value FROM json_each(${ids}))`],
     ['weekly_specials',`t.week_start_date<=${date} AND t.week_end_date>=${date}`],
     ['special_collections','1=1'],['special_groups','1=1'],['special_slots','1=1'],
-    ['settings',"t.key='delivery_display'"],['delivery_automation','1=1'],['special_migration_checks','1=1']];
+    ['settings',"t.key='delivery_display'"],['delivery_automation','1=1'],['special_migration_checks','1=1'],
+    ['special_events',`t.source_post_id IN (SELECT fb_post_id FROM special_imports WHERE id IN (SELECT value FROM json_each(${ids})))`]].slice(0,data.length);
   const sql=tables.map(([table,filter],i)=>{
     const keys=Object.keys(data[i][0]??{});
     if(keys.some(k=>!/^[_a-zA-Z][_a-zA-Z0-9]*$/.test(k))) throw Error('Invalid evidence column');

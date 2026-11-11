@@ -18,13 +18,20 @@ const TEAMS=[['packers',/\bpackers\b|\bgo\s+pack\b|\bpack\s+attack\b/],['brewers
 const TEAM_NAMES={packers:'Packers',brewers:'Brewers',badgers:'Badgers',bucks:'Bucks',vikings:'Vikings',bears:'Bears'};
 const HOLIDAY_NAMES={thanksgiving:'Thanksgiving',christmas:'Christmas','new-years':"New Year's",halloween:'Halloween',
   'st-patricks':"St. Patrick's Day",easter:'Easter','memorial-day':'Memorial Day','labor-day':'Labor Day',
-  'independence-day':'Fourth of July',valentines:"Valentine's Day",'mothers-day':"Mother's Day",'fathers-day':"Father's Day",'super-bowl':'Super Bowl'};
+  'independence-day':'Fourth of July',valentines:"Valentine's Day",'mothers-day':"Mother's Day",'fathers-day':"Father's Day",'super-bowl':'Super Bowl',
+  'veterans-day':'Veterans Day'};
 const HOLIDAYS=[
   ['thanksgiving',/\bthanksgiving\b/],['christmas',/\bchristmas\b/],['new-years',/\bnew\s+year'?s\b/],
   ['halloween',/\bhalloween\b/],['st-patricks',/\bst\.?\s+(?:patrick|paddy)'?s\b/],['easter',/\beaster\b/],
   ['memorial-day',/\bmemorial\s+day\b/],['labor-day',/\blabor\s+day\b/],
   ['independence-day',/\b(?:4th|fourth)\s+of\s+july\b|\bindependence\s+day\b/],['valentines',/\bvalentine'?s\b/],
-  ['mothers-day',/\bmother'?s\s+day\b/],['fathers-day',/\bfather'?s\s+day\b/],['super-bowl',/\bsuper\s*bowl\b/]];
+  ['mothers-day',/\bmother'?s\s+day\b/],['fathers-day',/\bfather'?s\s+day\b/],['super-bowl',/\bsuper\s*bowl\b/],
+  // November 11 2026: "Veterans Day Special" (also printed Veteran's / Veterans').
+  ['veterans-day',/\bveteran'?s'?\s+day\b/]];
+// Holidays observed on one fixed calendar date. A resolved event date on any
+// other day (an undated reminder posted the day before) is held, never guessed.
+// Holidays with eves or movable dates are deliberately absent.
+const FIXED_HOLIDAY_DATES={'veterans-day':'11-11'};
 const GAME=/\bgame\s*day\b|\bgame\s+specials?\b|\bkick\s*-?\s*off\b|\btailgate\b|\bwatch\s+party\b/;
 const GENERIC=/\bspecial\s+event\b|\bone\s+day\s+only\b|\bfundraiser\b|\bbenefit\b/;
 // Recurring house promotions and plural "<day>/<service> specials" templates are never events.
@@ -106,20 +113,32 @@ export function resolveEventDate({image='',caption='',postDate}) {
 
 // A printed window becomes Chicago wall-clock start/end; otherwise only a label.
 const WINDOW=/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*([ap])?\.?\s*m?\.?\s*[-–—]\s*(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*([ap])\.?\s*m\b\.?/i;
+function readWindow(m) {
+  const endMeridiem=m[6].toLowerCase();
+  let startMeridiem=(m[3]??endMeridiem).toLowerCase();
+  // "11-2pm": a start hour above the end hour without its own marker is morning.
+  if (!m[3] && endMeridiem==='p' && +m[1]>+m[4] && +m[1]!==12) startMeridiem='a';
+  const clock=(h,min,mer)=>`${String((+h%12)+(mer==='p'?12:0)).padStart(2,'0')}:${min??'00'}`;
+  return {start:clock(m[1],m[2],startMeridiem),end:clock(m[4],m[5],endMeridiem)};
+}
 export function eventTime(...texts) {
   for (const text of texts) {
     const m=WINDOW.exec(String(text??''));
     if (!m) continue;
-    const endMeridiem=m[6].toLowerCase();
-    let startMeridiem=(m[3]??endMeridiem).toLowerCase();
-    // "11-2pm": a start hour above the end hour without its own marker is morning.
-    if (!m[3] && endMeridiem==='p' && +m[1]>+m[4] && +m[1]!==12) startMeridiem='a';
-    const clock=(h,min,mer)=>`${String((+h%12)+(mer==='p'?12:0)).padStart(2,'0')}:${min??'00'}`;
-    const start=clock(m[1],m[2],startMeridiem),end=clock(m[4],m[5],endMeridiem);
+    const {start,end}=readWindow(m);
     return {time_text:m[0].trim(),start_time:end>start?start:null,end_time:end>start?end:null};
   }
   const relative=texts.map(norm).join(' ');
   return {time_text:/\btonight\b/.test(relative)?'Tonight':'',start_time:null,end_time:null};
+}
+// Hours that cannot be stored faithfully hold the event: a window crossing
+// midnight must never become an all-day card, and two different printed windows
+// cannot both be the promotion's hours. No printed window at all is an all-day event.
+export function eventHoursReview(...texts) {
+  const windows=texts.flatMap(text=>[...String(text??'').matchAll(new RegExp(WINDOW.source,'gi'))].map(readWindow));
+  if (new Set(windows.map(w=>`${w.start}-${w.end}`)).size>1) return 'Printed hours disagree';
+  if (windows.length && windows[0].end<=windows[0].start) return 'Hours cross midnight; overnight events need staff review';
+  return null;
 }
 
 const stripEmoji=s=>String(s??'').replace(/[\p{Extended_Pictographic}️‍]/gu,'').replace(/#\w+/g,'').replace(/\s+/g,' ').trim();
@@ -171,7 +190,10 @@ export function routeEventSource({candidate,caption='',postDate,canonicalize}) {
   // poster with no cue stays a regular special.
   // A printed event with too many offers is withheld by buildEventDraft, never
   // sent back into daily planning as a misleading ordinary-specials failure.
-  if (!imageCue && !(captionCue?.specific && offers.length<=2)) return {route:'regular'};
+  // A holiday greeting in a caption ("Happy Veterans Day!") is not a promotion:
+  // a caption-only holiday must also call the post a special, deal or offer.
+  const captionPromotes=captionCue?.specific && (captionCue.kind!=='holiday' || /\b(?:special|deal|promo(?:tion)?|offer)\b/.test(norm(caption)));
+  if (!imageCue && !(captionPromotes && offers.length<=2)) return {route:'regular'};
   const draft=buildEventDraft({candidate,caption,postDate,cue,indices:offers.map((_,i)=>i),canonicalize});
   return {route:'event',publish:!draft.review_reasons.length,draft};
 }
@@ -193,7 +215,13 @@ export function buildEventDraft({candidate,caption,postDate,cue,indices,canonica
   const date=resolveEventDate({image,caption,postDate});
   if (date.review) review_reasons.push(date.review);
   const event_date=date.date ?? postDate;
-  const time=eventTime(heading,...chosen.map(i=>analyzed.offers[i]?.service_time),caption);
+  const fixed=FIXED_HOLIDAY_DATES[cue.identity];
+  if (fixed && !date.review && event_date.slice(5)!==fixed)
+    review_reasons.push(`${HOLIDAY_NAMES[cue.identity]} is ${MONTHS[+fixed.slice(0,2)-1].replace(/^./,c=>c.toUpperCase())} ${+fixed.slice(3)}; the resolved event date ${event_date} differs`);
+  const timeTexts=[heading,...chosen.map(i=>analyzed.offers[i]?.service_time),caption];
+  const time=eventTime(...timeTexts);
+  const hours=eventHoursReview(...timeTexts);
+  if (hours) review_reasons.push(hours);
   return {title:eventTitle(candidate.poster_evidence??'',cue,canonicalize),event_date,...time,details:'',offers,
     identity:cue.identity,date_basis:date.basis ?? 'publication-date',review_reasons,
     fingerprint:`${event_date}|${offers.map(factKey).sort().join('|')}`,

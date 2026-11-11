@@ -298,6 +298,33 @@ function formatMexicanText({day, summary, detail:d, firstSeenMs}) {
   lines.push(`Open: ${d.editorUrl}`, `Review import: ${d.reviewUrl}`);
   return lines.join('\n');
 }
+// Special event: a recognized one-time promotion withheld from the website. Its
+// own scope, never a daily-specials failure (the post is kept out of the daily specials).
+export function eventAlertDetail({day, source, title, eventDate, reason, count=1}) {
+  try {
+    if (!isDate(day)) return null;
+    const ms = Date.parse(source?.fb_created_time);
+    const post = /^\d{1,30}_\d{1,30}$/.test(source?.fb_post_id ?? '') ? source.fb_post_id.split('_') : null;
+    const id = /^[a-zA-Z0-9_-]{1,100}$/.test(source?.id ?? '') ? source.id : null;
+    return {scope:'event', day, weekday:DAY_NAMES[new Date(`${day}T12:00:00Z`).getUTCDay()],
+      title:plainValue(title, 80) || 'Special event', eventDate:isDate(eventDate) ? eventDate : null,
+      reason:plainValue(String(reason ?? '').replace(/^Withheld:\s*/,''), 300) || 'The evidence was incomplete or conflicting.',
+      count:Number.isSafeInteger(count) && count>0 ? count : 1,
+      post:Number.isFinite(ms) ? {time:chicagoTime(ms),url:post ? `https://www.facebook.com/${post[0]}/posts/${post[1]}` : null} : null,
+      reviewUrl:`${SITE}/admin/automation?date=${day}${id ? `#import-${id}` : ''}`, editorUrl:`${SITE}/admin/specials#special-events`};
+  } catch { return null; }
+}
+function formatEventText({day, summary, detail:d, firstSeenMs}) {
+  const lines = [`Special event: ${summary}`, `Date: ${d.weekday}, ${day} (Chicago)`];
+  if (Number.isSafeInteger(firstSeenMs) && firstSeenMs>0) lines.push(`First detected: ${chicagoTime(firstSeenMs)}`);
+  if (d.post) lines.push(`Facebook posted: ${day}, ${d.post.time} (Chicago)${d.post.url ? ` — ${d.post.url}` : ''}`);
+  lines.push(`Event: ${d.title}${d.eventDate ? ` (${d.eventDate})` : ''}`, `Result: Held — not shown on the website`, `Reason: ${d.reason}`);
+  if (d.count>1) lines.push(`Other held special events today: ${d.count-1}`);
+  lines.push('', 'Regular daily specials are not affected: this post is kept out of them.');
+  lines.push('', 'Correction: needed if the promotion is real. In Automation Review choose Publish as a Special Event and check the date, hours and prices, or add it in Special Events.');
+  lines.push(`Review import: ${d.reviewUrl}`, `Open: ${d.editorUrl}`);
+  return lines.join('\n');
+}
 function formatWeeklyText({day, code, summary, detail:d, firstSeenMs}) {
   const lines = [`Weekly Lunch: ${summary}`, `Date: ${d.weekday}, ${day} (Chicago)`];
   if (Number.isSafeInteger(firstSeenMs) && firstSeenMs>0) lines.push(`First detected: ${chicagoTime(firstSeenMs)}`);
@@ -350,6 +377,7 @@ export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
   if (d?.scope==='weekly') return formatWeeklyText({day, code, summary, detail:d, firstSeenMs});
   if (d?.scope==='wing') return formatWingText({day, summary, detail:d, firstSeenMs});
   if (d?.scope==='mexican') return formatMexicanText({day, summary, detail:d, firstSeenMs});
+  if (d?.scope==='event') return formatEventText({day, summary, detail:d, firstSeenMs});
   const lines = [summary];
   lines.push(`Date: ${d ? `${d.weekday}, ` : ''}${day} (Chicago)`);
   if (Number.isSafeInteger(firstSeenMs) && firstSeenMs>0) lines.push(`First detected: ${chicagoTime(firstSeenMs)}`);
@@ -362,7 +390,7 @@ export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
     lines.push('', 'Held:');
     for (const h of d.holds) lines.push(`- ${h.category}: ${h.count} ${h.count===1?'item':'items'}, ${h.reason}`);
     if (d.holds.some(h=>h.category==='Unidentified service'))
-      lines.push('  (The service could not be identified, so no slot is named.)');
+      lines.push('  (The service could not be identified, so no slot is named. If the post is a holiday, game day or other one-time promotion, publish it as a Special Event from Automation Review instead of a daily slot.)');
   }
   if (d?.protectedCount) lines.push(`Staff-protected values kept: ${d.protectedCount}`);
   for(const p of d?.noPrice??[]) lines.push(`Published without a printed price: ${d.weekday} ${p.category} #${p.position}`);
@@ -405,6 +433,7 @@ export function alertSubjectSuffix(detail) {
   if (detail?.scope==='image') return ' (Facebook image processing)';
   if (detail?.scope==='weekly') return ' (Weekly Lunch)';
   if (detail?.scope==='wing') return ' (Wing Wednesday)';
+  if (detail?.scope==='event') return ' (Special Event)';
   if (detail?.scope==='mexican') return detail.category===MEXICAN_UNCONFIRMED ? ' (Mexican Night: unconfirmed entries)' : ' (Mexican Night)';
   const categories = [...new Set((detail?.holds ?? []).map(h=>h.category))].slice(0,3);
   return categories.length ? ` (${categories.join(', ')})` : '';
