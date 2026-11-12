@@ -53,7 +53,7 @@ const eventDisplay=review && today ? await eventDisplaySupported(env) : false;
       <li>Look for posts marked <span class="badge review">Needs Review</span> or <span class="badge failed">Failed</span>.</li>
       <li>Choose <strong>Review Specials</strong>, fix any wording, and check each special is going to the right spot.</li>
       <li>Choose <strong>Review changes</strong>, then <strong>Approve &amp; Publish</strong>.</li>
-      <li>For a holiday, game day or other one-time promotion, choose <strong>Publish as a Special Event</strong> instead. It does not use a Lunch, All Day, Nightly or Soup spot.</li>
+      <li>When automation recognizes a holiday, game day or other one-time promotion, the post shows <strong>Publish as a Special Event</strong> first. Check it and publish it there. It does not use a Lunch, All Day, Nightly or Soup spot.</li>
     </ol>
     <p class="hint">Posts marked <span class="badge published">Published</span> or <span class="badge approved">Staff Approved</span> are done — nothing to do. If a post is wrong, a duplicate, or already fixed, choose <strong>Dismiss</strong> to remove it from this list.</p>
   </div>
@@ -99,14 +99,31 @@ const eventDisplay=review && today ? await eventDisplaySupported(env) : false;
           {attention ? <>
             <p class="help">{badge.help}</p>
             {!dailyDone && <p class="why"><strong>Why:</strong> {item.reason}</p>}
-            {dailyDone ? offers : canApprove ? <AutomationApproval model={approvalPanels.get(item.id)}/> : <>
-              {offers}
-              <p class="next-step">{today ? 'This post can’t be approved here.' : 'Past posts can’t be approved here.'} Fix this day in the Specials editor.</p>
-              <a class="btn btn-primary" href={item.editor}>Fix in Specials editor</a>
-            </>}
-            {!dailyDone && item.eventDraft && <EventCreateForm prefix={`event-${item.id}`} values={item.eventDraft} requestId={crypto.randomUUID()}
-              summary="Publish as a Special Event" submit="Publish Special Event" display={eventDisplay} sourceImportId={item.id} returnTo="automation"
-              intro="Use this for a holiday, game day or other one-time promotion. Check the name, date, hours and each price against the Facebook post. The event is shown in Special Events, and this post stays out of today’s regular specials."/>}
+            {(()=>{
+              const option=dailyDone ? null : item.eventOption;
+              const daily=dailyDone ? offers : canApprove ? <AutomationApproval model={approvalPanels.get(item.id)}/> : <>
+                {offers}
+                <p class="next-step">{today ? 'This post can’t be approved here.' : 'Past posts can’t be approved here.'} Fix this day in the Specials editor.</p>
+                <a class="btn btn-primary" href={item.editor}>Fix in Specials editor</a>
+              </>;
+              if(!option) return daily;
+              const isEvent=option.kind==='event';
+              const event=<EventCreateForm prefix={`event-${item.id}`} values={option.values} requestId={crypto.randomUUID()} secondary={!isEvent}
+                summary={isEvent?'Review Special Event':'Publish as a Special Event instead'} submit="Publish Special Event" display={eventDisplay} sourceImportId={item.id} returnTo="automation"
+                intro="Check the name, date, hours and each price against the Facebook post. The event shows in Special Events, and this post stays out of today’s regular specials."/>;
+              const dailyRoute=<section class="publish-route" aria-labelledby={`daily-${item.id}`}>
+                <h4 id={`daily-${item.id}`}>Publish as Daily Specials</h4>
+                <p class="hint">{isEvent?'Only if this is not a one-time event. ':''}Each special goes to a Lunch, All Day, Nightly or Soup spot for today.</p>
+                {daily}
+              </section>;
+              const eventRoute=<section class={`publish-route${isEvent?' publish-route--recommended':''}`} aria-labelledby={`event-${item.id}-route`}>
+                <h4 id={`event-${item.id}-route`}>Publish as a Special Event{isEvent && <span class="tag tag--ok">Recommended</span>}</h4>
+                <p class="hint">{isEvent?'Automation recognized a holiday, game day or other one-time promotion. It uses the Special Events card, not a daily spot.'
+                  :'Only for a holiday, game day or other one-time promotion that automation read as daily specials. Nothing from this post is on the website yet.'}</p>
+                {event}
+              </section>;
+              return <div class="publish-routes">{isEvent ? <>{eventRoute}{dailyRoute}</> : <>{dailyRoute}{eventRoute}</>}</div>;
+            })()}
             {item.wing && <WingWednesdayReview id={item.id} wing={item.wing}/>}
             {link}
           </> : <details class="done">
@@ -219,6 +236,12 @@ const eventDisplay=review && today ? await eventDisplaySupported(env) : false;
   .card-foot{display:flex;flex-wrap:wrap;gap:8px 16px;justify-content:space-between;align-items:flex-start;margin-top:12px;border-top:1px solid rgba(36,22,16,.12)}
   .card-foot .troubleshooting{border-top:0;margin-top:0;flex:1 1 260px}
   .dismissed-item{padding:12px 0;border-top:1px solid rgba(36,22,16,.12)}.dismissed-item .import-head{align-items:center}
+  .publish-routes{display:grid;gap:12px;margin:12px 0 0;min-width:0}
+  .publish-route{margin:0;padding:14px;border:1px solid rgba(36,22,16,.16);border-radius:8px;background:var(--surface-parchment);min-width:0}
+  .publish-route--recommended{border:2px solid var(--gold)}
+  .publish-route>h4{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 4px;font-family:var(--label);font-size:1rem;letter-spacing:.04em}
+  .publish-route>.hint{margin:0 0 10px}
+  .publish-route .tag--ok{margin-left:0;background:#e1eed8;color:#24461b}
   .compare>summary,.dismissed>summary{margin:-4px 0}.compare-group{margin-top:16px;padding:12px;border:1px solid rgba(36,22,16,.16);border-radius:8px;background:#fff}
-  @media(max-width:680px){.automation-review{padding:20px 12px 32px}.review-panel{padding:14px}.troubleshooting dl{display:block}.troubleshooting dd{margin-bottom:.5rem}}
+  @media(max-width:680px){.automation-review{padding:20px 12px 32px}.review-panel{padding:14px}.publish-route{padding:12px}.troubleshooting dl{display:block}.troubleshooting dd{margin-bottom:.5rem}}
 </style>

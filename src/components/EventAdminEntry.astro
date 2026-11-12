@@ -24,6 +24,7 @@ const source = event.origin === 'manual' ? 'Added by staff' : event.manual_locke
     <ul class="event-entry__offers">
       {event.offers.map(offer => { const { text, price } = splitTrailingPrice(offer); return <li><span>{text}</span>{price && <span class="event-entry__price">{price}</span>}</li>; })}
     </ul>
+    {event.details && <p class="event-entry__details">{event.details}</p>}
   </div>
   {error && <p class="error" role="alert">{error}</p>}
   <div class="event-entry__actions">
@@ -56,6 +57,7 @@ const source = event.origin === 'manual' ? 'Added by staff' : event.manual_locke
   .event-entry__offers{display:grid;gap:4px;margin:0;padding:0;list-style:none;min-width:0}
   .event-entry__offers li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:baseline;overflow-wrap:anywhere;white-space:pre-line}
   .event-entry__price{font-weight:700;white-space:nowrap}
+  .event-entry__details{grid-column:2;margin:0;font-style:italic;font-size:.92rem;color:var(--ink-2);white-space:pre-line;overflow-wrap:anywhere}
   .event-entry__actions{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
   .event-entry__actions .event-action[open]{flex-basis:100%}
   .event-entry .event-action>summary.btn{display:inline-flex;align-items:center;margin:0;padding:8px 18px;border-bottom:2px solid currentColor;font:700 .9rem/1.2 var(--label);letter-spacing:.06em;text-transform:none;list-style:none;cursor:pointer}
@@ -67,6 +69,7 @@ const source = event.origin === 'manual' ? 'Added by staff' : event.manual_locke
   .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   @media(max-width:680px){
     .event-entry__summary{grid-template-columns:minmax(0,1fr)}
+    .event-entry__details{grid-column:1}
     .event-entry .event-action>summary.btn{min-height:44px}
   }
 </style>

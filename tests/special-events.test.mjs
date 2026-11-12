@@ -188,8 +188,8 @@ test('admin: only current and upcoming published events are listed, earliest fir
   assert.deepEqual([...html.matchAll(/<h4 id="[^"]+"[^>]*>([^<]+)<\/h4>/g)].map(m=>m[1]),['Brewers Game Special','Packers Game Day Special','Thanksgiving Eve Special']);
   assert.match(html,/Friday, October 23/);assert.match(html,/Tonight/);assert.match(html,/11 AM–3 PM/);
   assert.match(html,/Pulled Pork Sandwich w\/ Chips<\/span><span class="event-entry__price"[^>]*>\$4</);
-  assert.equal((html.match(/>Edit<span/g)||[]).length,3);assert.equal((html.match(/>Remove<span/g)||[]).length,3);
-  for (const removed of [/Needs review/i,/Approve/,/Reject/,/\bHide\b/,/Restore/,/Recent Facebook posts/i,/Create event/i,/Create an event/i,/Expired events/i,/Allow Facebook updates/,/Delete permanently/,/name="details"/])
+  assert.equal((html.match(/>Edit<span/g)||[]).length,3);assert.equal((html.match(/>Remove<span class="visually-hidden"/g)||[]).length,3);
+  for (const removed of [/Needs review/i,/Approve/,/Reject/,/\bHide\b/,/Restore/,/Recent Facebook posts/i,/Create event/i,/Create an event/i,/Expired events/i,/Allow Facebook updates/,/Delete permanently/])
     assert.doesNotMatch(html,removed);
   assert.doesNotMatch(html,/Ended Lunch Event|Yesterday Event|Status /);
 });

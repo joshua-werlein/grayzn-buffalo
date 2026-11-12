@@ -105,3 +105,68 @@ routes the stored reading as a Veterans Day event and publishes it
 automatically, provided check 1 shows the heading in `poster_evidence`. After
 November 11 it would expire immediately anyway, so recovery only matters that
 day.
+
+## Follow-up: event entry, text case, event message and layout (after `6e28b53`)
+
+Local change only; nothing committed, deployed or written to production.
+
+### Causes
+
+- **ALL CAPS on the live card.** `normalizeMenuCase()` (`src/lib/text-case.js`)
+  runs inside `canonicalizeSlotContent()` (`workers/fb-feed/reconcile.js`), which
+  every automated path uses: daily slots, `buildEventDraft()` for event offers and
+  titles, and the Automation Review prefill. Staff saves of daily specials
+  normalize in `saveCollection()` (`specials-store.ts`). The Special Event form
+  (`eventInputFromForm()` in `src/lib/special-events.ts`) stored exactly what was
+  typed, so it was the only path that skipped normalization. An automated event
+  cannot store "CHOICE OF ANY BURGER…" in capitals, so the live row was entered
+  through the staff form (check 5 below confirms it).
+- **"THANK YOU TO ALL WHO SERVED" as an offer.** The form offered four "Offers"
+  inputs and no place for wording that is not a priced special. The schema
+  already had `special_events.details` (0025, ≤300 characters, rendered on public
+  cards), but no form wrote it. On the automated side, an unpriced greeting is
+  a "Missing meal price" issue that withholds the whole event.
+- **Wednesday poster offered "Publish as a Special Event".** The option was
+  shown for any daily post needing attention. Both November 11 posts share one
+  `GUARDED_AUTO` audit row ("3 slot(s); CONFLICT: 1 blocked proposal"), so the
+  regular poster also read as *Partially Published* and got an event form
+  prefilled with its three regular specials.
+- **Whitespace around the event card.** `Base.astro` applies
+  `section{padding:var(--section-block) var(--section-inline)}` to every section.
+  `<section class="event-specials">` inherited it, adding large vertical
+  padding and narrowing the card. `.week-section` already opts out with
+  `padding:0`.
+
+### Changes
+
+- Form: one **Special and Price** field, **Add Another Special** (up to four),
+  **Remove** on added fields, and an optional **Event Message** (stored in
+  `details`; no migration). Without JavaScript all four fields show. Server
+  validation normalizes title, specials, message and time note with
+  `normalizeMenuCase()` (idempotent; re-saving never changes them again). It
+  refuses a special with no price ("…is a message, not a special. Move it to
+  Event Message."), a price in the message, and the same special twice.
+- Automation: `isEventMessage()` (`events.js`) moves unpriced greetings and house
+  conditions ("Thank you…", "Happy…", "Dine-in only", "With valid military ID")
+  into the event message, and only those. Any other unpriced line still holds the
+  event. Facebook evidence, including the message line, is kept verbatim in
+  `evidence_json`.
+- Automation Review: posts the classifier routes to an event show **Publish as a
+  Special Event** (Recommended) first and **Publish as Daily Specials** second.
+  A daily post gets only a collapsed "Publish as a Special Event instead" override,
+  and only when none of its specials are on the website and staff have not approved
+  any of them. `createEvent()` repeats that check server-side, so a post whose
+  specials are on today's daily board is refused (409).
+- Public cards: `.event-specials` has `padding:0`, so it uses the same width as the
+  weekly specials. The message is a secondary italic line under the offers.
+
+### Read-only check 5 (owner)
+
+```powershell
+# Which path created the live Veterans Day card, and its stored text.
+npx wrangler d1 execute grayzn-db --remote --command "SELECT e.id,e.origin,e.manual_locked,e.title,e.details,json_extract(e.evidence_json,'$.created_by') created_by,(SELECT group_concat(o.position||': '||o.content,' | ') FROM special_event_offers o WHERE o.event_id=e.id) offers FROM special_events e WHERE e.event_date='2026-11-11';"
+```
+
+Existing rows are not rewritten. To fix the live card after deploying: open it
+in Admin Specials → Edit, move "Thank you to all who served" from the second
+special into **Event Message**, and save. Saving normalizes the text.

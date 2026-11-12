@@ -160,6 +160,23 @@ function eventTitle(heading,cue,canonicalize) {
 const offerText=o=>[o?.content,o?.evidence,o?.service_evidence,o?.service_time].filter(Boolean).join(' ');
 const isSoup=o=>/^\s*soups?\b/i.test(o?.content??'');
 
+// Poster wording that is not a priced offer: greetings, thanks and house
+// conditions (November 11 2026: "THANK YOU TO ALL WHO SERVED" under the
+// Veterans Day offer). Such a line becomes the event message, never an offer.
+// Conservative: no price, amount or discount word, no uncertainty, and it must
+// open with one of these phrases. Any other unpriced line stays an offer, which
+// holds the event ("Missing meal price") rather than guessing.
+const MESSAGE=/^[^\p{L}\p{N}]*(?:happy|thank(?:s|\s+you)|we\s+(?:salute|honou?r|thank|appreciate|remember)|honou?ring|in\s+honou?r\s+of|god\s+bless|cheers|go\s+pack\s+go|let'?s\s+go|see\s+you|join\s+us|come\s+(?:on\s+)?(?:in|down|celebrate|join)|while\s+supplies\s+last|dine[\s-]*in\s+only|no\s+substitutions|cannot\s+be\s+combined|not\s+valid\s+with|tax\s+(?:not\s+)?included|with\s+(?:a\s+)?(?:valid\s+)?military\s+id)\b/u;
+const PRICED=/\$|\d|\bfree\b|\bhalf\b|\boff\b|\bprice\b|\bbogo\b|\bbuy\s+one\b|\bdollars?\b|\bcents?\b|%/;
+export function isEventMessage(offer) {
+  const text=norm(typeof offer==='string' ? offer : offer?.content).trim();
+  const evidence=typeof offer==='string' ? '' : norm(offer?.evidence);
+  if (!text || text.length>160 || PRICED.test(text) || PRICED.test(evidence)) return false;
+  if (typeof offer!=='string' && Array.isArray(offer?.uncertainties) && offer.uncertainties.length) return false;
+  return MESSAGE.test(text);
+}
+export const EVENT_MESSAGE_LIMIT=300;
+
 // Classify one stored source. "event": the whole poster is a one-time
 // promotion, so regular planning skips it, and the draft publishes unless its
 // review_reasons (insufficient or contradictory evidence) withhold it.
@@ -193,7 +210,7 @@ export function routeEventSource({candidate,caption='',postDate,canonicalize}) {
   // A holiday greeting in a caption ("Happy Veterans Day!") is not a promotion:
   // a caption-only holiday must also call the post a special, deal or offer.
   const captionPromotes=captionCue?.specific && (captionCue.kind!=='holiday' || /\b(?:special|deal|promo(?:tion)?|offer)\b/.test(norm(caption)));
-  if (!imageCue && !(captionPromotes && offers.length<=2)) return {route:'regular'};
+  if (!imageCue && !(captionPromotes && offers.filter(o=>!isEventMessage(o)).length<=2)) return {route:'regular'};
   const draft=buildEventDraft({candidate,caption,postDate,cue,indices:offers.map((_,i)=>i),canonicalize});
   return {route:'event',publish:!draft.review_reasons.length,draft};
 }
@@ -203,7 +220,9 @@ export function buildEventDraft({candidate,caption,postDate,cue,indices,canonica
   let analyzed;
   try { analyzed=analyzeDailyEvidence(candidate); }
   catch (error) { analyzed={offers:[],issues:[]};review_reasons.push(error.message); }
-  const chosen=indices.filter(i=>analyzed.offers[i]);
+  // Greetings and conditions are the event message; only priced lines are offers.
+  const messages=indices.filter(i=>isEventMessage(candidate.offers[i]));
+  const chosen=indices.filter(i=>analyzed.offers[i] && !messages.includes(i));
   if (chosen.length>4) review_reasons.push('More than four event offers');
   for (const issue of analyzed.issues)
     if (chosen.includes(issue.index) && issue.reason!=='Service not established by evidence') review_reasons.push(`offer ${issue.index+1}: ${issue.reason}`);
@@ -222,10 +241,13 @@ export function buildEventDraft({candidate,caption,postDate,cue,indices,canonica
   const time=eventTime(...timeTexts);
   const hours=eventHoursReview(...timeTexts);
   if (hours) review_reasons.push(hours);
-  return {title:eventTitle(candidate.poster_evidence??'',cue,canonicalize),event_date,...time,details:'',offers,
+  const details=[...new Set(messages.map(i=>canonicalize(String(candidate.offers[i].content).trim(),-1,'custom')))].join('\n');
+  if (details.length>EVENT_MESSAGE_LIMIT) review_reasons.push('Event message is too long');
+  return {title:eventTitle(candidate.poster_evidence??'',cue,canonicalize),event_date,...time,details:details.slice(0,EVENT_MESSAGE_LIMIT),offers,
     identity:cue.identity,date_basis:date.basis ?? 'publication-date',review_reasons,
     fingerprint:`${event_date}|${offers.map(factKey).sort().join('|')}`,
     evidence:{heading:heading.trim(),offers:chosen.map(i=>String(candidate.offers[i]?.evidence ?? candidate.offers[i]?.content ?? '')),
+      ...(messages.length?{message:messages.map(i=>String(candidate.offers[i]?.evidence ?? candidate.offers[i]?.content ?? ''))}:{}),
       date:date.review ? `withheld: ${date.review}` : date.note,caption:String(caption??'').slice(0,600)}};
 }
 

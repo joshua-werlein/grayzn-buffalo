@@ -1,17 +1,21 @@
 ---
 // Shared by Add Special Event, Edit and Automation Review's "Publish as a Special
-// Event". Server validation (eventInputFromForm) is authoritative; the small
-// script below only hides the time inputs while All Day is chosen.
-import { EVENT_OFFER_COUNT, EVENT_OFFER_LIMIT, EVENT_TIME_LIMIT, EVENT_TITLE_LIMIT, type EventInput } from '../lib/special-events';
+// Event". Server validation (eventInputFromForm) is authoritative. One Special and
+// Price field shows at first; "Add Another Special" reveals the next one, up to
+// EVENT_OFFER_COUNT. Without JavaScript every field is shown instead. The small
+// script also hides the time inputs while All Day is chosen.
+import { EVENT_DETAILS_LIMIT, EVENT_OFFER_COUNT, EVENT_OFFER_LIMIT, EVENT_TIME_LIMIT, EVENT_TITLE_LIMIT, type EventInput } from '../lib/special-events';
 interface Props { prefix: string; values: EventInput; display?: boolean }
 const { prefix, values, display = false } = Astro.props;
-const offers = Array.from({ length: EVENT_OFFER_COUNT }, (_, i) => values.offers[i] ?? '');
+const filled = values.offers.filter(offer => offer.trim()).slice(0, EVENT_OFFER_COUNT);
+const offers = Array.from({ length: EVENT_OFFER_COUNT }, (_, i) => filled[i] ?? '');
+const shown = Math.max(1, filled.length);
 const hours = values.hours === 'hours';
 ---
 <div class="event-fields" data-event-fields>
-  <label for={`${prefix}-title`}>Event name</label>
+  <label for={`${prefix}-title`}>Event Name</label>
   <input id={`${prefix}-title`} name="title" required maxlength={EVENT_TITLE_LIMIT} value={values.title} placeholder="e.g. Veterans Day Special"/>
-  <label for={`${prefix}-date`}>Event date</label>
+  <label for={`${prefix}-date`}>Event Date</label>
   <input id={`${prefix}-date`} class="event-fields__date" name="event_date" type="date" required value={values.event_date}/>
   <fieldset class="event-fields__hours">
     <legend>When the offer is valid</legend>
@@ -27,23 +31,33 @@ const hours = values.hours === 'hours';
     </div>
     <p class="event-fields__hint">Chicago time. All Day runs through midnight. For hours past midnight, add a second event for the next day.</p>
   </fieldset>
-  <label for={`${prefix}-time-text`}>Time note <span>(optional, shown with the date, e.g. "Kickoff 12 PM")</span></label>
+  <fieldset class="event-fields__offers" data-offers>
+    <legend>Specials <span>(each with its price, up to {EVENT_OFFER_LIMIT} characters)</span></legend>
+    {offers.map((offer, i) => (
+      <div class="event-fields__offer" data-offer-row hidden={i >= shown}>
+        <label for={`${prefix}-offer-${i + 1}`}>Special and Price{i > 0 && ` ${i + 1}`}</label>
+        <div class="event-fields__offer-input">
+          <input id={`${prefix}-offer-${i + 1}`} name={`offer_${i + 1}`} maxlength={EVENT_OFFER_LIMIT} value={offer}
+            placeholder={i === 0 ? 'e.g. Choice of any burger and side with a drink $7.00' : ''} required={i === 0}/>
+          {i > 0 && <button type="button" class="event-fields__remove" data-remove-offer hidden>Remove<span class="visually-hidden-label"> special {i + 1}</span></button>}
+        </div>
+      </div>
+    ))}
+    <button type="button" class="btn btn-ghost event-fields__add" data-add-offer hidden>+ Add Another Special</button>
+    <noscript><style>.event-fields [data-offer-row][hidden]{display:grid !important}</style></noscript>
+  </fieldset>
+  <label for={`${prefix}-details`}>Event Message <span>(optional: a greeting or note, e.g. "Thank you to all who served." No prices here.)</span></label>
+  <textarea id={`${prefix}-details`} name="details" rows="2" maxlength={EVENT_DETAILS_LIMIT}>{values.details ?? ''}</textarea>
+  <label for={`${prefix}-time-text`}>Time Note <span>(optional, shown with the date, e.g. "Kickoff 12 PM")</span></label>
   <input id={`${prefix}-time-text`} name="time_text" maxlength={EVENT_TIME_LIMIT} value={values.time_text}/>
   {display && <>
-    <label for={`${prefix}-display`}>Show on website starting <span>(optional; leave empty to show it now. The offer is only valid on the event date.)</span></label>
+    <label for={`${prefix}-display`}>Show on Website Starting <span>(optional; leave empty to show it now. The offer is only valid on the event date.)</span></label>
     <input id={`${prefix}-display`} class="event-fields__date" name="display_from" type="date" value={values.display_from ?? ''}/>
   </>}
-  <fieldset class="event-fields__offers">
-    <legend>Offers <span>(include each price; up to {EVENT_OFFER_LIMIT} characters)</span></legend>
-    {offers.map((offer, i) => <>
-      <label class="visually-hidden-label" for={`${prefix}-offer-${i + 1}`}>Offer {i + 1}</label>
-      <input id={`${prefix}-offer-${i + 1}`} name={`offer_${i + 1}`} maxlength={EVENT_OFFER_LIMIT} value={offer} placeholder={i === 0 ? 'e.g. Choice of any burger and side with a drink $7.00' : ''} required={i === 0}/>
-    </>)}
-  </fieldset>
 </div>
 <script>
-  // Progressive enhancement: without JavaScript both time inputs stay visible
-  // and the server ignores them for All Day.
+  // Progressive enhancement: without JavaScript every special field and both
+  // time inputs stay visible, and the server ignores times for All Day.
   for (const fields of document.querySelectorAll<HTMLElement>('[data-event-fields]')) {
     const times = fields.querySelector<HTMLElement>('[data-hours-fields]');
     const update = () => {
@@ -53,27 +67,62 @@ const hours = values.hours === 'hours';
     };
     fields.querySelectorAll('[data-hours-mode]').forEach(radio => radio.addEventListener('change', update));
     update();
+
+    // Shown special fields are always the first ones, so removing one moves the
+    // values below it up a field and hides the last.
+    const rows = [...fields.querySelectorAll<HTMLElement>('[data-offer-row]')];
+    const add = fields.querySelector<HTMLButtonElement>('[data-add-offer]');
+    const visible = () => rows.filter(row => !row.hidden);
+    const sync = () => {
+      if (add) add.hidden = visible().length >= rows.length;
+      rows.forEach(row => { const remove = row.querySelector<HTMLElement>('[data-remove-offer]'); if (remove) remove.hidden = false; });
+    };
+    add?.addEventListener('click', () => {
+      const next = rows.find(row => row.hidden);
+      if (!next) return;
+      next.hidden = false;
+      next.querySelector('input')?.focus();
+      sync();
+    });
+    rows.forEach((row, i) => row.querySelector('[data-remove-offer]')?.addEventListener('click', () => {
+      const shown = visible(), inputs = shown.map(r => r.querySelector('input')!);
+      for (let j = i; j < inputs.length - 1; j++) inputs[j].value = inputs[j + 1].value;
+      inputs[inputs.length - 1].value = '';
+      shown[shown.length - 1].hidden = true;
+      (inputs[Math.min(i, inputs.length - 2)] ?? inputs[0]).focus();
+      sync();
+    }));
+    sync();
   }
 </script>
 <style>
   .event-fields{display:grid;gap:6px;min-width:0}
   .event-fields label,.event-fields legend{font:700 .78rem var(--label);letter-spacing:.08em;text-transform:uppercase;margin-top:6px}
   .event-fields label span,.event-fields legend span{font-weight:400;letter-spacing:0;text-transform:none;color:var(--ink-2)}
-  .event-fields input{box-sizing:border-box;width:100%;min-width:0;padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit}
-  .event-fields input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+  .event-fields input,.event-fields textarea{box-sizing:border-box;width:100%;min-width:0;padding:10px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:var(--cream);font:inherit}
+  .event-fields textarea{resize:vertical}
+  .event-fields input:focus-visible,.event-fields textarea:focus-visible,.event-fields button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
   .event-fields .event-fields__date{max-width:240px}
   .event-fields__hours,.event-fields__offers{display:grid;gap:8px;margin:6px 0 0;padding:10px 12px;border:1px solid rgba(36,22,16,.16);border-radius:8px;min-width:0}
   .event-fields__choices{display:flex;flex-wrap:wrap;align-items:center;gap:0 8px}
   .event-fields__choices input{width:auto;margin:0;accent-color:var(--crimson)}
   .event-fields__choices label{margin:0 16px 0 0;padding:10px 0;font-size:.85rem;cursor:pointer}
   .event-fields__row{display:grid;grid-template-columns:repeat(2,minmax(0,240px));gap:12px}
-  .event-fields__row[hidden]{display:none}
-  .event-fields__row>div{display:grid;gap:6px;align-content:start}
+  .event-fields__row[hidden],.event-fields__offer[hidden]{display:none}
+  .event-fields__row>div,.event-fields__offer{display:grid;gap:6px;align-content:start;min-width:0}
+  .event-fields__offer label{margin-top:0}
+  .event-fields__offer-input{display:flex;gap:8px;align-items:stretch;min-width:0}
+  .event-fields__offer-input input{flex:1 1 auto}
+  .event-fields__remove{flex:0 0 auto;min-height:44px;padding:0 12px;border:2px solid rgba(36,22,16,.2);border-radius:8px;background:transparent;color:var(--crimson);font:700 .85rem var(--label);letter-spacing:.04em;cursor:pointer}
+  .event-fields__remove[hidden]{display:none}
+  .event-fields .event-fields__add{justify-self:start;min-height:44px;margin:0;padding:8px 16px;font:700 .85rem/1.2 var(--label);letter-spacing:.04em;text-transform:none}
+  .event-fields .event-fields__add[hidden]{display:none}
   .event-fields__hint{margin:0;font-size:.9rem;color:var(--ink-2)}
   .visually-hidden-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;margin:0}
   @media(max-width:680px){
     .event-fields__row{grid-template-columns:1fr}
     .event-fields .event-fields__date{max-width:none}
     .event-fields__choices label{min-height:24px}
+    .event-fields .event-fields__add{justify-self:stretch}
   }
 </style>

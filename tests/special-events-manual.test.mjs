@@ -20,7 +20,7 @@ const RID='11111111-2222-4333-8444-555555555555';
 const VETERANS={action:'create-event',request_id:RID,title:'Veterans Day Special',event_date:'2026-11-11',hours_mode:'all-day',
   start_time:'',end_time:'',time_text:'',offer_1:'Choice of any burger and side with a drink $7.00'};
 const PACKERS={action:'create-event',request_id:'22222222-2222-4333-8444-555555555555',title:'Packers Game Special',event_date:'2026-11-15',
-  hours_mode:'hours',start_time:'12:00',end_time:'16:00',time_text:'',offer_1:'Game-day promotional offer'};
+  hours_mode:'hours',start_time:'12:00',end_time:'16:00',time_text:'',offer_1:'Game-day pulled pork sandwich $8'};
 
 const setup=(t,options)=>{const f=fixture(t,options);f.env.SESSIONS={get:async()=>'1'};return f;};
 const render=(page,f,path='/',now=NOW)=>container.renderToString(page,{request:new Request('http://localhost'+path,{headers:{cookie}}),locals:{runtime:{env:f.env,now}}});
@@ -48,7 +48,8 @@ test('staff create the Veterans Day example: all day, published, locked, and sho
   const [e]=events(f);
   assert.deepEqual([e.id,e.title,e.event_date,e.start_time,e.end_time,e.status,e.origin,e.manual_locked,e.date_basis,e.identity,e.source_post_id,e.display_from],
     [`evt:staff-${RID}`,'Veterans Day Special','2026-11-11',null,null,'published','manual',1,'manual','veterans-day',null,null]);
-  assert.deepEqual(offers(f,e.id),['Choice of any burger and side with a drink $7.00']);
+  // Staff text gets the same house menu style automation publishes (normalizeMenuCase).
+  assert.deepEqual(offers(f,e.id),['Choice of Any Burger and Side with a Drink $7.00']);
   assert.deepEqual(f.sql('SELECT action,detail FROM special_event_log'),[{action:'created',detail:'Created by staff'}]);
   for (const [page,path] of [[homePage,'/'],[specialsPage,'/specials']]) {
     const html=cards(await render(page,f,path));
@@ -173,17 +174,18 @@ test('edit and remove a staff event: revision-fenced, and a removed staff event 
 test('Automation Review: a held Veterans Day post offers "Publish as a Special Event" prefilled, with no daily slot',async t=>{
   const f=setup(t);addImport(f,{candidate:heldPoster});
   const draft=review.eventDraftFor({candidate_json:JSON.stringify(heldPoster),caption:''},'2026-11-11');
-  assert.deepEqual(draft,{title:'Veterans Day Special',event_date:'2026-11-11',hours:'all-day',start_time:null,end_time:null,time_text:'',display_from:null,
-    offers:['Choice of Any Burger & Side with a Drink $7.00']});
+  assert.deepEqual(draft,{kind:'event',values:{title:'Veterans Day Special',event_date:'2026-11-11',hours:'all-day',start_time:null,end_time:null,time_text:'',display_from:null,
+    offers:['Choice of Any Burger & Side with a Drink $7.00'],details:''}});
   const html=await container.renderToString(automationPage,{request:new Request('http://localhost/admin/automation',{headers:{cookie}}),locals:{runtime:{env:f.env,now:NOW}}});
   const start=html.indexOf('id="import-imp-vets"'),entry=html.slice(start,html.indexOf('class="card-foot"',start));
-  assert.match(entry,/<summary class="btn btn-primary"[^>]*>Publish as a Special Event<\/summary>/);
+  assert.match(entry,/<h4 id="event-imp-vets-route"[^>]*>Publish as a Special Event<span class="tag tag--ok"[^>]*>Recommended<\/span><\/h4>/);
+  assert.match(entry,/<summary class="btn btn-primary"[^>]*>Review Special Event<\/summary>/);
   assert.match(entry,/name="action" value="create-event"/);assert.match(entry,/name="source_import_id" value="imp-vets"/);
   assert.match(entry,/name="return_to" value="automation"/);assert.match(entry,/value="Veterans Day Special"/);
   assert.match(entry,/value="Choice of Any Burger &amp; Side with a Drink \$7\.00"/);
   assert.match(entry,/name="hours_mode" value="all-day" checked/);
   // The event form needs no Lunch, All Day, Nightly or Soup destination.
-  const form=entry.slice(entry.indexOf('Publish as a Special Event'));
+  const form=entry.slice(entry.indexOf('Review Special Event'));
   assert.doesNotMatch(form.slice(0,form.indexOf('</form>')),/name="destination|Lunch · |All Day Specials · |Nightly · |Soup · /);
 });
 
@@ -197,7 +199,7 @@ test('publishing the held post links the event to it, returns to Automation Revi
   const model=await review.readAutomationReview(f.env,'2026-11-11',NOW);
   const item=model.history.find(i=>i.id==='imp-vets');
   assert.equal(item.status,'Published');assert.match(item.reason,/Published as a special event: Veterans Day Special/);
-  assert.equal(item.eventDraft,null);
+  assert.equal(item.eventOption,null);
   // The same post cannot be published twice.
   const again=await post(f,{...VETERANS,request_id:'55555555-2222-4333-8444-555555555555',title:'Other Name',offer_1:'Other $1',source_import_id:'imp-vets'});
   assert.equal(again.status,409);assert.equal(events(f).length,1);
@@ -209,10 +211,10 @@ test('publishing takes over an event automation withheld for the same post (no s
     VALUES('evt:auto-held','Veterans Day Special','2026-11-11','review','automation',0,'publication-date','veterans-day','583672228384067_1764187355249141','imp-vets','Withheld: Printed hours disagree','{}')`);
   const before=await review.readAutomationReview(f.env,'2026-11-11',NOW);
   const held=before.history.find(i=>i.id==='imp-vets');
-  assert.equal(held.status,'Held');assert.match(held.reason,/Special event held: Printed hours disagree/);assert.ok(held.eventDraft);
+  assert.equal(held.status,'Held');assert.match(held.reason,/Special event held: Printed hours disagree/);assert.equal(held.eventOption.kind,'event');
   assert.equal((await post(f,{...VETERANS,source_import_id:'imp-vets'})).status,303);
   assert.deepEqual(events(f).map(e=>[e.id,e.status,e.manual_locked,e.revision,e.date_basis]),[['evt:auto-held','published',1,1,'manual']]);
-  assert.deepEqual(offers(f,'evt:auto-held'),['Choice of any burger and side with a drink $7.00']);
+  assert.deepEqual(offers(f,'evt:auto-held'),['Choice of Any Burger and Side with a Drink $7.00']);
 });
 
 test('only today’s current posts can be linked; stale or foreign ids are refused',async t=>{
@@ -225,7 +227,7 @@ test('only today’s current posts can be linked; stale or foreign ids are refus
 });
 
 test('mobile: the event form stacks to one column with 44px controls and no horizontal overflow',()=>{
-  const fields=readFileSync('src/components/EventFields.astro','utf8').split('<style>')[1];
+  const fields=readFileSync('src/components/EventFields.astro','utf8').split('<style>').at(-1);
   assert.match(fields,/@media\(max-width:680px\)\{[\s\S]*\.event-fields__row\{grid-template-columns:1fr\}/);
   assert.match(fields,/min-width:0/);
   const create=readFileSync('src/components/EventCreateForm.astro','utf8').split('<style>')[1];

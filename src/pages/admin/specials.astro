@@ -122,7 +122,7 @@ let adminEvents: SpecialEvent[]=[], eventsUnavailable='';
 try { adminEvents=await readAdminEvents(env,eventNow()); }
 catch { eventsUnavailable='Special events are unavailable right now. Reload the page to try again.'; }
 const eventsOpen=!!(eventError || eventNotice || createError);
-const blankEvent: EventInput={title:'',event_date:'',hours:'all-day',time_text:'',start_time:null,end_time:null,display_from:null,offers:[]};
+const blankEvent: EventInput={title:'',event_date:'',hours:'all-day',time_text:'',start_time:null,end_time:null,display_from:null,offers:[],details:''};
 const savedWeeks: any[] = [];
 try {
   const weeksResult = await env.DB.prepare('SELECT ws.id,ws.week_start_date,ws.week_end_date,sc.revision FROM weekly_specials ws JOIN special_collections sc ON sc.weekly_special_id=ws.id ORDER BY ws.week_start_date DESC').all();

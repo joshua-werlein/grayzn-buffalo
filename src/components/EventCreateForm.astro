@@ -7,12 +7,12 @@ import EventFields from './EventFields.astro';
 import type { EventInput } from '../lib/special-events';
 interface Props {
   prefix: string; values: EventInput; requestId: string; summary: string; submit: string;
-  intro: string; open?: boolean; error?: string; display?: boolean; sourceImportId?: string; returnTo?: 'automation';
+  intro: string; open?: boolean; error?: string; display?: boolean; sourceImportId?: string; returnTo?: 'automation'; secondary?: boolean;
 }
-const { prefix, values, requestId, summary, submit, intro, open = false, error = '', display = false, sourceImportId = '', returnTo } = Astro.props;
+const { prefix, values, requestId, summary, submit, intro, open = false, error = '', display = false, sourceImportId = '', returnTo, secondary = false } = Astro.props;
 ---
 <details class="event-create" open={open} data-event-create>
-  <summary class="btn btn-primary">{summary}</summary>
+  <summary class:list={['btn', secondary ? 'btn-ghost' : 'btn-primary']}>{summary}</summary>
   <form method="post" class="event-create__form" action="/admin/specials#special-events">
     <input type="hidden" name="action" value="create-event"/>
     <input type="hidden" name="request_id" value={requestId}/>

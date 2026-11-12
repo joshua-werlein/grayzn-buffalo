@@ -43,7 +43,9 @@ const cards = events.map(event => ({
   .event-specials{
     --event-surface:#d6b878; --event-surface-2:#cfae6a; --event-edge:var(--gold,#b28a4f);
     --event-ink:var(--ink,#261711); --event-price:var(--btn-crimson-hover,#632521);
-    margin:0 0 clamp(18px,2.4vw,28px);min-width:0;text-align:left;
+    /* Opt out of the global section padding (Base.astro) so events use the same
+       content width as the weekly specials below them. */
+    margin:clamp(10px,1.2vw,14px) 0 clamp(14px,1.8vw,22px);padding:0;min-width:0;text-align:left;
   }
   .event-specials__heading{
     margin:0 0 10px;font:700 .9rem/1.2 var(--label);letter-spacing:.15em;text-transform:uppercase;color:inherit;text-align:center;
@@ -71,7 +73,7 @@ const cards = events.map(event => ({
     font:500 1.05rem/1.45 var(--body);white-space:pre-line}
   .event-card__offer{min-width:0;overflow-wrap:anywhere}
   .event-card__price{font:700 1.1rem/1.3 var(--label);letter-spacing:.03em;color:var(--event-price);white-space:nowrap}
-  .event-card__details{margin:6px 0 0;font-size:.95rem;line-height:1.4;overflow-wrap:anywhere}
+  .event-card__details{margin:8px 0 0;font:italic 400 .95rem/1.4 var(--body);color:rgba(38,23,17,.78);white-space:pre-line;overflow-wrap:anywhere}
   @media (max-width:839px){
     .event-card{grid-template-columns:minmax(0,1fr) auto;align-items:start}
     .event-card__when{text-align:right}

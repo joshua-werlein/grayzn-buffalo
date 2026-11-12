@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {harness} from './test-fixture.js';
-import {eventCue,eventTime,eventHoursReview,routeEventSource,routeStoredSources} from './events.js';
+import {eventCue,eventTime,eventHoursReview,routeEventSource,routeStoredSources,isEventMessage} from './events.js';
 import {reconcileToday} from './guarded-auto.js';
 import {canonicalizeSlotContent as canonicalize} from './reconcile.js';
 
@@ -180,4 +180,52 @@ test('November 11 with events OFF: unchanged emergency behavior (no event; the p
   assert.deepEqual(f.events(),[]);
   const held=await reconcileToday(f.env,{sourceIds:f.imports().map(i=>i.id),today:'2026-11-11',weekday:3,inspectOnly:true});
   assert.equal(held.blocked.length,1);
+});
+
+// The published Veterans Day card showed "THANK YOU TO ALL WHO SERVED" as a second
+// offer. A greeting is the event message, never an offer, and never holds the event.
+const VETERANS_CAPS=daily('VETERANS DAY SPECIAL',[offer('CHOICE OF ANY BURGER AND SIDE WITH A DRINK $7'),offer('THANK YOU TO ALL WHO SERVED')]);
+
+test('Veterans Day poster with a greeting: one priced offer, the greeting is the event message, both in house case',()=>{
+  const r=route(VETERANS_CAPS);
+  assert.equal(r.route,'event');assert.equal(r.publish,true);assert.deepEqual(r.draft.review_reasons,[]);
+  assert.deepEqual(r.draft.offers,['Choice of Any Burger and Side with a Drink $7']);
+  assert.equal(r.draft.details,'Thank You To All Who Served');
+  // The fingerprint covers priced offers only; the printed evidence stays verbatim for audit.
+  assert.equal(r.draft.fingerprint,route(daily('VETERANS DAY SPECIAL',[VETERANS_CAPS.offers[0]])).draft.fingerprint);
+  assert.deepEqual(r.draft.evidence.offers,['CHOICE OF ANY BURGER AND SIDE WITH A DRINK $7']);
+  assert.deepEqual(r.draft.evidence.message,['THANK YOU TO ALL WHO SERVED']);
+});
+
+test('event messages are greetings and conditions only; anything priced or uncertain stays an offer',()=>{
+  for(const text of ['THANK YOU TO ALL WHO SERVED','Happy Veterans Day!','We salute our veterans','Dine-in only','While supplies last','GO PACK GO!','With valid military ID'])
+    assert.equal(isEventMessage(offer(text)),true,text);
+  for(const text of ['Thank you! $5 burgers','Happy hour $2 off taps','Free pie with any meal','PULLED PORK SANDWICH','Burger and fries','Join us for $3 pints','Limit 2 per customer'])
+    assert.equal(isEventMessage(offer(text)),false,text);
+  assert.equal(isEventMessage(offer('Thank you to all who served',{uncertainties:['partly hidden']})),false);
+  assert.equal(isEventMessage(offer('Thank you to all who served',{evidence:'THANK YOU... $7'})),false);
+});
+
+test('an unpriced line that is not a greeting still holds the event: no invented price (HYPOTHETICAL)',()=>{
+  const r=route(daily('VETERANS DAY SPECIAL',[VETERANS_CAPS.offers[0],offer('PULLED PORK SANDWICH')]));
+  assert.equal(r.route,'event');assert.equal(r.publish,false);
+  assert.match(r.draft.review_reasons.join(' '),/offer 2: Missing meal price/);
+  // Only greetings: no priced offer, held.
+  const only=route(daily('VETERANS DAY SPECIAL',[offer('THANK YOU TO ALL WHO SERVED')]));
+  assert.equal(only.publish,false);assert.match(only.draft.review_reasons.join(' '),/No printed, priced event offer/);
+});
+
+test('November 11 end to end with the greeting: one offer, the message stored in details, and rescans change nothing',async t=>{
+  const f=november11(t);
+  f.state.candidate=structuredClone(VETERANS_CAPS);
+  await f.run();f.addWednesday();await f.run();
+  const [e]=f.events();
+  assert.deepEqual([f.events().length,e.status,e.title,e.details],[1,'published','Veterans Day Special','Thank You To All Who Served']);
+  assert.deepEqual(f.offers(e.id),['Choice of Any Burger and Side with a Drink $7']);
+  // Normalized once: the stored automation snapshot matches, so a rescan never rewrites it.
+  assert.equal(JSON.parse(e.last_auto_json).details,'Thank You To All Who Served');
+  assert.deepEqual(f.wednesdaySlots().map(({service,position,content})=>({service,position,content})),REGULAR);
+  const before=[f.events(),f.offers(e.id)];
+  f.state.now+=30*60000;await f.run();
+  assert.deepEqual([f.events(),f.offers(e.id)],before);
 });

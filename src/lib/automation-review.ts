@@ -5,7 +5,7 @@ import { chicagoMidnight } from './analytics';
 import { eventState } from './special-events';
 import { plainValue } from '../../workers/fb-feed/alert-detail.js';
 import { applySharedWeeklyLunchPrice, validateWeeklyLunch, canonicalizeSlotContent } from '../../workers/fb-feed/reconcile.js';
-import { routeEventSource, eventCue } from '../../workers/fb-feed/events.js';
+import { routeEventSource, eventCue, isEventMessage } from '../../workers/fb-feed/events.js';
 import { normalizeWeeklyRange, factKey } from '../../workers/fb-feed/evidence.js';
 import {approvalEvents} from '../../workers/fb-feed/staff-review.js';
 import {readWingAttention,wingHoldReason} from '../../workers/fb-feed/wing-review.js';
@@ -168,25 +168,42 @@ async function readWingDecisions(env: any, query: (sql: string, ...args: any[]) 
     };
   } catch { return ()=>null; }
 }
-// Prefill for "Publish as a Special Event" on a held daily post. Staff check and
-// correct every field before saving; createEvent() validates it again. When the
-// event classifier recognizes the poster, its title, date and hours are used.
+// Prefill for "Publish as a Special Event". Staff check and correct every field
+// before saving; createEvent() validates it again. kind 'event': the event
+// classifier recognized a one-time promotion (a holiday, game day or similar) and
+// withheld it, so the event form is the recommended way to publish. kind
+// 'override': an ordinary daily-specials reading; the event form is only a
+// collapsed fallback for a misclassified event poster. A daily-specials poster
+// whose specials are already on the website is offered neither (see readAutomationReview).
 export function eventDraftFor(source: any, day: string) {
   const raw = parseReviewEvidence(source.candidate_json) ?? parseReviewEvidence(source.extracted_json);
   if (!Array.isArray(raw?.offers) || !raw.offers.length) return null;
   const weekday = calendarDayOfWeek(day);
-  let draft: any = null;
-  try { const routed: any = routeEventSource({candidate: raw, caption: String(source.caption ?? ''), postDate: day, canonicalize: canonicalizeSlotContent}); draft = routed.draft ?? null; }
+  let routed: any = null;
+  try { routed = routeEventSource({candidate: raw, caption: String(source.caption ?? ''), postDate: day, canonicalize: canonicalizeSlotContent}); }
   catch { /* Staff fill the fields. */ }
+  const draft = routed?.route === 'event' && !routed.cancellation ? routed.draft ?? null : null;
+  const canonical = (text: string) => { try { return canonicalizeSlotContent(text, weekday, 'custom'); } catch { return ''; } };
   const heading = reviewText(String(raw.poster_evidence ?? ''), 80);
-  const offers = draft?.offers?.length ? draft.offers : raw.offers.slice(0,4).flatMap((o: any) => {
-    try { return typeof o?.content === 'string' && o.content.trim() ? [canonicalizeSlotContent(o.content, weekday, 'custom')] : []; } catch { return []; }
-  });
-  return {title: reviewText(draft?.title ?? (eventCue(heading) ? canonicalizeSlotContent(heading, weekday, 'custom') : ''), 80),
+  // Greetings and conditions are the Event Message, never a priced special.
+  const lines = raw.offers.slice(0,8).filter((o: any) => typeof o?.content === 'string' && o.content.trim());
+  const offers = draft?.offers?.length ? draft.offers : lines.filter((o: any) => !isEventMessage(o)).map((o: any) => canonical(o.content)).filter(Boolean);
+  const details = draft ? draft.details : [...new Set(lines.filter((o: any) => isEventMessage(o)).map((o: any) => canonical(o.content)).filter(Boolean))].join('\n');
+  return {kind: draft ? 'event' as const : 'override' as const, values: {
+    title: reviewText(draft?.title ?? (eventCue(heading) ? canonical(heading) : ''), 80),
     event_date: draft?.event_date && draft.event_date >= day ? draft.event_date : day,
     hours: draft?.start_time && draft?.end_time ? 'hours' as const : 'all-day' as const,
     start_time: draft?.start_time ?? null, end_time: draft?.end_time ?? null, time_text: '', display_from: null,
-    offers: offers.slice(0,4).map((o: string) => reviewText(o, 150)).filter(Boolean)};
+    offers: offers.slice(0,4).map((o: string) => reviewText(o, 150)).filter(Boolean),
+    details: String(details ?? '').slice(0,300)}};
+}
+// An override is offered only when nothing from the post reached the website and
+// staff have not approved any of it: the event can then never duplicate or
+// replace a published daily special. createEvent() repeats this check.
+function eventOptionFor(source: any, day: string, published: boolean, audit: any[]) {
+  const option = eventDraftFor(source, day);
+  if (!option || option.kind === 'event') return option;
+  return published || approvalEvents(audit).length ? null : option;
 }
 export async function readAutomationReview(env: any, day: string, now = new Date()) {
   reviewDate(day, now);
@@ -252,7 +269,8 @@ export async function readAutomationReview(env: any, day: string, now = new Date
     const current = linkedEvents.length ? linkedEvents.flatMap(e=>e.values) : website.flatMap((g: any)=>g.slots.map((s: any)=>s.value));
     return {id:source.id,source:reviewText(source.fb_post_id,90),created:reviewTimestamp(source.fb_created_time),fetched:reviewTimestamp(source.fetched_at),processed:reviewTimestamp(source.processed_at),link:facebookLink(source.permalink_url),reviewStatus:source.review_status,dismissed:source.review_status==='dismissed',...extracted,...outcome,
       specialEvent:event?{title:event.title,date:event.event_date}:null,
-      eventDraft:linkedEvents.every(e=>e.status==='review' && e.origin==='automation') && day===chicagoCalendarDate(now) && extracted.scope==='Daily specials' ? eventDraftFor(source,day) : null,
+      eventOption:linkedEvents.every(e=>e.status==='review' && e.origin==='automation') && day===chicagoCalendarDate(now) && extracted.scope==='Daily specials'
+        ? eventOptionFor(source,day,extracted.values.some((value: string)=>current.some((v: string)=>factKey(v)===factKey(value))),audit) : null,
       values:extracted.values.map((value: string)=>({value,onWebsite:current.some((v: string)=>factKey(v)===factKey(value))})),
       editor:linkedEvents.length?'/admin/specials#special-events':extracted.scope==='Mexican Night'?'/admin/specials#mexican-form':editor,
       audits:audit.slice(0,4).map((e: any)=>({type:reviewText(e.event_type,30),at:reviewTimestamp(e.occurred_at),detail:reviewReason(e.detail)})),

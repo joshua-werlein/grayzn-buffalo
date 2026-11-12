@@ -6,13 +6,16 @@
 // card. Expiry is computed when read (America/Chicago); nothing is deleted on a
 // schedule. Every staff write is fenced by the event's revision and token.
 import { BUSINESS_TIME_ZONE, chicagoCalendarDate, isIsoCalendarDate } from './weekly-specials';
-import { eventCue } from '../../workers/fb-feed/events.js';
+import { eventCue, isEventMessage, EVENT_MESSAGE_LIMIT } from '../../workers/fb-feed/events.js';
 import { factKey } from '../../workers/fb-feed/evidence.js';
+import { normalizeMenuCase } from './text-case.js';
 
 export const EVENT_TITLE_LIMIT = 80;
 export const EVENT_TIME_LIMIT = 80;
 export const EVENT_OFFER_LIMIT = 150;
 export const EVENT_OFFER_COUNT = 4;
+/** special_events.details (migration 0025, CHECK length<=300): the optional event message. */
+export const EVENT_DETAILS_LIMIT: number = EVENT_MESSAGE_LIMIT;
 
 export type EventStatus = 'review' | 'published' | 'disabled' | 'rejected' | 'cancelled';
 export type SpecialEvent = {
@@ -29,6 +32,8 @@ export type SpecialEvent = {
 export type EventInput = {
   title: string; event_date: string; hours: 'all-day' | 'hours'; time_text: string; start_time: string | null; end_time: string | null;
   display_from: string | null; offers: string[];
+  /** Event Message: a greeting or note shown under the offers; never a priced offer. */
+  details: string;
 };
 export class EventConflict extends Error {
   constructor() { super('This event changed after you opened it. Your edits are shown below; reload to compare before saving again.'); }
@@ -142,23 +147,30 @@ export function eventDraftFromForm(form: FormData): EventInput {
   try { hours = hoursMode(form); } catch { /* Redisplay only. */ }
   return { title: clip('title', EVENT_TITLE_LIMIT), event_date: clip('event_date', 10), hours, time_text: clip('time_text', EVENT_TIME_LIMIT),
     start_time: clip('start_time', 5) || null, end_time: clip('end_time', 5) || null, display_from: clip('display_from', 10) || null,
-    offers: Array.from({ length: EVENT_OFFER_COUNT }, (_, i) => clip(`offer_${i + 1}`, EVENT_OFFER_LIMIT)) };
+    offers: Array.from({ length: EVENT_OFFER_COUNT }, (_, i) => clip(`offer_${i + 1}`, EVENT_OFFER_LIMIT)).filter(Boolean),
+    details: clip('details', EVENT_DETAILS_LIMIT) };
 }
 /** Form values for an existing event. */
 export const eventValues = (event: SpecialEvent): EventInput => ({ title: event.title, event_date: event.event_date,
   hours: event.start_time || event.end_time ? 'hours' : 'all-day', time_text: event.time_text, start_time: event.start_time,
-  end_time: event.end_time, display_from: event.display_from ?? null, offers: event.offers });
-/** Server-side validation of every staff-submitted field; never trusts client limits. */
+  end_time: event.end_time, display_from: event.display_from ?? null, offers: event.offers, details: event.details ?? '' });
+// A special names its price, or a price-like term ("free", "half off", "BOGO", "20% off").
+const PRICED = /\$\s*\d|\d\s*(?:¢|cents?\b|%)|\b(?:free|half|bogo|off|price|dollars?)\b|\bbuy\s+one\b|\d+\s+for\s+\d/i;
+const PRICE_IN_MESSAGE = /\$\s*\d|\d\.\d{2}\b/;
+/** Server-side validation of every staff-submitted field; never trusts client limits.
+ *  Text is normalized to the house menu style (normalizeMenuCase) exactly as
+ *  automation publishes it; normalizing is idempotent, so re-saving never changes it again. */
 export function eventInputFromForm(form: FormData): EventInput {
-  const title = text(form, 'title').replace(/\s+/g, ' ');
+  const title = normalizeMenuCase(text(form, 'title').replace(/\s+/g, ' '));
   const event_date = text(form, 'event_date');
-  const time_text = text(form, 'time_text').replace(/\s+/g, ' ');
+  const time_text = normalizeMenuCase(text(form, 'time_text').replace(/\s+/g, ' '));
   const hours = hoursMode(form);
   // All Day ignores any times left in the hidden time inputs.
   const start_time = hours === 'hours' ? text(form, 'start_time') || null : null;
   const end_time = hours === 'hours' ? text(form, 'end_time') || null : null;
   const display_from = text(form, 'display_from') || null;
-  const offers = Array.from({ length: EVENT_OFFER_COUNT }, (_, i) => text(form, `offer_${i + 1}`)).filter(Boolean);
+  const offers = Array.from({ length: EVENT_OFFER_COUNT }, (_, i) => normalizeMenuCase(text(form, `offer_${i + 1}`).replace(/\s+/g, ' '))).filter(Boolean);
+  const details = normalizeMenuCase(text(form, 'details').replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n'));
   if (!title) throw new Error('Enter an event name.');
   if (title.length > EVENT_TITLE_LIMIT) throw new Error(`The event name allows ${EVENT_TITLE_LIMIT} characters.`);
   if (!isIsoCalendarDate(event_date)) throw new Error('Choose a valid event date.');
@@ -170,8 +182,16 @@ export function eventInputFromForm(form: FormData): EventInput {
   if (display_from && !isIsoCalendarDate(display_from)) throw new Error('Choose a valid website display date.');
   if (display_from && display_from > event_date) throw new Error('The website display date must be on or before the event date.');
   if (!offers.length) throw new Error('Enter at least one offer, including its price.');
-  if (offers.some(o => o.length > EVENT_OFFER_LIMIT)) throw new Error(`Each offer, including its price, allows ${EVENT_OFFER_LIMIT} characters.`);
-  return { title, event_date, hours, time_text, start_time, end_time, display_from, offers };
+  if (offers.some(o => o.length > EVENT_OFFER_LIMIT)) throw new Error(`Each special, including its price, allows ${EVENT_OFFER_LIMIT} characters.`);
+  // A greeting typed as a special ("Thank you to all who served") is the Event Message.
+  const unpriced = offers.find(o => !PRICED.test(o));
+  if (unpriced) throw new Error(isEventMessage(unpriced)
+    ? `“${unpriced}” is a message, not a special. Move it to Event Message.`
+    : `Add the price to “${unpriced}”, or move wording that is not a special to Event Message.`);
+  if (new Set(offers.map(factKey)).size !== offers.length) throw new Error('The same special is entered twice. Remove the extra one.');
+  if (details.length > EVENT_DETAILS_LIMIT) throw new Error(`The event message allows ${EVENT_DETAILS_LIMIT} characters.`);
+  if (PRICE_IN_MESSAGE.test(details)) throw new Error('Prices belong in Special and Price. Keep the Event Message to wording only.');
+  return { title, event_date, hours, time_text, start_time, end_time, display_from, offers, details };
 }
 
 const prepare = (env: any, sql: string, ...args: unknown[]) => env.DB.prepare(sql).bind(...args);
@@ -182,14 +202,14 @@ function offerStatements(env: any, id: string, offers: string[], gate: string, .
 const tokenGate = 'EXISTS(SELECT 1 FROM special_events WHERE id=?1 AND mutation_token=?2)';
 
 /** Saving staff edits locks the event: Facebook automation never overwrites it.
- *  Only a published event can be edited; details are not part of the form.
+ *  Only a published event can be edited; details is the Event Message.
  *  display: migration 0028 is applied, so the display date is saved too. */
 export async function saveEvent(env: any, id: string, revision: number, input: EventInput, { display = false } = {}): Promise<void> {
   const token = crypto.randomUUID();
   const results = await env.DB.batch([
-    prepare(env, `UPDATE special_events SET title=?3,event_date=?4,time_text=?5,start_time=?6,end_time=?7,${display ? 'display_from=?9,' : ''}
+    prepare(env, `UPDATE special_events SET title=?3,event_date=?4,time_text=?5,start_time=?6,end_time=?7,details=?9,${display ? 'display_from=?10,' : ''}
       manual_locked=1,revision=revision+1,mutation_token=?8,updated_at=CURRENT_TIMESTAMP WHERE id=?1 AND revision=?2 AND status='published'`,
-      id, revision, input.title, input.event_date, input.time_text, input.start_time, input.end_time, token, ...(display ? [input.display_from] : [])),
+      id, revision, input.title, input.event_date, input.time_text, input.start_time, input.end_time, token, input.details, ...(display ? [input.display_from] : [])),
     ...offerStatements(env, id, input.offers, tokenGate, token),
   ]);
   if (results[0]?.meta?.changes !== 1) throw new EventConflict();
@@ -215,12 +235,29 @@ const IMPORT_ID = /^[a-zA-Z0-9_-]{1,100}$/;
  *  specials (eventSourceIndexes in the Worker). */
 async function linkedSource(env: any, importId: string, now: Date) {
   if (!IMPORT_ID.test(importId)) throw new Error('That Facebook post is not available. Reload Automation Review.');
-  const source = await env.DB.prepare(`SELECT id,fb_post_id,fb_created_time,permalink_url FROM special_imports i WHERE id=?1
+  const source = await env.DB.prepare(`SELECT id,fb_post_id,fb_created_time,permalink_url,
+    CASE WHEN length(candidate_json)<=24000 THEN candidate_json END candidate_json,CASE WHEN length(extracted_json)<=24000 THEN extracted_json END extracted_json
+    FROM special_imports i WHERE id=?1
     AND processing_status IN ('staged','failed') AND review_status IN ('pending','accepted','edited')
     AND NOT EXISTS(SELECT 1 FROM special_imports n WHERE n.fb_post_id=i.fb_post_id AND n.rowid>i.rowid)`).bind(importId).first();
   const created = source ? new Date(source.fb_created_time) : null;
   if (!source || !created || !Number.isFinite(created.getTime()) || created > now || chicagoCalendarDate(created) !== chicagoCalendarDate(now))
     throw new Error('Only today’s current Facebook posts can be published as an event. Reload Automation Review.');
+  // One destination per post: a post whose specials are already on today's daily
+  // specials (the ordinary November 11 Wednesday poster) is never also an event.
+  let raw: any = null;
+  try { raw = JSON.parse(String(source.candidate_json ?? source.extracted_json ?? '').replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { /* No reading. */ }
+  const keys = new Set((Array.isArray(raw?.offers) ? raw.offers : []).filter((o: any) => typeof o?.content === 'string' && !isEventMessage(o))
+    .map((o: any) => factKey(o.content)).filter(Boolean));
+  if (keys.size) {
+    const today = chicagoCalendarDate(now);
+    const { results: slots } = await env.DB.prepare(`SELECT s.content,s.price FROM special_slots s JOIN special_groups g ON g.id=s.group_id
+      JOIN special_collections c ON c.id=g.collection_id AND c.kind='week' JOIN weekly_specials w ON w.id=c.weekly_special_id
+      WHERE w.week_start_date<=?1 AND w.week_end_date>=?1 AND g.day_of_week=?2 AND s.content<>'' LIMIT 64`)
+      .bind(today, new Date(`${today}T12:00:00Z`).getUTCDay()).all();
+    if ((slots ?? []).some((s: any) => keys.has(factKey([s.content, s.price].filter(Boolean).join(' ')))))
+      throw new EventDuplicate('Specials from this Facebook post are already on today’s daily specials. Change them in the Specials editor instead of publishing an event.');
+  }
   return source;
 }
 
@@ -252,9 +289,9 @@ export async function createEvent(env: any, input: EventInput,
     // keeps the post unique, and it becomes staff-locked.
     const results = await env.DB.batch([
       prepare(env, `UPDATE special_events SET title=?3,event_date=?4,time_text=?5,start_time=?6,end_time=?7,status='published',manual_locked=1,
-        date_basis='manual',fingerprint=?9,review_reason='',revision=revision+1,mutation_token=?8,updated_at=CURRENT_TIMESTAMP${display ? ',display_from=?10' : ''}
+        date_basis='manual',fingerprint=?9,details=?10,review_reason='',revision=revision+1,mutation_token=?8,updated_at=CURRENT_TIMESTAMP${display ? ',display_from=?11' : ''}
         WHERE id=?1 AND revision=?2 AND status='review' AND origin='automation' AND manual_locked=0`,
-        existing.id, existing.revision, input.title, input.event_date, input.time_text, input.start_time, input.end_time, token, fingerprint, ...displayArgs),
+        existing.id, existing.revision, input.title, input.event_date, input.time_text, input.start_time, input.end_time, token, fingerprint, input.details, ...displayArgs),
       ...offerStatements(env, existing.id, input.offers, tokenGate, token),
       prepare(env, `INSERT INTO special_event_log(event_id,source_post_id,action,detail) SELECT ?1,?3,'updated',?4 WHERE ${tokenGate}`, existing.id, token, source!.fb_post_id, detail),
     ]);
@@ -266,12 +303,12 @@ export async function createEvent(env: any, input: EventInput,
   const results = await env.DB.batch([
     prepare(env, `INSERT INTO special_events(id,mutation_token,title,event_date,time_text,start_time,end_time,details,status,origin,manual_locked,date_basis,
       fingerprint,identity,source_post_id,source_import_id,source_created_time,source_permalink,evidence_json,review_reason${display ? ',display_from' : ''})
-      SELECT ?1,?2,?3,?4,?5,?6,?7,'','published','manual',1,'manual',?8,?9,?10,?11,?12,?13,?14,''${display ? ',?15' : ''}
+      SELECT ?1,?2,?3,?4,?5,?6,?7,?16,'published','manual',1,'manual',?8,?9,?10,?11,?12,?13,?14,''${display ? ',?15' : ''}
       WHERE NOT EXISTS(SELECT 1 FROM special_events WHERE id=?1 OR (?10 IS NOT NULL AND source_post_id=?10)
         OR (status='published' AND event_date=?4 AND (fingerprint=?8 OR identity=?9)))`,
       id, token, input.title, input.event_date, input.time_text, input.start_time, input.end_time, fingerprint, storedIdentity,
       source?.fb_post_id ?? null, source?.id ?? null, source?.fb_created_time ?? null, source?.permalink_url ?? '',
-      JSON.stringify(source ? { created_by: 'staff', import_id: source.id } : { created_by: 'staff' }), ...displayArgs),
+      JSON.stringify(source ? { created_by: 'staff', import_id: source.id } : { created_by: 'staff' }), display ? input.display_from : null, input.details),
     ...input.offers.map((content, i) => prepare(env, `INSERT INTO special_event_offers(event_id,position,content) SELECT ?1,?3,?4 WHERE ${tokenGate}`, id, token, i + 1, content)),
     prepare(env, `INSERT INTO special_event_log(event_id,source_post_id,action,detail) SELECT ?1,?3,'created',?4 WHERE ${tokenGate}`, id, token, source?.fb_post_id ?? null, detail),
   ]);
