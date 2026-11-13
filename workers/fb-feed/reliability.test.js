@@ -6,6 +6,9 @@ import {canonicalizeSlotContent} from './reconcile.js';
 import {reconcilePosterEvidence} from './reconcile.js';
 import {harness} from './test-fixture.js';
 import {validateExtraction} from './worker.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 const exact=JSON.parse(readFileSync(new URL('../../tests/fixtures/oct12-monday.json',import.meta.url),'utf8'));
 const offer=(content,service_time='All Day',evidence=content)=>({content,service_time,evidence});
 const poster=offers=>({day_of_week:1,day_evidence:'Monday',poster_evidence:'Monday Specials',offers});
@@ -64,7 +67,7 @@ test('invalid independent All Day offer does not block verified lunch',async t=>
 test('staff locked slot survives new partial planner',async t=>{
   const f=setup(t,reliable([offer('Burger $10'),offer('Salad $9')]));
   const id=f.slots(1,'all-day')[0].group_id;
-  f.sql("UPDATE special_slots SET content='Staff choice',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff choice',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",id);
   await f.run();assert.deepEqual(f.slots(1,'all-day').slice(0,2).map(s=>s.content),['Staff choice','Salad $9']);
 });
 test('targeted repair uses original image and actual error, retains first response audit',async t=>{
@@ -182,7 +185,7 @@ test('concurrent staff edit invalidates entire new partial publication snapshot'
   f.env.DB.batch=async statements=>{
     if(!injected && statements.some(s=>s.sql.includes('UPDATE special_collections SET revision=revision+1,mutation_token'))) {
       injected=true;
-      f.sql("UPDATE special_slots SET content='Staff wins',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",f.slots(1,'all-day')[0].group_id);
+      f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff wins',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",f.slots(1,'all-day')[0].group_id);
     }
     return batch(statements);
   };

@@ -4,6 +4,9 @@ import {readFileSync} from 'node:fs';
 import {analyzeDailyEvidence,joinProteinVariants} from './evidence.js';
 import {reconcilePosterEvidence} from './reconcile.js';
 import {harness} from './test-fixture.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 
 // Public poster transcriptions only (stored October 23 extractions): the
 // undated DAILY SPECIALS morning poster, the five-offer "Friday Night Specials
@@ -154,10 +157,10 @@ test('pipeline: morning, Friday Night and Brewers posts publish exactly the thre
 
 test('pipeline: a staff-locked Friday Nightly slot stays; eligible slots still publish and the block is audited',async t=>{
   const f=setup(t);
-  f.sql("UPDATE special_slots SET content='Staff: Lobster tail $29',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",f.group);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff: Lobster tail $29',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",f.group);
   await f.run();f.addNight();await f.run();
   assert.deepEqual(f.nightly(),[NIGHTLY[0],'Staff: Lobster tail $29',NIGHTLY[2],'']);
-  assert.ok(f.sql("SELECT detail FROM special_import_events WHERE event_type='review'").some(e=>e.detail.includes('Protected or ineligible destination slot')));
+  assert.ok(f.sql("SELECT detail FROM special_import_events WHERE event_type='review'").some(e=>e.detail.includes('Newer staff edit retained')));
 });
 
 test('pipeline: a Friday Night poster with five distinct specials holds; default and daytime values stay',async t=>{
@@ -174,7 +177,7 @@ test('pipeline: a Friday Night poster with five distinct specials holds; default
 test('pipeline: a staff-edited All Day price is never overwritten by the night variant',async t=>{
   const f=setup(t);await f.run();
   const allDay=f.slots(5,'all-day')[0].group_id;
-  f.sql("UPDATE special_slots SET content='Cheeseburger or Fish Sandwich w/ Side Salad, Soup or Coleslaw $10.50',manual_locked=1,origin='manual' WHERE group_id=? AND position=1",allDay);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Cheeseburger or Fish Sandwich w/ Side Salad, Soup or Coleslaw $10.50',manual_locked=1,origin='manual' WHERE group_id=? AND position=1",allDay);
   f.addNight();await f.run();
   assert.equal(f.slots(5,'all-day')[0].content,'Cheeseburger or Fish Sandwich w/ Side Salad, Soup or Coleslaw $10.50');
   assert.equal(f.nightly()[2],NIGHTLY[2]);

@@ -5,6 +5,9 @@ import {harness,poster,offer} from './test-fixture.js';
 import {reconcileToday} from './guarded-auto.js';
 import {validateEvidence,WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
 import {extractionPrompt} from './extraction.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 const pizza='16" 3-Topping Pizza & 12 Wings $30';
 const hawaiian='Crispy Hawaiian - Crispy chicken with ham, swiss cheese and pineapple, with side salad, chili or coleslaw $10.25';
 const sandwich='Chicken Salad Sandwich with cup of Chili or Coleslaw $7.25';
@@ -121,7 +124,7 @@ test('exact Sunday image-only poster replaces unlocked Western Burger and maps a
 });
 for(const origin of ['manual','legacy']) test(`Sunday ${origin} locked correction remains protected`,async t=>{
   const f=sunday(t);const slot=f.slots(0,'all-day')[0];
-  f.sql('UPDATE special_slots SET origin=?,manual_locked=1 WHERE group_id=? AND position=1',origin,slot.group_id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',origin=?,manual_locked=1 WHERE group_id=? AND position=1",origin,slot.group_id);
   await f.run();assert.equal(f.slots(0,'all-day')[0].content,western);
 });
 test('Sunday retry uses identical full instructions and schema and counts two actual calls',async t=>{

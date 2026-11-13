@@ -68,7 +68,9 @@ export function hasUnresolvedUncertainty(offer) {
 }
 // Only a leading punctuated list marker is presentation. Bare quantities,
 // including "1 or 2 Piece Fish", remain part of the exact fact comparison.
-const withoutListMarker=s=>s.replace(/^\s*\d+[).]\s+(?=\S)/u,'');
+// Posters may decorate that marker ("*1) CRISPY ... DRINK-* $9.75", November 12):
+// only this fixed set of marks may precede it, never letters, digits or "$".
+const withoutListMarker=s=>s.replace(/^\s*(?:[*•·~#_]+\s*)?\d+[).]\s+(?=\S)/u,'');
 function priceFacts(s) {
   const p=prices(s);
   // A minus attached to the amount (-$9.75), or a leading one with nothing

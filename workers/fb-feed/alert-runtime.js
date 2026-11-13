@@ -1,5 +1,6 @@
 import {parserVersionFor,classifyCaption} from './classify.js';
-import {reconcileToday,reconcileWeeklyLunch,dailyPosterWeekday} from './guarded-auto.js';
+import {reconcileToday,reconcileWeeklyLunch,dailyPosterWeekday,verifiedPostTimes} from './guarded-auto.js';
+import {staffOwnedSectionSlot,sqlTime} from './mexican-night-defaults.js';
 import {hasPrintedPrice} from './evidence.js';
 import {reconcileDelivery} from './delivery.js';
 import {validateCurrentDay,hasWeeklyLunchEvidence,singleDayLunchEvidence,singleDayLunchEvidenceV2,canonicalizeSlotContent,WEEKLY_LUNCH_SHAPE_ERROR} from './reconcile.js';
@@ -266,9 +267,6 @@ function mexicanReading(s) {
 }
 const mexicanSource=s=>s.target_collection_id==='mexican-night'
   || /\bmexican\s+night\b/i.test(String(mexicanReading(s)?.poster_evidence ?? ''));
-// Same rule as protectedSectionSlots('mexican-night') in mexican-night-defaults.js.
-const staffOwnedSlot=s=>s.manual_locked!==0 || !((s.origin==='manual' && s.manual_locked===0)
-  || (s.origin==='automation' && s.content===s.last_auto_value) || (!(s.content ?? '') && s.last_auto_value==null));
 // After publication: saved/recurring entries the current poster did not confirm and
 // that therefore still show without a price. (a) a whole item absent from the
 // validated reading; (b) an add-on/substitution line kept under a dish whose poster
@@ -298,9 +296,14 @@ async function assessMexican(env,scan,snap,now) {
   const [,,collections,groups,slots]=snap.data;
   const collection=collections.find(c=>c.id==='mexican-night');
   const ids=new Set(groups.filter(g=>g.collection_id==='mexican-night').map(g=>g.id));
-  if(collection?.section_source==='manual' || slots.some(s=>ids.has(s.group_id) && staffOwnedSlot(s))) return outcome('suppressed');
   // The newest post is the current menu evidence, as reconcileMexicanNight uses it.
   const source=sources[0];
+  // A staff save after this post is a correction the post must not undo: no failure.
+  // A post published after the save replaces it (guarded-auto.js), so it is assessed.
+  if(collection?.section_source==='manual' || slots.some(s=>ids.has(s.group_id) && staffOwnedSectionSlot(s))) {
+    const savedMs=sqlTime(collection?.updated_at),postedMs=(await verifiedPostTimes(env,[source])).get(source.id);
+    if(Number.isFinite(savedMs) && !(Number.isFinite(postedMs) && postedMs>savedMs)) return outcome('suppressed');
+  }
   const {results:events}=await env.DB.prepare(`SELECT detail FROM special_import_events WHERE import_id=?1 AND event_type='review'
     AND (detail LIKE 'GUARDED_MEXICAN_NIGHT:%' OR detail LIKE 'REVIEW_REQUIRED_MEXICAN_SCHEDULE:%')`).bind(source.id).all();
   const attention=category=>outcome('attention',{detail:mexicanAlertDetail({day:scan.day,source,category})});
@@ -338,11 +341,13 @@ function assessEvent(scan,snap,now) {
 }
 
 function intentional(s,data,weekday) {
-  const [,weeks,collections,groups,slots]=data;
+  const [,weeks,collections,groups]=data;
   if(weeks.length!==1 || !s.target_service) return false;
   const collection=collections.find(c=>c.weekly_special_id===weeks[0].id && c.kind==='week');
   const destinations=groups.filter(g=>g.collection_id===collection?.id && g.day_of_week===weekday && g.service===s.target_service);
-  return destinations.length===1 && (destinations[0].enabled===0 || slots.some(p=>p.group_id===destinations[0].id && p.manual_locked===1 && p.content));
+  // Only a staff-disabled destination. A staff lock no longer keeps verified Facebook
+  // content off the website, so a failed import for a locked slot is actionable.
+  return destinations.length===1 && destinations[0].enabled===0;
 }
 
 function staffProtectionOnly(daily,data,day,weekday) {
@@ -376,7 +381,7 @@ async function assess(env,scan,snap) {
       food={state:'attention'};
       cause=importAlertObservation(terminal,{eligible:true,resolution:'unresolved'}).code;
     } else if(daily.requiresWrite && food.state!=='suppressed') food={state:'attention'};
-    // Staff-locked values retained as the only hold are not a failure; no email.
+    // Staff corrections newer than the post, as the only hold, are not a failure; no email.
     else if(food.state==='attention' && staffProtectionOnly(daily,snap.data,scan.day,w.weekday)) food={state:'suppressed'};
     else if(!eligible.length || !sourceIds.length) food={state:'suppressed'};
     else if(food.state==='unknown') food={state:'pending'};

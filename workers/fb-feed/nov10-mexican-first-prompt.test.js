@@ -114,11 +114,14 @@ test('November 10: captions that do not confidently identify Mexican Night keep 
   }
 });
 
-test('November 10: a staff-locked Mexican Night item is never overwritten by the Mexican-first reading',async t=>{
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff save
+// made after the 21:29 post is never overwritten by that post's reading.
+test('November 10: a Mexican Night menu staff saved after the post is never overwritten by its Mexican-first reading',async t=>{
   const f=setup(t,[clean()]);
+  f.sql("UPDATE special_collections SET section_source='manual',updated_at='2026-11-10 21:29:45' WHERE id='mexican-night'");
   f.sql("INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled) VALUES('staff','mexican-night',-1,'custom','Entrees','',0,1)");
   f.sql("INSERT INTO special_slots(group_id,position,content,price,section_link,origin,manual_locked,last_auto_value) VALUES('staff',1,'Burrito - $11.00','','','manual',1,NULL)");
   await f.run();
   assert.deepEqual(f.menu(),['Burrito - $11.00']);
-  assert.equal(f.sql("SELECT section_source FROM special_collections WHERE id='mexican-night'")[0].section_source,'recurring');
+  assert.equal(f.sql("SELECT section_source FROM special_collections WHERE id='mexican-night'")[0].section_source,'manual');
 });

@@ -28,9 +28,11 @@ function octoberWeek(t,candidate=weekly(),version='2') {
   return f;
 }
 const lunch=(f,day)=>f.slots(day,'lunch')[0];
-const setSlot=(f,day,content,origin,locked,lastAuto=content)=>f.sql(
-  'UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1',
-  content,origin,locked,lastAuto,lunch(f,day).group_id);
+// edited: a staff correction's recorded time. The poster is posted at 13:00; Facebook is
+// the canonical source and keeps only corrections made after it.
+const setSlot=(f,day,content,origin,locked,lastAuto=content,edited=null)=>f.sql(
+  'UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=?,manual_edited_at=? WHERE group_id=? AND position=1',
+  content,origin,locked,lastAuto,edited,lunch(f,day).group_id);
 const snapshot=f=>({collection:f.sql("SELECT revision,mutation_token FROM special_collections WHERE id='auto-week'"),
   slots:f.sql('SELECT * FROM special_slots ORDER BY group_id,position'),events:f.sql('SELECT * FROM special_import_events')});
 
@@ -149,8 +151,8 @@ test('price-less automation rows from the same poster gain the shared price; sta
   // State left by the earlier reconciliation that dropped the heading price.
   MEALS.forEach((meal,i)=>setSlot(f,i+1,meal,'automation',0));
   // Staff corrected Tuesday by hand (locked) and replaced Wednesday entirely.
-  setSlot(f,2,'Chicken Bacon Ranch Wrap w/ French Fries & a Drink - $9.50','manual',1);
-  setSlot(f,3,'Staff Wednesday lunch','automation',1,MEALS[2]);
+  setSlot(f,2,'Chicken Bacon Ranch Wrap w/ French Fries & a Drink - $9.50','manual',1,undefined,'2026-10-26T14:00:00.000Z');
+  setSlot(f,3,'Staff Wednesday lunch','automation',1,MEALS[2],'2026-10-26T14:00:00.000Z');
   // Thursday holds a different automation value (e.g. a daily poster) and is not upgraded.
   setSlot(f,4,'Chicken Alfredo & a Drink $10','automation',0);
   await f.run();
@@ -167,12 +169,13 @@ test('price-less automation rows from the same poster gain the shared price; sta
   assert.deepEqual(snapshot(f),before);
 });
 
-test('staff-edited price-less row (no longer the automation value) is not upgraded',async t=>{
+test('a price-less row with broken automation provenance and no staff edit time takes the priced poster',async t=>{
   const f=octoberWeek(t);
-  // Content matches the poster but last_auto_value differs: someone else owns it.
+  // Content matches the poster but last_auto_value differs. No staff edit is recorded, so
+  // the verified poster (the canonical source) replaces it.
   setSlot(f,1,MEALS[0],'automation',0,'Older automatic lunch');
   await f.run();
-  assert.equal(lunch(f,1).content,MEALS[0]);
+  assert.equal(lunch(f,1).content,priced(MEALS[0]));
   MEALS.slice(1).forEach((meal,i)=>assert.equal(lunch(f,i+2).content,priced(meal)));
 });
 

@@ -117,16 +117,18 @@ for (const [name,build] of [['daily',buildExtractionRequest],['weekly retry',bui
     assert.equal(request.messages[1].content[1].image_url.url,'data:image/jpeg;base64,/9j/');
   });
 
-for(const [origin,lock,last,expected] of [
-  ['automation',0,'old','new'],['manual',1,null,'old'],['automation',0,'original','old'],
-]) test(`formatted bundle obeys guarded ownership: ${origin}/${lock}/${last}`,async t=>{
+// Facebook is the canonical source: only a staff edit recorded after the 14:00 post is kept.
+for(const [origin,lock,last,expected,edited=null] of [
+  ['automation',0,'old','new'],['manual',1,null,'old'],['automation',0,'original','new'],
+  ['manual',1,null,'old','2030-01-13T15:00:00.000Z'],['manual',0,null,'new','2030-01-13T13:00:00.000Z'],
+]) test(`formatted bundle obeys guarded ownership: ${origin}/${lock}/${last}/${edited}`,async t=>{
   const p=poster(0,'Sunday Specials',[
     offer('16" 3-TOPPING PIZZA & 12 WINGS $30'),offer('Garden Burger OR Wrap $11'),offer('Salad with Soup $8'),
   ]);
   const f=harness(t,{now:'2030-01-13T16:00:00Z',caption:'',candidate:p});
   Object.assign(f.state.posts[0],{created_time:'2030-01-13T14:00:00Z',updated_time:'2030-01-13T14:00:00Z'});
   const group=f.slots(0,'lunch')[0].group_id;
-  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1','old',origin,lock,last,group);
+  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=?,manual_edited_at=? WHERE group_id=? AND position=1','old',origin,lock,last,edited,group);
   await f.run();
   const slot=f.slots(0,'lunch')[0];
   assert.equal(slot.content,expected==='new'?'16" 3-Topping Pizza & 12 Wings $30':'old');

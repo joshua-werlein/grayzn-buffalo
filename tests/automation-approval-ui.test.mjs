@@ -36,8 +36,9 @@ test('status badges group every import outcome into plain staff labels',()=>{
   assert.equal(statusBadge('Failed').label,'Failed');
   assert.equal(statusBadge('Staff Approved').label,'Staff Approved');
   for(const s of ['Held','Partially Published','Partially Staff Approved','Staged — publication unconfirmed']) assert.equal(statusBadge(s).label,'Needs Review',s);
-  assert.equal(protectionLabel('Yes — staff locked'),'Protected — edited by staff');
-  assert.equal(protectionLabel('No staff lock; other publication safeguards still apply'),'Automation can update');
+  assert.equal(protectionLabel('Until a newer Facebook post — staff edit'),'Edited by staff — until a newer Facebook post');
+  assert.equal(protectionLabel('Yes — older staff lock, no edit time recorded'),'Edited by staff — older lock, kept');
+  assert.equal(protectionLabel('No — a verified Facebook post replaces it; other publication safeguards still apply'),'Automation can update');
 });
 
 test('confirmation rows show current → new and flag staff edits only when a protected value changes',()=>{

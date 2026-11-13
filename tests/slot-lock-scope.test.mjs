@@ -22,7 +22,7 @@ function formFor(collection) {
 }
 const allSlots=f=>f.sql('SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id=? ORDER BY s.group_id,s.position','auto-week');
 
-test('correcting one Monday Nightly special locks only that slot and survives the next import',async t=>{
+test('correcting one Monday Nightly special locks only that slot until a newer import replaces it',async t=>{
   const f=harness(t,{now:'2026-10-26T15:00:00Z',caption:'Monday Specials',candidate:structuredClone(records.morning)});
   Object.assign(f.env,{SPECIALS_EVIDENCE_VERSION:'2',SPECIALS_VERIFICATION_STRATEGY:'conditional'});
   f.sql("UPDATE weekly_specials SET week_start_date='2026-10-26',week_end_date='2026-11-01' WHERE id=9000");
@@ -51,13 +51,14 @@ test('correcting one Monday Nightly special locks only that slot and survives th
   assert.deepEqual(others(after),others(before));
   assert.equal(after.filter(x=>x.manual_locked===1).length,before.filter(x=>x.manual_locked===1).length+1);
 
-  // The Monday Night import cannot overwrite the correction; the unlocked
-  // Nightly default beside it still receives its printed price.
+  // Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): the
+  // Monday Night post, published after the correction, replaces it; the Nightly default
+  // beside it still receives its printed price.
   f.state.now=Date.parse('2026-10-26T21:30:00Z');
   f.state.posts.unshift({...f.state.posts[0],id:'night',message:'Monday Night Specials',created_time:'2026-10-26T21:22:00Z',updated_time:'2026-10-26T21:22:00Z'});
   f.state.candidate=structuredClone(records.night);
   await f.run();
   assert.deepEqual(f.slots(1,'nightly').slice(0,2).map(x=>[x.content,x.origin,x.manual_locked]),
-    [['2 Burgers and 1 Order of Fries $14','manual',1],['Half Rack Ribs w/ Mac N Cheese & Coleslaw — $18.75','automation',0]]);
+    [['2 Burgers and 1 Order of Fries $14','automation',0],['Half Rack Ribs w/ Mac N Cheese & Coleslaw — $18.75','automation',0]]);
   assert.equal(f.slots(2,'all-day')[0].manual_locked,0);
 });

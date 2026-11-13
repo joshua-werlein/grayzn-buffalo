@@ -7,6 +7,13 @@ export const protectedSectionSlots = id => `EXISTS(SELECT 1 FROM special_slots s
     (s.origin='automation' AND s.content IS s.last_auto_value) OR
     (COALESCE(s.content,'')='' AND s.last_auto_value IS NULL))))`;
 export const protectedMexicanSlots = protectedSectionSlots('mexican-night');
+// The same rule for one slot already read. Recurring rollover still honors it;
+// a verified Facebook post newer than the staff save does not (guarded-auto.js).
+export const staffOwnedSectionSlot = s => s.manual_locked !== 0 || !((s.origin === 'manual' && s.manual_locked === 0)
+  || (s.origin === 'automation' && s.content === s.last_auto_value) || (!(s.content ?? '') && s.last_auto_value == null));
+// D1 CURRENT_TIMESTAMP ("YYYY-MM-DD HH:MM:SS") is UTC; ISO strings parse as written.
+export const sqlTime = value => typeof value !== 'string' ? NaN
+  : Date.parse(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value) ? `${value.replace(' ', 'T')}Z` : value);
 
 export function mexicanNightSeedStatements(env,{start,end,now}) {
   const token=crypto.randomUUID();

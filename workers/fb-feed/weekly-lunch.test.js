@@ -140,9 +140,10 @@ test('staff/manual Monday Lunch is preserved; safe Tue-Fri Lunch slots populate'
   const f = harness(t, {now:'2030-01-07T15:00:00Z', caption:'Weekly Lunch Specials', candidate:weeklyLunchCandidate('1/7-1/11')});
   f.state.posts[0].created_time = '2030-01-07T14:00:00Z';
   const mondayLunchGroupId = f.slots(1, 'lunch')[0].group_id;
-  // Lock Monday lunch as manual
-  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=1',
-    'Staff Monday Special', 'manual', 1, mondayLunchGroupId);
+  // Staff corrected Monday lunch after the 14:00 post: that post never undoes it
+  // (docs/facebook-specials-source-of-truth.md).
+  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,manual_edited_at=? WHERE group_id=? AND position=1',
+    'Staff Monday Special', 'manual', 1, '2030-01-07T14:30:00.000Z', mondayLunchGroupId);
   await f.run();
   // Monday stays unchanged
   assert.equal(f.slots(1, 'lunch')[0].content, 'Staff Monday Special');
@@ -173,15 +174,20 @@ test('later day-specific poster can update automation-owned weekly Lunch value',
   assert.equal(f.slots(1, 'lunch')[0].content, 'G Mac Salad & a Drink - $8.50');
 });
 
-test('later day-specific poster cannot overwrite a staff Monday Lunch correction', async t => {
+// Facebook is the canonical source, but a post never undoes a staff correction made after
+// it was published. p2 first appears with creation time 14:00 (its 19:00 updated_time counts
+// only for a stored version that actually changed), so the 15:30 correction stays.
+test('a day-specific poster created before a staff Monday Lunch correction cannot overwrite it', async t => {
   // First run: weekly lunch pipeline writes Monday Lunch via automation
   const f = harness(t, {now:'2030-01-07T15:00:00Z', caption:'Weekly Lunch Specials', candidate:weeklyLunchCandidate('1/7-1/11')});
   f.state.posts[0].created_time = '2030-01-07T14:00:00Z';
   await f.run();
   const mondayLunchGroupId = f.slots(1, 'lunch')[0].group_id;
   // Staff corrects Monday Lunch manually
-  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1',
-    'Staff Lunch', 'manual', 1, 'G Mac Salad & a Drink', mondayLunchGroupId);
+  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=?,manual_edited_at=? WHERE group_id=? AND position=1',
+    'Staff Lunch', 'manual', 1, 'G Mac Salad & a Drink', '2030-01-07T15:30:00.000Z', mondayLunchGroupId);
+  f.state.now = Date.parse('2030-01-07T16:00:00Z');await f.run();
+  assert.equal(f.slots(1, 'lunch')[0].content, 'Staff Lunch', 'the 14:00 weekly poster never undoes the 15:30 correction');
   // Second run: daily Monday poster tries to update
   f.state.now = Date.parse('2030-01-07T20:00:00Z');
   const {poster, offer} = await import('./test-fixture.js');
@@ -193,7 +199,6 @@ test('later day-specific poster cannot overwrite a staff Monday Lunch correction
   f.state.posts = [{...f.state.posts[0], id:'p2', created_time:'2030-01-07T14:00:00Z', updated_time:'2030-01-07T19:00:00Z', full_picture:'https://cdn.example/photo2.jpg'}];
   f.state.candidate = dailyMonday;
   await f.run();
-  // Monday Lunch should remain the staff correction
   assert.equal(f.slots(1, 'lunch')[0].content, 'Staff Lunch');
 });
 

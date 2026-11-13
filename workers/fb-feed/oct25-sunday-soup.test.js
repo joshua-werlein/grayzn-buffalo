@@ -6,6 +6,9 @@ import {reconcilePosterEvidence} from './reconcile.js';
 import {standaloneSoup,soupGroupId} from '../../src/lib/daily-soup.js';
 import {reconcileToday} from './guarded-auto.js';
 import {harness} from './test-fixture.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 
 // Public poster transcriptions only (stored October 25 extractions). The
 // SUNDAY SPECIALS poster prints "Soups: Chicken Noodle or Chili." with a
@@ -106,7 +109,7 @@ test('pipeline: a stored Facebook time outside today cannot publish the soup',as
 test('pipeline: staff-locked Sunday soup is never replaced; the block is audited',async t=>{
   const f=setup(t);const id=soupGroupId('auto-week',0);
   f.sql("INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled) VALUES(?,'auto-week',0,'custom','Soup','',99,1)",id);
-  for(const position of [1,2,3,4]) f.sql("INSERT INTO special_slots(group_id,position,content,origin,manual_locked) VALUES(?,?,?,'manual',?)",id,position,position===1?'Staff: Beef Barley':'',position===1?1:0);
+  for(const position of [1,2,3,4]) f.sql("INSERT INTO special_slots(group_id,position,content,origin,manual_locked,manual_edited_at) VALUES(?,?,?,'manual',?,?)",id,position,position===1?'Staff: Beef Barley':'',position===1?1:0,position===1?'2099-12-31T00:00:00.000Z':null);
   await f.run();
   assert.equal(f.soupRows(0)[0].content,'Staff: Beef Barley');
   assert.deepEqual(f.food(),FOOD);
@@ -119,7 +122,7 @@ const UPPER=['HANG OVER BURGER w/ SIDE SALAD, SOUP OR COLESLAW $10.25','GRILLED 
 for(const locked of [false,true]) test(`pipeline: previously published uppercase All Day rows ${locked?'stay when staff-locked':'are corrected when untouched'}`,async t=>{
   const f=setup(t);await f.run();
   f.slots(0,'all-day').slice(0,2).forEach((s,i)=>locked
-    ? f.sql("UPDATE special_slots SET content=?,origin='manual',manual_locked=1 WHERE group_id=? AND position=?",UPPER[i],s.group_id,s.position)
+    ? f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content=?,origin='manual',manual_locked=1 WHERE group_id=? AND position=?",UPPER[i],s.group_id,s.position)
     : f.sql('UPDATE special_slots SET content=?,last_auto_value=? WHERE group_id=? AND position=?',UPPER[i],UPPER[i],s.group_id,s.position));
   const calls=f.state.aiCalls;
   f.state.now+=30*60000;await f.run();

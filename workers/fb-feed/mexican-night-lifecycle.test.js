@@ -104,13 +104,25 @@ test('valid Facebook menu patches unlocked defaults; repeats preserve Facebook c
   f.state.now=Date.parse('2030-01-21T01:00:00Z');await ensureAutomaticWeek(f.env,following);
   assert.equal(collection(f).section_source,'recurring');assert.equal(slots(f)[0].content,template[0].content);
 });
-test('real staff save protects this week but does not block next Sunday defaults',async t=>{
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// save is kept against posts published before it and replaced by a newer post.
+test('real staff save is kept against an older post, replaced by a newer one, and never blocks next Sunday defaults',async t=>{
   const f=facebookHarness(t);await ensureAutomaticWeek(f.env,sunday);
   const edit=await store.readCollection(f.env,'mexican-night');edit.groups[0].slots[0].content='Staff corrected recipe';
   await store.saveCollection(f.env,edit);
   assert.equal(slots(f)[0].manual_locked,1);assert.equal(collection(f).section_source,'manual');
+  // D1 stamps the save with the wall clock; place it after Monday's 14:00 poster.
+  f.sql("UPDATE special_collections SET updated_at='2030-01-14 14:30:00' WHERE id='mexican-night'");
   const before=snapshot(f);setMondayPoster(f);await f.run();assert.equal(snapshot(f),before);
   await ensureAutomaticWeek(f.env,sunday);assert.equal(snapshot(f),before);
+  // A poster published after the save replaces it; the staff menu, not the template, is its base.
+  f.state.now=Date.parse('2030-01-14T16:00:00Z');
+  f.state.posts=[{...f.state.posts[0],id:'mexican-poster-2',created_time:'2030-01-14T15:30:00Z',updated_time:'2030-01-14T15:30:00Z',full_picture:'https://cdn.example/menu2.jpg'}];
+  await f.run();
+  assert.equal(collection(f).section_source,'facebook');
+  assert.ok(slots(f).some(s=>s.content.includes('Facebook Burrito') && s.origin==='automation'));
+  assert.ok(!slots(f).some(s=>/^Stored Burrito/i.test(s.content)),'the recipe staff renamed does not come back');
+  const published=snapshot(f);await f.run();assert.equal(snapshot(f),published,'each post applies once');
   f.state.now=Date.parse('2030-01-21T01:00:00Z');await ensureAutomaticWeek(f.env,following);
   assert.equal(collection(f).section_week_start,'2030-01-21');
   assert.equal(collection(f).section_source,'recurring');
@@ -118,11 +130,12 @@ test('real staff save protects this week but does not block next Sunday defaults
   assert.ok(slots(f).every(s=>s.manual_locked===0));
 });
 for(const alteration of ["manual_locked=1","content='Untracked manual edit',origin='automation',last_auto_value='Old automation'"])
-test(`current-week protection expires at next-week rollover for ${alteration}`,async t=>{
+test(`a staff value with no save after the post (${alteration}) yields to it; rollover still resets`,async t=>{
   const f=facebookHarness(t);await ensureAutomaticWeek(f.env,sunday);
   f.sql(`UPDATE special_slots SET ${alteration} WHERE group_id=? AND position=1`,slots(f)[0].group_id);
-  const before=snapshot(f);setMondayPoster(f);await f.run();assert.equal(snapshot(f),before);
-  await ensureAutomaticWeek(f.env,sunday);assert.equal(snapshot(f),before);
+  const before=snapshot(f);setMondayPoster(f);await f.run();assert.notEqual(snapshot(f),before);
+  assert.equal(collection(f).section_source,'facebook');
+  const published=snapshot(f);await ensureAutomaticWeek(f.env,sunday);assert.equal(snapshot(f),published);
   f.state.now=Date.parse('2030-01-21T01:00:00Z');await ensureAutomaticWeek(f.env,following);
   assert.equal(collection(f).section_week_start,'2030-01-21');
   assert.equal(collection(f).section_source,'recurring');

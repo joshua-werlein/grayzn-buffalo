@@ -98,7 +98,7 @@ A successful `mexican-night` extraction routes to the Mexican Night section:
 
 ## Manual Edit Protection
 
-Populated staff corrections remain protected. Existing blank-slot eligibility is unchanged; untouched recurring defaults and unchanged automatic values remain eligible according to the current ownership rules. All eligible group changes commit in one transaction with the collection revision, full snapshots of today's groups/slots and source evidence, and audit events. A race affecting an All Day baseline invalidates the night plan as well.
+Superseded November 12, 2026: Facebook is the canonical source ([docs/facebook-specials-source-of-truth.md](facebook-specials-source-of-truth.md)). A verified post replaces automation values, recurring defaults, legacy values, separate prices/links, staff edits, locks and approvals; a staff edit is kept only against posts published before its recorded edit time. All eligible group changes commit in one transaction with the collection revision, full snapshots of today's groups/slots and source evidence, and audit events. A race affecting an All Day baseline invalidates the night plan as well.
 
 ## Fail-Closed Safeguards
 
@@ -150,7 +150,7 @@ In `GUARDED_AUTO` only:
 - On other runs during processing hours, the current Monday–Sunday week is ensured before scanning.
 - No future week is created earlier.
 
-Overlap checks and template copying happen in one transaction. Existing/overlapping weeks are left unchanged. Group structure and recurring values copy exactly; recurring slots start with manual origin and `manual_locked=0`, while `NULL`/empty slots become explicit empty strings. Staff edits acquire manual protection. Slots with a price or section link remain protected from daily automatic replacement.
+Overlap checks and template copying happen in one transaction. Existing/overlapping weeks are left unchanged. Group structure and recurring values copy exactly; recurring slots start with manual origin and `manual_locked=0`, while `NULL`/empty slots become explicit empty strings. Staff edits record their edit time. A verified post newer than that time replaces them; a replacement clears any separate price or section link ([docs/facebook-specials-source-of-truth.md](facebook-specials-source-of-truth.md)).
 
 `OFF` and `DRY_RUN` never create weeks. The admin's default view reads the unique week containing today's Chicago date. Explicit week selection and the explicit new-week action retain their behavior. No GET creates weeks. Recovery requires migration 0021; it does not change the weekly/Mexican defaults lifecycle.
 

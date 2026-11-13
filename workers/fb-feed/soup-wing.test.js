@@ -11,6 +11,9 @@ import {standaloneSoup,soupGroupId,withSoupControls} from '../../src/lib/daily-s
 import {loadTs} from '../../tests/load-ts.mjs';
 import {extractionPrompt} from './extraction.js';
 import {normalizeMenuCase} from '../../src/lib/text-case.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 const store=loadTs('src/lib/specials-store.ts');
 const exact=JSON.parse(readFileSync(new URL('../../tests/fixtures/oct7-wednesday.json',import.meta.url),'utf8'));
 const wing='Wing Night!\nBone-In Wings $.89 each\nBoneless Wings $.99 each';
@@ -108,11 +111,12 @@ for(const action of ['manual','hide','clear']) test(`staff ${action} protects So
   if(action==='manual')g.slots[0].content='Tomato';else if(action==='hide')g.enabled=0;else g.slots[0].content='';
   await store.saveCollection(f.env,week.collection,{start:week.week_start_date,end:week.week_end_date});await reconcile(f);
   assert.equal(soup(f)[0].content,action==='manual'?'Tomato':action==='clear'?'':'French Onion or Chili');
-  if(action==='manual')assert.equal(soup(f)[0].manual_locked,1);else assert.equal(soupGroup(f).enabled,0);
+  // A Soup edit records its time like every weekly edit: only a newer post may replace it.
+  if(action==='manual'){assert.equal(soup(f)[0].manual_locked,1);assert.equal(soup(f)[0].manual_edited_at,new Date(f.state.now).toISOString());}else assert.equal(soupGroup(f).enabled,0);
 });
 test('manual Wednesday Nightly remains protected while Soup and sandwiches publish',async t=>{
-  const f=setup(t);f.sql("UPDATE special_slots SET content='Staff Wing special',manual_locked=1 WHERE group_id=? AND position=1",f.slots()[0].group_id);
-  await f.run();assert.equal(f.slots()[0].content,'Staff Wing special');assert.equal(soup(f)[0].content,'French Onion or Chili');assert.match(audit(f).at(-1).detail,/Protected/);
+  const f=setup(t);f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff Wing special',manual_locked=1 WHERE group_id=? AND position=1",f.slots()[0].group_id);
+  await f.run();assert.equal(f.slots()[0].content,'Staff Wing special');assert.equal(soup(f)[0].content,'French Onion or Chili');assert.match(audit(f).at(-1).detail,/Newer staff edit retained/);
 });
 for(const race of ['revision','slot','group','source','pending','failure'])test(`Soup creation is atomic under ${race} race/failure`,async t=>{
   const f=setup(t);await f.run();f.sql('DELETE FROM special_groups WHERE id=?',soupGroupId('auto-week',3));

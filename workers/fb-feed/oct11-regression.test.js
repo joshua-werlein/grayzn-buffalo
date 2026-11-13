@@ -5,6 +5,9 @@ import {validateEvidence,reconcilePosterEvidence} from './reconcile.js';
 import {reconcileToday} from './guarded-auto.js';
 import {harness} from './test-fixture.js';
 import {soupGroupId} from '../../src/lib/daily-soup.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 
 // Exact extracted_json from production import 7276d795cf8df30e7627cf85ebb27fe6.
 const exact=JSON.parse(readFileSync(new URL('../../tests/fixtures/oct11-sunday.json',import.meta.url),'utf8'));
@@ -102,12 +105,12 @@ test('same-day Graph timestamp fallback publishes a poster with no weekday anywh
 });
 for(const protection of ['staff meal','extra meal','disabled lunch','staff soup']) test(`Sunday staged recovery respects ${protection}`,async t=>{
   const f=setup(t);await stage(f);const lunch=f.slots(0,'lunch')[0].group_id,soup=soupGroupId('auto-week',0);
-  if(protection==='staff meal') f.sql("UPDATE special_slots SET content='Staff meal $8',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",lunch);
-  if(protection==='extra meal') f.sql("UPDATE special_slots SET content='Staff extra $5',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",lunch);
+  if(protection==='staff meal') f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff meal $8',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",lunch);
+  if(protection==='extra meal') f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff extra $5',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",lunch);
   if(protection==='disabled lunch') f.sql('UPDATE special_groups SET enabled=0 WHERE id=?',lunch);
   if(protection==='staff soup') {
     f.sql("INSERT INTO special_groups VALUES(?,'auto-week',0,'custom','Soup','',99,1)",soup);
-    f.sql("INSERT INTO special_slots(group_id,position,content,origin,manual_locked) SELECT ?,value,CASE WHEN value=1 THEN 'Staff Soup' ELSE '' END,'manual',1 FROM json_each('[1,2,3,4]')",soup);
+    f.sql("INSERT INTO special_slots(group_id,position,content,origin,manual_locked,manual_edited_at) SELECT ?,value,CASE WHEN value=1 THEN 'Staff Soup' ELSE '' END,'manual',1,CASE WHEN value=1 THEN '2099-12-31T00:00:00.000Z' END FROM json_each('[1,2,3,4]')",soup);
   }
   const group=protection==='staff soup'?soup:lunch,before=f.sql('SELECT * FROM special_slots WHERE group_id=? ORDER BY position',group);
   await f.run();assert.deepEqual(f.sql('SELECT * FROM special_slots WHERE group_id=? ORDER BY position',group),before);

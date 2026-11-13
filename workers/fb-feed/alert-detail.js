@@ -73,14 +73,13 @@ export function dailyAlertDetail(result, data, day, weekday) {
       const staffLocked = !!slot && slot.manual_locked===1 && !!slot.content;
       const disabled = group?.enabled===0 || (b.reason==='Missing, disabled or ambiguous destination'
         && todays.filter(g=>g.service===b.service).length===1 && todays.find(g=>g.service===b.service)?.enabled===0);
-      const intentional = (b.reason===PROTECTED && staffLocked) || b.reason===NEWER_STAFF_EDIT || disabled;
-      if ((b?.reason===PROTECTED && staffLocked) || b?.reason===NEWER_STAFF_EDIT) protectedCount++;
+      // Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): only a
+      // staff correction made after the post, or a disabled destination, is intentional.
+      // A lock alone never is; a PROTECTED hold now means the slot itself is missing.
+      const intentional = b.reason===NEWER_STAFF_EDIT || disabled;
+      if (b?.reason===NEWER_STAFF_EDIT) protectedCount++;
       const reason = b.reason===NEWER_STAFF_EDIT ? 'Staff edit is newer than this Facebook post; existing website value retained' : b.reason===PROTECTED
-        ? staffLocked ? 'Staff-locked destination; existing website value retained'
-          : !slot ? 'Destination slot is missing; automatic publication withheld'
-          : slot.price ? 'Destination has a separate price; automatic replacement is ineligible'
-          : slot.section_link ? 'Destination links to another section; automatic replacement is ineligible'
-          : slot.origin==='automation' && slot.content!==slot.last_auto_value ? 'Website value differs from the last automated value; retained for review'
+        ? !slot ? 'Destination slot is missing; automatic publication withheld'
           : 'Destination slot is ineligible; existing website value retained'
         : disabled ? 'Staff-disabled destination; automatic publication withheld' : known(b.reason);
       destinations.push({category:label(b.service),position:Number.isSafeInteger(b.position) && b.position>0 ? b.position : null,
@@ -213,7 +212,7 @@ export function weeklyAlertDetail({day, data, sources=[], failures=[], inspectio
     const failing = new Set(failures.flatMap(f=>[f.day,...(f.days??[])]).filter(d=>Number.isInteger(d)));
     const daysWith = reasons => [...new Set((Array.isArray(inspection)?inspection:[]).flatMap(r=>(r.held??[])
       .filter(h=>reasons.includes(h.reason) && Number.isInteger(h.day) && h.day>=1 && h.day<=5 && !failing.has(h.day)).map(h=>h.day)))].sort().map(d=>DAY_NAMES[d]);
-    const publishedDays = daysWith(['published']), protectedDays = daysWith(['staff_locked','disabled','staff_cleared','staff_edit_newer']), retainedDays = daysWith(['retained']);
+    const publishedDays = daysWith(['published']), protectedDays = daysWith(['disabled','staff_edit_newer']), retainedDays = daysWith(['retained']);
     const first = failures.map(f=>f.day ?? f.days?.[0]).find(d=>Number.isInteger(d) && d>=1 && d<=5);
     const reviewUrls = sources.filter(s=>/^[a-zA-Z0-9_-]{1,100}$/.test(s.id)).slice(0,6).map(s=>`${SITE}/admin/automation?date=${day}#import-${s.id}`);
     const posts = sources.flatMap(s=>{
@@ -337,7 +336,7 @@ function formatWeeklyText({day, code, summary, detail:d, firstSeenMs}) {
     for (const h of d.weeklyHolds) lines.push(`- ${h.days.length ? h.days.join(', ') : 'Weekly poster'}: ${h.reason}`);
   }
   lines.push('', `Published by automation: ${d.publishedDays?.length ? d.publishedDays.join(', ') : 'none verified'}`);
-  if (d.protectedDays?.length) lines.push(`Staff-protected (kept, not a failure): ${d.protectedDays.join(', ')}`);
+  if (d.protectedDays?.length) lines.push(`Staff corrections newer than the post, or disabled (kept, not a failure): ${d.protectedDays.join(', ')}`);
   if (d.retainedDays?.length) lines.push(`Daily poster value kept (precedence, not a failure): ${d.retainedDays.join(', ')}`);
   lines.push('', 'Daily specials publication does not establish Weekly Lunch publication.');
   lines.push('', `Automatic retry: ${RETRY[code] ?? 'none pending'}`);
@@ -392,7 +391,7 @@ export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
     if (d.holds.some(h=>h.category==='Unidentified service'))
       lines.push('  (The service could not be identified, so no slot is named. If the post is a holiday, game day or other one-time promotion, publish it as a Special Event from Automation Review instead of a daily slot.)');
   }
-  if (d?.protectedCount) lines.push(`Staff-protected values kept: ${d.protectedCount}`);
+  if (d?.protectedCount) lines.push(`Staff corrections newer than the post kept: ${d.protectedCount}`);
   for(const p of d?.noPrice??[]) lines.push(`Published without a printed price: ${d.weekday} ${p.category} #${p.position}`);
   for(const h of d?.destinations??[]) {
     lines.push(`Destination: ${d.weekday} ${h.category}${h.position ? ` #${h.position}` : ' (slot unverified)'}`,
@@ -420,7 +419,7 @@ export function formatAlertText({day, code, summary, detail, firstSeenMs}) {
   } else if(d?.informational) {
     lines.push('Staff action: optional. The staff-entered value or disabled destination was preserved. Review only if you want to change that choice.',`Open: ${d.editorUrl}`);
   } else {
-    lines.push(`Correction: needed${d ? ` for ${d.weekday}` : ''}. Review the held imports and use Approve & Publish; approved values are protected from automation. The specials editor is also available.`);
+    lines.push(`Correction: needed${d ? ` for ${d.weekday}` : ''}. Review the held imports and use Approve & Publish; approved values stay until a newer Facebook post replaces them. The specials editor is also available.`);
     lines.push(`Open: ${d?.editorUrl ?? `${SITE}/admin/specials`}`);
   }
   if (code!=='delivery_failed' && /^\d{4}-\d{2}-\d{2}$/.test(day)) {

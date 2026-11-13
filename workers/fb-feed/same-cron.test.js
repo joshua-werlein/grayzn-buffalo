@@ -7,6 +7,9 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {reconcilePosterEvidence} from './reconcile.js';
 import {harness} from './test-fixture.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 
 const NIGHT=JSON.parse(readFileSync(new URL('../../tests/fixtures/contract2-eval/oct05-mon-night.json',import.meta.url),'utf8')).first_reading;
 const BLT='BLT on Texas Toast w/ Side Salad or Coleslaw - $10.25',CHICKEN='Chicken Salad Sandwich w/ Cup of Coleslaw - $7.25';
@@ -62,7 +65,7 @@ test('integration: day and night posts found in one cron publish atomically; a s
   f.env.AI.run=async(_m,request)=>{f.state.aiCalls++;const text=request.messages[1].content[0].text;
     return {response:JSON.stringify(responses[Object.keys(responses).find(k=>text.includes(k))])};};
   const nightly=f.slots(1,'nightly')[0].group_id;
-  f.sql("UPDATE special_slots SET content='Staff Steak $22',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",nightly);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff Steak $22',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",nightly);
   await f.run();
   assert.equal(f.slots(1,'lunch')[0].content,'Caesar Salad and a Drink - $9.75');
   assert.deepEqual(f.slots(1,'all-day').slice(0,2).map(s=>s.content),[PUBLISHED_BLT,CHICKEN]);

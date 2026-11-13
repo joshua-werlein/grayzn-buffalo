@@ -151,7 +151,8 @@ test('staff review during AI prevents completion and automatic requeue',async t=
 
 test('manual slot correction between attempts wins over recovered Facebook evidence',async t=>{
   const f=harness(t);failOnce(f);await f.run();const slot=f.slots()[0];
-  f.sql("UPDATE special_slots SET content='Staff correction',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",slot.group_id);
+  // The correction is recorded after the 14:00 post, so the recovered reading never undoes it.
+  f.sql("UPDATE special_slots SET content='Staff correction',origin='manual',manual_locked=1,manual_edited_at='2030-01-09T15:00:00.000Z' WHERE group_id=? AND position=1",slot.group_id);
   advance(f);await f.run();assert.equal(row(f).processing_status,'staged');assert.equal(f.slots()[0].content,'Staff correction');
 });
 
@@ -221,7 +222,8 @@ test('weekly lunch recovery fills today/future days without backfilling elapsed 
 for(const manual of [false,true]) test(`Mexican Night recovery retains separate collection and manual protection (${manual})`,async t=>{
   const f=harness(t,{now:'2030-01-08T15:00:00Z',candidate:{type:'mexican-night',poster_evidence:'Mexican Night',schedule:'5-10 PM',groups:[{label:'Entrees',items:[{title:'Taco $5',description:'Beef'}]}]}});
   f.state.posts[0].created_time=f.state.posts[0].updated_time='2030-01-08T14:00:00Z';
-  if(manual)f.sql("UPDATE special_collections SET section_source='manual' WHERE id='mexican-night'");
+  // A staff save recorded after the 14:00 post: that post never undoes it.
+  if(manual)f.sql("UPDATE special_collections SET section_source='manual',updated_at='2030-01-08T14:30:00.000Z' WHERE id='mexican-night'");
   failOnce(f);await f.run();advance(f);await f.run();assert.equal(row(f).processing_status,'staged');
   assert.equal(f.sql("SELECT section_source FROM special_collections WHERE id='mexican-night'")[0].section_source,manual?'manual':'facebook');
   assert.ok(f.slots(2,'nightly').every(s=>s.content===''));
@@ -271,7 +273,7 @@ test('November 8: Workers AI 8005 retries once due, recovers Sunday offers and p
   Object.assign(f.env,{SPECIALS_EVIDENCE_VERSION:'2',SPECIALS_VERIFICATION_STRATEGY:'conditional'});
   f.state.candidate=JSON.parse(readFileSync(new URL('../../tests/fixtures/nov8-sunday-specials.json',import.meta.url),'utf8'));
   const id=f.slots(0,'all-day')[0].group_id;
-  f.sql("UPDATE special_slots SET content='Staff correction',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",id);
+  f.sql("UPDATE special_slots SET content='Staff correction',origin='manual',manual_locked=1,manual_edited_at='2026-11-08T15:58:00.000Z' WHERE group_id=? AND position=2",id);
   const run=f.env.AI.run;let first=true;
   f.env.AI.run=async(...args)=>{if(first){first=false;f.state.aiCalls++;throw Error('AiError: 8005: Internal server error');}return run(...args);};
   await f.run();assert.equal(row(f).processing_status,'pending');assert.equal(row(f).failure_kind,'transient_ai');

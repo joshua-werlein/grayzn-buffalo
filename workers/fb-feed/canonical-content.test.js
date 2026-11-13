@@ -159,10 +159,11 @@ test('canonicalizeSlotContent: Tuesday (Mexican Night day) nightly content is no
 test('manual-locked Wednesday nightly slot is protected from canonical Wing Night write', async t => {
   const f = harness(t);
   const nightGroup = f.sql("SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=3 AND service='nightly'")[0];
-  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=1',
-    'Staff special wing night entry', 'manual', 1, nightGroup.id);
+  // A staff correction recorded after the post (Facebook is the canonical source, but the
+  // same post never undoes a later correction: docs/facebook-specials-source-of-truth.md).
+  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,manual_edited_at=? WHERE group_id=? AND position=1',
+    'Staff special wing night entry', 'manual', 1, '2030-01-09T14:30:00.000Z', nightGroup.id);
   await f.run();
-  // manual_locked=1 + populated content → protected by safe() regardless of canonical override
   assert.equal(f.slots(3, 'nightly')[0].content, 'Staff special wing night entry');
   assert.equal(f.slots(3, 'nightly')[0].manual_locked, 1);
 });
@@ -174,8 +175,8 @@ test('manual-locked Thursday nightly slot is protected from canonical Pizza Nigh
   const f = harness(t, {now: '2030-01-10T15:00:00Z', candidate: pizzaPoster});
   f.state.posts[0].created_time = '2030-01-10T14:00:00Z';
   const nightGroup = f.sql("SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=4 AND service='nightly'")[0];
-  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=1',
-    'Thursday staff entry', 'manual', 1, nightGroup.id);
+  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,manual_edited_at=? WHERE group_id=? AND position=1',
+    'Thursday staff entry', 'manual', 1, '2030-01-10T14:30:00.000Z', nightGroup.id);
   await f.run();
   assert.equal(f.slots(4, 'nightly')[0].content, 'Thursday staff entry');
   assert.equal(f.slots(4, 'nightly')[0].manual_locked, 1);

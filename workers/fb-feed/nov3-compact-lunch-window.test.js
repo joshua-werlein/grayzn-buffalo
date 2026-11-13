@@ -163,10 +163,12 @@ test('a mismatched meal stays held and keeps the priceless weekly lunch, All Day
   assert.match(f.sql("SELECT detail FROM special_import_events WHERE detail LIKE 'GUARDED_AUTO_CONFLICT%'")[0].detail,/Meal facts differ from original evidence/);
 });
 
-test('a staff-locked lunch is never replaced by the poster or a later post; other days are unaffected',async t=>{
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction made after the 15:35 post stays through it, and a newer post replaces it.
+test('a staff correction survives the earlier poster but a later post replaces it; other days are unaffected',async t=>{
   const STAFF='Hoagie Sandwich With Waffle Fries and A Drink $9.50';
   const f=setup(t);
-  f.setLunch(2,"content=?,origin='manual',manual_locked=1",STAFF);
+  f.setLunch(2,"content=?,origin='manual',manual_locked=1,manual_edited_at='2026-11-03T15:40:00.000Z'",STAFF);
   await f.run();
   assert.equal(f.slots(2,'lunch')[0].content,STAFF);
   assert.deepEqual(f.slots(2,'all-day').slice(0,2).map(s=>s.content),[TURKEY,HAM].map(normalizeMenuCase));
@@ -175,7 +177,7 @@ test('a staff-locked lunch is never replaced by the poster or a later post; othe
   f.state.now+=20*60000;
   await f.run();
   const lunch=f.slots(2,'lunch')[0];
-  assert.equal(lunch.content,STAFF);assert.equal(lunch.manual_locked,1);assert.equal(lunch.origin,'manual');
+  assert.equal(lunch.content,normalizeMenuCase(LUNCH.replace('9.75','10.00')));assert.equal(lunch.manual_locked,0);assert.equal(lunch.origin,'automation');
   assert.equal(f.slots(3,'lunch')[0].content,WEEKLY);
-  assert.match(f.sql("SELECT detail FROM special_import_events WHERE detail LIKE 'GUARDED_AUTO_CONFLICT%' ORDER BY id DESC")[0].detail,/Protected or ineligible destination slot/);
+  assert.match(f.sql("SELECT detail FROM special_import_events WHERE detail LIKE 'GUARDED_AUTO_CONFLICT%' ORDER BY id DESC")[0].detail,/Newer staff edit retained/,'the earlier poster was held, not published');
 });

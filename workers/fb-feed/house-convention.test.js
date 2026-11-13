@@ -10,6 +10,9 @@ import {readFileSync} from 'node:fs';
 import {reconcilePosterEvidence} from './reconcile.js';
 import {harness} from './test-fixture.js';
 import {reconcileToday} from './guarded-auto.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 
 const fixture=name=>JSON.parse(readFileSync(new URL(`../../tests/fixtures/${name}.json`,import.meta.url),'utf8'));
 const OCT10=fixture('oct10-saturday'),OCT11=fixture('oct11-sunday');
@@ -72,7 +75,7 @@ test('integration October 30: lunch and missing All Day publish while the manual
   const f=setupDay(t,OCT30,{now:'2026-10-30T15:15:00Z',weekStart:'2026-10-26',weekEnd:'2026-11-01',created:'2026-10-30T15:11:07Z'});
   const group=f.slots(5,'all-day')[0].group_id;
   const manual='Grilled Ham and Cheese with a Cup of Coleslaw $7.25';
-  f.sql("UPDATE special_slots SET content=?,origin='manual',manual_locked=1 WHERE group_id=? AND position=2",manual,group);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content=?,origin='manual',manual_locked=1 WHERE group_id=? AND position=2",manual,group);
   const protectedBefore=f.slots(5,'all-day')[1];
   await f.run();
   assert.equal(f.slots(5,'lunch')[0].content,OCT30.offers[0].content);
@@ -218,7 +221,7 @@ const SUNDAY={now:'2026-10-11T17:30:00Z',weekStart:'2026-10-05',weekEnd:'2026-10
 test('integration October 11: Sunday Special and All Day publish, a staff-locked slot and disabled Nightly are untouched',async t=>{
   const f=setupDay(t,{...OCT11,evidence_version:2},SUNDAY);
   const allDay=f.slots(0,'all-day')[0].group_id;
-  f.sql("UPDATE special_slots SET content='Staff Reuben $11',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",allDay);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff Reuben $11',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",allDay);
   await f.run();
   assert.equal(f.slots(0,'lunch')[0].content,'16" 3-Topping Pizza 12 Wings $30');
   const [one,two]=f.slots(0,'all-day');

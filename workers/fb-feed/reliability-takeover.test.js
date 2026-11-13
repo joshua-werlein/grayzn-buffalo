@@ -68,7 +68,7 @@ test('two offers anchored to the same slot remain ambiguous and are held',()=>{
 test('integration: staff-locked slot 1 already holding offer 2 is untouched; offer 1 publishes to slot 2',async t=>{
   const f=setup(t,reliable([offer('Burger $10'),offer('Salad $9')]));
   const id=f.slots(1,'all-day')[0].group_id;
-  f.sql("UPDATE special_slots SET content='Salad $9',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Salad $9',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",id);
   await f.run();
   const [one,two]=f.slots(1,'all-day');
   assert.deepEqual([one.content,one.origin,one.manual_locked],['Salad $9','manual',1]);
@@ -78,7 +78,7 @@ test('integration: staff-locked slot holding an unrelated value is never overwri
   const f=setup(t,reliable([offer('Burger $10'),offer('Salad $9')]));
   const id=f.slots(1,'all-day')[0].group_id;
   f.sql("UPDATE special_slots SET content='Salad $9',origin='automation',manual_locked=0,last_auto_value='Salad $9' WHERE group_id=? AND position=1",id);
-  f.sql("UPDATE special_slots SET content='Staff Fish $12',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff Fish $12',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",id);
   await f.run();
   assert.deepEqual(f.slots(1,'all-day').slice(0,2).map(s=>[s.content,s.manual_locked]),[['Salad $9',0],['Staff Fish $12',1]]);
 });
@@ -203,6 +203,9 @@ test('October 12: priced lunch replaces the weekly reading, verified All Day pub
 // Workers AI emitted every key in sorted order. A key common to all shapes let the
 // first token choose mexican-night for every daily poster. Guard the schema itself.
 import {RELIABLE_EXTRACTION_SCHEMA,buildReliableExtractionRequest} from './extraction.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 test("contract-2 schema: each shape's first sorted key belongs to no other shape",()=>{
   // Otherwise a model opening with that key, intending another shape, is locked into this one.
   const shapes=RELIABLE_EXTRACTION_SCHEMA.anyOf.map(shape=>Object.keys(shape.properties));

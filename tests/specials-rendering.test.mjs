@@ -261,7 +261,9 @@ test('compiled admin preserves drafts on stale POST and rejects wrong origin wit
   assert.ok(html.includes('data-active-day="6"'));assert.deepEqual(f.sql('SELECT * FROM special_slots ORDER BY group_id,position'),before);
 });
 
-test('compiled Admin new-week POST saves recurring prefills unlocked, honors Lock, and renders it checked',async t=>{
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): the editor no
+// longer offers a lock. A lock field from a form opened earlier still saves, with its edit time.
+test('compiled Admin new-week POST saves recurring prefills unlocked, honors an older form\'s Lock, and renders no lock control',async t=>{
   const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};
   const defaults=await s.readCollection(f.env,'defaults');
   const group=defaults.groups.find(g=>g.day_of_week===6 && g.service==='all-day');
@@ -287,11 +289,9 @@ test('compiled Admin new-week POST saves recurring prefills unlocked, honors Loc
     [['Recurring Sandwich $10.25','manual',0],['Staff Correction $12','manual',1]]);
   const page=await (await container.renderToResponse(adminPage,{request:new Request(`http://localhost/admin/specials?week=${weekId}`,{
     headers:{cookie:'gb_session='+'a'.repeat(32)}}),locals:{runtime:{env:f.env}}})).text();
-  const index=(await s.readWeek(f.env,weekId)).collection.groups.findIndex(g=>g.day_of_week===6 && g.service==='all-day');
-  const lockInput=position=>new RegExp(`<input[^>]*name="g${index}_${position}_locked"[^>]*>`).exec(page)?.[0];
-  assert.match(page,/Lock: keep this special even when Facebook posts something newer/);
-  assert.doesNotMatch(lockInput(1),/checked/);
-  assert.match(lockInput(2),/checked/);
+  assert.ok(slots[1].manual_edited_at,'the staff correction records its edit time');
+  assert.doesNotMatch(page,/_locked"|Lock: keep this special even when Facebook posts something newer/);
+  assert.match(page,/A newer Facebook post replaces them/);
 });
 
 test('compiled simple editor has service-specific inputs, inline prices and no database controls',async t=>{

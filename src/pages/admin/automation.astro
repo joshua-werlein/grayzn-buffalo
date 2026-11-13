@@ -179,11 +179,11 @@ const eventDisplay=review && today ? await eventDisplaySupported(env) : false;
 
     <details class="review-panel compare">
       <summary>Compare with what’s on the website now</summary>
-      <p class="hint">Shows what is saved now, not what visitors saw on past dates. Specials marked “Edited by staff” are protected — automation won’t change them.</p>
+      <p class="hint">Shows what is saved now, not what visitors saw on past dates. Specials marked “Edited by staff” stay until a newer Facebook post replaces them; Facebook is the source of truth for specials.</p>
       {!review.groups.length && <p>No saved specials for this day.</p>}
       {review.groups.map(group=><div class="compare-group">
         <h4>{group.label || group.service}{group.collection_id==='mexican-night' && ' · Mexican Night'}{group.time && <span class="hint"> · {group.time}</span>}</h4>
-        {group.slots.length ? <ul class="offers">{group.slots.map(slot=>{const lock=protectionLabel(slot.protection);return <li>{slot.value}{lock.startsWith('Protected') && <span class="tag">{lock==='Protected — edited by staff'?'Edited by staff':'Protected'}</span>}</li>;})}</ul> : <p>Nothing saved.</p>}
+        {group.slots.length ? <ul class="offers">{group.slots.map(slot=>{const lock=protectionLabel(slot.protection);return <li>{slot.value}{lock.startsWith('Edited') && <span class="tag">Edited by staff</span>}</li>;})}</ul> : <p>Nothing saved.</p>}
         <p class="hint">{group.visibility}</p>
       </div>)}
       {review.eventsUnavailable && <p>Special events couldn’t be loaded. Daily and weekly specials are still shown.</p>}

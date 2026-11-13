@@ -100,7 +100,7 @@ test('homepage and /specials render events once, above the ordinary specials, ne
     assert.match(section,/Brewers Game Special/);assert.match(section,/Pulled Pork Sandwich With Chips and Side of Coleslaw/);
     assert.match(section,/<span class="event-card__price"[^>]*>\$7\.25<\/span>/);
     assert.match(section,/event-card__badge--today[^>]*>Today</);
-    assert.match(section,/>Upcoming</);assert.match(section,/<time datetime="2026-10-25T11:00"[^>]*>Sun, Oct 25<\/time>/);
+    assert.match(section,/>Upcoming</);assert.match(section,/<time datetime="2026-10-25T11:00"[^>]*>Sunday · Oct 25<\/time>/);
     assert.match(section,/11 AM–3 PM/);assert.match(section,/Tonight/);
     // The upcoming Sunday offer is never labelled Today and appears only in the event section.
     assert.equal((html.match(/Pulled Pork Sandwich w\/ Chips/g)||[]).length,1);
@@ -130,7 +130,10 @@ test('event text is escaped everywhere it is rendered',async t=>{
 
 test('event card CSS: one antique-gold style, horizontal on desktop, stacked on mobile, no overflow and no animation',()=>{
   const css=readFileSync('src/components/EventSpecials.astro','utf8').split('<style>')[1];
-  assert.match(css,/grid-template-columns:minmax\(12rem,1\.1fr\) minmax\(9rem,\.7fr\) minmax\(0,2\.4fr\)/);
+  // Date, time and title on the left; each offer with its price aligned far right.
+  assert.match(css,/grid-template-columns:minmax\(11rem,1fr\) minmax\(0,2\.6fr\)/);
+  // The state badge overlaps the top border, like the daily specials' TODAY tag.
+  assert.match(css,/\.event-card__badge\{[^}]*position:absolute;top:-10px;left:12px/);
   assert.match(css,/@media \(max-width:599px\)\{[\s\S]*grid-template-columns:minmax\(0,1fr\)/);
   assert.match(css,/overflow-wrap:anywhere/);
   assert.doesNotMatch(css,/animation|transition|@keyframes|brewers|packers|team/i);

@@ -120,7 +120,7 @@ Both adapters use the existing incident table; migration 0023 is unchanged. Cond
 
 Incidents use day/subsystem scopes (delivery and daily), so cron/webhook processing the same source set does not open one incident per trigger. Normal success, no affirmative evidence, cancellation, staff decisions and pending work do not create incident rows. Their observations only update existing incidents. Original generic lifecycle APIs retain their increment-1 behavior; this no-noise rule applies to guarded pipeline observations. No raw snapshot is persisted in incident content or logged.
 
-Daily rejected/blocked proposals remain actionable even when other food slots publish. Staff-locked destinations are suppressed. A uniquely disabled destination and additional existing slots involving a staff lock are conservatively treated as intentional based on the fenced group/slot snapshot. This can withhold a warning in a mixed protected group; it avoids notifying about deliberate staff choices. Lunch capacity remains exactly one.
+Daily rejected/blocked proposals remain actionable even when other food slots publish. Since November 12, 2026 ([docs/facebook-specials-source-of-truth.md](facebook-specials-source-of-truth.md)) a staff lock is no longer a reason to suppress: only a staff correction recorded after the post (`Newer staff edit retained`) and a uniquely disabled destination are intentional. A failed import for a locked destination, extra slots beside a lock, and a Mexican Night post newer than a staff save all alert. Lunch capacity remains exactly one.
 
 ### Limits retained for the next increment
 

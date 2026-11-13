@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {harness} from './test-fixture.js';
 import {validateEvidence,reconcilePosters} from './reconcile.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 
 const oct2=()=>({day_evidence:'Friday',day_of_week:5,poster_evidence:'Friday Lunch Specials',offers:[
   {content:'1) FISH SANDWICH W/ FRIES + DRINK',evidence:'1) FISH SANDWICH W/ FRIES + DRINK',service_time:'(11 AM - 1:30 PM) $9.75'},
@@ -57,7 +60,7 @@ test('conflicting content price and recovered content overflow fail closed',()=>
 });
 test('Oct 2 protected All Day 1 preserves staff value, writes other two offers, and audits blocked offer',async t=>{
   const f=setup(t),id=f.slots(5,'all-day')[0].group_id;
-  f.sql("UPDATE special_slots SET content='Staff correction',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff correction',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",id);
   const staff=f.slots(5,'all-day')[0];
   await f.run();
   assert.equal(f.slots(5,'lunch')[0].content,titleCased[0]);
@@ -68,7 +71,7 @@ test('Oct 2 protected All Day 1 preserves staff value, writes other two offers, 
   assert.equal(f.imports()[0].extracted_json,JSON.stringify(oct2()));
   assert.match(audit(f)[0].detail,/2 slot\(s\); CONFLICT: 1/);
   const blocked=JSON.parse(audit(f).at(-1).detail.split('blocked proposals: ')[1]);
-  assert.deepEqual(blocked,[{day_of_week:5,service:'all-day',group_id:id,position:1,content:titleCased[1],reason:'Protected or ineligible destination slot'}]);
+  assert.deepEqual(blocked,[{day_of_week:5,service:'all-day',group_id:id,position:1,content:titleCased[1],reason:'Newer staff edit retained'}]);
   const events=audit(f),rev=revision(f);
   await f.run();assert.deepEqual(audit(f),events);assert.equal(revision(f),rev);assert.equal(f.state.aiCalls,1);
 });
@@ -83,7 +86,7 @@ for (const defaults of [false,true]) test(`Oct 2 all three offers reconcile norm
 });
 test('all destinations protected still records conflict without writing specials; repeats are idempotent',async t=>{
   const f=setup(t);
-  f.sql("UPDATE special_slots SET content='Staff',origin='manual',manual_locked=1 WHERE group_id IN (?,?) AND position<=2",f.slots(5,'lunch')[0].group_id,f.slots(5,'all-day')[0].group_id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff',origin='manual',manual_locked=1 WHERE group_id IN (?,?) AND position<=2",f.slots(5,'lunch')[0].group_id,f.slots(5,'all-day')[0].group_id);
   const before=f.sql("SELECT * FROM special_slots WHERE group_id NOT LIKE 'ww-%'");
   await f.run();assert.deepEqual(f.sql("SELECT * FROM special_slots WHERE group_id NOT LIKE 'ww-%'"),before);
   assert.match(audit(f).at(-1).detail,/GUARDED_AUTO_CONFLICT/);
@@ -91,10 +94,10 @@ test('all destinations protected still records conflict without writing specials
 });
 test('concurrent staff edit invalidates partial writes and conflict audit together',async t=>{
   const f=setup(t),id=f.slots(5,'all-day')[0].group_id;
-  f.sql("UPDATE special_slots SET content='Staff',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",id);
   const batch=f.env.DB.batch;
   f.env.DB.batch=async statements=>{
-    if(statements[0].sql.startsWith('UPDATE special_collections')) f.sql("UPDATE special_slots SET content='Racing staff',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",id);
+    if(statements[0].sql.startsWith('UPDATE special_collections')) f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Racing staff',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",id);
     return batch(statements);
   };
   await f.run();assert.equal(f.slots(5,'lunch')[0].content,'');assert.equal(f.slots(5,'all-day')[1].content,'Racing staff');
@@ -112,7 +115,7 @@ test('existing parser 16 staged evidence recovers prices without another AI extr
 });
 test('failed partial-conflict transaction rolls back writes, revision and audit',async t=>{
   const f=setup(t);
-  f.sql("UPDATE special_slots SET content='Staff',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",f.slots(5,'all-day')[0].group_id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",f.slots(5,'all-day')[0].group_id);
   const before=f.sql("SELECT * FROM special_slots WHERE group_id NOT LIKE 'ww-%'"),batch=f.env.DB.batch;
   f.env.DB.batch=statements=>batch(statements[0].sql.startsWith('UPDATE special_collections') ? [...statements,{sql:'INSERT INTO missing_table VALUES(1)',args:[]}] : statements);
   await assert.rejects(()=>f.run());

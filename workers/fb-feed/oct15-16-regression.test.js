@@ -5,6 +5,9 @@ import {normalizeEvidenceOffer} from './evidence.js';
 import {reconcilePosterEvidence} from './reconcile.js';
 import {reconcileToday} from './guarded-auto.js';
 import {harness} from './test-fixture.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 
 const exports=JSON.parse(readFileSync(new URL('../../tests/fixtures/oct15-16-production.json',import.meta.url),'utf8'));
 const rows=exports.imports[0].results;
@@ -134,7 +137,7 @@ for(const i of [0,1]) test(`production ${i} integrated stored/displayed prices, 
 });
 test('protected staff edit stays; unchanged prior automation can update',async t=>{
   const f=setup(t);const group=f.slots(5,'all-day')[0].group_id;
-  f.sql("UPDATE special_slots SET content='Staff wins',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",group);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff wins',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",group);
   f.sql("UPDATE special_slots SET content='Old automation',last_auto_value='Old automation',origin='automation',manual_locked=0 WHERE group_id=? AND position=2",group);
   await f.run();assert.equal(f.slots(5,'all-day')[0].content,'Staff wins');assert.match(f.slots(5,'all-day')[1].content,/\$7.25/);
 });
@@ -142,7 +145,7 @@ test('concurrent staff edit fences the entire proposed write',async t=>{
   const f=setup(t);const batch=f.env.DB.batch.bind(f.env.DB);let injected=false;
   f.env.DB.batch=async statements=>{
     if(!injected && statements.some(s=>s.sql.includes('UPDATE special_collections SET revision=revision+1,mutation_token'))) {
-      injected=true;f.sql("UPDATE special_slots SET content='Staff wins',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",f.slots(5,'all-day')[0].group_id);
+      injected=true;f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff wins',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",f.slots(5,'all-day')[0].group_id);
     }
     return batch(statements);
   };

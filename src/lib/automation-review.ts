@@ -71,7 +71,7 @@ export function importOutcome(source: any, events: any[]) {
   // Dismiss/restore only change list membership, never publication status.
   events=events.filter(e=>!/^STAFF_(?:DISMISS|RESTORE):/.test(e.detail??''));
   const approvals=approvalEvents(events);
-  if(approvals.some((a: any)=>a.complete)) return {status:'Staff Approved',reason:'Approved and published by staff. Saved destinations are protected from automation.'};
+  if(approvals.some((a: any)=>a.complete)) return {status:'Staff Approved',reason:'Approved and published by staff. Saved values stay until a newer Facebook post replaces them.'};
   if(approvals.length) return {status:'Partially Staff Approved',reason:'Selected offers were published and protected. Remaining offers still need review.'};
   const raw=parseReviewEvidence(source.extracted_json)??parseReviewEvidence(source.candidate_json);
   if(['mexican-night','weekly-lunch'].includes(raw?.type)) events=events.filter(e=>!/^GUARDED_AUTO(?::|_CONFLICT:)/.test(e.detail??''));
@@ -101,9 +101,8 @@ export function statusBadge(status: string) {
   return {label:'Needs Review',tone:'review',help:NEEDS_REVIEW[status]??'Automation could not confirm this post was published. Check it against Facebook and approve it, or fix the day in the editor.'};
 }
 export function protectionLabel(protection: string) {
-  return protection.startsWith('Yes') ? ({'Yes — staff locked':'Protected — edited by staff','Yes — separate price or section link':'Protected — has a separate price or link',
-    'Yes — changed since automation':'Protected — changed after automation','Yes — existing legacy value':'Protected — older saved value'}[protection]??'Protected')
-    : 'Automation can update';
+  return protection.startsWith('Until') ? 'Edited by staff — until a newer Facebook post'
+    : protection.startsWith('Yes') ? 'Edited by staff — older lock, kept' : 'Automation can update';
 }
 function sourceDate(value: unknown): string | null {
   const date = new Date(String(value));
@@ -136,13 +135,14 @@ export function extractedForDay(source: any, day: string, week: any) {
     : Array.isArray(raw) ? raw.slice(0,12).filter((g: any) => g?.day_of_week === calendarDayOfWeek(day)).flatMap((g: any) => Array.isArray(g.items) ? g.items.slice(0,4).map((i: any) => reviewText([i?.content,i?.price].filter(v => typeof v === 'string').join(' '))) : []) : [];
   return {values: values.filter(Boolean), scope: 'Daily specials', relevant: sourceDate(source.fb_created_time) === day};
 }
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): no
+// website value is protected from a newer verified post. A staff edit or approval is
+// kept only against posts published before it. A lock saved before edit times were
+// recorded cannot be shown older than any post, so automation keeps it (guarded-auto.js).
 export function protectedValue(slot: any): string {
-  if (slot.manual_locked === 1) return 'Yes — staff locked';
-  if (slot.manual_edited_at) return 'Until a newer Facebook post — staff edit, not locked';
-  if (slot.price || slot.section_link) return 'Yes — separate price or section link';
-  if (slot.origin === 'automation' && slot.last_auto_value !== slot.content) return 'Yes — changed since automation';
-  if (!slot.content || slot.origin === 'automation' || slot.origin === 'manual') return 'No staff lock; other publication safeguards still apply';
-  return 'Yes — existing legacy value';
+  if (slot.manual_edited_at) return 'Until a newer Facebook post — staff edit';
+  if (slot.manual_locked === 1 && (slot.content ?? '').trim()) return 'Yes — older staff lock, no edit time recorded';
+  return 'No — a verified Facebook post replaces it; other publication safeguards still apply';
 }
 // Each post's Wing Wednesday decision. It is optional: a failure here leaves the daily,
 // weekly and Mexican Night review exactly as it was.

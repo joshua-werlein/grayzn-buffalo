@@ -1,5 +1,5 @@
 import {mergeMexicanMenu, storedMexicanGroups, accessoryGroup, scheduleKey} from './mexican-menu.js';
-import {protectedMexicanSlots} from './mexican-night-defaults.js';
+import {protectedMexicanSlots,staffOwnedSectionSlot,sqlTime} from './mexican-night-defaults.js';
 import {automaticWeekRange} from './auto-week.js';
 import {composeMexicanItem,normalizeMexicanPrices} from '../../src/lib/mexican-item.js';
 import {normalizeMenuCase} from '../../src/lib/text-case.js';
@@ -13,24 +13,30 @@ import {approvalEvents,staffConfirmedCandidate} from './staff-review.js';
 import {eventSourceIndexes} from './event-store.js';
 import {NEWER_STAFF_EDIT} from './alert-detail.js';
 
-// A staff edit records its time. Only a Facebook post verified as newer may replace
-// it; recurring defaults and automation values have no edit time. Import processing
-// time never counts.
+// Facebook is the canonical source for specials (docs/facebook-specials-source-of-truth.md).
+// A verified post replaces whatever the slot shows: automation values, recurring
+// defaults, legacy values, separate prices or links, staff edits, staff locks and
+// staff approvals alike. The one exception is time: a staff edit or approval records
+// when it happened, and a post not verified as newer than it never undoes it, so the
+// same unchanged post cannot keep restoring its reading. A newer post (or an actually
+// edited image) can. Import processing time never counts.
 const newerThanStaffEdit=(slot,postedMs)=>slot.manual_edited_at==null
   || (Number.isFinite(postedMs) && postedMs>Date.parse(slot.manual_edited_at));
-const replaceableSlot=(s,postedMs)=>s && s.price==='' && s.section_link==='' && newerThanStaffEdit(s,postedMs) && (
-  // Blank: eligible regardless of origin or lock. A value automation wrote and staff
-  // later cleared stays clear, unless the clearing has a recorded time a newer post beat.
-  ((s.content==='' || s.content===null) && (s.last_auto_value===null || s.last_auto_value===s.content || s.manual_edited_at!=null)) ||
-  // Prior automation value, unchanged and not locked.
-  (s.origin==='automation' && typeof s.last_auto_value==='string' && s.content===s.last_auto_value && s.manual_locked===0) ||
-  // Unlocked manual value: a recurring default from newWeekFromDefaults(), or a staff edit.
-  (s.origin==='manual' && s.manual_locked===0));
+// A staff lock saved before edit times were recorded (such as the November 4 lunch
+// correction) has an unknown edit time, so no post can be shown to be newer than it.
+// Every current save and approval records its time and the editor offers no lock, so
+// only existing slots are affected, and only until their week rolls over.
+const untimedStaffLock=s=>s.manual_locked===1 && s.manual_edited_at==null && !!String(s.content ?? '').trim();
+const facebookMayReplace=(s,postedMs)=>!!s && !untimedStaffLock(s) && newerThanStaffEdit(s,postedMs);
+// An unchanged value automation itself wrote. Only these establish facts, such as
+// the All Day pair a night poster repeats; defaults and staff values never do.
+const automationValue=s=>s.origin==='automation' && typeof s.last_auto_value==='string' && s.content===s.last_auto_value
+  && s.manual_locked===0 && s.price==='' && s.section_link==='' && s.manual_edited_at==null;
 
 // When each source's poster was verifiably posted. A Facebook updated time alone
 // proves nothing: comments can change it. It counts only for a version whose stored
 // image or caption actually differs from the post's earlier version.
-async function verifiedPostTimes(env,sources) {
+export async function verifiedPostTimes(env,sources) {
   const posts=[...new Set(sources.map(s=>s.fb_post_id))];
   const {results:versions}=await env.DB.prepare(`SELECT id,fb_post_id,fb_created_time,fb_updated_time,image_hash,caption_hash
     FROM special_imports WHERE fb_post_id IN (SELECT value FROM json_each(?1)) ORDER BY rowid`).bind(JSON.stringify(posts)).all();
@@ -88,7 +94,7 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
   const {results:slots}=await env.DB.prepare(`SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id
     WHERE g.collection_id=?1 AND g.day_of_week=?2 ORDER BY s.position`).bind(week.collection_id,weekday).all();
   const allDayGroups=groups.filter(g=>g.service==='all-day' && g.enabled===1);
-  const existing=allDayGroups.length===1 ? slots.filter(s=>s.group_id===allDayGroups[0].id && s.content && replaceableSlot(s) && s.origin==='automation') : [];
+  const existing=allDayGroups.length===1 ? slots.filter(s=>s.group_id===allDayGroups[0].id && s.content && automationValue(s)) : [];
   const {results:staffEvents}=await env.DB.prepare(`SELECT import_id,event_type,detail FROM special_import_events
     WHERE import_id IN (SELECT value FROM json_each(?1)) AND event_type='review' AND detail LIKE 'STAFF_APPROVAL:%' ORDER BY id DESC LIMIT 240`).bind(JSON.stringify(sources.map(s=>s.id))).all();
   const candidates=sources.map(s=>{
@@ -169,15 +175,16 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
       continue;
     }
     const eligible=proposed.filter(r=>{
-      const soupSafe=r.old && r.old.manual_locked===0 && r.old.price==='' && r.old.section_link===''
-        && (!r.old.content || (r.old.origin==='manual' && r.old.last_auto_value===null)
-          || (r.old.origin==='automation' && r.old.content===r.old.last_auto_value));
-      const posted=soup?NaN:postedAt(target.service,r.content);
-      if (soup ? soupSafe : replaceableSlot(r.old,posted)) return true;
-      block(r,r.position,!soup && r.old && r.old.manual_locked===0 && !newerThanStaffEdit(r.old,posted) ? NEWER_STAFF_EDIT : 'Protected or ineligible destination slot',dest.id);
+      if (!r.old) { block(r,r.position,'Protected or ineligible destination slot',dest.id); return false; }
+      if (facebookMayReplace(r.old,postedAt(target.service,r.content))) return true;
+      // Staff corrected this slot after the post. Already showing the post's value
+      // is no hold at all; anything else is kept until a newer post arrives.
+      if (r.old.content!==r.content || r.old.price) block(r,r.position,NEWER_STAFF_EDIT,dest.id);
       return false;
     });
-    rows.push(...eligible.filter(r=>r.old.content!==r.content || r.old.origin!=='automation' || r.old.last_auto_value!==r.content));
+    // A replaced slot drops any separate price or section link: those described the old value.
+    rows.push(...eligible.filter(r=>r.old.content!==r.content || r.old.origin!=='automation' || r.old.last_auto_value!==r.content
+      || r.old.price!=='' || r.old.section_link!==''));
   }
   // Published meals with no printed price: the plan reproduces these on every
   // scan, so the alert needs no separate record. Soup is never priced.
@@ -192,12 +199,12 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
     ...(targets.length || blocked.length || rejectedSources.length ? {alertSnapshot:{
       sources,sourceIds:sources.map(s=>s.id),currentSourceIds:sourceIds,
       parser:parserVersionFor(env),collectionId:week.collection_id,revision,
+      // Only a staff-disabled destination is intentional. A staff lock no longer
+      // keeps verified Facebook content off the website, so it is never a reason.
       intentionalBlockedIndices:blocked.flatMap((b,index)=>{
         const destinations=groups.filter(g=>g.service===b.service);
         const disabled=b.reason==='Missing, disabled or ambiguous destination' && destinations.length===1 && destinations[0].enabled===0;
-        const protectedExtras=b.reason==='Additional existing slots prevent replacement'
-          && slots.some(s=>s.group_id===b.group_id && s.manual_locked===1);
-        return disabled || protectedExtras ? [index] : [];
+        return disabled ? [index] : [];
       })}} : {})});
   // Monitoring uses the same proposal rules, without publication or audit writes.
   if (inspectOnly) return withOutcome({written:false,reason:rows.length?'Publication incomplete':'No unambiguous eligible changes',
@@ -255,7 +262,7 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
       prepare(`INSERT INTO special_slots(group_id,position,content,price,section_link,origin,manual_locked,last_auto_value)
         SELECT ?3,value,'','','','legacy',0,NULL FROM json_each('[1,2,3,4]') WHERE ${gate}`,week.collection_id,token,g.id),
     ]),
-    ...rows.map(r=>prepare(`UPDATE special_slots SET content=?3,price='',origin='automation',manual_locked=0,last_auto_value=?3,manual_edited_at=NULL
+    ...rows.map(r=>prepare(`UPDATE special_slots SET content=?3,price='',section_link='',origin='automation',manual_locked=0,last_auto_value=?3,manual_edited_at=NULL
       WHERE group_id=?4 AND position=?5 AND ${gate}`,week.collection_id,token,r.content,r.group_id,r.position)),
     ...(rows.length ? [prepare(`UPDATE weekly_specials SET updated_at=CURRENT_TIMESTAMP WHERE id=?3 AND ${gate}`,week.collection_id,token,week.id)] : []),
     // Evidence remains staged and reusable even after a partial publication.
@@ -343,35 +350,33 @@ async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=
     // shared heading price; adding that price is the only permitted upgrade.
     const priceUpgrade = typeof entry.base_content === 'string' && slot.origin === 'automation' && slot.manual_locked === 0
       && slot.content === slot.last_auto_value && canonicalizeSlotContent(slot.content, entry.day_of_week, 'lunch') === canonicalizeSlotContent(entry.base_content, entry.day_of_week, 'lunch');
-    // Fill blanks or replace untouched recurring defaults. Preserve existing
-    // Facebook evidence (including the more specific daily poster) and staff edits.
-    if (slot.content !== '' && slot.content !== null && !(slot.origin === 'manual' && slot.manual_locked === 0) && !priceUpgrade) {
-      // Only verified automation provenance (unlocked, unchanged since the last
-      // automated write, no separate price/link) can prove publication or a
-      // retained Facebook value; any other filled slot is ineligible.
-      const automated = slot.origin === 'automation' && slot.manual_locked === 0 && slot.last_auto_value === slot.content
-        && slot.price === '' && slot.section_link === '';
+    // A value automation wrote is Facebook evidence itself: Facebook-vs-Facebook
+    // precedence decides it (a same-day daily poster is more specific than the
+    // weekly one). Every other value — recurring default, legacy, separate
+    // price/link, staff edit, lock or approval — yields to the verified post
+    // unless staff corrected it after that post (docs/facebook-specials-source-of-truth.md).
+    if (slot.content !== '' && slot.content !== null && automationValue(slot) && !priceUpgrade) {
       // A corrected poster replaces an unchanged automation value that an older,
-      // deleted/superseded weekly poster wrote. A daily poster's value, a staff
-      // edit/lock or any value of unknown provenance is never replaced.
-      if (automated && slot.content !== canonicalContent && !protectedDays.has(entry.day_of_week)
+      // deleted/superseded weekly poster wrote. A daily poster's value, or one of
+      // unknown weekly provenance, is never replaced by a weekly poster.
+      if (slot.content !== canonicalContent && !protectedDays.has(entry.day_of_week)
           && replaceable?.get(entry.day_of_week)?.has(canonicalizeSlotContent(slot.content, entry.day_of_week, 'lunch'))) {
         // The newest poster controls, even without a price; staff are notified.
         rows.push({group_id: dest.id, position: 1, content: canonicalContent, old: slot, replaced: true,
           priceRemoved: hasPrintedPrice(slot.content) && !hasPrintedPrice(canonicalContent)});
         continue;
       }
-      hold(entry, slot.manual_locked === 1 ? 'staff_locked' : !automated ? 'ineligible'
-        : slot.content === canonicalContent ? 'published' : 'retained');
+      hold(entry, slot.content === canonicalContent ? 'published' : 'retained');
       continue;
     }
-    if (!replaceableSlot(slot, postedMs)) {
-      // A blank slot whose last automation value differs was cleared by staff.
-      hold(entry, slot.manual_locked === 1 ? 'staff_locked' : !newerThanStaffEdit(slot, postedMs) ? 'staff_edit_newer'
-        : (slot.content === '' || slot.content === null) && typeof slot.last_auto_value === 'string' ? 'staff_cleared' : 'ineligible');
+    if (!facebookMayReplace(slot, postedMs)) {
+      // Staff corrected this day after the post: kept, and (even when identical) never
+      // counted as automation publication proof for an equivalent failed poster.
+      hold(entry, 'staff_edit_newer');
       continue;
     }
-    if (slot.origin === 'automation' && slot.content === canonicalContent && slot.last_auto_value === canonicalContent) { hold(entry, 'published'); continue; }
+    if (slot.origin === 'automation' && slot.content === canonicalContent && slot.last_auto_value === canonicalContent
+      && !slot.price && !slot.section_link) { hold(entry, 'published'); continue; }
     // A staff edit carrying a price, replaced by an unpriced newer poster, is reported too.
     rows.push({group_id: dest.id, position: 1, content: canonicalContent, old: slot,
       priceRemoved: !!slot.manual_edited_at && hasPrintedPrice(slot.content ?? '') && !hasPrintedPrice(canonicalContent)});
@@ -413,7 +418,7 @@ async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=
   const detail = `GUARDED_WEEKLY_LUNCH: ${dateRangeLabel}; ${rows.length} slot(s)${replacedCount ? `; replaced ${replacedCount} superseded poster value(s)` : ''}${removedDays.length ? `; price removed: ${removedDays.join(',')}` : ''}`;
   const results = await env.DB.batch([
     claim,
-    ...rows.map(r => prepare(`UPDATE special_slots SET content=?3,price='',origin='automation',manual_locked=0,last_auto_value=?3,manual_edited_at=NULL
+    ...rows.map(r => prepare(`UPDATE special_slots SET content=?3,price='',section_link='',origin='automation',manual_locked=0,last_auto_value=?3,manual_edited_at=NULL
       WHERE group_id=?4 AND position=?5 AND ${gate}`, week.collection_id, token, r.content, r.group_id, r.position)),
     prepare(`UPDATE weekly_specials SET updated_at=CURRENT_TIMESTAMP WHERE id=?3 AND ${gate}`, week.collection_id, token, week.id),
     prepare(`INSERT INTO special_import_events(import_id,event_type,detail) SELECT ?3,'review',?4 WHERE ${gate}`, week.collection_id, token, source.id, detail),
@@ -551,13 +556,14 @@ export async function reconcileWeeklyLunch(env, today, {sourceIds=null, inspectO
     return results;
   }
   const perSource = [];
+  const legacyTimes = await verifiedPostTimes(env, sources);
   for (const source of sources) {
     let evidence;
     try { evidence = applySharedWeeklyLunchPrice(validateWeeklyLunch(JSON.parse(source.candidate_json))); }
     catch { perSource.push({written: false, reason: 'Invalid evidence'}); continue; }
     const week = await resolveWeeklyLunchTargetWeek(env, evidence, source.fb_created_time, today);
     if (!week) { perSource.push({written: false, reason: 'No matching saved week'}); continue; }
-    const result = await applyWeeklyLunch(env, source, evidence, week, today);
+    const result = await applyWeeklyLunch(env, source, evidence, week, today, [source], {postedMs: legacyTimes.get(source.id)});
     perSource.push(result);
   }
   return perSource;
@@ -588,6 +594,14 @@ async function applyMexicanNight(env, source, evidence, weekStart) {
     ]);
     return stage(reason);
   }
+  // A staff-saved or staff-approved menu is a correction, not a barrier: a post
+  // verified as published after that save replaces it. Each post is applied at most
+  // once (reconcileMexicanNight), so the same post never undoes a later staff edit.
+  const staffSaved=collection.section_source==='manual' || currentSlots.some(staffOwnedSectionSlot);
+  const postedMs=(await verifiedPostTimes(env,[source])).get(source.id);
+  const savedMs=sqlTime(collection.updated_at);
+  const newerThanStaff=!staffSaved || !Number.isFinite(savedMs) || (Number.isFinite(postedMs) && postedMs>savedMs);
+  if(!newerThanStaff) return stage(NEWER_STAFF_EDIT);
   const storedCurrent=storedMexicanGroups(currentGroups,currentSlots);
   let groups;
   try {
@@ -597,7 +611,10 @@ async function applyMexicanNight(env, source, evidence, weekStart) {
     // Normalize newly published groups. A completely retained group stays byte
     // for byte intact, including split prices, blank slots and ownership. The
     // reviewed backfill handles its existing casing without rebuilding it.
-    groups=mergeMexicanMenu(evidence.groups,mergeMexicanMenu(current,recurring)).map(g=>
+    // A staff-saved menu this week is the base the newer poster patches: recurring
+    // entries staff removed or renamed are not brought back beside it.
+    const base=staffSaved && current.length ? current : mergeMexicanMenu(current,recurring);
+    groups=mergeMexicanMenu(evidence.groups,base).map(g=>
       storedCurrent.some(old=>old.id===g.id && old.label===g.label && JSON.stringify(old.items)===JSON.stringify(g.items)) ? g
         : {...g,label:normalizeMenuCase(g.label),items:g.items.map(item=>({...item,title:normalizeMenuCase(item.title),description:normalizeMenuCase(item.description)}))});
   } catch(error) { return stage(error.message); }
@@ -616,7 +633,7 @@ async function applyMexicanNight(env, source, evidence, weekStart) {
     prepare(`UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3,updated_at=?13,
       section_week_start=?12,section_service_date=date(?12,'+1 day'),section_source='facebook'
       WHERE id='mexican-night' AND kind='section' AND revision=?4
-      AND COALESCE(section_source,'')<>'manual' AND NOT ${protectedMexicanSlots}
+      AND (?17=1 OR (COALESCE(section_source,'')<>'manual' AND NOT ${protectedMexicanSlots}))
       AND (SELECT revision FROM special_collections WHERE id='mexican-night-defaults') IS ?14
       AND (SELECT count(*) FROM special_groups WHERE collection_id='mexican-night-defaults')=json_array_length(?15)
       AND NOT EXISTS(SELECT 1 FROM json_each(?15) j WHERE NOT EXISTS(SELECT 1 FROM special_groups g WHERE g.id=json_extract(j.value,'$.id') AND g.label=json_extract(j.value,'$.label') AND g.enabled=json_extract(j.value,'$.enabled') AND g.sort=json_extract(j.value,'$.sort')))
@@ -644,7 +661,8 @@ async function applyMexicanNight(env, source, evidence, weekStart) {
       token, 'Mexican Night', schedule, collection.revision,
       currentGroups.length, JSON.stringify(currentGroups),
       currentSlots.length, JSON.stringify(currentSlots),
-      source.id, source.candidate_json, parserVersionFor(env), weekStart, new Date(Date.now()).toISOString(), defaults?.revision ?? null, JSON.stringify(defaultGroups), JSON.stringify(defaultSlots)),
+      source.id, source.candidate_json, parserVersionFor(env), weekStart, new Date(Date.now()).toISOString(), defaults?.revision ?? null, JSON.stringify(defaultGroups), JSON.stringify(defaultSlots),
+      staffSaved ? 1 : 0),
     prepare(`DELETE FROM special_groups WHERE collection_id='mexican-night' AND id NOT IN (SELECT value FROM json_each(?2)) AND ${gate}`, token, JSON.stringify(retainedIds)),
     prepare(`INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled)
       SELECT json_extract(value,'$[0]'),'mexican-night',-1,'custom',json_extract(value,'$[1]'),'',json_extract(value,'$[2]'),1

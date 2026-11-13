@@ -8,6 +8,9 @@ import {normalizeMexicanSizeItem,trailingDailyPrice} from './evidence.js';
 import {reconcileToday} from './guarded-auto.js';
 import {harness} from './test-fixture.js';
 import {formatAlertText,dailyAlertDetail} from './alert-detail.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 const fixture=JSON.parse(readFileSync('tests/fixtures/oct27-production.json','utf8'));
 const window={today:'2026-10-27',weekday:2};
 const reliableDaily=()=>({...structuredClone(fixture.daily),evidence_version:2,offers:fixture.daily.offers.map(o=>({...o,uncertainties:[]}))});
@@ -66,7 +69,7 @@ test('unlocked different recurring defaults are replaced, manual corrections and
   f.sql("UPDATE weekly_specials SET week_start_date='2026-10-26',week_end_date='2026-11-01' WHERE id=9000");
   f.sql("UPDATE special_slots SET content='Different recurring meal $8',origin='manual',manual_locked=0 WHERE group_id IN (SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=2) AND position=1");
   const group=f.slots(2,'all-day')[0].group_id;
-  f.sql("UPDATE special_slots SET content='Staff correction $7.25',manual_locked=1,origin='manual' WHERE group_id=? AND position=2",group);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff correction $7.25',manual_locked=1,origin='manual' WHERE group_id=? AND position=2",group);
   f.sql("INSERT INTO special_imports(id,fb_post_id,fb_created_time,parser_version,image_r2_key,candidate_json,processing_status,validation_result) VALUES('daily','daily','2026-10-27T15:04:39+0000',19,'test.jpg',?,'staged','ok')",JSON.stringify(candidate));
   const unrelated=f.sql("SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id WHERE g.collection_id='auto-week' AND g.day_of_week<>2");
   await reconcileToday(f.env,{sourceIds:['daily'],...window});

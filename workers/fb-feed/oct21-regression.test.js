@@ -7,6 +7,9 @@ import {reconcileToday} from './guarded-auto.js';
 import {harness} from './test-fixture.js';
 import {observeDailyOutcome} from './alert-outcomes.js';
 import {dispatchAlert,ALERT_GRACE_MS} from './alert-store.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 
 const snapshot=JSON.parse(readFileSync(new URL('../../tests/fixtures/oct21-production.json',import.meta.url),'utf8'));
 const rows=snapshot[0].results;
@@ -53,7 +56,7 @@ for(const choice of ['disabled','locked']) test(`daily observation preserves sta
   const f=setup(t);enableObservations(f);
   const group=f.slots(3,'lunch')[0].group_id;
   if(choice==='disabled') f.sql('UPDATE special_groups SET enabled=0 WHERE id=?',group);
-  else f.sql("UPDATE special_slots SET content='Staff lunch',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",group);
+  else f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff lunch',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",group);
   await f.run();
   assert.equal(f.sql("SELECT state FROM facebook_alert_incidents WHERE scope='daily'")[0]?.state,'attention');
   if(choice==='locked') {
@@ -155,7 +158,7 @@ test('persisted failed single-day evidence can reconcile without a re-extraction
   const f=setup(t);f.env.SPECIALS_IMPORT_MODE='DRY_RUN';await f.run();
   const id=f.imports()[0].id;
   f.sql("UPDATE special_imports SET processing_status='failed',validation_result='rejected',candidate_json=NULL,validation_reason=? WHERE id=?",rows[0].validation_reason,id);
-  f.sql("UPDATE special_slots SET content='Staff correction',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",f.slots(3,'all-day')[0].group_id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff correction',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",f.slots(3,'all-day')[0].group_id);
   const r=await reconcileToday(f.env,{sourceIds:[id],today:'2026-10-21',weekday:3});
   assert.equal(r.written,true);assert.match(f.slots(3,'all-day')[0].content,/Pizza Burger/);
   assert.equal(f.slots(3,'all-day')[1].content,'Staff correction');assert.equal(f.state.aiCalls,1);
@@ -188,7 +191,7 @@ test('concurrent staff save fences recovered single-day publication',async t=>{
   const f=setup(t),batch=f.env.DB.batch.bind(f.env.DB);let injected=false;
   f.env.DB.batch=async statements=>{
     if(!injected && statements.some(s=>s.sql.includes('UPDATE special_collections SET revision=revision+1,mutation_token'))) {
-      injected=true;f.sql("UPDATE special_slots SET content='Staff correction',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",f.slots(3,'all-day')[0].group_id);
+      injected=true;f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff correction',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",f.slots(3,'all-day')[0].group_id);
     }
     return batch(statements);
   };

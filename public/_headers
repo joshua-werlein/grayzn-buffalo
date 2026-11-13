@@ -19,3 +19,57 @@
 
 /images/facebook/*
   X-Robots-Tag: noindex
+
+# Decorative site graphics, listed one file at a time (never a blanket image rule).
+# They stay visible on the pages; only their standalone Google Images results go.
+# Partial logo layers: the homepage hero animates the wordmark and "Bar & Grill"
+# separately, so each file alone is an incomplete logo.
+/logo-wordmark.webp
+  X-Robots-Tag: noindex
+
+/logo-wordmark-600.webp
+  X-Robots-Tag: noindex
+
+/logo-bar-grill.webp
+  X-Robots-Tag: noindex
+
+/logo-bar-grill-450.webp
+  X-Robots-Tag: noindex
+
+# Animated hero buffalo and its reduced-motion still.
+/buffalo-hero.webp
+  X-Robots-Tag: noindex
+
+/buffalo-poster.webp
+  X-Robots-Tag: noindex
+
+# Footer artwork: walking buffalo, Contact Us sign, landscape and board.
+/buffalo-walk-cycle.webp
+  X-Robots-Tag: noindex
+
+/footer-contact.webp
+  X-Robots-Tag: noindex
+
+/footer-landscape-cutout.webp
+  X-Robots-Tag: noindex
+
+/footer-board-extension.webp
+  X-Robots-Tag: noindex
+
+# Backgrounds and textures.
+/grayznBackground.webp
+  X-Robots-Tag: noindex
+
+/grayznBackground-1200.webp
+  X-Robots-Tag: noindex
+
+/grayznBackground-1600.webp
+  X-Robots-Tag: noindex
+
+/parchment-texture.webp
+  X-Robots-Tag: noindex
+
+# Deliberately NOT listed (remain indexable): /social-share-black-white.png and
+# /GrayznLogo.png (complete logo), /apple-touch-icon.png and the icons, the
+# buffalo-mark SVGs (the header logo), and food/restaurant photography under /img/.
+# docs/google-images-cleanup.md records the reasoning.

@@ -7,9 +7,10 @@ import {loadTs} from './load-ts.mjs';
 const s=loadTs('src/lib/specials-store.ts');
 const {reading:NOV4}=JSON.parse(readFileSync('tests/fixtures/nov4-daily.json','utf8'));
 
-// The newest verified Facebook information normally wins: a staff edit is replaced
-// only by a post verified as newer than the edit, and never while locked. Edits go
-// through the real editor form and save path; AI responses are mocked.
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// edit is replaced only by a post verified as newer than the edit, locked or not. Edits go
+// through the real editor form and save path (the lock field below is what a form opened
+// before the lock control was retired still submits); AI responses are mocked.
 const MEALS=['Wrap and a Drink','Taco Salad and a Drink','Hot Ham and a Drink','Meatloaf and a Drink','Fish Fry and a Drink'];
 const DAYS=['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY'];
 const weekly=(meals=MEALS)=>({type:'weekly-lunch',poster_evidence:'WEEKLY LUNCH SPECIALS 11/2-11/6 11am-1:30pm',date_range:'11/2-11/6',service_time:'11am-1:30pm',
@@ -152,21 +153,23 @@ test('a post actually edited after the staff edit counts as newer',async t=>{
   assert.equal(f.lunch().content,'Hot Ham and a Drink $11.00');
 });
 
-// ── Lock control ─────────────────────────────────────────────────────────────
+// ── Lock control (retired) ───────────────────────────────────────────────────
 
-test('an explicitly locked special survives newer posts until staff unlock it',async t=>{
+test('the editor no longer offers a lock that keeps a special from newer Facebook posts',()=>{
+  const fields=readFileSync('src/components/SpecialGroupFields.astro','utf8');
+  assert.doesNotMatch(fields,/_locked|_lock_shown|keep this special even when Facebook/);
+  assert.match(fields,/A newer Facebook post replaces them/);
+});
+test('a locked special is kept against an older post and replaced by a newer one',async t=>{
   const f=setup(t);
   await f.edit('2026-11-02T15:20:00Z',{content:STAFF,locked:true});
   assert.equal(f.lunch().manual_locked,1);
   const before=f.lunch();
+  await f.scan('2026-11-02T15:25:00Z',[original]);
+  assert.deepEqual(f.lunch(),before,'posted 14:51, before the edit');
   await f.scan('2026-11-02T15:40:00Z',[newer()]);
-  await f.scan('2026-11-02T16:10:00Z',[newer()]);
-  assert.deepEqual(f.lunch(),before);
-  await f.edit('2026-11-02T16:20:00Z',{locked:false});
-  assert.equal(f.lunch().manual_locked,0);assert.equal(f.lunch().content,STAFF);
-  assert.equal(f.lunch().manual_edited_at,before.manual_edited_at,'unlocking keeps the real edit time');
-  await f.scan('2026-11-02T16:40:00Z',[newer()]);
-  assert.equal(f.lunch().content,'Hot Ham and a Drink $11.00','newer than the edit, so it may replace after unlocking');
+  assert.equal(f.lunch().content,'Hot Ham and a Drink $11.00','posted 15:30, after the edit');
+  assert.equal(f.lunch().manual_locked,0);assert.equal(f.lunch().manual_edited_at,null);
 });
 test('editing a locked special keeps it locked',async t=>{
   const f=setup(t);
@@ -174,17 +177,17 @@ test('editing a locked special keeps it locked',async t=>{
   await f.edit('2026-11-02T15:25:00Z',{content:'Hot Ham and a Drink $9.50'});
   assert.equal(f.lunch().manual_locked,1);assert.equal(f.lunch().manual_edited_at,'2026-11-02T15:25:00.000Z');
 });
-test('locking only changes protection, not the value or its owner',async t=>{
+test('a lock-only save records its time: it never creates a lock no post can be newer than',async t=>{
   const f=setup(t);
   await f.scan('2026-11-02T15:00:00Z',[original]);
   const auto=f.lunch(),revision=f.revision();
   await f.edit('2026-11-02T15:20:00Z',{locked:true});
   assert.equal(f.revision(),revision+1,'a lock change alone is saved');
-  assert.deepEqual(f.lunch(),{...auto,manual_locked:1});
-  await f.scan('2026-11-02T15:40:00Z',[newer()]);
+  assert.deepEqual(f.lunch(),{...auto,manual_locked:1,manual_edited_at:'2026-11-02T15:20:00.000Z'});
+  await f.scan('2026-11-02T15:25:00Z',[original]);
   assert.equal(f.lunch().content,auto.content);
-  await f.edit('2026-11-02T15:50:00Z',{locked:false});
-  assert.deepEqual(f.lunch(),auto,'unlocked automation value is automation-owned again');
+  await f.scan('2026-11-02T15:40:00Z',[newer()]);
+  assert.equal(f.lunch().content,'Hot Ham and a Drink $11.00','posted 15:30, after the lock');
 });
 test('a blank slot cannot be locked',async t=>{
   const f=setup(t);

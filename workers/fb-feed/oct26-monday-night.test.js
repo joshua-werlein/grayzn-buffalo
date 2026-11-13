@@ -5,6 +5,9 @@ import {harness} from './test-fixture.js';
 import {normalizeMenuCase} from '../../src/lib/text-case.js';
 import {sameOffer} from './evidence.js';
 import {reconcilePosterEvidence} from './reconcile.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 
 // The exact production candidate_json records for October 26, 2026: the
 // morning MONDAY SPECIALS post (Lunch + two All Day) and the 4:22 PM MONDAY
@@ -91,7 +94,7 @@ test('rerunning the October 26 records is idempotent',async t=>{
 
 test('a staff-locked Nightly correction is kept; the other Nightly slot still publishes',async t=>{
   const f=monday(t);await f.run();
-  f.sql("UPDATE special_slots SET content='Ribs corrected by staff $19',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",rows(f,'nightly')[1].group_id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Ribs corrected by staff $19',origin='manual',manual_locked=1 WHERE group_id=? AND position=2",rows(f,'nightly')[1].group_id);
   await evening(f);
   assert.deepEqual(contents(f,'nightly'),[BURGERS,'Ribs corrected by staff $19']);
   assert.equal(rows(f,'nightly')[1].manual_locked,1);

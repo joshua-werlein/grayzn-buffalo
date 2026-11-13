@@ -159,13 +159,18 @@ test('a same-day daily value still outranks a newer corrected weekly poster',asy
   await f.scan('2026-11-04T16:10:00Z',[OLD,w]);
   assert.equal(f.lunch().content,LUNCH);
 });
-test('a locked special is never replaced by a newer poster until staff unlock it',async t=>{
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// lock no longer holds a special against a newer poster; only the edit time matters.
+test('a locked special is kept against an older poster and replaced by a newer one',async t=>{
   const f=setup(t);
-  setLunch(f,"content='Staff special $8.00',origin='manual',manual_locked=1");
+  setLunch(f,"content='Staff special $8.00',origin='manual',manual_locked=1,manual_edited_at='2026-11-04T15:30:00.000Z'");
   const before=f.lunch();
+  await f.scan('2026-11-04T15:40:00Z',[OLD]);
+  await f.scan('2026-11-04T15:50:00Z',[OLD]);
+  assert.deepEqual(f.lunch(),before,'posted 15:00, before the locked edit');
   await f.scan('2026-11-04T16:10:00Z',[OLD,NEW]);
-  await f.scan('2026-11-04T16:40:00Z',[OLD,NEW]);
-  assert.deepEqual(f.lunch(),before);
+  assert.equal(f.lunch().content,FIXED,'posted 16:00, after it');
+  assert.equal(f.lunch().manual_locked,0);
 });
 test('a post created after an unlocked manual edit replaces it; an older one never does',async t=>{
   const f=setup(t);

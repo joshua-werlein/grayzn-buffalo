@@ -122,13 +122,17 @@ for(const explicitAccessories of [false,true]) test(`price-free seed accepts Tue
   assert.ok(snapshot(f,'mexican-night').slots.every(s=>s.price===''&&!s.content.includes('$')));
 });
 
-test('manual price-free live correction blocks Tuesday Facebook but next week uses the template',async t=>{
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): Tuesday's
+// post, published after Sunday's staff save, replaces it; the next week uses the template.
+test('a newer Tuesday Facebook post replaces a manual live correction; next week uses the template',async t=>{
   const f=harness(t,{now:'2030-01-14T01:00:00Z',week:false,caption:'Mexican Night',candidate:{type:'mexican-night',poster_evidence:'Mexican Night',groups:[{label:'Entrees',items:[{title:'Poster burrito $12',description:''}]}]}});
   await template(f);await ensureAutomaticWeek(f.env,sunday);
   const draft=await store.readCollection(f.env,'mexican-night');draft.groups[0].slots[0].content='This week only\nStaff recipe';
   await store.saveCollection(f.env,draft);const protectedMenu=snapshot(f,'mexican-night');
   f.state.now=Date.parse('2030-01-15T16:00:00Z');f.state.posts[0].created_time=f.state.posts[0].updated_time='2030-01-15T15:00:00Z';
-  await f.run();assert.deepEqual(snapshot(f,'mexican-night'),protectedMenu);
+  await f.run();assert.notDeepEqual(snapshot(f,'mexican-night'),protectedMenu);
+  assert.ok(snapshot(f,'mexican-night').slots.some(s=>/Poster Burrito \$12/i.test(s.content)));
+  assert.equal(f.sql("SELECT section_source FROM special_collections WHERE id='mexican-night'")[0].section_source,'facebook');
   f.state.now=Date.parse('2030-01-21T01:00:00Z');await ensureAutomaticWeek(f.env,{today:'2030-01-20',weekday:0,hour:19});
   assert.deepEqual(snapshot(f,'mexican-night').slots.map(s=>s.content),snapshot(f,'mexican-night-defaults').slots.map(s=>s.content));
 });

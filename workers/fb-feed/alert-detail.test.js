@@ -41,7 +41,7 @@ test('October 26 alert reports a classification failure without guessing slots',
     'Published by automation today: Lunch (1), All Day (2), Soup (1)',
     '',
     'Automatic retry: none pending',
-    'Correction: needed for Monday. Review the held imports and use Approve & Publish; approved values are protected from automation. The specials editor is also available.',
+    'Correction: needed for Monday. Review the held imports and use Approve & Publish; approved values stay until a newer Facebook post replaces them. The specials editor is also available.',
     'Open: https://grayznbuffalo.com/admin/specials?week=77#weekly-day-0',
     'Review imports: https://grayznbuffalo.com/admin/automation?date=2026-10-26',
   ];
@@ -163,12 +163,14 @@ test('delivery diagnostic distinguishes a compatible expiration mismatch from cu
   assert.doesNotMatch(text,/delivery failure/i);
 });
 
-test('verified destination details distinguish disabled, locked and other ineligible slots and strip unsafe content',()=>{
+// Facebook is the canonical source: only a staff correction newer than the post, or a
+// disabled destination, is intentional. A lock alone never is.
+test('verified destination details distinguish disabled, newer staff edits and other ineligible slots and strip unsafe content',()=>{
   const data=structuredClone(DATA);
   data[3].find(g=>g.id==='n').enabled=0;
   data[4].find(s=>s.group_id==='a' && s.position===2).manual_locked=1;
   const detail=dailyAlertDetail({blocked:[
-    {service:'all-day',group_id:'a',position:2,content:'Ham <script> https://evil.example a@b.com \u202e $7.25',reason:'Protected or ineligible destination slot'},
+    {service:'all-day',group_id:'a',position:2,content:'Ham <script> https://evil.example a@b.com \u202e $7.25',reason:'Newer staff edit retained'},
     {service:'nightly',group_id:null,position:1,content:'Ribs $18',reason:'Missing, disabled or ambiguous destination'}]},data,'2026-10-26',1);
   assert.equal(detail.informational,true);
   assert.equal(detail.destinations[0].staffLocked,true);
@@ -176,7 +178,8 @@ test('verified destination details distinguish disabled, locked and other inelig
   const {text}=send(detail);
   assert.doesNotMatch(text,/[<>\u202e]|evil\.example|a@b\.com/);
   assert.match(text,/Staff-disabled destination/);
-  data[4].find(s=>s.group_id==='a' && s.position===2).manual_locked=0;
+  assert.match(text,/Staff edit is newer than this Facebook post/);
+  // A locked slot is no longer a reason to withhold: any other hold on it is actionable.
   assert.equal(dailyAlertDetail({blocked:[{service:'all-day',group_id:'a',position:2,reason:'Protected or ineligible destination slot'}]},data,'2026-10-26',1).informational,false);
 });
 
@@ -185,7 +188,8 @@ function october28(t) {
   f.db.exec("UPDATE weekly_specials SET week_start_date='2026-10-26',week_end_date='2026-11-01' WHERE id=9000");
   Object.assign(f.state.posts[0],{id:OCT28.postId,created_time:OCT28.postedAt,updated_time:OCT28.postedAt});
   const held=f.slots(3,'all-day')[1];
-  f.db.prepare("UPDATE special_slots SET content=?,origin='manual',manual_locked=1,last_auto_value=NULL WHERE group_id=? AND position=2").run(OCT28.retained,held.group_id);
+  // A staff correction recorded after the post (the editor stamps manual_edited_at).
+  f.db.prepare("UPDATE special_slots SET content=?,origin='manual',manual_locked=1,last_auto_value=NULL,manual_edited_at='2026-10-28T16:15:50.000Z' WHERE group_id=? AND position=2").run(OCT28.retained,held.group_id);
   return f;
 }
 
@@ -205,8 +209,8 @@ test('October 28: staff-protection-only hold retains the locked value and sends 
 
 test('staff protection alongside a genuine hold still sends the existing review email',async t=>{
   const f=october28(t);
-  const lunch=f.slots(3,'lunch')[0];
-  f.db.prepare("UPDATE special_slots SET price='$9.00' WHERE group_id=? AND position=1").run(lunch.group_id);
+  // A genuine hold: Wednesday's Lunch destination is ambiguous (two Lunch groups).
+  f.db.exec("INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled) VALUES('extra-lunch','auto-week',3,'lunch','Extra Lunch','',98,1)");
   await f.run();
   for(let i=0;i<3;i++){f.state.now+=ALERT_GRACE_MS;await f.run();}
   assert.equal(f.sent.length,1);
@@ -215,7 +219,7 @@ test('staff protection alongside a genuine hold still sends the existing review 
   const {subject,text}=alertMessage(message.day,message.code,{detail:message.detail,firstSeenMs:message.firstSeenMs});
   assert.match(subject,/automation needs review/);
   assert.match(text,/Staff lock: yes/);
-  assert.match(text,/separate price/);
+  assert.match(text,/Missing, disabled or ambiguous destination/);
   assert.equal(f.slots(3,'all-day')[1].content,OCT28.retained);
   assert.equal(f.slots(3,'all-day')[1].manual_locked,1);
 });

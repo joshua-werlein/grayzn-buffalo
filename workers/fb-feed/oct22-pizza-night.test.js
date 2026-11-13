@@ -4,6 +4,9 @@ import {readFileSync} from 'node:fs';
 import {joinPizzaSizes,analyzeDailyEvidence} from './evidence.js';
 import {reconcilePosterEvidence,singleDayLunchEvidenceV2} from './reconcile.js';
 import {harness} from './test-fixture.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 
 // Public poster transcriptions only (stored October 22 extractions): the
 // weekly-shaped THURSDAY LUNCH SPECIALS morning reading and the undated
@@ -142,10 +145,10 @@ test('pipeline: morning then evening publishes the priced pizza over the recurri
 
 test('pipeline: a staff-locked Thursday Nightly edit is never overwritten',async t=>{
   const f=setup(t);
-  f.sql("UPDATE special_slots SET content='Staff pizza note',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",f.nightly().group_id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff pizza note',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",f.nightly().group_id);
   await f.run();f.addEvening();await f.run();
   assert.equal(f.nightly().content,'Staff pizza note');
-  assert.ok(f.sql("SELECT detail FROM special_import_events WHERE event_type='review'").some(e=>e.detail.includes('Protected or ineligible destination slot')));
+  assert.ok(f.sql("SELECT detail FROM special_import_events WHERE event_type='review'").some(e=>e.detail.includes('Newer staff edit retained')));
 });
 
 test('pipeline: unchanged prior automation updates; a staff-edited automation value does not',async t=>{
@@ -154,7 +157,7 @@ test('pipeline: unchanged prior automation updates; a staff-edited automation va
   await f.run();f.addEvening();await f.run();
   assert.equal(f.nightly().content,PIZZA);
   const g=setup(t);
-  g.sql("UPDATE special_slots SET content='Edited by staff',origin='automation',manual_locked=0,last_auto_value='Old pizza $1' WHERE group_id=? AND position=1",g.nightly().group_id);
+  g.sql("UPDATE special_slots SET content='Edited by staff',origin='manual',manual_locked=0,last_auto_value='Old pizza $1',manual_edited_at='2099-12-31T00:00:00.000Z' WHERE group_id=? AND position=1",g.nightly().group_id);
   await g.run();g.addEvening();await g.run();
   assert.equal(g.nightly().content,'Edited by staff');
 });

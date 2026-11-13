@@ -37,11 +37,14 @@ When the caption alone identifies Mexican Night (no lunch, specials, delivery, o
 
 A current post with explicit Mexican Night evidence (its caption or printed heading) has its own alert scope (`<day>:mexican:mexican_night_failed`). A failed import or a validated-but-unpublished menu alerts once per Chicago day after the 30-minute grace. After a normal publication, saved entries the poster did not confirm (still unpriced) are named in a separate "unconfirmed entries" email that is explicitly not a validation failure, sharing the same once-per-day key. No post, complete publication, pending work, or a staff-owned section creates no email.
 
-## Manual Protection
+## Staff corrections (superseded November 12, 2026)
 
-- One protected item or a manual collection blocks Facebook replacement during its associated week.
-- Title/schedule/group-only staff corrections are also protected.
-- Manual values and locked slots are never overwritten.
+Facebook is the canonical source for specials ([docs/facebook-specials-source-of-truth.md](facebook-specials-source-of-truth.md)). A staff-saved or
+staff-approved Mexican Night menu (`section_source='manual'` or staff-edited slots) is kept
+against posts published before its last save (`updated_at`) and replaced by a Mexican Night
+post verified as published after it. That newer post patches the staff menu (not the
+recurring template), so entries staff removed or renamed are not brought back. Each post is
+applied at most once, so the same post never undoes a later staff edit.
 - The rollover guard bypasses expired live manual/Facebook ownership only when `section_week_start` is strictly older than the target week. Same-week and future menus still cannot be reseeded.
 
 ## Visibility Window

@@ -431,8 +431,9 @@ export function collectionFromForm(form: FormData, baseline: SpecialCollection):
       slots: [1,2,3,4].map(position => {
         const prior = old?.slots.find(s => s.position === position);
         const splitFields = ITEM_SECTIONS.includes(baseline.id) && form.has(p+position+'_title');
-        // Weekly specials are replaceable by newer Facebook posts unless staff lock
-        // them. Soup, recurring defaults and sections keep their own ownership rules.
+        // Facebook is the canonical source (docs/facebook-specials-source-of-truth.md):
+        // a weekly edit is an immediate correction that a newer verified post replaces.
+        // The editor no longer offers a lock; an older form's lock field still saves.
         const lockable = baseline.kind === 'week' && !soup;
         const lockShown = lockable && form.has(p+position+'_lock_shown');
         if (prior && !form.has(p+position+'_content') && !splitFields) return {...prior};
@@ -453,7 +454,7 @@ export function collectionFromForm(form: FormData, baseline: SpecialCollection):
         return { position, content, price: '', section_link: content?.trim() ? (form.has(p+position+'_link') ? value(p+position+'_link') : prior?.section_link ?? '') : '',
           origin: soup && content?.trim() ? 'manual' : newWeek || !prior ? (content?.trim() ? 'manual' : 'legacy') : prior.origin,
           manual_locked: lockable ? staffLock : soup && content?.trim() ? 1 : newWeek || !prior ? (content?.trim() ? 1 : 0) : prior.manual_locked,
-          last_auto_value: prior?.last_auto_value ?? null, manual_edited_at: prior?.manual_edited_at ?? null, ...(lockable ? {staff_edited: true} : {}) };
+          last_auto_value: prior?.last_auto_value ?? null, manual_edited_at: prior?.manual_edited_at ?? null, ...(baseline.kind === 'week' ? {staff_edited: true} : {}) };
       }) };
   });
   return { ...baseline, revision: Number(value('revision')), title: baseline.kind==='section' ? value('title') : baseline.title,
@@ -598,22 +599,24 @@ export async function saveCollection(env: any, next: SpecialCollection, dates?: 
       }
       if (old && slotValue(old)===slotValue(slot)) {
         if (!lockable || !isPopulated || old.manual_locked===slot.manual_locked) continue;
-        // Lock control only. An unchanged automation value stays automation-owned.
-        // Unlocking anything else makes it a staff edit that only newer posts replace;
-        // a lock with no recorded edit time is treated as edited now.
+        // Lock control only (from a form opened before the lock control was retired). An
+        // unchanged automation value stays automation-owned. Unlocking anything else makes it
+        // a staff edit that only newer posts replace. Either change without a recorded edit
+        // time counts as edited now, so it never creates a lock no post can be newer than.
         const automated = old.origin==='automation' && old.content===old.last_auto_value;
         const unlockedEdit = slot.manual_locked===0 && !automated;
         slotRows.push([groupId,slot.position,slot.content,slot.price,slot.section_link,old.last_auto_value ?? null,slot.manual_locked,
-          unlockedEdit ? 'manual' : old.origin,unlockedEdit ? old.manual_edited_at ?? editedAt : old.manual_edited_at ?? null]);
+          unlockedEdit ? 'manual' : old.origin,unlockedEdit || slot.manual_locked===1 ? old.manual_edited_at ?? editedAt : old.manual_edited_at ?? null]);
         continue;
       }
       // New slots retain their server-prepared ownership (including defaults); a
       // weekly slot staff typed in records its edit time. Existing changed slots are
-      // staff edits. Weekly slots lock only on request; other kinds lock when populated.
+      // staff edits. Every weekly edit, Soup included, records its time: that time,
+      // not ownership, is what keeps an older Facebook post from undoing it.
       slotRows.push([groupId,slot.position,slot.content,slot.price,slot.section_link,old?.last_auto_value ?? null,
         old === undefined ? (soup && fresh && isPopulated ? 1 : slot.manual_locked) : isPopulated ? lockable ? slot.manual_locked : 1 : 0,
         old === undefined ? (soup && isPopulated ? 'manual' : slot.origin) : isPopulated ? 'manual' : 'legacy',
-        old === undefined ? (slot.staff_edited && isPopulated ? editedAt : null) : lockable ? editedAt : old.manual_edited_at ?? null]);
+        old === undefined ? ((slot.staff_edited || (soup && fresh)) && isPopulated ? editedAt : null) : next.kind === 'week' ? editedAt : old.manual_edited_at ?? null]);
     }
   }
   // JSON rowsets use one SELECT and three bound parameters per statement,

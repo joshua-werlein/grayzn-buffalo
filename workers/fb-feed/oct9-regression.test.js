@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {singleDayLunchEvidence,reconcilePosterEvidence,reconcilePosters,groupNightlyChoices} from './reconcile.js';
 import {harness,offer,poster} from './test-fixture.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 
 const lunch=()=>({type:'weekly-lunch',poster_evidence:'Friday Lunch Specials',service_time:'11 AM - 1:30 PM',entries:[
   {day_of_week:5,content:'1) FISH SANDWICH W/ FRIES + DRINK $9.75'},
@@ -141,10 +144,10 @@ test('exact lunch pipeline replaces unlocked recurring defaults, keeps prices, a
 
 test('locked staff lunch correction survives while All Day and Soup publish',async t=>{
   const f=setup(t);
-  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=1 WHERE group_id=? AND position=1','Staff pick $8','manual',f.slots(5,'lunch')[0].group_id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content=?,origin=?,manual_locked=1 WHERE group_id=? AND position=1",'Staff pick $8','manual',f.slots(5,'lunch')[0].group_id);
   await f.run();assert.equal(f.slots(5,'lunch')[0].content,'Staff pick $8');
   assert.equal(f.slots(5,'all-day')[0].content,expected[1]);
-  assert.match(f.sql("SELECT detail FROM special_import_events WHERE event_type='review' ORDER BY id DESC")[0].detail,/Protected or ineligible/);
+  assert.match(f.sql("SELECT detail FROM special_import_events WHERE event_type='review' ORDER BY id DESC")[0].detail,/Newer staff edit retained/);
 });
 
 for (const nightFirst of [false,true]) test(`exact October 9 pipeline is deterministic when ${nightFirst?'night':'lunch'} arrives first`,async t=>{

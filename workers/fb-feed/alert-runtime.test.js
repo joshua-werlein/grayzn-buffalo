@@ -54,7 +54,8 @@ async function october30HeldOffer(t) {
   f.state.candidate.offers[1].uncertainties=['Side alternatives are unclear'];
   Object.assign(f.state.posts[0],{message:'',created_time:'2026-10-30T15:11:07Z',updated_time:'2026-10-30T15:11:07Z'});
   f.db.exec("UPDATE weekly_specials SET week_start_date='2026-10-26',week_end_date='2026-11-01' WHERE id=9000");
-  f.db.prepare("UPDATE special_slots SET content=?,origin='manual',manual_locked=1 WHERE group_id=? AND position=2")
+  // A staff correction recorded after the 15:11 post: that post never undoes it.
+  f.db.prepare("UPDATE special_slots SET content=?,origin='manual',manual_locked=1,manual_edited_at='2026-10-30T15:12:00.000Z' WHERE group_id=? AND position=2")
     .run(f.state.candidate.offers[2].content,f.slots(5,'all-day')[0].group_id);
   await f.run();
   assert.equal(f.row()?.state,'attention');
@@ -76,15 +77,18 @@ test('October 30: audited staff correction before grace suppresses the held-offe
   f.advance(6*60000);
   const rows=f.state.candidate.offers.map((o,index)=>({index,service:index===0?'lunch':'all-day',
     groupId:f.slots(5,index===0?'lunch':'all-day')[0].group_id,position:index===2?2:1,content:o.content,sectionLink:''}));
-  for(const row of rows) f.db.prepare("UPDATE special_slots SET content=?,origin='manual',manual_locked=1 WHERE group_id=? AND position=?")
-    .run(row.content,row.groupId,row.position);
+  // Approval writes each row as a staff edit stamped with the approval time.
+  for(const row of rows) f.db.prepare("UPDATE special_slots SET content=?,origin='manual',manual_locked=1,manual_edited_at=? WHERE group_id=? AND position=?")
+    .run(row.content,new Date(f.state.now).toISOString(),row.groupId,row.position);
   const source=f.imports()[0];
   f.db.prepare("INSERT INTO special_import_events(import_id,event_type,detail) VALUES(?,'review',?)")
     .run(source.id,'STAFF_APPROVAL:'+JSON.stringify({version:1,day:'2026-10-30',complete:true,rows}));
   f.db.prepare("UPDATE special_imports SET review_status='accepted' WHERE id=?").run(source.id);
   f.db.exec("UPDATE special_collections SET revision=revision+1 WHERE id='auto-week'");
   await f.send();assert.equal(f.sent.length,0,'the saved staff change invalidates old dispatch proof immediately');
-  f.advance(12*60000);await f.run();assert.equal(f.row().state,'suppressed');
+  // The website now shows exactly the approved source values: nothing is held, so the
+  // outcome is resolved (formerly a suppressed staff-lock hold). No email either way.
+  f.advance(12*60000);await f.run();assert.equal(f.row().state,'resolved');
   f.advance(ALERT_GRACE_MS);await f.send();assert.equal(f.sent.length,0);
   assert.equal(f.slots(5,'all-day')[0].content,f.state.candidate.offers[1].content);
 });
@@ -802,7 +806,9 @@ test('November 10: a rejected import stays requeueable; recovery before grace re
 
 test('November 10: a staff correction is never overwritten and suppresses the Mexican Night alert',async t=>{
   const f=november10(t);
+  // A real staff save after the 21:29 post (the editor marks the section and stamps updated_at).
   f.db.exec("UPDATE special_slots SET content='Burrito - $11.00',manual_locked=1 WHERE group_id='mexican-night:0' AND position=2");
+  f.db.exec("UPDATE special_collections SET section_source='manual',updated_at='2026-11-10 21:29:45' WHERE id='mexican-night'");
   const before=f.menu();await f.run();
   assert.deepEqual(f.menu(),before);
   assert.notEqual(f.mexican()[0]?.state,'attention');

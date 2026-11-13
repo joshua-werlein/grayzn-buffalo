@@ -56,19 +56,25 @@ test('night poster with changed repeat prices preserves All Day and publishes un
   assert.deepEqual(contents(f,1,'nightly'),['2 Burgers and 1 Order of Fries $14','Half Rack Ribs with Mac & Cheese & Coleslaw $18.75','','']);
   assert.match(f.sql("SELECT detail FROM special_import_events WHERE event_type='review' ORDER BY id DESC")[0].detail,/Repeated All Day price conflict/);
 });
-for(const [name,content,origin,lock,baseline,expected] of [
-  ['eligible blank','','legacy',0,null,wingCanonical],
-  // populated origin='manual',manual_locked=0 is a recurring default → NOW eligible (Arm 3)
-  ['manual value','Manual','manual',0,null,wingCanonical],
-  // blank slot with manual origin and locked=1 is eligible under Arm 1 (content is blank)
-  ['manual blank','','manual',0,null,wingCanonical],['locked blank','','automation',1,null,wingCanonical],
-  ['locked value','Old','automation',1,'Old','Old'],['owned baseline','Old','automation',0,'Old',wingCanonical],
-  ['missing baseline','Old','automation',0,null,'Old'],['manual edit','Corrected','automation',0,'Old','Corrected'],
-  ['manual clear','','automation',0,'Old',''],['legacy value','Legacy','legacy',0,'Legacy','Legacy'],
-  // confirmed manual entry: origin='manual',manual_locked=1,content populated → PROTECTED (not eligible)
-  ['confirmed manual','Staff pick','manual',1,null,'Staff pick'],
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): the
+// post (14:00) replaces every previous value except a staff edit recorded after it.
+const AFTER_POST='2030-01-09T14:30:00.000Z',BEFORE_POST='2030-01-09T13:30:00.000Z';
+for(const [name,content,origin,lock,baseline,edited,expected] of [
+  ['eligible blank','','legacy',0,null,null,wingCanonical],
+  ['manual value','Manual','manual',0,null,null,wingCanonical],
+  ['manual blank','','manual',0,null,null,wingCanonical],['locked blank','','automation',1,null,null,wingCanonical],
+  ['locked value','Old','automation',1,'Old',null,'Old'],['owned baseline','Old','automation',0,'Old',null,wingCanonical],
+  ['missing baseline','Old','automation',0,null,null,wingCanonical],['manual edit','Corrected','automation',0,'Old',null,wingCanonical],
+  ['manual clear','','automation',0,'Old',null,wingCanonical],['legacy value','Legacy','legacy',0,'Legacy',null,wingCanonical],
+  // A lock with no recorded edit time predates edit times: no post is provably newer.
+  ['confirmed manual','Staff pick','manual',1,null,null,'Staff pick'],
+  ['staff edit before the post','Staff pick','manual',0,null,BEFORE_POST,wingCanonical],
+  ['staff lock before the post','Staff pick','manual',1,null,BEFORE_POST,wingCanonical],
+  ['staff edit after the post','Staff pick','manual',0,null,AFTER_POST,'Staff pick'],
+  ['staff lock after the post','Staff pick','manual',1,null,AFTER_POST,'Staff pick'],
+  ['staff clear after the post','','legacy',0,'Old',AFTER_POST,''],
 ]) test(`ownership: ${name}`,async t=>{
-  const f=harness(t);f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1',content,origin,lock,baseline,f.slots()[0].group_id);
+  const f=harness(t);f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=?,manual_edited_at=? WHERE group_id=? AND position=1',content,origin,lock,baseline,edited,f.slots()[0].group_id);
   await f.run();assert.equal(f.slots()[0].content,expected);
 });
 for(const [value,expectedLock] of [['Bartender correction',0],['',0]]) test(`admin save ${JSON.stringify(value)} wins`,async t=>{
@@ -174,7 +180,7 @@ test('new safe(): blank slot with origin=manual,manual_locked=1 is NOW eligible'
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1','','manual',1,null,f.slots()[0].group_id);
   await f.run();assert.equal(f.slots()[0].content,wingCanonical);
 });
-test('new safe(): populated slot with origin=manual,manual_locked=1 is NOT eligible (protected)',async t=>{
+test('new safe(): a populated staff lock with no recorded edit time is kept (no post is provably newer)',async t=>{
   const f=harness(t);
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1','Staff special','manual',1,null,f.slots()[0].group_id);
   await f.run();assert.equal(f.slots()[0].content,'Staff special');
@@ -185,11 +191,10 @@ test('new safe(): prior automation value unchanged with manual_locked=0 is eligi
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1',wing,'automation',0,wing,f.slots()[0].group_id);
   await f.run();assert.equal(f.slots()[0].content,wingCanonical);
 });
-test('new safe(): prior automation value with manual_locked=1 (staff locked) is NOT eligible',async t=>{
+test('new safe(): a staff lock on an automation value replaces only when its edit time is older than the post',async t=>{
   const f=harness(t);
-  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1',wing,'automation',1,wing,f.slots()[0].group_id);
-  await f.run();assert.equal(f.slots()[0].content,wing);assert.equal(f.slots()[0].manual_locked,1);
-  // content unchanged but still locked — verify automation did not bump origin
+  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=?,manual_edited_at=? WHERE group_id=? AND position=1',wing,'automation',1,wing,'2030-01-09T13:30:00.000Z',f.slots()[0].group_id);
+  await f.run();assert.equal(f.slots()[0].content,wingCanonical);assert.equal(f.slots()[0].manual_locked,0);
   assert.equal(f.slots()[0].origin,'automation');
 });
 test('Monday 4-offer fallback fills blank slots with manual_locked=1,origin=manual (new rule)',async t=>{
@@ -204,13 +209,13 @@ test('Monday 4-offer fallback fills blank slots with manual_locked=1,origin=manu
   assert.equal(f.slots(1,'nightly')[0].content,'Offer a');
   assert.equal(f.slots(1,'all-day')[0].content,'Offer C');
 });
-test('populated manual_locked=1 slot blocks write to that specific group while others fill',async t=>{
+test('a staff correction after the post blocks write to that specific group while others fill',async t=>{
   const f=harness(t,{now:'2030-01-07T15:00:00Z',candidate:poster(1,'Monday Night Specials',[offer('Offer A'),offer('Offer B'),offer('Offer C'),offer('Offer D')])});
   f.state.posts[0].created_time='2030-01-07T14:00:00Z';
   const nightGroup=f.sql("SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=1 AND service='nightly'")[0];
   const allDayGroup=f.sql("SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=1 AND service='all-day'")[0];
   // Nightly group has a staff entry (protected), all-day is blank but locked
-  f.sql('UPDATE special_slots SET manual_locked=1,origin=?,content=? WHERE group_id=? AND position=1','manual','Staff pick',nightGroup.id);
+  f.sql('UPDATE special_slots SET manual_locked=1,origin=?,content=?,manual_edited_at=? WHERE group_id=? AND position=1','manual','Staff pick','2030-01-07T14:30:00.000Z',nightGroup.id);
   f.sql('UPDATE special_slots SET manual_locked=1,origin=?,content=? WHERE group_id=?','manual','',allDayGroup.id);
   await f.run();
   // Nightly group blocked entirely (staff value in position 1)
@@ -253,15 +258,19 @@ test('arm 3: recurring default slot (origin=manual,manual_locked=0,non-empty) is
   await f.run();
   assert.equal(f.slots()[0].content,wingCanonical);
 });
-test('arm 3: confirmed manual entry (origin=manual,manual_locked=1,non-empty) is fully protected',async t=>{
-  // saveCollection() sets manual_locked=1 for any non-empty staff submission.
-  // Arm 3 must NOT fire for manual_locked=1; the slot stays protected.
+test('arm 3: a confirmed manual entry is kept only against posts published before its edit',async t=>{
+  // Staff saves record manual_edited_at. A post older than the edit never undoes it.
   const f=harness(t);
-  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1',
-    'Staff-entered special','manual',1,null,f.slots()[0].group_id);
+  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=?,manual_edited_at=? WHERE group_id=? AND position=1',
+    'Staff-entered special','manual',1,null,'2030-01-09T14:30:00.000Z',f.slots()[0].group_id);
   await f.run();
   assert.equal(f.slots()[0].content,'Staff-entered special');
   assert.equal(f.slots()[0].manual_locked,1);
+  // A newer post replaces it. (This legacy-contract harness times a value by its oldest
+  // current source, so the newer post stands alone; contract 2 is in nov12-source-of-truth.)
+  f.state.posts=[{...f.state.posts[0],id:'p-newer',created_time:'2030-01-09T14:45:00Z',updated_time:'2030-01-09T14:45:00Z'}];
+  await f.run();
+  assert.equal(f.slots()[0].content,wingCanonical);
 });
 test('arm 3: Monday 4-offer fallback replaces a recurring default slot',async t=>{
   const f=harness(t,{now:'2030-01-07T15:00:00Z',candidate:poster(1,'Monday Night Specials',[offer('Offer A'),offer('Offer B'),offer('Offer C'),offer('Offer D')])});
@@ -312,6 +321,7 @@ test('per-slot: Monday nightly pos-1 protected, pos-2 blank → pos-2 filled, po
   const nightGroup=f.sql("SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=1 AND service='nightly'")[0];
   const allDayGroup=f.sql("SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=1 AND service='all-day'")[0];
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=1','Staff pick','manual',1,nightGroup.id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2030-01-07T14:30:00.000Z' WHERE group_id=? AND position=1",nightGroup.id);
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=2','','legacy',0,nightGroup.id);
   f.sql('UPDATE special_slots SET manual_locked=1,origin=?,content=? WHERE group_id=?','manual','',allDayGroup.id);
   await f.run();
@@ -326,6 +336,7 @@ test('per-slot: Monday nightly pos-1 blank, pos-2 protected → pos-1 filled, po
   const allDayGroup=f.sql("SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=1 AND service='all-day'")[0];
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=1','','legacy',0,nightGroup.id);
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=2','Staff B','manual',1,nightGroup.id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2030-01-07T14:30:00.000Z' WHERE group_id=? AND position=2",nightGroup.id);
   f.sql('UPDATE special_slots SET manual_locked=1,origin=?,content=? WHERE group_id=?','manual','',allDayGroup.id);
   await f.run();
   assert.equal(f.slots(1,'nightly')[0].content,'Offer a');
@@ -339,6 +350,7 @@ test('per-slot: both Monday nightly slots protected → nightly unchanged, all-d
   const allDayGroup=f.sql("SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=1 AND service='all-day'")[0];
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=1','Staff A','manual',1,nightGroup.id);
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=2','Staff B','manual',1,nightGroup.id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2030-01-07T14:30:00.000Z' WHERE group_id=? AND position IN (1,2)",nightGroup.id);
   f.sql('UPDATE special_slots SET manual_locked=1,origin=?,content=? WHERE group_id=?','manual','',allDayGroup.id);
   await f.run();
   assert.equal(f.slots(1,'nightly')[0].content,'Staff A');
@@ -351,6 +363,7 @@ test('per-slot: Thursday all-day pos-1 recurring default, pos-2 confirmed manual
   const allDayGroup=f.sql("SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=4 AND service='all-day'")[0];
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=1','Default special','manual',0,allDayGroup.id);
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=2','Staff choice','manual',1,allDayGroup.id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2030-01-10T14:30:00.000Z' WHERE group_id=? AND position=2",allDayGroup.id);
   await f.run();
   assert.equal(f.slots(4,'all-day')[0].content,pair[0].content);
   assert.equal(f.slots(4,'all-day')[1].content,'Staff choice');
@@ -399,14 +412,18 @@ test('Saturday recurring defaults (origin=manual,manual_locked=0) can be replace
   assert.equal(contents(f,6,'lunch')[0],lunch.content);
   assert.equal(contents(f,6,'all-day')[0],pair[0].content);
 });
-test('Saturday manual_locked=1 slots remain protected',async t=>{
+test('Saturday staff corrections after the post remain; one before the post does not',async t=>{
   const satCandidate=poster(6,'Saturday Specials',[lunch,...pair]);
   const f=harness(t,{now:'2030-01-12T15:00:00Z',candidate:satCandidate});
   f.state.posts[0].created_time='2030-01-12T14:00:00Z';f.state.posts[0].updated_time='2030-01-12T14:00:00Z';
   const lunchGroup=f.sql("SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=6 AND service='lunch'")[0];
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=1','Staff Saturday Lunch','manual',1,lunchGroup.id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2030-01-12T14:30:00.000Z' WHERE group_id=? AND position=1",lunchGroup.id);
   await f.run();
   assert.equal(contents(f,6,'lunch')[0],'Staff Saturday Lunch');
+  f.sql("UPDATE special_slots SET manual_edited_at='2030-01-12T13:30:00.000Z' WHERE group_id=? AND position=1",lunchGroup.id);
+  await f.run();
+  assert.equal(contents(f,6,'lunch')[0],lunch.content);
 });
 
 // ── Retry logic integration tests ────────────────────────────────────────────

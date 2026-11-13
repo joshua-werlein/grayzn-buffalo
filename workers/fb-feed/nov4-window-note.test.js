@@ -158,10 +158,11 @@ test('a genuinely uncertain lunch keeps the weekly value, publishes All Day and 
 test('the November 4 staff correction stays protected and unchanged when the reading is rechecked',async t=>{
   const STAFF='Chicken Fettuccine Alfredo With Breadsticks and A Drink $9.75',AUTO='Chicken Fettuccine Alfredo With Breadsticks and A Drink';
   const f=setup(t);
-  f.setLunch("content=?,price='',origin='manual',manual_locked=1,last_auto_value=?",STAFF,AUTO);
+  // Corrected by staff after the post: rechecking the same post never undoes it.
+  f.setLunch("content=?,price='',origin='manual',manual_locked=1,last_auto_value=?,manual_edited_at='2026-11-04T15:49:00.000Z'",STAFF,AUTO);
   await f.run();await f.run();
   const slot=f.slots(3,'lunch')[0];
   assert.equal(slot.content,STAFF);assert.equal(slot.origin,'manual');assert.equal(slot.manual_locked,1);assert.equal(slot.last_auto_value,AUTO);
   assert.deepEqual(f.slots(3,'all-day').slice(0,2).map(s=>s.content),[JALAPENO,HAM]);
-  assert.match(f.conflicts()[0],/Protected or ineligible destination slot/);
+  assert.match(f.conflicts()[0],/Newer staff edit retained/);
 });

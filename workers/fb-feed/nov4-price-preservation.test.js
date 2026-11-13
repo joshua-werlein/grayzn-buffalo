@@ -271,13 +271,15 @@ test('a clean daily poster still prices and replaces a priceless weekly value',a
   f.advance(LATER);await f.scan([[...DAILY,daily(priced)]]);
   assert.equal(f.lunch(1).content,priced);
 });
-test('a staff-locked lunch is unchanged by a priced or priceless corrected poster, repeatedly',async t=>{
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md).
+test('a staff correction stays through the unchanged original poster; the newer corrected poster replaces it',async t=>{
   const STAFF='Staff Monday meal $8.00';
   const f=setup(t);
   await f.scan([[...ORIGINAL,weekly()]]);
-  f.setLunch(1,"content=?,origin='manual',manual_locked=1",STAFF);
-  for(const meals of [MEALS.map(bare),MEALS.map(m=>m.replace('9.75','11.00'))]) {
-    f.advance(LATER);await f.scan([[...CORRECTED,weekly(meals)]]);
-    const s=f.lunch(1);assert.equal(s.content,STAFF);assert.equal(s.origin,'manual');assert.equal(s.manual_locked,1);
-  }
+  // Corrected at 15:00: after the 14:51 original, before the 15:30 corrected poster.
+  f.setLunch(1,"content=?,origin='manual',manual_locked=1,manual_edited_at='2026-11-02T15:00:00.000Z'",STAFF);
+  f.advance(LATER);await f.scan([[...ORIGINAL,weekly()]]);
+  let s=f.lunch(1);assert.equal(s.content,STAFF);assert.equal(s.origin,'manual');assert.equal(s.manual_locked,1);
+  f.advance(LATER);await f.scan([[...CORRECTED,weekly(MEALS.map(m=>m.replace('9.75','11.00')))]]);
+  s=f.lunch(1);assert.equal(s.content,MEALS[0].replace('9.75','11.00'));assert.equal(s.origin,'automation');assert.equal(s.manual_locked,0);
 });

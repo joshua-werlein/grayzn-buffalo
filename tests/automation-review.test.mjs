@@ -61,7 +61,7 @@ test('review queries preserve all rows and show ownership, protected slots and a
   const model=await r.readAutomationReview(f.env,day,now);
   assert.equal(model.history.length,1);assert.equal(model.history[0].id,'monday');assert.equal(model.history[0].status,'Held');
   assert.match(model.history[0].editor,/week=9000#weekly-day-0/);
-  const slot=model.groups.find(g=>g.id===group).slots[0];assert.equal(slot.owner,'Staff corrected');assert.equal(slot.protection,'Yes — staff locked');
+  const slot=model.groups.find(g=>g.id===group).slots[0];assert.equal(slot.owner,'Staff corrected');assert.equal(slot.protection,'Yes — older staff lock, no edit time recorded');
   assert.deepEqual(f.sql('SELECT * FROM special_slots ORDER BY group_id,position'),before);
   assert.equal(f.sql('SELECT COUNT(*) n FROM special_import_events')[0].n,1);
 });

@@ -15,6 +15,9 @@ import {readWingAttention,WING_HOLD} from './wing-review.js';
 import {fixture} from '../../tests/specials-fixture.mjs';
 import {loadTs} from '../../tests/load-ts.mjs';
 import {parseWingSauces} from '../../src/lib/wing-wednesday.js';
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction is kept only against posts published before its recorded edit time. Staff
+// corrections here are stamped manual_edited_at='2099-12-31…' (after every post in the test).
 const store=loadTs('src/lib/specials-store.ts');
 
 const OPTIONS='ww-live:ww-default:wings', SAUCES='ww-live:ww-default:sauces';
@@ -89,13 +92,13 @@ test('a daytime Wednesday poster says nothing about wings: no decision and no re
 });
 test('a staff-locked nightly value is an intentional choice, not a promotion to report',async t=>{
   const f=harness(t,{candidate:pizza()});
-  f.sql("UPDATE special_slots SET content='Staff special',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",f.slots()[0].group_id);
+  f.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff special',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",f.slots()[0].group_id);
   await f.run();
   assert.equal(f.slots()[0].content,'Staff special');assert.equal(decisions(f).length,0);
 });
 test('destinations stay independent: a locked nightly slot keeps its text while the section updates, and the reverse',async t=>{
   const one=harness(t,{candidate:nightPoster()});
-  one.sql("UPDATE special_slots SET content='Staff special',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",one.slots()[0].group_id);
+  one.sql("UPDATE special_slots SET manual_edited_at='2099-12-31T00:00:00.000Z',content='Staff special',origin='manual',manual_locked=1 WHERE group_id=? AND position=1",one.slots()[0].group_id);
   await one.run();
   assert.equal(one.slots()[0].content,'Staff special');assert.equal(options(one)[0],'Bone-In Wings $.89 each');
   const two=harness(t,{candidate:nightPoster()});

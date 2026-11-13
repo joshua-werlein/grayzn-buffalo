@@ -135,13 +135,20 @@ test('daily Monday evidence survives, blanks fill, Friday recurring default is r
   assert.deepEqual(f.sql('SELECT * FROM special_import_events'),audits);
 });
 
+// Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): a staff
+// correction stays only against posts published before it (posted 12:58:14).
 for (const origin of ['manual','legacy','automation']) {
-  test(`weekly evidence preserves locked ${origin} Lunch correction`, async t => {
+  test(`weekly evidence preserves a ${origin} Lunch correction made after the post, not before it`, async t => {
     const f = currentWeek(t);
-    f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=1,last_auto_value=? WHERE group_id=? AND position=1','Staff correction',origin,'Staff correction',lunch(f,5).group_id);
+    f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=1,last_auto_value=?,manual_edited_at=? WHERE group_id=? AND position=1','Staff correction',origin,'Staff correction','2026-09-28T13:30:00.000Z',lunch(f,5).group_id);
     await f.run();
     assert.equal(lunch(f,5).content,'Staff correction');
     assert.equal(lunch(f,5).manual_locked,1);
+    const g = currentWeek(t);
+    g.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=1,last_auto_value=?,manual_edited_at=? WHERE group_id=? AND position=1','Staff correction',origin,'Staff correction','2026-09-28T12:30:00.000Z',lunch(g,5).group_id);
+    await g.run();
+    assert.equal(lunch(g,5).content,entries[4].content);
+    assert.equal(lunch(g,5).manual_locked,0);
   });
 }
 

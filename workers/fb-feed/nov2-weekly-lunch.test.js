@@ -132,6 +132,8 @@ function setup(t, {now='2026-11-02T15:20:00Z'}={}) {
     weeklyWrites:()=>db.prepare("SELECT count(*) n FROM special_import_events WHERE detail LIKE 'GUARDED_WEEKLY_LUNCH:%'").get().n};
 }
 const unverified = () => weekly('asterisk',e=>({...e,evidence:`* ${DAYS[e.day_of_week%5]} * ${e.content}`}));
+// A staff correction recorded after both posters (14:51 and 15:06).
+const correct = (f,day,content='Staff meal $9') => f.db.prepare("UPDATE special_slots SET content=?,origin='manual',manual_locked=1,manual_edited_at='2026-11-02T15:10:00.000Z' WHERE group_id=? AND position=1").run(content,f.lunch(day).group_id);
 
 test('November 2: two equivalent decorated posters publish once and raise no alert', async t => {
   const f = setup(t);
@@ -173,12 +175,12 @@ test('weekly validation rejection produces one Weekly Lunch alert after grace', 
   assert.ok(!message.text.includes('uncertainties') && !message.text.includes('{'),'no raw AI response structure');
 });
 
-test('weekly publication failure produces an alert; staff protection does not', async t => {
+test('weekly publication failure produces an alert; a staff correction newer than the post does not', async t => {
   const f = setup(t);
-  // Tuesday's destination carries a separate price: automatic replacement is ineligible.
-  f.db.prepare("UPDATE special_slots SET price='$9.00' WHERE group_id=? AND position=1").run(f.lunch(2).group_id);
-  // Wednesday is staff-locked: intentional, retained, not a failure.
-  f.db.prepare("UPDATE special_slots SET content='Staff meal $9',origin='manual',manual_locked=1 WHERE group_id=? AND position=1").run(f.lunch(3).group_id);
+  // Tuesday's destination is ambiguous (two Lunch groups): an actionable publication failure.
+  ambiguous(f,2);
+  // Wednesday was corrected by staff after both posters: intentional, retained, not a failure.
+  correct(f,3);
   await f.run();
   assert.equal(f.lunch(1).content,MEALS[0]);assert.equal(f.lunch(2).content,'');assert.equal(f.lunch(3).content,'Staff meal $9');
   const row = f.incident('weekly');
@@ -186,16 +188,16 @@ test('weekly publication failure produces an alert; staff protection does not', 
   f.advance(ALERT_GRACE_MS);await f.send();
   assert.equal(f.sent.length,1);
   const text = alertMessage(f.sent[0].day,f.sent[0].code,f.sent[0]).text;
-  assert.match(text,/- Tuesday: Lunch slot is not eligible for automatic replacement/);
+  assert.match(text,/- Tuesday: Lunch destination is missing or ambiguous/);
   assert.doesNotMatch(text,/- Wednesday/);
-  assert.match(text,/Staff-protected \(kept, not a failure\): Wednesday/);
+  assert.match(text,/Staff corrections newer than the post, or disabled \(kept, not a failure\): Wednesday/);
   assert.match(text,/Published by automation: Monday, Thursday, Friday/);
   assert.match(text,/Result: Partially Published/);
 });
 
-test('staff-locked weekly destinations alone are suppressed', async t => {
+test('staff corrections newer than the posters alone are suppressed', async t => {
   const f = setup(t);
-  for (const day of [1,2,3,4,5]) f.db.prepare("UPDATE special_slots SET content='Staff meal $9',origin='manual',manual_locked=1 WHERE group_id=? AND position=1").run(f.lunch(day).group_id);
+  for (const day of [1,2,3,4,5]) correct(f,day);
   await f.run();f.advance(ALERT_GRACE_MS);await f.run();
   assert.notEqual(f.incident('weekly')?.state,'attention');
   assert.equal(f.sent.length,0);
@@ -280,7 +282,9 @@ test('weekly alert detail exposes only fixed reasons and validated dates', () =>
 
 // ── Review follow-up: coverage, dispatch capacity, fingerprints ─────────────
 
-const lock = (f,day,content='Staff meal $9') => f.db.prepare("UPDATE special_slots SET content=?,origin='manual',manual_locked=1 WHERE group_id=? AND position=1").run(content,f.lunch(day).group_id);
+// Facebook is the canonical source: a staff value holds only against posts published
+// before its recorded edit time (docs/facebook-specials-source-of-truth.md).
+const lock = (f,day,content='Staff meal $9',edited='2026-11-02T15:10:00.000Z') => f.db.prepare("UPDATE special_slots SET content=?,origin='manual',manual_locked=1,manual_edited_at=? WHERE group_id=? AND position=1").run(content,edited,f.lunch(day).group_id);
 const post = (id,message,created) => ({id,message,created_time:created,updated_time:created,full_picture:'https://cdn.example/'+id+'.jpg'});
 
 test('a staff-locked weekday is not proof that a failed equivalent poster was published', async t => {
@@ -433,25 +437,26 @@ test('an equivalent repost of a conflicting poster keeps the same conflict finge
 });
 
 const slotSet = (f,day,sql,...args) => f.db.prepare(`UPDATE special_slots SET ${sql} WHERE group_id=? AND position=1`).run(...args,f.lunch(day).group_id);
+// A second Lunch group makes the weekday's destination ambiguous: publication cannot proceed.
+const ambiguous = (f,day) => f.db.prepare("INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled) VALUES(?,'auto-week',?,'lunch','Extra Lunch','',98,1)").run(`extra-lunch-${day}`,day);
+const unambiguous = (f,day) => f.db.prepare('DELETE FROM special_groups WHERE id=?').run(`extra-lunch-${day}`);
 
-test('matching text without automation provenance is not publication (last_auto_value differs)', async t => {
+test('matching text without automation provenance is republished by the verified poster, then counts', async t => {
   const f = setup(t);
   slotSet(f,2,"content=?,origin='automation',manual_locked=0,last_auto_value=NULL",MEALS[1]);
   f.readings.set('Weekly lunch specials!!',unverified());
   await f.run();
-  const row = f.incident('weekly');
-  assert.equal(row?.state,'attention');
-  f.advance(ALERT_GRACE_MS);await f.send();
-  const text = alertMessage(f.sent[0].day,f.sent[0].code,f.sent[0]).text;
-  assert.match(text,/- Tuesday: Lunch slot is not eligible for automatic replacement/);
-  assert.doesNotMatch(text,/Published by automation: [^\n]*Tuesday/);
+  const s = f.lunch(2);
+  assert.deepEqual([s.content,s.origin,s.last_auto_value],[MEALS[1],'automation',MEALS[1]]);
+  assert.notEqual(f.incident('weekly')?.state,'attention');
 });
 
-test('matching automated text with a separate price is not verified publication', async t => {
+test('matching automated text with a separate price is replaced; the separate price is cleared', async t => {
   const f = setup(t);
   slotSet(f,4,"content=?,origin='automation',manual_locked=0,last_auto_value=?,price='$2.00'",MEALS[3],MEALS[3]);
   await f.run();
-  assert.equal(f.incident('weekly')?.state,'attention');
+  assert.deepEqual([f.lunch(4).content,f.lunch(4).price],[MEALS[3],'']);
+  assert.notEqual(f.incident('weekly')?.state,'attention');
 });
 
 test('a current daily poster for the weekday is explicit precedence: suppressed, no email', async t => {
@@ -481,17 +486,17 @@ test('a retained automated value without a current daily poster alerts as a disc
   assert.doesNotMatch(text,/Older weekly meal/);
 });
 
-test('a held weekday later staff-locked is suppressed; fixed and published is resolved', async t => {
+test('a held weekday later corrected by staff is suppressed; fixed and published is resolved', async t => {
   const f = setup(t);
-  slotSet(f,2,"price='$9.00'");
+  ambiguous(f,2);
   await f.run();assert.equal(f.incident('weekly').state,'attention');
-  slotSet(f,2,"price='',content='Staff meal $9',origin='manual',manual_locked=1");
+  unambiguous(f,2);correct(f,2);
   f.advance(5*60000);await f.run();
   assert.equal(f.incident('weekly').state,'suppressed');
   const g = setup(t);
-  slotSet(g,2,"price='$9.00'");
+  ambiguous(g,2);
   await g.run();assert.equal(g.incident('weekly').state,'attention');
-  slotSet(g,2,"price=''");
+  unambiguous(g,2);
   g.advance(5*60000);await g.run();
   assert.equal(g.lunch(2).content,MEALS[1]);
   assert.equal(g.incident('weekly').state,'resolved','every weekday verified published');
@@ -542,20 +547,23 @@ test('original deleted, corrected poster appears: unchanged automation slots are
   assert.notEqual(f.incident('weekly')?.state,'attention');assert.equal(f.sent.length,0);
 });
 
-test('corrected prices update only eligible slots; locked, edited and disabled slots are untouched', async t => {
+test('a corrected poster replaces staff edits made before it; a later edit, a legacy lock and a disabled slot are untouched', async t => {
   const f = setup(t);original(f);
   await f.run();
-  lock(f,2,'Staff Tuesday meal $9');
-  slotSet(f,3,"content='Staff Wednesday edit $9',origin='manual',manual_locked=1");
-  slotSet(f,4,"content=?",MEALS[3]+' (staff note)');
+  lock(f,2,'Staff Tuesday meal $9');                                    // edited 15:10, before the 15:30 poster
+  slotSet(f,3,"content='Staff Wednesday edit $9',origin='manual',manual_locked=1");  // a lock with no edit time
+  slotSet(f,4,"content=?",MEALS[3]+' (staff note)');                    // changed since automation
   f.db.prepare('UPDATE special_groups SET enabled=0 WHERE id=?').run(f.lunch(5).group_id);
   f.state.posts = [];corrected(f);
   f.advance(20*60000);await f.run();
-  assert.equal(f.lunch(1).content,NEW[0]);
-  assert.equal(f.lunch(2).content,'Staff Tuesday meal $9');assert.equal(f.lunch(2).manual_locked,1);
-  assert.equal(f.lunch(3).content,'Staff Wednesday edit $9');
-  assert.equal(f.lunch(4).content,MEALS[3]+' (staff note)','provenance-broken value is not replaced');
+  [1,2,4].forEach(d=>assert.equal(f.lunch(d).content,NEW[d-1]));
+  assert.equal(f.lunch(3).content,'Staff Wednesday edit $9','a lock saved before edit times existed is kept');
+  assert.equal(f.lunch(2).manual_locked,0);
   assert.equal(f.lunch(5).content,MEALS[4],'disabled destination is not written');
+  // A staff correction after the corrected poster stays through later scans of it.
+  lock(f,2,'Staff Tuesday meal $9','2026-11-02T15:45:00.000Z');
+  f.advance(10*60000);await f.run();
+  assert.equal(f.lunch(2).content,'Staff Tuesday meal $9');
 });
 
 test('a corrected poster never overwrites a current daily poster value', async t => {
@@ -590,10 +598,10 @@ test('an equivalent corrected repost after deletion causes no redundant write', 
 
 test('a staged poster deleted before its held day became eligible never publishes stale meals', async t => {
   const f = setup(t);original(f);
-  slotSet(f,2,"price='$9.00'");
+  ambiguous(f,2);
   await f.run();
   assert.equal(f.lunch(2).content,'');
-  f.state.posts = [];slotSet(f,2,"price=''");
+  f.state.posts = [];unambiguous(f,2);
   f.advance(20*60000);await f.run();
   assert.equal(f.lunch(2).content,'','deleted evidence is not reused');
   f.advance(ALERT_GRACE_MS);await f.run();await f.send();assert.equal(f.sent.length,0);

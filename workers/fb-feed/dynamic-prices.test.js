@@ -92,15 +92,17 @@ test('capitalization and whitespace preserve every printed size, choice and chan
     'Chicken Stir Fry $14.50\nSteak Stir Fry $16.25');
 });
 
-for (const [name,origin,lock,baseline,expected] of [
+// Facebook is the canonical source: only a staff edit recorded after the post is kept.
+for (const [name,origin,lock,baseline,expected,edited=null] of [
   ['untouched recurring default','manual',0,null,'new'],
-  ['confirmed staff correction','manual',1,null,'old'],
+  ['legacy staff lock without an edit time','manual',1,null,'old'],
   ['unchanged automation','automation',0,'old','new'],
-  ['edited automation','automation',0,'original','old'],
+  ['edited automation','automation',0,'original','new'],
+  ['staff correction after the post','manual',1,null,'old','2099-12-31T00:00:00.000Z'],
 ]) test(`dynamic pizza prices respect ownership: ${name}`,async t=>{
   const raw='10 inch BBQ Pizza $14.25 / 18 inch Garden Pizza $17.50',f=setup(t,4,pizza(raw));
   const id=f.slots(4,'nightly')[0].group_id;
-  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1','old',origin,lock,baseline,id);
+  f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=?,manual_edited_at=? WHERE group_id=? AND position=1','old',origin,lock,baseline,edited,id);
   await f.run();assert.equal(f.slots(4,'nightly')[0].content,expected==='new'?'10 inch BBQ Pizza $14.25\n18 inch Garden Pizza $17.50':'old');
 });
 
