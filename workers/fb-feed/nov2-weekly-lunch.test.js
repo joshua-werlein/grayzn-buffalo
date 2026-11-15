@@ -629,6 +629,7 @@ test('a corrected poster on Wednesday never republishes Monday or Tuesday', asyn
 for (const [name,respond] of [
   ['HTTP failure',()=>new Response('',{status:500})],
   ['malformed body',()=>Response.json({error:{message:'bad'}})],
+  ['malformed post timestamp',()=>Response.json({data:[{id:'poster',created_time:'invalid'}]})],
   ['looping pagination',()=>Response.json({data:[],paging:{next:'https://graph.facebook.com/next',cursors:{after:'same'}}})],
   ['exception',()=>{throw Error('network down');}],
 ]) test(`Facebook ${name} never masquerades as an empty scan`, async t => {

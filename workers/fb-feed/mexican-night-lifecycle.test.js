@@ -150,7 +150,7 @@ test('old staged Mexican Night evidence cannot backfill a later day',async t=>{
   const f=facebookHarness(t);await ensureAutomaticWeek(f.env,sunday);setMondayPoster(f);
   f.env.SPECIALS_IMPORT_MODE='DRY_RUN';await f.run();const before=snapshot(f);
   f.state.now=Date.parse('2030-01-15T15:00:00Z');f.env.SPECIALS_IMPORT_MODE='GUARDED_AUTO';
-  const result=await reconcileMexicanNight(f.env);assert.equal(result.written,false);assert.equal(snapshot(f),before);
+  const result=await reconcileMexicanNight(f.env,{sourceIds:f.imports().map(row=>row.id)});assert.equal(result.written,false);assert.equal(snapshot(f),before);
 });
 test('whole transaction rolls back weekly and detailed publication together',async t=>{
   const f=seededFixture(t);const before=snapshot(f);const weeks=f.sql('SELECT * FROM weekly_specials');const batch=f.env.DB.batch;

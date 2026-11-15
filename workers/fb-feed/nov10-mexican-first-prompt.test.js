@@ -55,6 +55,32 @@ test('November 10: only a caption that alone identifies Mexican Night selects th
     assert.equal(confidentMexicanNightCaption(caption),false,String(caption));
 });
 
+test('an image-only Mexican Night heading in a daily reading triggers one Mexican reread',async t=>{
+  const f=setup(t,[{...tuesdayDaily,poster_evidence:'MEXICAN\nNIGHT'},clean()],'');
+  await f.run();
+  assert.deepEqual(f.requests.map((_,i)=>f.schema(i)),['specials_evidence_v2','specials_evidence_v2_mexican']);
+  assert.equal(f.imports()[0].validation_result,'ok');
+  assert.ok(f.menu().some(item=>item.includes('$7.75')));
+  assert.ok(f.slots(2,'lunch').every(slot=>!slot.content));
+});
+
+test('the newest Mexican Night poster stays published on repeats and when either poster disappears',async t=>{
+  const original=clean(),replacement=clean();
+  const item=replacement.groups[0].items[0];
+  item.title=item.title.replace('$7.75','$8.75');
+  item.evidence=item.evidence.replace('$7.75','$8.75');
+  const f=setup(t,[original,replacement]);
+  const [older]=f.state.posts;
+  const newer={...older,id:'new-poster',created_time:'2026-11-10T21:29:45Z',updated_time:'2026-11-10T21:29:45Z'};
+  for(const posts of [[older,newer],[older,newer],[newer],[older]]) {
+    f.state.posts=posts;
+    await f.run();
+    assert.ok(f.menu().some(item=>item.includes('$8.75')));
+    assert.ok(!f.menu().some(item=>item.includes('$7.75')));
+  }
+  assert.equal(f.requests.length,2);
+});
+
 test('November 10: a Mexican Night caption starts with the Mexican-only request and publishes on one call',async t=>{
   const f=setup(t,[clean()]);await f.run();
   assert.equal(f.requests.length,1);

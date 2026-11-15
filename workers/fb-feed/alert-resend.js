@@ -14,7 +14,7 @@ export const RESEND_TIMEOUT_MS = 5_000;
 const API_KEY = /^re_[A-Za-z0-9_-]{8,200}$/;
 const ADDRESS = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 const NAMESPACE = /^(production|test-[a-z0-9-]{1,48})$/;
-const INCIDENT = /^\d{4}-\d{2}-\d{2}:[a-zA-Z0-9_-]{1,100}:[a-z_]{1,40}$/;
+const INCIDENT = /^\d{4}-\d{2}-\d{2}:[a-zA-Z0-9_-]{1,100}:[a-z_]{1,40}(?::[a-f0-9]{16})?$/;
 const RESEND_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function sha256(value) {

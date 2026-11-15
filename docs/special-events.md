@@ -93,14 +93,13 @@ failure alert.
 Own D1 batches and per-event revisions; the weekly collection fence is never
 touched.
 
-- One event per Facebook post. An edited post updates its event while the event
-  is still exactly what automation wrote; a staff-edited, removed or cancelled
-  event is never changed (logged `protected`).
+- One card per matched event. A verified poster newer than the last published
+  evidence and any staff edit updates the card. Fields absent from the poster
+  retain their existing values.
 - A post that no longer shows an event withdraws the automation event it created
   (unless staff edited it).
-- Another post with the same offers on the same date is a duplicate; another
-  post for the same event and date with different offers is logged as a
-  conflict. Neither creates a second card; the first event stays.
+- A reminder with the same offers is a duplicate. When two posters disagree,
+  a replacement requires a uniquely matched event and a verifiably newer post.
 - **Removal and replacement safety:** identical and differing reposts of a
   removed event stay blocked. The same original Facebook post stays blocked
   through reprocessing and edits, including when staff corrected the event's

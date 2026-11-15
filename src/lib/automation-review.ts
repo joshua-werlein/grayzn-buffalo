@@ -141,7 +141,7 @@ export function extractedForDay(source: any, day: string, week: any) {
 // recorded cannot be shown older than any post, so automation keeps it (guarded-auto.js).
 export function protectedValue(slot: any): string {
   if (slot.manual_edited_at) return 'Until a newer Facebook post — staff edit';
-  if (slot.manual_locked === 1 && (slot.content ?? '').trim()) return 'Yes — older staff lock, no edit time recorded';
+  if (slot.manual_locked === 1 && (slot.content?.trim() || slot.price?.trim())) return 'Legacy staff edit — replaceable by newer Facebook evidence';
   return 'No — a verified Facebook post replaces it; other publication safeguards still apply';
 }
 // Each post's Wing Wednesday decision. It is optional: a failure here leaves the daily,

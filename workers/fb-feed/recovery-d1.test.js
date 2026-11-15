@@ -8,7 +8,7 @@ test('real local D1: recovery claims serialize, late results are fenced, and sta
   const f=harness(t);
   const mf=new Miniflare({modules:true,script:'export default {fetch(){return new Response("test")}}',d1Databases:['DB']});
   t.after(()=>mf.dispose());const DB=await mf.getD1Database('DB');
-  for(const table of ['weekly_specials','special_collections','special_groups','special_slots','special_migration_checks','special_imports','special_import_events']) {
+  for(const table of ['settings','weekly_specials','special_collections','special_groups','special_slots','special_migration_checks','special_imports','special_import_events']) {
     await DB.prepare(f.sql('SELECT sql FROM sqlite_master WHERE name=?',table)[0].sql).run();
     for(const row of f.sql(`SELECT * FROM ${table}`))await DB.prepare(`INSERT INTO ${table} (${Object.keys(row).join(',')}) VALUES (${Object.keys(row).map(()=>'?').join(',')})`).bind(...Object.values(row)).run();
   }

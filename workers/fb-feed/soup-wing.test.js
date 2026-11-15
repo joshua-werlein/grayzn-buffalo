@@ -99,6 +99,7 @@ test('later omission never clears Soup; an edited source can update unchanged au
   const f=setup(t);await f.run();f.state.candidate.offers.pop();f.state.posts[0].updated_time='2026-10-07T21:10:00Z';await f.run();
   assert.equal(soup(f)[0].content,'French Onion or Chili');
   f.state.candidate=structuredClone(exact);Object.assign(f.state.candidate.offers[3],{content:'Soup: Tomato',evidence:'Soup: Tomato'});
+  f.state.posts[0].message+=' Soup update';
   f.state.posts[0].updated_time='2026-10-07T21:12:00Z';await f.run();assert.equal(soup(f)[0].content,'Tomato');
 });
 test('unrelated custom group named Soup is never the automation destination',async t=>{
@@ -244,7 +245,7 @@ test('real local D1: Soup creation and audit roll back together, then retry is i
   const f=setup(t);await f.run();f.sql('DELETE FROM special_groups WHERE id=?',soupGroupId('auto-week',3));
   const mf=new Miniflare({modules:true,script:'export default {fetch(){return new Response("test")}}',d1Databases:['DB']});
   t.after(()=>mf.dispose());const DB=await mf.getD1Database('DB');
-  for(const table of ['weekly_specials','special_collections','special_groups','special_slots','special_migration_checks','special_imports','special_import_events']){
+  for(const table of ['settings','weekly_specials','special_collections','special_groups','special_slots','special_migration_checks','special_imports','special_import_events']){
     await DB.prepare(f.sql('SELECT sql FROM sqlite_master WHERE name=?',table)[0].sql).run();
     for(const row of f.sql(`SELECT * FROM ${table}`))await DB.prepare(`INSERT INTO ${table} (${Object.keys(row).join(',')}) VALUES (${Object.keys(row).map(()=>'?').join(',')})`).bind(...Object.values(row)).run();
   }

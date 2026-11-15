@@ -139,6 +139,7 @@ test('one remaining AI call prevents retry, including across later pipeline runs
   const f=sunday(t);f.env.SPECIALS_AI_DAILY_LIMIT='1';
   f.env.AI.run=async()=>{f.state.aiCalls++;return {response:'prose'};};
   await f.run();assert.equal(f.state.aiCalls,1);assert.equal(calls(f),1);
+  f.state.posts[0].message+=' revised caption';
   f.state.posts[0].updated_time='2026-09-27T14:45:00Z';
   await f.run();assert.equal(f.state.aiCalls,1);assert.equal(f.imports().at(-1).processing_status,'skipped');
 });

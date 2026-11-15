@@ -195,6 +195,7 @@ test('staff decisions win: a locked or edited event is never overwritten by an e
   const edited=structuredClone(brewersRaw);
   edited.offers[0]={...edited.offers[0],content:'PULLED PORK SANDWICH WITH CHIPS AND SIDE OF COLESLAW $7.50',evidence:'PULLED PORK SANDWICH WITH CHIPS AND SIDE OF COLESLAW $7.50'};
   f.addBrewers(edited,'brewers','2026-10-23T21:00:00Z','2026-10-23T15:55:00-05:00');
+  f.state.posts.find(p=>p.id==='brewers').message='Updated event offer';
   await f.run();
   const [after]=f.events();
   assert.equal(after.title,'Brewers Playoff Special');assert.deepEqual(f.offers(e.id),[BREWERS_OFFER]);
@@ -208,6 +209,7 @@ test('an unlocked automation event follows its own edited Facebook post',async t
   const edited=structuredClone(brewersRaw);
   edited.offers[0]={...edited.offers[0],content:'PULLED PORK SANDWICH WITH CHIPS AND SIDE OF COLESLAW $7.50',evidence:'PULLED PORK SANDWICH WITH CHIPS AND SIDE OF COLESLAW $7.50'};
   f.addBrewers(edited,'brewers','2026-10-23T21:00:00Z','2026-10-23T15:55:00-05:00');
+  f.state.posts.find(p=>p.id==='brewers').message='Updated price';
   await f.run();
   const [after]=f.events();
   assert.equal(f.events().length,1);assert.equal(after.id,e.id);assert.equal(after.revision,e.revision+1);
@@ -318,26 +320,29 @@ test('an identical reminder post never creates a second card',async t=>{
   assert.ok(f.log().some(l=>l.action==='duplicate' && l.source_post_id==='brewers-reminder'));
 });
 
-test('a differing second post for the same event never creates a second card; the first stays published',async t=>{
+test('a newer verified poster updates the existing event and an older poster cannot restore it',async t=>{
   const f=await brewersDay(t,'AUTO');
   const other=structuredClone(brewersRaw);
   other.offers[0]={...other.offers[0],content:'BRAT WITH CHIPS $5',evidence:'BRAT WITH CHIPS $5'};
   f.addBrewers(other,'brewers-2','2026-10-23T22:00:00Z','2026-10-23T16:45:00-05:00');await f.run();
   const events=f.events();
-  assert.equal(events.length,1);assert.equal(events[0].source_post_id,'brewers');assert.equal(events[0].status,'published');
-  assert.ok(f.log().some(l=>l.action==='conflict' && l.source_post_id==='brewers-2'));
-  // Repeated crons record that decision once.
+  assert.equal(events.length,1);assert.equal(events[0].source_post_id,'brewers-2');assert.equal(events[0].status,'published');
+  assert.deepEqual(f.offers(events[0].id),['Brat with Chips $5']);
+  f.state.posts=f.state.posts.filter(p=>p.id!=='brewers-2');
   f.state.now+=30*60000;await f.run();
+  assert.deepEqual(f.offers(events[0].id),['Brat with Chips $5']);
   assert.equal(f.log().filter(l=>l.source_post_id==='brewers-2').length,1);
 });
-test('a differing post never changes a staff-edited event and creates nothing beside it',async t=>{
+test('a staff event correction stays until a newer verified poster and retains omitted details',async t=>{
   const f=await brewersDay(t,'AUTO');
   const [e]=f.events();
-  f.sql('UPDATE special_events SET manual_locked=1,revision=revision+1 WHERE id=?',e.id);
+  f.sql("UPDATE special_events SET details='Staff details',manual_locked=1,revision=revision+1,updated_at='2026-10-23 20:30:00' WHERE id=?",e.id);
+  f.state.now+=30*60000;await f.run();
+  assert.equal(f.events()[0].details,'Staff details');
   const other=structuredClone(brewersRaw);
   other.offers[0]={...other.offers[0],content:'BRAT WITH CHIPS $5',evidence:'BRAT WITH CHIPS $5'};
   f.addBrewers(other,'brewers-2','2026-10-23T22:00:00Z','2026-10-23T16:45:00-05:00');await f.run();
-  assert.deepEqual(f.events().map(x=>[x.source_post_id,x.status,x.revision]),[['brewers','published',e.revision+1]]);
+  assert.deepEqual(f.events().map(x=>[x.id,x.source_post_id,x.status,x.revision,x.details]),[[e.id,'brewers-2','published',e.revision+2,'Staff details']]);
 });
 
 test('insufficient evidence is withheld internally: never shown, never an approval task, no daily-special block',async t=>{
@@ -353,7 +358,9 @@ test('insufficient evidence is withheld internally: never shown, never an approv
   assert.ok(!warn.mock.calls.some(c=>c.arguments[0]==='Specials import requires attention'));
   assert.deepEqual(f.conflicts(),[]);
   // A corrected Facebook post publishes the same event automatically.
-  f.addBrewers(brewersRaw,'brewers','2026-10-23T21:00:00Z','2026-10-23T15:55:00-05:00');await f.run();
+  f.addBrewers(brewersRaw,'brewers','2026-10-23T21:00:00Z','2026-10-23T15:55:00-05:00');
+  f.state.posts.find(p=>p.id==='brewers').message='Updated offer with price';
+  await f.run();
   assert.deepEqual(f.events().map(x=>[x.id,x.status,x.review_reason]),[[e.id,'published','']]);
   assert.deepEqual(f.offers(e.id),[BREWERS_OFFER]);
 });
@@ -362,7 +369,9 @@ test('an automation event is withdrawn when its own Facebook post no longer show
   const f=await brewersDay(t,'AUTO');
   const [e]=f.events();
   const plain={...structuredClone(brewersRaw),poster_evidence:'Friday Night Specials 5-10pm',day_of_week:5,day_evidence:'Friday'};
-  f.addBrewers(plain,'brewers','2026-10-23T21:00:00Z','2026-10-23T15:55:00-05:00');await f.run();
+  f.addBrewers(plain,'brewers','2026-10-23T21:00:00Z','2026-10-23T15:55:00-05:00');
+  f.state.posts.find(p=>p.id==='brewers').message='Updated nightly poster';
+  await f.run();
   const [after]=f.events();
   assert.equal(after.id,e.id);assert.equal(after.status,'review');assert.match(after.review_reason,/no longer shows an event/);
 });
@@ -385,6 +394,33 @@ test('a printed cancellation cancels the matching automation event; hypothetical
   assert.equal(f.sql("SELECT status FROM special_events WHERE source_post_id='brewers'")[0].status,'cancelled');
   assert.equal(f.events().length,1);
   assert.ok(f.log().some(l=>l.action==='cancelled'));
+});
+
+test('late discovery of stale or equal-time cancellations keeps the newer event; a later cancellation applies once',async t=>{
+  const f=await brewersDay(t,'AUTO');
+  const revised=structuredClone(brewersRaw);
+  revised.offers[0]={...revised.offers[0],content:'BRAT WITH CHIPS $5',evidence:'BRAT WITH CHIPS $5'};
+  f.addBrewers(revised,'new-poster','2026-10-23T22:00:00Z','2026-10-23T16:45:00-05:00');
+  await f.run();
+  const [published]=f.events();
+  assert.equal(published.source_post_id,'new-poster');
+  const cancel={...structuredClone(brewersRaw),poster_evidence:"TONIGHT'S BREWERS GAME SPECIAL CANCELLED",offers:[]};
+  for(const [id,time] of [['older-cancel','16:15'],['equal-cancel','16:45']]) {
+    f.addBrewers(cancel,id,'2026-10-23T22:30:00Z',`2026-10-23T${time}:00-05:00`);
+    await f.run();
+    assert.deepEqual(f.events(),[published]);
+  }
+  f.addBrewers(cancel,'later-cancel','2026-10-23T22:45:00Z','2026-10-23T17:30:00-05:00');
+  f.env.SPECIALS_IMPORT_MODE='DRY_RUN';
+  await f.run();
+  const sourceIds=[f.imports().find(row=>row.fb_post_id==='later-cancel').id];
+  const outcomes=await Promise.all([1,2].map(()=>reconcileEvents(f.env,{sourceIds,today:'2026-10-23'})));
+  assert.equal(outcomes.reduce((sum,result)=>sum+result.changes,0),1);
+  f.env.SPECIALS_IMPORT_MODE='GUARDED_AUTO';
+  await f.run();
+  assert.equal(f.events()[0].status,'cancelled');
+  assert.deepEqual(f.offers(published.id),['Brat with Chips $5']);
+  assert.equal(f.log().filter(l=>l.action==='cancelled').length,1);
 });
 
 test('schema: offers stay within 1-4 positions and 150 characters; source posts are unique; manual events have no source',t=>{

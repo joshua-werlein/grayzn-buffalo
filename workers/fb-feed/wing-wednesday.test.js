@@ -219,6 +219,9 @@ test('a verified poster replaces a staff price and marks it Facebook-owned',asyn
   live.groups[0].slots[0].content='Bone-In Wings $1.10 each';
   await store.saveCollection(f.env,live);
   assert.equal(f.sql('SELECT manual_locked FROM special_slots WHERE group_id=? AND position=1',OPTIONS)[0].manual_locked,1);
+  const posted=new Date(f.state.now+1000).toISOString();
+  Object.assign(f.state.posts[0],{created_time:posted,updated_time:posted});
+  f.state.now+=2000;
   await f.run();
   assert.deepEqual(options(f),['Bone-In Wings $.89 each','Boneless Wings $.99 each','','']);
   assert.equal(f.sql('SELECT manual_locked FROM special_slots WHERE group_id=? AND position=1',OPTIONS)[0].manual_locked,0);

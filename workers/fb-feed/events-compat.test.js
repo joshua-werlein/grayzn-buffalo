@@ -11,9 +11,10 @@ test('local D1 with unchanged 0025: concurrent event inserts and retained tombst
   for(const sql of migration.split(';').map(s=>s.trim()).filter(Boolean)) await DB.prepare(sql).run();
   await DB.prepare(`CREATE TABLE special_imports(id TEXT PRIMARY KEY,fb_post_id TEXT,fb_created_time TEXT,
     processing_status TEXT,validation_result TEXT,candidate_json TEXT,extracted_json TEXT,image_r2_key TEXT,
-    review_status TEXT,parser_version INTEGER,caption TEXT,permalink_url TEXT)`).run();
+    review_status TEXT,parser_version INTEGER,caption TEXT,permalink_url TEXT,fb_updated_time TEXT,image_hash TEXT,caption_hash TEXT)`).run();
   const {brewers_event:candidate}=JSON.parse(readFileSync(new URL('../../tests/fixtures/oct23-friday-night.json',import.meta.url),'utf8'));
-  const seed=async id=>DB.prepare(`INSERT INTO special_imports VALUES(?1,?1,'2026-10-23T20:00:00Z',
+  const seed=async id=>DB.prepare(`INSERT INTO special_imports(id,fb_post_id,fb_created_time,processing_status,validation_result,candidate_json,
+    extracted_json,image_r2_key,review_status,parser_version,caption,permalink_url) VALUES(?1,?1,'2026-10-23T20:00:00Z',
     'staged','ok',?2,NULL,'synthetic-image','pending',19,'','')`).bind(id,JSON.stringify(candidate)).run();
   const env={DB,SPECIAL_EVENTS_MODE:'AUTO',SPECIALS_EVIDENCE_VERSION:'2'};
   await seed('original');await seed('reminder');

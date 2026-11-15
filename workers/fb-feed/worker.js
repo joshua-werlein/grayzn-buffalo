@@ -9,7 +9,7 @@ import {validateEvidence, validateWeeklyLunch, validateMexicanNight, singleDayLu
 import {WEBHOOK_PATH, handleFacebookWebhook} from './webhook.js';
 import {expireDelivery,reconcileDelivery,completeDeliveryReading,recoveredDeliveryReading,deliveryReadingsAgree} from './delivery.js';
 import {observeDeliveryOutcome,observeDailyOutcome} from './alert-outcomes.js';
-import {beginAlertScan,finishAlertScan} from './alert-runtime.js';
+import {beginAlertScan,finishAlertScan,dispatchVerifiedAlerts} from './alert-runtime.js';
 import {reconcileEvents} from './event-store.js';
 import {GRAPH_API_VERSION} from './graph.js';
 import {deliveryWindow} from '../../src/lib/delivery.js';
@@ -326,8 +326,9 @@ async function fetchScanPosts(env, now, window) {
       const result = await response.json();
       if (!Array.isArray(result?.data)) return null;
       for (const post of result.data) {
-        const created = Date.parse(post.created_time);
-        if (post.id && Number.isFinite(created) && created >= window.since*1000 && created < window.until*1000 && created <= now.getTime()) posts.set(post.id,post);
+        const created = Date.parse(post?.created_time);
+        if (typeof post?.id !== 'string' || !post.id || !Number.isFinite(created)) return null;
+        if (created >= window.since*1000 && created < window.until*1000 && created <= now.getTime()) posts.set(post.id,post);
       }
       if (!result.paging?.next) return [...posts.values()].sort((a,b)=>Date.parse(a.updated_time || a.created_time)-Date.parse(b.updated_time || b.created_time));
       const after = result.paging?.cursors?.after;
@@ -339,7 +340,7 @@ async function fetchScanPosts(env, now, window) {
   return null;
 }
 
-async function storeImportImage(env, post, imageSrcVer, attemptToken) {
+async function readImportImage(env, post) {
   if (!post.full_picture) return { imageR2Key: null, imageHash: null };
   try {
     const response = await fetch(post.full_picture);
@@ -359,11 +360,21 @@ async function storeImportImage(env, post, imageSrcVer, attemptToken) {
       .slice(0, 8)
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
-    // Attempt-specific keys fence delayed R2 writes as well as D1 pointers.
-    const key = `special-imports/${safePostId(post.id)}-${await versionToken(imageSrcVer)}-${attemptToken}.${format.extension}`;
-    await env.PHOTOS.put(key, bytes, { httpMetadata: { contentType: format.contentType } });
-    return { imageR2Key: key, imageHash };
+    return {bytes,format,imageHash};
   } catch (error) {
+    return {imageR2Key:null,imageHash:null,transient:isTransientFailure(error),reason:safeAiError(error,env)};
+  }
+}
+
+async function storeImportImage(env, post, imageSrcVer, attemptToken) {
+  const image=await readImportImage(env,post);
+  if(!image.imageHash) return image;
+  try {
+    // Attempt-specific keys fence delayed R2 writes as well as D1 pointers.
+    const key=`special-imports/${safePostId(post.id)}-${await versionToken(imageSrcVer)}-${attemptToken}.${image.format.extension}`;
+    await env.PHOTOS.put(key,image.bytes,{httpMetadata:{contentType:image.format.contentType}});
+    return {imageR2Key:key,imageHash:image.imageHash};
+  } catch(error) {
     return {imageR2Key:null,imageHash:null,transient:isTransientFailure(error),reason:safeAiError(error,env)};
   }
 }
@@ -626,7 +637,7 @@ export function validateExtraction(extractedJson,reliable=false,window={}) {
         // offers gets ONE targeted single-shape reread, as the legacy contract does.
         const heading=`${candidate.day_evidence} ${candidate.poster_evidence}`;
         if(hasWeeklyLunchEvidence(heading)) return {candidateJson:null,validationResult:'rejected',validationReason:WEEKLY_LUNCH_SHAPE_ERROR,needsRepair:true,repairShape:'weekly-lunch'};
-        if(/mexicans+night/i.test(heading)) return {candidateJson:null,validationResult:'rejected',validationReason:MEXICAN_NIGHT_SHAPE_ERROR,needsRepair:true,repairShape:'mexican-night'};
+        if(/\bmexican\s+night\b/i.test(heading)) return {candidateJson:null,validationResult:'rejected',validationReason:MEXICAN_NIGHT_SHAPE_ERROR,needsRepair:true,repairShape:'mexican-night'};
         validateCurrentDay(candidate,window.weekday??candidate.day_of_week,window.today);
         // Tuesday has no daily Nightly slot; night offers or an empty reading
         // may be a Mexican Night menu. The reread requires the printed heading.
@@ -790,7 +801,12 @@ export async function runImportPipeline(env,alertOptions={}) {
   if (mode === 'GUARDED_AUTO' && window.weekday===0 && chicagoHour(now)>=19) {
     await ensureAutomaticWeek(env,{...window,hour:chicagoHour(now)});
   }
-  if (!isWithinProcessingHours(now)) return;
+  if (!isWithinProcessingHours(now)) {
+    // A verified late-day incident may finish its grace period after import close.
+    // Dispatch still requires a fresh, same-day proof and current business state.
+    if (chicagoHour(now)>=IMPORT_HOUR_END) await dispatchVerifiedAlerts(env,alertOptions);
+    return;
+  }
   if (mode === 'GUARDED_AUTO' && !(window.weekday===0 && chicagoHour(now)>=19)) await ensureAutomaticWeek(env,{...window,hour:chicagoHour(now)});
   const sourceIds=[], work=[];
   const alertScan=await beginAlertScan(env,window.today,now.getTime());
@@ -815,17 +831,61 @@ export async function runImportPipeline(env,alertOptions={}) {
     const classification = classifyCaption(caption);
     if (classification.kind === 'ignored' && !raw.full_picture) continue;
     const captionDigest = await hexDigest(caption, 8);
-    const imgSrcVer = imageSourceVersion(raw);
-    const importId = await importSourceId(`${env.FB_PAGE_ID}:${raw.id}`, captionDigest, imgSrcVer, parserVersion, modelId);
+    const legacyVersion=imageSourceVersion(raw);
+    // Keep matching old import identities. New rows also notice a change of
+    // image URL with the same update time; URL signatures are not evidence.
+    const imgSrcVer=JSON.stringify([legacyVersion,normalizedImageUrl(raw.full_picture)]);
+    const postKey=`${env.FB_PAGE_ID}:${raw.id}`;
+    let importId=await importSourceId(postKey,captionDigest,legacyVersion,parserVersion,modelId);
+    const latest=await env.DB.prepare(`SELECT id,caption_hash,image_hash,image_source_version,fb_updated_time,fb_created_time
+      FROM special_imports WHERE fb_post_id=?1 AND parser_version=?2 AND model_id=?3 ORDER BY rowid DESC LIMIT 1`)
+      .bind(raw.id,parserVersion,modelId).first();
+    // Verify the Page component of the deterministic ID before reusing a row.
+    // Imports created before URL hints still use the original ID format.
+    const latestVersion=latest?.image_source_version;
+    const latestLegacy=latestVersion?.startsWith('[') ? JSON.parse(latestVersion)[0] : latestVersion;
+    const samePage=latest && (latest.id===await importSourceId(postKey,latest.caption_hash,latestLegacy,parserVersion,modelId)
+      || (latestVersion!==latestLegacy && latest.id===await importSourceId(postKey,latest.caption_hash,latestVersion,parserVersion,modelId)));
+    if(samePage) {
+      const observed=Date.parse(raw.updated_time ?? raw.created_time);
+      const stored=Date.parse(latest.fb_updated_time ?? latest.fb_created_time);
+      // An older Graph response must not become the latest revision by insertion order.
+      if(observed<stored) return;
+      const sameCaption=latest.caption_hash===captionDigest;
+      const sameVersion=sameCaption && (latest.image_source_version===imgSrcVer
+        || (latest.image_source_version===legacyVersion && (raw.full_picture || !latest.image_hash)));
+      let reuse=sameVersion;
+      if(!sameVersion && sameCaption && latest.image_hash && raw.full_picture) {
+        const image=await readImportImage(env,raw);
+        // A failed comparison cannot verify either revision. Leave the scan
+        // incomplete and retry discovery on the next complete pass.
+        if(!image.imageHash) {
+          console.warn('Facebook image revision unavailable; reconciliation skipped',{date:window.today});
+          return;
+        }
+        reuse=image.imageHash===latest.image_hash;
+      }
+      if(reuse) {
+        sourceIds.push(latest.id);
+        work.push({importId:latest.id,raw});
+        continue;
+      }
+      if(latest.id===importId) importId=await importSourceId(postKey,captionDigest,imgSrcVer,parserVersion,modelId);
+    }
     sourceIds.push(importId);
     await env.DB.prepare(`INSERT OR IGNORE INTO special_imports(
       id,fb_post_id,fb_created_time,fb_updated_time,caption,permalink_url,
       caption_hash,image_source_version,parser_version,model_id,
       target_kind,target_day,target_service,target_collection_id,classification_reason,processing_status,fetched_at)
-      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'pending',?16)`).bind(
+      SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'pending',?16
+      WHERE (SELECT id FROM special_imports WHERE fb_post_id=?2 AND parser_version=?9 AND model_id=?10 ORDER BY rowid DESC LIMIT 1) IS ?17
+        OR EXISTS(SELECT 1 FROM special_imports WHERE id=?1)`).bind(
       importId,raw.id,raw.created_time,raw.updated_time ?? null,caption,raw.permalink_url ?? '',
       captionDigest,imgSrcVer,parserVersion,modelId,classification.kind,classification.day,
-      classification.service,classification.collectionId,classification.reason,new Date(Date.now()).toISOString()).run();
+      classification.service,classification.collectionId,classification.reason,new Date(Date.now()).toISOString(),latest?.id ?? null).run();
+    const current=await env.DB.prepare(`SELECT id FROM special_imports WHERE fb_post_id=?1 AND parser_version=?2 AND model_id=?3 ORDER BY rowid DESC LIMIT 1`)
+      .bind(raw.id,parserVersion,modelId).first();
+    if(current?.id!==importId) return;
     work.push({importId,raw});
   }
   for (const {importId,raw} of work) {
@@ -867,7 +927,7 @@ export async function runImportPipeline(env,alertOptions={}) {
     catch(err) { console.error('Special events reconcile error',String(err)); }
     try { await reconcileWeeklyLunch(env,window.today,{sourceIds}); }
     catch(err) { console.error('Weekly lunch reconcile error',String(err)); }
-    try { await reconcileMexicanNight(env); }
+    try { await reconcileMexicanNight(env,{sourceIds}); }
     catch(err) { console.error('Mexican Night reconcile error',String(err)); }
     try { await reconcileWingWednesday(env,{sourceIds,today:window.today,scanToken:wingScanToken}); }
     catch(err) { console.error('Wing Wednesday reconcile error',String(err)); }

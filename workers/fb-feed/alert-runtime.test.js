@@ -199,7 +199,7 @@ test('same-day sent recurrence stays deduplicated',async t=>{
   f.advance(ALERT_GRACE_MS);await f.run();assert.equal(f.sent.length,1);
 });
 
-test('service close, midnight and stale completed scans cannot dispatch',async t=>{
+test('midnight and stale completed scans cannot dispatch',async t=>{
   const f=await failure(t);f.advance(91*60000);assert.equal(await revalidateAlert(f.env,f.row()),false);
   f.state.now=Date.parse('2030-01-10T02:00:00Z');await f.send();assert.equal(f.sent.length,0);
   f.state.now=Date.parse('2030-01-10T06:00:00Z');await f.send();assert.equal(f.sent.length,0);
@@ -592,7 +592,9 @@ test('November 8: recoverable image errors stay silent until exhaustion, then re
 test('November 8: successful unrelated image and ambiguous extraction never create technical incidents',async t=>{
   const f=setup(t);f.state.posts[0].message='';f.state.candidate={day_of_week:-1,day_evidence:'',poster_evidence:'',offers:[]};
   await f.run();assert.deepEqual(imageIncidents(f),[]);
+  f.state.posts[0].message='Unrelated update';
   f.state.posts[0].updated_time='2030-01-09T14:01:00Z';f.env.AI.run=async()=>({response:'not valid JSON'});f.advance(1);await f.run();
+  assert.equal(f.imports().length,2);
   assert.deepEqual(imageIncidents(f),[]);
 });
 test('November 8: dismissed or removed failed image suppresses its unsent technical alert',async t=>{
@@ -709,6 +711,24 @@ test('November 10: the production reading holds the whole menu, names the uncert
   // Same incident on every later cron: deduplicated for the day.
   for(let i=0;i<3;i++){f.advance(30*60000);await f.run();}
   assert.equal(f.mexicanSent().length,1);assert.equal(f.mexican().length,1);
+});
+
+test('a late Mexican Night failure sends once after grace without importing after close',async t=>{
+  const f=november10(t);
+  f.state.now=Date.parse('2026-11-11T01:30:32Z');
+  await f.run();
+  const row=f.mexican()[0],calls=f.requests.length,graphCalls=f.state.calls.length;
+  assert.equal(row.state,'attention');
+  f.state.now=Date.parse('2026-11-11T02:00:24Z');
+  await f.run();
+  assert.equal(f.sent.length,0);
+  f.state.now=Date.parse('2026-11-11T02:30:24Z');
+  await f.run();
+  await f.run();
+  assert.equal(f.mexicanSent().length,1);
+  assert.equal(f.mexican()[0].dispatch_state,'sent');
+  assert.equal(f.requests.length,calls);
+  assert.equal(f.state.calls.length,graphCalls);
 });
 
 test('November 10: an actual size-price mismatch is reported distinctly from uncertainty',()=>{

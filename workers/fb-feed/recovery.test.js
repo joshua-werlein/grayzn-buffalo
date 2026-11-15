@@ -186,6 +186,7 @@ test('failed Graph scan defers recovery, and edited source replaces old pending 
   const f=harness(t);failOnce(f);await f.run();advance(f);const fetch=globalThis.fetch;
   const mock=t.mock.method(globalThis,'fetch',async()=>new Response('',{status:503}));await f.run();
   assert.equal(calls(f),1);assert.equal(row(f).processing_status,'pending');mock.mock.restore();
+  f.state.posts[0].message+=' revised caption';
   f.state.posts[0].updated_time=new Date(f.state.now).toISOString();await f.run();
   assert.equal(f.imports().length,2);assert.equal(row(f).retry_count,1);assert.equal(f.imports()[1].processing_status,'staged');assert.equal(calls(f),2);
 });

@@ -10,7 +10,8 @@ import {composeMexicanItem,splitMexicanItem} from '../../src/lib/mexican-item.js
 import {WING_HOLD,wingHoldDetail} from './wing-review.js';
 import {factKey,serviceFromEvidence} from './evidence.js';
 import {sectionIdFor} from '../../src/lib/section-links.js';
-import {WING_OPTIONS_GROUP,splitWingPrice,wingItemName,wingOptionPositions,wingOptionSlots,wingPriceText} from '../../src/lib/wing-wednesday.js';
+import {verifiedPostTimes} from './graph.js';
+import {WING_OPTIONS_GROUP,splitWingPrice,wingItemName,wingOptionPositions,wingOptionSlots} from '../../src/lib/wing-wednesday.js';
 
 const dateOf=value=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
 const chicagoHour=value=>Number(new Intl.DateTimeFormat('en-US',{timeZone:'America/Chicago',hour:'numeric',hourCycle:'h23'}).format(new Date(value)));
@@ -58,7 +59,7 @@ export function wingPosterEvidence(candidate,createdTime,serviceDate) {
 // named on the item decides which price it takes, so reordered items stay correct and an
 // item naming no clear type is held. Add Fries belongs to the nightly card, so a printed
 // fries line never reaches this section.
-function plannedSlots(slots,evidence) {
+function plannedSlots(slots,evidence,postedMs) {
   const typed=wingOptionSlots(slots), spots=wingOptionPositions(slots);
   const writes=[];
   let missing=0,ambiguous=false;
@@ -66,11 +67,10 @@ function plannedSlots(slots,evidence) {
     const slot=typed[type];
     if(!slot || !printed) missing|=1<<(spots[type]-1);
     if(!slot) { ambiguous||=!!printed; continue; }
+    if(slot.manual_locked && slot.manual_edited_at && !(postedMs>Date.parse(slot.manual_edited_at))) continue;
     const {title,description}=splitMexicanItem(slot.content);
-    const price=wingPriceText(title);
-    // Unverified: an earlier poster's price comes off, and a staff price stays for review.
-    if(!printed && (!price || price!==wingPriceText(splitMexicanItem(slot.last_auto_value).title))) continue;
-    const content=composeMexicanItem([wingItemName(title),printed ? splitWingPrice(printed).price : ''].filter(Boolean).join(' '),description);
+    if(!printed) continue;
+    const content=composeMexicanItem(`${wingItemName(title)} ${splitWingPrice(printed).price}`,description);
     if(content!==slot.content) writes.push([slot.position,content]);
   }
   const staffLeft=slots.some(s=>s.position<=2 && s.manual_locked && !writes.some(([position])=>position===s.position));
@@ -117,7 +117,8 @@ export async function reconcileWingWednesday(env,{sourceIds,today,scanToken}={})
       AND newer.parser_version=?2 AND newer.rowid>special_imports.rowid)`).bind(scan,parserVersionFor(env),scanToken).all();
   // Only the newest current-week poster counts. An older one can never replace it,
   // and a newest poster that must be held leaves the published values in place.
-  const posters=(rows ?? []).flatMap(source=>{
+  const times=await verifiedPostTimes(env,rows);
+  const posters=rows.flatMap(source=>{
     const created=Date.parse(source.fb_created_time);
     if(!Number.isFinite(created) || created>Date.now()) return [];
     const date=dateOf(created);
@@ -129,12 +130,20 @@ export async function reconcileWingWednesday(env,{sourceIds,today,scanToken}={})
     // The night's published special is another promotion, printed on this poster.
     if(!evidence && promotion && source.processing_status==='staged' && date===today
       && candidate?.offers?.some?.(o=>typeof o?.content==='string' && factKey(o.content)===factKey(promotion))) evidence={hold:WING_HOLD.promotion};
-    return evidence ? [{source,evidence,created}] : [];
-  }).sort((a,b)=>b.created-a.created);
+    const posted=times.get(source.id);
+    return evidence && Number.isFinite(posted) ? [{source,evidence,posted}] : [];
+  }).sort((a,b)=>b.posted-a.posted);
   if(!posters.length) return stage('No current-week wing poster');
   const {source}=posters[0];
+  const {results:decided}=await env.DB.prepare(`SELECT i.id,i.fb_post_id FROM special_imports i
+    JOIN wing_wednesday_decisions d ON d.import_id=i.id WHERE d.week_start=?1
+    AND (d.outcome='published' OR (d.outcome='held' AND d.detail<>?2))
+    AND substr(i.fb_created_time,1,10)>=date(?3,'-1 day')`).bind(start,WING_HOLD.unpublished,today).all();
+  const decidedTimes=await verifiedPostTimes(env,decided);
+  if(decided.some(row=>row.id!==source.id && decidedTimes.get(row.id)>posters[0].posted))
+    return stage('Newer wing poster already decided');
   // Same-time verified posters with different prices: neither one is newer.
-  const peers=posters.filter(p=>p.created===posters[0].created);
+  const peers=posters.filter(p=>p.posted===posters[0].posted);
   const evidence={...posters[0].evidence};
   const conflicts=['boneIn','boneless'].filter(key=>peers.some(p=>p.evidence[key]!==evidence[key]));
   for(const key of conflicts) evidence[key]=null;
@@ -159,7 +168,7 @@ export async function reconcileWingWednesday(env,{sourceIds,today,scanToken}={})
   const {results:slots}=await env.DB.prepare('SELECT * FROM special_slots WHERE group_id=?1 ORDER BY position').bind(WING_OPTIONS_GROUP).all();
   if(slots?.length!==4) return decide('held',WING_HOLD.group);
   let plan;
-  try { plan=plannedSlots(slots,evidence); } catch { return decide('held',WING_HOLD.fit); }
+  try { plan=plannedSlots(slots,evidence,posters[0].posted); } catch { return decide('held',WING_HOLD.fit); }
   const {writes,missing}=plan;
   const detail=missing ? wingHoldDetail(plan.ambiguous ? WING_HOLD.fit : conflicts.length ? WING_HOLD.conflict : WING_HOLD.prices,missing)
     : `fb_created=${source.fb_created_time}; ${writes.length} option(s) changed`;
@@ -180,8 +189,8 @@ export async function reconcileWingWednesday(env,{sourceIds,today,scanToken}={})
         AND NOT EXISTS(SELECT 1 FROM special_imports newer WHERE newer.fb_post_id=i.fb_post_id
           AND newer.parser_version=i.parser_version AND newer.rowid>i.rowid))`,
       token,new Date(Date.now()).toISOString(),collection.revision,start,source.id,source.candidate_json,scan,scanToken,plan.source),
-    ...writes.map(([position,content])=>prepare(`UPDATE special_slots SET content=?2,price='',origin=?3,manual_locked=0,last_auto_value=?4,manual_edited_at=NULL
-      WHERE group_id=?5 AND position=?6 AND ${gate}`,token,content,content ? 'automation' : 'legacy',content || null,WING_OPTIONS_GROUP,position)),
+    ...writes.map(([position,content])=>prepare(`UPDATE special_slots SET content=?2,price='',origin='automation',manual_locked=0,last_auto_value=?2,manual_edited_at=NULL
+      WHERE group_id=?3 AND position=?4 AND ${gate}`,token,content,WING_OPTIONS_GROUP,position)),
     prepare(`INSERT OR REPLACE INTO wing_wednesday_decisions(import_id,week_start,outcome,detail) SELECT ?2,?3,?4,?5 WHERE ${gate}`,token,source.id,start,missing ? 'held' : 'published',detail),
     prepare("SELECT id FROM special_collections WHERE id='wing-wednesday' AND mutation_token=?1",token),
   ]); } catch { return decide('held',WING_HOLD.unpublished); }

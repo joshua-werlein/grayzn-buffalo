@@ -143,7 +143,7 @@ test('a later updated time on an unchanged post (a comment) does not beat a staf
   await f.edit('2026-11-02T15:20:00Z',{content:STAFF});
   await f.scan('2026-11-02T15:40:00Z',[{...original,updated:'2026-11-02T15:35:00+0000'}]);
   assert.equal(f.lunch().content,STAFF);
-  assert.equal(f.imports().length,2,'the bumped post really was read again');
+  assert.equal(f.imports().length,1,'the comment reuses the existing import');
 });
 test('a post actually edited after the staff edit counts as newer',async t=>{
   const f=setup(t);
@@ -200,7 +200,7 @@ test('a blank slot cannot be locked',async t=>{
 
 const legacyLock=f=>f.sql(`UPDATE special_slots SET content=?,origin='manual',manual_locked=1,manual_edited_at=NULL WHERE position=1 AND group_id IN
   (SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=3 AND service='lunch')`,STAFF);
-test('an existing lock with no recorded time stays locked against every post',async t=>{
+test('a legacy lock with no recorded time still protects against pre-migration posters',async t=>{
   const f=setup(t);
   legacyLock(f);
   const before=f.lunch();

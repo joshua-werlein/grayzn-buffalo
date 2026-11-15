@@ -10,7 +10,7 @@ test('real local D1 guarded publication and audit are atomic; stale snapshots fa
   const f=fixture(t);
   const mf=new Miniflare({modules:true,script:'export default {fetch(){return new Response("test")}}',d1Databases:['DB']});
   t.after(()=>mf.dispose());const DB=await mf.getD1Database('DB');
-  for(const table of ['weekly_specials','special_collections','special_groups','special_slots','special_migration_checks','special_imports','special_import_events']) {
+  for(const table of ['settings','weekly_specials','special_collections','special_groups','special_slots','special_migration_checks','special_imports','special_import_events']) {
     await DB.prepare(f.sql('SELECT sql FROM sqlite_master WHERE name=?',table)[0].sql).run();
   }
   await DB.batch([
@@ -29,17 +29,19 @@ test('real local D1 guarded publication and audit are atomic; stale snapshots fa
   assert.equal((await DB.prepare("SELECT revision FROM special_collections WHERE id='w'").first()).revision,0);
   assert.ok((await DB.prepare('SELECT content FROM special_slots').all()).results.every(s=>s.content===''));
   assert.equal((await DB.prepare('SELECT count(*) n FROM special_import_events').first()).n,0);
+  assert.equal((await DB.prepare('SELECT count(*) n FROM settings').first()).n,0);
   assert.equal((await reconcileToday({DB},input)).written,true);
   const slots=(await DB.prepare('SELECT * FROM special_slots ORDER BY position').all()).results;
   assert.deepEqual(slots.map(s=>[s.content,s.last_auto_value,s.origin,s.manual_locked]),[['One $1','One $1','automation',0],['Two $2','Two $2','automation',0]]);
   assert.equal((await DB.prepare("SELECT review_status FROM special_imports WHERE id='i'").first()).review_status,'pending');
   await DB.prepare("UPDATE special_imports SET review_status='pending' WHERE id='i'").run();
   const changed=candidateJson.replace('One $1','New $3');
-  await DB.prepare("UPDATE special_imports SET candidate_json=? WHERE id='i'").bind(changed).run();
+  await DB.prepare(`INSERT INTO special_imports(id,fb_post_id,fb_created_time,candidate_json,validation_result,image_r2_key,processing_status,parser_version)
+    VALUES('new','p2','2030-01-09T14:30:00Z',?,'ok','special-imports/new.jpg','staged',?)`).bind(changed,PARSER_VERSION).run();
   const racing={DB:{prepare:DB.prepare.bind(DB),batch:async statements=>{
     await DB.prepare("UPDATE special_slots SET content='Staff',origin='manual',manual_locked=1 WHERE group_id='g' AND position=2").run();
     return DB.batch(statements);
   }}};
-  assert.equal((await reconcileToday(racing,{...input,candidateJson:changed})).written,false);
+  assert.equal((await reconcileToday(racing,{...input,sourceIds:['new']})).written,false);
   assert.equal((await DB.prepare("SELECT content FROM special_slots WHERE group_id='g' AND position=1").first()).content,'One $1');
 });

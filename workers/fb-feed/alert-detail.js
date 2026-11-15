@@ -142,7 +142,7 @@ export function dailyAlertDetail(result, data, day, weekday) {
 // Source text is bounded and restricted to the explicit delivery evidence field.
 export function deliveryAlertDetail(data, outcome, now) {
   const w=deliveryWindow(new Date(now)),saved=data[6]?.find(s=>s.id===1);
-  const manual=data[5]?.[0]?.value ?? 'auto';
+  const manual=data[5]?.find(setting=>!setting.key || setting.key==='delivery_display')?.value ?? 'auto';
   const setting=['auto','available','unavailable','hidden'].includes(manual)?manual:'invalid';
   const iso=value=>typeof value==='string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && Number.isFinite(Date.parse(value)) ? value : '(missing or invalid)';
   const statuses=new Set(['available','cancelled','ambiguous','none','other_day','pending','ineligible','weekly','withheld']);
@@ -340,7 +340,7 @@ function formatWeeklyText({day, code, summary, detail:d, firstSeenMs}) {
   if (d.retainedDays?.length) lines.push(`Daily poster value kept (precedence, not a failure): ${d.retainedDays.join(', ')}`);
   lines.push('', 'Daily specials publication does not establish Weekly Lunch publication.');
   lines.push('', `Automatic retry: ${RETRY[code] ?? 'none pending'}`);
-  lines.push('Correction: needed for Weekly Lunch. Review the held weekly import and enter or approve the weekday lunches; a newer Facebook post replaces an entry unless you Lock it.');
+  lines.push('Correction: needed for Weekly Lunch. Review the held weekly import and enter or approve the weekday lunches. A newer verified Facebook post can replace those entries.');
   lines.push(`Open: ${d.editorUrl}`, `Review imports: ${SITE}/admin/automation?date=${day}`);
   for (const url of d.reviewUrls) if (new RegExp(`^${SITE.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/admin/automation\\?date=${day}#import-[a-zA-Z0-9_-]{1,100}$`).test(url)) lines.push(`Pending import: ${url}`);
   return lines.join('\n');

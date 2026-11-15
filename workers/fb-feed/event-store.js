@@ -1,6 +1,6 @@
 // Automatic writes for special events. Separate from the weekly specials: no
 // collection revision, group or slot is read or written here, and every event
-// write is fenced by that event's own revision. Staff decisions always win.
+// write is fenced by that event's own revision.
 // Statuses: published (shown until it expires); review (withheld: evidence was
 // insufficient or contradictory; never shown, raises a Special Event alert, and
 // staff may publish it from Automation Review); rejected (removed by staff, a
@@ -8,6 +8,8 @@
 import {eventsModeOf,routeStoredSources} from './events.js';
 import {canonicalizeSlotContent} from './reconcile.js';
 import {parserVersionFor} from './classify.js';
+import {verifiedPostTimes} from './graph.js';
+import {sqlTime} from './mexican-night-defaults.js';
 
 // A missing table (migration not yet applied) behaves exactly like OFF.
 export async function activeEventsMode(env) {
@@ -42,6 +44,7 @@ export async function reconcileEvents(env,{sourceIds,today}) {
   if (mode==='OFF' || !sourceIds.length) return {mode,changes:0};
   const {results:rows}=await env.DB.prepare(SOURCES).bind(JSON.stringify(sourceIds),parserVersionFor(env)).all();
   const routing=routeStoredSources(rows,{today,canonicalize:canonicalizeSlotContent});
+  const times=await verifiedPostTimes(env,rows.filter((_,i)=>routing[i].route==='event'));
   let changes=0;
   for (let i=0;i<rows.length;i++) {
     // One event's failure never affects another event or the regular specials.
@@ -49,8 +52,14 @@ export async function reconcileEvents(env,{sourceIds,today}) {
       const r=routing[i];
       if (r.route==='regular') changes+=await withdrawRegular(env,rows[i]);
       else if (r.route==='mixed') await log(env,{source:rows[i].fb_post_id,action:'conflict',detail:r.reason}).run();
-      else changes+=r.cancellation ? await applyCancellation(env,rows[i],r,today) : await applyDraft(env,rows[i],r);
+      else if (!r.cancellation) changes+=await applyDraft(env,rows[i],r,times.get(rows[i].id));
     } catch (error) { console.error('Special event reconcile error',{reason:String(error?.message ?? error).slice(0,200)}); }
+  }
+  // Evaluate cancellations against the publications from this same scan as well.
+  for (const [i,r] of routing.entries()) {
+    if (!r.cancellation) continue;
+    try { changes+=await applyCancellation(env,rows[i],r,today,times.get(rows[i].id)); }
+    catch (error) { console.error('Special event cancellation reconcile error',{reason:String(error?.message ?? error).slice(0,200)}); }
   }
   return {mode,changes};
 }
@@ -92,13 +101,12 @@ async function withdrawRegular(env,row) {
 
 // Sufficient evidence publishes; anything else is stored withheld with its
 // reasons (an internal diagnostic, never shown or offered for approval).
-async function applyDraft(env,row,routing) {
+async function applyDraft(env,row,routing,postedMs) {
   const d=routing.draft;
   const status=routing.publish ? 'published' : 'review';
   const reason=status==='review' ? reasonText(d.review_reasons.map(r=>`Withheld: ${r}`)) : '';
   if (status==='review') console.warn('Special event withheld',{reasonCount:d.review_reasons.length});
-  const values=valuesOf(d,d.offers);
-  const evidence=JSON.stringify({...d.evidence,import_id:row.id,image_key:row.image_r2_key});
+  const evidence=JSON.stringify({...d.evidence,import_id:row.id,image_key:row.image_r2_key,verified_posted_ms:postedMs});
   // Match both original automation identity and the staff-visible date. A staff
   // date correction must not let a repost of the original event bypass removal.
   const sameEventSql=`fingerprint=?3 OR (identity=?4 AND (event_date=?2 OR
@@ -106,29 +114,43 @@ async function applyDraft(env,row,routing) {
     OR (status='rejected' AND COALESCE(identity,'')='' AND event_date=?2)`;
   const existing=await readEvents(env,`SELECT * FROM special_events WHERE source_post_id=?1
     OR (${sameEventSql})`,row.fb_post_id,d.event_date,d.fingerprint,d.identity);
-  const own=existing.find(e=>e.source_post_id===row.fb_post_id);
+  const linked=existing.find(e=>e.source_post_id===row.fb_post_id);
+  const matches=existing.filter(e=>e.status!=='rejected' && e.identity===d.identity);
+  const own=linked ?? (matches.length===1 && matches[0].fingerprint!==d.fingerprint ? matches[0] : null);
   if (own) {
-    if (own.last_auto_json===values && own.status===status) return 0;
-    // Staff edits and removals, and cancellations, are never overwritten.
-    if (!untouched(own) || !['review','published'].includes(own.status)) {
-      await log(env,{event_id:own.id,source:row.fb_post_id,action:'protected',detail:`Facebook post changed; staff-controlled event kept as ${own.status}: ${values}`}).run();
+    if (own.source_import_id===row.id) return 0;
+    const previous=own.source_import_id
+      ? (await verifiedPostTimes(env,[{fb_post_id:own.source_post_id}])).get(own.source_import_id) : NaN;
+    const priorMs=Number.isFinite(previous) ? previous : Date.parse(own.source_created_time);
+    const staffEdited=!untouched(own);
+    const newer=Number.isFinite(postedMs) && (!Number.isFinite(priorMs) || postedMs>priorMs)
+      && (!staffEdited || postedMs>sqlTime(own.updated_at));
+    if (!['review','published'].includes(own.status)
+      || ((staffEdited || !linked || own.source_import_id!==row.id) && !newer)
+      || (status==='review' && (staffEdited || !linked))) {
+      await log(env,{event_id:own.id,source:row.fb_post_id,action:staffEdited?'protected':'conflict',
+        detail:`Kept the existing ${d.identity} event pending newer verified Facebook evidence`}).run();
       return 0;
     }
+    const update={...d,time_text:d.time_text || own.time_text,start_time:d.start_time ?? own.start_time,
+      end_time:d.end_time ?? own.end_time,details:d.details || own.details};
+    const updatedValues=valuesOf(update,d.offers);
     // Offer and audit writes apply only if this exact automation update landed.
     const revision=own.revision+1;
     const landed=`EXISTS(SELECT 1 FROM special_events WHERE id=?1 AND revision=?4 AND last_auto_json=?5 AND manual_locked=0)`;
     const results=await env.DB.batch([
       env.DB.prepare(`UPDATE special_events SET title=?3,event_date=?4,time_text=?5,start_time=?6,end_time=?7,details=?8,status=?9,
         date_basis=?10,source_import_id=?11,fingerprint=?12,identity=?13,evidence_json=?14,last_auto_json=?15,review_reason=?16,
+        source_post_id=?17,source_created_time=?18,source_permalink=?19,origin='automation',manual_locked=0,
         revision=revision+1,updated_at=CURRENT_TIMESTAMP
-        WHERE id=?1 AND revision=?2 AND origin='automation' AND manual_locked=0 AND status IN ('review','published')`)
-        .bind(own.id,own.revision,d.title,d.event_date,d.time_text,d.start_time,d.end_time,d.details,status,d.date_basis,row.id,
-          d.fingerprint,d.identity,evidence,values,reason),
+        WHERE id=?1 AND revision=?2 AND status IN ('review','published')`)
+        .bind(own.id,own.revision,update.title,update.event_date,update.time_text,update.start_time,update.end_time,update.details,status,d.date_basis,row.id,
+          d.fingerprint,d.identity,evidence,updatedValues,reason,row.fb_post_id,row.fb_created_time,row.permalink_url ?? ''),
       env.DB.prepare(`DELETE FROM special_event_offers WHERE event_id=?1
-        AND EXISTS(SELECT 1 FROM special_events WHERE id=?1 AND revision=?2 AND last_auto_json=?3 AND manual_locked=0)`).bind(own.id,revision,values),
-      ...offerWrites(env,own.id,d.offers,landed,revision,values),
+        AND EXISTS(SELECT 1 FROM special_events WHERE id=?1 AND revision=?2 AND last_auto_json=?3 AND manual_locked=0)`).bind(own.id,revision,updatedValues),
+      ...offerWrites(env,own.id,d.offers,landed,revision,updatedValues),
       env.DB.prepare(`INSERT INTO special_event_log(event_id,source_post_id,action,detail) SELECT ?1,?2,'updated',?3 WHERE ${landed}`)
-        .bind(own.id,row.fb_post_id,`Updated from edited Facebook post (${status})`,revision,values),
+        .bind(own.id,row.fb_post_id,`Updated from newer Facebook evidence (${status})`,revision,updatedValues),
     ]);
     return results[0]?.meta?.changes ?? 0;
   }
@@ -154,6 +176,7 @@ async function applyDraft(env,row,routing) {
     return 0;
   }
   const id=`evt:${crypto.randomUUID()}`;
+  const values=valuesOf(d,d.offers);
   const created='EXISTS(SELECT 1 FROM special_events WHERE id=?1 AND revision=0)';
   const results=await env.DB.batch([
     env.DB.prepare(`INSERT INTO special_events(id,title,event_date,time_text,start_time,end_time,details,status,origin,manual_locked,
@@ -172,23 +195,40 @@ async function applyDraft(env,row,routing) {
   return results[0]?.meta?.changes ?? 0;
 }
 
-async function applyCancellation(env,row,routing,today) {
+async function applyCancellation(env,row,routing,today,postedMs) {
   const printed=routing.date?.date && routing.date.basis!=='publication-date' ? routing.date.date : null;
   const matches=await readEvents(env,`SELECT * FROM special_events WHERE identity=?1 AND status IN ('review','published')
     AND event_date>=?2 AND (?3 IS NULL OR event_date=?3)`,routing.cue.identity,today,printed);
-  if (routing.verified && matches.length===1 && untouched(matches[0])) {
-    const e=matches[0];
+  const e=matches.length===1 ? matches[0] : null;
+  let hold='No unique matching event';
+  if (!routing.verified || routing.date?.review) hold='Cancellation evidence is ambiguous';
+  else if (e && !untouched(e)) hold='Staff control the event';
+  else if (e) {
+    const prior=e.source_import_id
+      ? (await verifiedPostTimes(env,[{fb_post_id:e.source_post_id}])).get(e.source_import_id) : NaN;
+    let recorded;
+    try { recorded=JSON.parse(e.evidence_json)?.verified_posted_ms; } catch { /* Legacy evidence. */ }
+    // The save time is a conservative upper bound when the source was pruned.
+    const published=Number.isFinite(recorded) ? recorded : Number.isFinite(prior) ? prior : sqlTime(e.updated_at)+999;
+    hold=Number.isFinite(postedMs) && postedMs>published ? '' : 'Cancellation is not verifiably newer than the published event';
+  }
+  if (!hold) {
+    const token=crypto.randomUUID();
     const results=await env.DB.batch([
-      env.DB.prepare(`UPDATE special_events SET status='cancelled',review_reason='Cancelled by a Facebook post',revision=revision+1,updated_at=CURRENT_TIMESTAMP
-        WHERE id=?1 AND revision=?2 AND manual_locked=0 AND status IN ('review','published')`).bind(e.id,e.revision),
+      env.DB.prepare(`UPDATE special_events SET status='cancelled',review_reason='Cancelled by a Facebook post',revision=revision+1,updated_at=CURRENT_TIMESTAMP,mutation_token=?6
+        WHERE id=?1 AND revision=?2 AND manual_locked=0 AND status IN ('review','published')
+        AND EXISTS(SELECT 1 FROM special_imports i WHERE i.id=?3 AND i.extracted_json IS ?4 AND i.candidate_json IS ?5
+          AND i.review_status IN ('pending','accepted') AND NOT EXISTS(SELECT 1 FROM special_imports newer
+            WHERE newer.fb_post_id=i.fb_post_id AND newer.parser_version=i.parser_version AND newer.rowid>i.rowid))`)
+        .bind(e.id,e.revision,row.id,row.extracted_json,row.candidate_json,token),
       env.DB.prepare(`INSERT INTO special_event_log(event_id,source_post_id,action,detail)
-        SELECT ?1,?2,'cancelled','Cancelled by a Facebook post' WHERE EXISTS(SELECT 1 FROM special_events WHERE id=?1 AND status='cancelled' AND revision=?3)`)
-        .bind(e.id,row.fb_post_id,e.revision+1),
+        SELECT ?1,?2,'cancelled','Cancelled by a Facebook post' WHERE EXISTS(SELECT 1 FROM special_events WHERE id=?1 AND status='cancelled' AND mutation_token=?3)`)
+        .bind(e.id,row.fb_post_id,token),
     ]);
     return results[0]?.meta?.changes ?? 0;
   }
   // Not automatic: logged only. The event stays as it is; staff can remove it.
-  await log(env,{event_id:matches.length===1?matches[0].id:null,source:row.fb_post_id,action:'cancellation-review',
-    detail:`Cancellation post matched ${matches.length} ${routing.cue.identity} event(s)${!routing.verified?' (event named only in the caption)':matches.length===1?' that staff control':''}; not cancelled automatically`}).run();
+  if(!matches.length && await env.DB.prepare("SELECT 1 FROM special_event_log WHERE source_post_id=?1 AND action='cancelled' LIMIT 1").bind(row.fb_post_id).first()) return 0;
+  await log(env,{event_id:e?.id,source:row.fb_post_id,action:'cancellation-review',detail:hold}).run();
   return 0;
 }

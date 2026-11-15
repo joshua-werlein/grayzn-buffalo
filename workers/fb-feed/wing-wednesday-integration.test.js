@@ -106,7 +106,7 @@ test('destinations stay independent: a locked nightly slot keeps its text while 
   const live=await store.readCollection(two.env,'wing-wednesday');
   live.groups[0].slots[0].content='Bone-In Wings $1.10 each';await store.saveCollection(two.env,live);
   await two.run();
-  assert.match(two.slots()[0].content,/^Wing Night!/);assert.equal(options(two)[0],'Bone-In Wings $.89 each');
+  assert.match(two.slots()[0].content,/^Wing Night!/);assert.equal(options(two)[0],'Bone-In Wings $1.10 each');
   assert.equal(decisions(two)[0].outcome,'published');
 });
 test('same-time posters that disagree are held; a later verified poster replaces and ends the review',async t=>{
@@ -267,6 +267,7 @@ test('a verified poster replaces staff prices on both options and keeps the sauc
   live.groups.find(g=>g.id===SAUCES).slots[0].content='Buffalo';
   await store.saveCollection(f.env,live);
   assert.equal(source(f),'manual');
+  later(f,'newer-wing-poster',61);
   await f.run();
   assert.deepEqual(options(f).slice(0,2),['Bone-In Wings $.89 each','Boneless Wings $.99 each']);
   assert.deepEqual(sauces(f),['Buffalo']);assert.equal(decisions(f)[0].outcome,'published');assert.equal(source(f),'facebook');
@@ -275,6 +276,7 @@ test('a verified poster replaces a staff price however it was written, leaving o
   for(const typed of ['Bone-In Wings $1.10','Bone-In Wings $1 per wing','Bone-In Wings $1.5 each','Bone-In Wings $1.25/each','$1.10 Bone-In Wings','Bone-In Wings 89 cents','Bone-In Wings 89¢','Bone-In Wings 2 for $3','Bone-In Wings - $1.10','Bone-In Wings @ $1']) {
     const f=await wingWeek(t);
     await editOption(f,1,typed);
+    later(f,'newer-wing-poster',61);
     await f.run();
     assert.equal(options(f)[0],'Bone-In Wings $.89 each',typed);
     assert.equal(decisions(f)[0].outcome,'published',typed);
@@ -307,7 +309,7 @@ test('a staff correction stands against the poster it corrected, until a newer v
   f.state.now+=60000;
   await f.run();
   assert.equal(options(f)[0],'Bone-In Wings $.75 each','the same poster is not applied twice');
-  later(f,'p2',30);
+  later(f,'p2',61);
   f.state.candidate=nightPoster('Wing Night — Bone-In $1.05 each / Boneless $1.15 each');
   await f.run();
   assert.deepEqual(options(f).slice(0,2),['Bone-In Wings $1.05 each','Boneless Wings $1.15 each']);
@@ -377,13 +379,13 @@ test('partial poster publishes bone-in and keeps boneless review after an unrela
   assert.equal(await readWingAttention(f.env),null);
 });
 
-test('partial poster independently publishes boneless and clears an older automatic bone-in price',async t=>{
+test('partial poster independently publishes boneless and preserves an unconfirmed bone-in price',async t=>{
   const f=await wingWeek(t);
   await f.run();
   later(f,'partial',30);
   f.state.candidate=nightPoster('Wing Night Bone-In / Boneless $1.25 each');
   await f.run();
-  assert.deepEqual(options(f).slice(0,2),['Bone-In Wings','Boneless Wings $1.25 each']);
+  assert.deepEqual(options(f).slice(0,2),['Bone-In Wings $.89 each','Boneless Wings $1.25 each']);
   assert.equal((await readWingAttention(f.env))?.detail,WING_HOLD.prices);
 });
 
@@ -396,6 +398,7 @@ test('unrelated staff edits survive a poster that replaces the price',async t=>{
   group.slots[0].content='Jumbo Bone-In Wings $1 per wing\nTossed to order';group.slots[1].content='Boneless Bites\nHand breaded';
   live.groups.find(g=>g.id===SAUCES).slots[0].content='Buffalo\nRanch';
   await store.saveCollection(f.env,live);
+  later(f,'newer-wing-poster',61);
   await f.run();
   assert.deepEqual(options(f).slice(0,2),['Jumbo Bone-In Wings $.89 each\nTossed To Order','Boneless Bites $.99 each\nHand Breaded']);
   assert.deepEqual(sauces(f),['Buffalo','Ranch']);
@@ -436,9 +439,29 @@ for(const [name,first,second,expected] of [
 test('one verified price replaces its option; a staff price on the uncertain option stays, unreviewed',async t=>{
   const f=await wingWeek(t,{candidate:nightPoster('Wing Night Bone-In $.89 each / Boneless each','Wing Night Bone-In $.89 each')});
   await editOption(f,1,'Bone-In Wings $1 each');await editOption(f,2,'Boneless Wings $2 each');
+  later(f,'newer-wing-poster',61);
   await f.run();
   assert.deepEqual(options(f).slice(0,2),['Bone-In Wings $.89 each','Boneless Wings $2 each']);
   assert.equal(source(f),'manual','a staff price is still showing');assert.equal(await readWingAttention(f.env),null);
+});
+
+test('a wing poster first discovered after a staff correction keeps the corrected price',async t=>{
+  const f=await wingWeek(t);
+  await editOption(f,1,'Bone-In Wings $1.25 each');
+  await f.run();
+  assert.deepEqual(options(f).slice(0,2),['Bone-In Wings $1.25 each','Boneless Wings $.99 each']);
+});
+
+test('an older wing poster cannot restore a price after the replacement disappears',async t=>{
+  const f=await wingWeek(t);
+  const [older]=f.state.posts;
+  later(f,'replacement',30);
+  f.state.candidate=nightPoster('Wing Night — Bone-In $1.05 each / Boneless $1.15 each');
+  await f.run();
+  f.state.posts=[older];
+  f.state.candidate=nightPoster();
+  await f.run();
+  assert.deepEqual(options(f).slice(0,2),['Bone-In Wings $1.05 each','Boneless Wings $1.15 each']);
 });
 test('a poster with both prices uncertain replaces nothing and invents nothing',async t=>{
   const f=await wingWeek(t,{candidate:nightPoster('Wing Night Bone-In Boneless','Wing Night Bone-In Boneless')});

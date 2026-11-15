@@ -107,6 +107,7 @@ test('Chicago DST cutoff, UTC midnight and weekend handling',()=>{
 test('edited cancellation disables prior evidence and stale scans cannot restore it',async t=>{
   const f=setup(t);await f.run();const oldIds=f.imports().map(i=>i.id),observedAt=new Date(f.state.now).toISOString();
   f.state.now+=60000;f.state.posts[0].updated_time=new Date(f.state.now).toISOString();
+  f.state.posts[0].message='No delivery today';
   f.state.candidate.delivery={...affirmative,status:'cancelled',evidence:'No delivery today'};
   await f.run();assert.equal(f.display(),'hidden');
   await reconcileDelivery(f.env,{sourceIds:oldIds,observedAt});assert.equal(f.display(),'hidden');

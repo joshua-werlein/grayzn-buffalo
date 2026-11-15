@@ -1,9 +1,10 @@
 import {parserVersionFor,classifyCaption} from './classify.js';
-import {reconcileToday,reconcileWeeklyLunch,dailyPosterWeekday,verifiedPostTimes} from './guarded-auto.js';
+import {reconcileToday,reconcileWeeklyLunch,dailyPosterWeekday,DAILY_POST_TIMES} from './guarded-auto.js';
+import {verifiedPostTimes} from './graph.js';
 import {staffOwnedSectionSlot,sqlTime} from './mexican-night-defaults.js';
 import {hasPrintedPrice} from './evidence.js';
 import {reconcileDelivery} from './delivery.js';
-import {validateCurrentDay,hasWeeklyLunchEvidence,singleDayLunchEvidence,singleDayLunchEvidenceV2,canonicalizeSlotContent,WEEKLY_LUNCH_SHAPE_ERROR} from './reconcile.js';
+import {validateCurrentDay,hasWeeklyLunchEvidence,singleDayLunchEvidence,singleDayLunchEvidenceV2,canonicalizeSlotContent,WEEKLY_LUNCH_SHAPE_ERROR,MEXICAN_NIGHT_SHAPE_ERROR} from './reconcile.js';
 import {factKey} from './evidence.js';
 import {deliveryWindow,resolveDeliveryDisplay} from '../../src/lib/delivery.js';
 import {dailyPublicationObservation,importAlertObservation} from './alert-policy.js';
@@ -66,7 +67,7 @@ async function snapshot(env,scan) {
     q('SELECT * FROM special_collections ORDER BY id'),
     q('SELECT * FROM special_groups ORDER BY id'),
     q('SELECT * FROM special_slots ORDER BY group_id,position'),
-    q("SELECT value FROM settings WHERE key='delivery_display'"),
+    q("SELECT key,value FROM settings WHERE key IN ('delivery_display',?1) ORDER BY key",DAILY_POST_TIMES),
     q('SELECT * FROM delivery_automation ORDER BY id'),
     q('SELECT * FROM special_migration_checks ORDER BY version'),
     ...(events?[q(`SELECT id,source_post_id,status,origin,manual_locked,revision,event_date,title,review_reason FROM special_events
@@ -82,7 +83,7 @@ function currentSource(s,scan,now) {
   return Number.isFinite(time) && time<=now && deliveryWindow(new Date(time)).day===scan.day;
 }
 function dedicated(s) {
-  if(s.validation_reason===WEEKLY_LUNCH_SHAPE_ERROR) return true;
+  if([WEEKLY_LUNCH_SHAPE_ERROR,MEXICAN_NIGHT_SHAPE_ERROR].includes(s.validation_reason)) return true;
   try {
     const c=JSON.parse(s.candidate_json || s.extracted_json);
     return ['weekly-lunch','mexican-night'].includes(c?.type) && !('offers' in c) && !('day_of_week' in c);
@@ -265,7 +266,7 @@ function mexicanReading(s) {
     return c?.type==='mexican-night' && !('offers' in c) ? c : null;
   } catch {return null;}
 }
-const mexicanSource=s=>s.target_collection_id==='mexican-night'
+const mexicanSource=s=>s.target_collection_id==='mexican-night' || s.validation_reason===MEXICAN_NIGHT_SHAPE_ERROR
   || /\bmexican\s+night\b/i.test(String(mexicanReading(s)?.poster_evidence ?? ''));
 // After publication: saved/recurring entries the current poster did not confirm and
 // that therefore still show without a price. (a) a whole item absent from the
@@ -289,19 +290,19 @@ function unconfirmedMexicanEntries(reading,groups,slots,ids) {
 const MEXICAN_FAILURE={ai_budget_exhausted:'AI daily limit',retry_exhausted:'Retries exhausted',import_failed:'Import failed',validation_rejected:'Poster validation'};
 async function assessMexican(env,scan,snap,now) {
   const outcome=(state,extra={})=>({state,cause:'mexican_night_failed',detail:null,...extra});
-  const sources=snap.data[0].filter(s=>currentSource(s,scan,now) && ['pending','accepted'].includes(s.review_status) && mexicanSource(s))
-    .sort((a,b)=>Date.parse(b.fb_created_time)-Date.parse(a.fb_created_time));
+  const sources=snap.data[0].filter(s=>currentSource(s,scan,now) && ['pending','accepted'].includes(s.review_status) && mexicanSource(s));
   if(!sources.length) return outcome('suppressed');
   if(sources.some(s=>['pending','processing'].includes(s.processing_status))) return outcome('pending');
   const [,,collections,groups,slots]=snap.data;
   const collection=collections.find(c=>c.id==='mexican-night');
   const ids=new Set(groups.filter(g=>g.collection_id==='mexican-night').map(g=>g.id));
   // The newest post is the current menu evidence, as reconcileMexicanNight uses it.
-  const source=sources[0];
+  const times=await verifiedPostTimes(env,sources);
+  const [source]=sources.sort((a,b)=>times.get(b.id)-times.get(a.id));
   // A staff save after this post is a correction the post must not undo: no failure.
   // A post published after the save replaces it (guarded-auto.js), so it is assessed.
   if(collection?.section_source==='manual' || slots.some(s=>ids.has(s.group_id) && staffOwnedSectionSlot(s))) {
-    const savedMs=sqlTime(collection?.updated_at),postedMs=(await verifiedPostTimes(env,[source])).get(source.id);
+    const savedMs=sqlTime(collection?.updated_at),postedMs=times.get(source.id);
     if(Number.isFinite(savedMs) && !(Number.isFinite(postedMs) && postedMs>savedMs)) return outcome('suppressed');
   }
   const {results:events}=await env.DB.prepare(`SELECT detail FROM special_import_events WHERE import_id=?1 AND event_type='review'
@@ -391,7 +392,7 @@ async function assess(env,scan,snap) {
   // Do not fabricate a failure from a failed image with no explicit current-day
   // specials caption. Unknown coverage is pending review, not claimed evidence.
   let delivery={state:'suppressed',cause:'delivery_failed'};
-  const manual=snap.data[5][0]?.value ?? 'auto';
+  const manual=snap.data[5].find(setting=>setting.key==='delivery_display')?.value ?? 'auto';
   const expected=await reconcileDelivery(env,{sourceIds,observedAt:new Date(now).toISOString(),inspectOnly:true});
   if(w.open && manual==='auto') {
     const saved=snap.data[6].find(s=>s.id===1);
@@ -457,7 +458,7 @@ function recordVerified(env,scan,scope,observation,evidence,incidentKey=null) {
   const deliveryEnd=Date.parse(deliveryWindow(new Date(scan.completed_ms)).expiresAt);
   const proof=JSON.stringify({version:1,token:scan.token,hash,cause:observation.cause,parser:scan.parser,
     ...(observation.fingerprint?{fingerprint:observation.fingerprint}:{}),
-    expires_ms:Math.min(scan.completed_ms+FRESH_MS,deliveryEnd+(scope==='delivery'?0:5*3600000))});
+    expires_ms:scope==='delivery' ? Math.min(scan.completed_ms+FRESH_MS,deliveryEnd) : scan.completed_ms+FRESH_MS});
   return env.DB.prepare(`INSERT INTO facebook_alert_incidents
     (incident_key,day,scope,code,state,first_seen_ms,observed_ms,due_ms,proof_json)
     SELECT ?1,?2,?3,?4,?5,?6,?6,?7,?8 WHERE EXISTS(SELECT 1 FROM facebook_alert_scans
@@ -477,7 +478,7 @@ function recordVerified(env,scan,scope,observation,evidence,incidentKey=null) {
 export async function revalidateAlert(env,row,{withEvidence=false}={}) {
   if(!active(env) || !row.proof_json) return false;
   const now=Date.now(),w=deliveryWindow(new Date(now));
-  if(w.day!==row.day || hour(now)<7 || hour(now)>=20 || (row.scope==='delivery' && !w.open)) return false;
+  if(w.day!==row.day || hour(now)<7 || (row.scope==='delivery' && !w.open)) return false;
   const proof=JSON.parse(row.proof_json);
   if(proof.version!==1 || proof.parser!==parserVersionFor(env)
     || !Number.isSafeInteger(proof.expires_ms) || now>=proof.expires_ms) return false;
@@ -499,7 +500,11 @@ export async function dispatchVerifiedAlerts(env,{send,timeoutMs}={}) {
   // Mock transport is a function injected by tests, never an environment URL.
   // Provider configuration is resolved before any incident is claimed or fenced.
   const transport=env.SPECIALS_ALERT_MODE==='MOCK'?send:await alertTransport(env);
-  if(typeof transport!=='function') return {status:env.SPECIALS_ALERT_MODE==='EMAIL'?'unconfigured':'disabled'};
+  if(typeof transport!=='function') {
+    if(env.SPECIALS_ALERT_MODE!=='EMAIL') return {status:'disabled'};
+    console.error('Facebook alert email transport is unconfigured');
+    return {status:'unconfigured'};
+  }
   try {
     const counts={sent:0,uncertain:0,superseded:0};
     for(let i=0;i<MAX_DISPATCH_PER_RUN;i++) {

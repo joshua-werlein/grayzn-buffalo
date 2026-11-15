@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {harness} from './test-fixture.js';
 import {reconcilePosterEvidence} from './reconcile.js';
+import {verifiedPostTimes} from './graph.js';
 
 // A newer verified poster supersedes an older conflicting poster, even while the
 // older post still exists. Trust comes from posting times and real content changes,
@@ -29,9 +30,9 @@ function setup(t,now='2026-11-04T16:30:00Z') {
   };
   f.scan=(at,posts)=>{
     f.state.now=Date.parse(at);
-    f.state.posts=posts.map(({id,caption,created,updated=created,reading})=>{
+    f.state.posts=posts.map(({id,caption,created,updated=created,reading,image=`https://cdn.example/${id}.jpg`})=>{
       readings.set(caption,reading);
-      return {id,message:caption,created_time:created,updated_time:updated,full_picture:`https://cdn.example/${id}.jpg`};
+      return {id,message:caption,created_time:created,updated_time:updated,full_picture:image};
     });
     return f.run();
   };
@@ -67,11 +68,110 @@ test('a first scan seeing both posters publishes only the newer',async t=>{
   assert.equal(f.lunch().content,FIXED);
   assert.deepEqual(f.conflicts(),[]);
 });
+test('an older daily poster cannot restore a superseded meal after the replacement disappears',async t=>{
+  const f=setup(t);
+  await f.scan('2026-11-04T16:10:00Z',[OLD,NEW]);
+  await f.scan('2026-11-04T16:40:00Z',[OLD]);
+  assert.equal(f.lunch().content,FIXED);
+  assert.deepEqual(f.allDay(),[JAL,HAM]);
+  assert.equal(f.state.aiCalls,2);
+});
 test('a later comment on the older poster does not make it the newest',async t=>{
   const f=setup(t);
   await f.scan('2026-11-04T16:10:00Z',[OLD,NEW]);
   await f.scan('2026-11-04T17:10:00Z',[{...OLD,updated:'2026-11-04T17:00:00+0000'},NEW]);
   assert.equal(f.lunch().content,FIXED);
+  assert.equal(f.state.aiCalls,2);
+  assert.equal(f.imports().length,2);
+});
+
+test('first scan after upgrade keeps a superseding offer using the legacy week publication time',async t=>{
+  const f=setup(t);
+  await f.scan('2026-11-04T16:10:00Z',[OLD,NEW]);
+  f.sql("DELETE FROM settings WHERE key='facebook_daily_post_times'");
+  f.sql("UPDATE weekly_specials SET updated_at='2026-11-04 16:10:00' WHERE id=9000");
+  const revision=f.revision();
+  await f.scan('2026-11-04T16:40:00Z',[OLD]);
+  assert.equal(f.lunch().content,FIXED);
+  assert.equal(f.revision(),revision);
+  assert.equal(f.state.aiCalls,2);
+  const replacement={...NEW,id:'d3',caption:'later-meal',created:'2026-11-04T16:45:00Z',reading:daily()};
+  await f.scan('2026-11-04T16:50:00Z',[replacement]);
+  assert.equal(f.lunch().content,LUNCH);
+  await f.scan('2026-11-04T17:10:00Z',[NEW]);
+  assert.equal(f.lunch().content,LUNCH);
+});
+
+test('unknown legacy publication time holds its slot without freezing a timestamped staff edit',async t=>{
+  const f=setup(t);
+  f.sql("UPDATE weekly_specials SET updated_at='invalid' WHERE id=9000");
+  f.sql("UPDATE special_slots SET content=?,origin='automation',last_auto_value=? WHERE group_id=? AND position=1",FIXED,FIXED,f.lunch().group_id);
+  const slot=f.slots(3,'all-day')[0];
+  f.sql("UPDATE special_slots SET content='Staff meal',origin='manual',manual_locked=1,manual_edited_at='2026-11-04T15:30:00Z' WHERE group_id=? AND position=1",slot.group_id);
+  await f.scan('2026-11-04T15:40:00Z',[OLD]);
+  assert.equal(f.lunch().content,FIXED);
+  assert.equal(f.allDay()[0],'Staff meal');
+  await f.scan('2026-11-04T16:10:00Z',[NEW]);
+  assert.equal(f.allDay()[0],JAL);
+});
+
+test('comments reuse the legacy import and preserve a staff correction without new publication or audit',async t=>{
+  const f=setup(t);
+  await f.scan('2026-11-04T15:10:00Z',[OLD]);
+  f.sql("UPDATE special_imports SET image_source_version='updated:2026-11-04T15:00:00+0000'");
+  f.sql("UPDATE special_slots SET content='Staff meal',origin='manual',manual_locked=1,manual_edited_at='2026-11-04T15:20:00Z' WHERE group_id=? AND position=1",f.lunch().group_id);
+  const imports=f.imports();
+  for(const time of ['16:10','16:40']) {
+    await f.scan(`2026-11-04T${time}:00Z`,[{...OLD,updated:'2026-11-04T16:00:00Z'}]);
+    assert.equal(f.lunch().content,'Staff meal');
+  }
+  assert.equal(f.state.aiCalls,1);
+  assert.deepEqual(f.imports(),imports);
+  assert.equal(f.sql("SELECT count(*) n FROM special_import_events WHERE event_type='extract'")[0].n,1);
+});
+
+test('replacing image bytes with the same caption triggers exactly one new inference',async t=>{
+  const f=setup(t);
+  const fetch=globalThis.fetch;
+  t.mock.method(globalThis,'fetch',input=>String(input).includes('/replacement.jpg')
+    ? Promise.resolve(new Response(new Uint8Array([255,216,255,1]),{headers:{'content-type':'image/jpeg'}})) : fetch(input));
+  await f.scan('2026-11-04T15:10:00Z',[OLD]);
+  const replacement={...OLD,image:'https://cdn.example/replacement.jpg',updated:'2026-11-04T16:00:00Z',reading:daily(offer(FIXED))};
+  await f.scan('2026-11-04T16:10:00Z',[replacement]);
+  await f.scan('2026-11-04T16:40:00Z',[replacement]);
+  assert.equal(f.state.aiCalls,2);
+  assert.equal(f.imports().length,2);
+  assert.notEqual(f.imports()[0].image_hash,f.imports()[1].image_hash);
+  assert.equal(f.lunch().content,FIXED);
+});
+
+test('a comment cannot reset the retry budget or republish a rejected reading',async t=>{
+  const f=setup(t);
+  f.env.AI.run=async()=>{
+    f.state.aiCalls++;
+    throw Object.assign(Error('unusable extraction'),{status:400});
+  };
+  await f.scan('2026-11-04T15:10:00Z',[OLD]);
+  const [failed]=f.imports();
+  assert.equal(failed.processing_status,'failed');
+  await f.scan('2026-11-04T16:10:00Z',[{...OLD,updated:'2026-11-04T16:00:00Z'}]);
+  assert.equal(f.state.aiCalls,1);
+  assert.deepEqual(f.imports(),[failed]);
+  assert.equal(f.lunch().content,'');
+});
+
+test('delayed stored revisions cannot turn a comment into a newer publication',async t=>{
+  const f=setup(t);
+  await f.scan('2026-11-04T16:10:00Z',[OLD]);
+  const [original]=f.imports();
+  const insert=(id,updated,hash)=>f.sql(`INSERT INTO special_imports(id,fb_post_id,fb_created_time,fb_updated_time,image_hash,caption_hash)
+    VALUES(?,?,?,?,?,?)`,id,original.fb_post_id,original.fb_created_time,updated,hash,original.caption_hash);
+  insert('newer','2026-11-04T15:55:00Z','new-image');
+  insert('delayed','2026-11-04T15:35:00Z','old-image');
+  insert('comment','2026-11-04T16:00:00Z','new-image');
+  const times=await verifiedPostTimes(f.env,[original]);
+  assert.ok(Number.isNaN(times.get('delayed')));
+  assert.equal(times.get('comment'),times.get('newer'));
 });
 test('an older poster actually edited later becomes the newest',async t=>{
   const f=setup(t);

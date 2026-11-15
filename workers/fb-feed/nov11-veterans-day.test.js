@@ -143,7 +143,7 @@ test('November 11: a staff-entered Veterans Day event prevents a duplicate from 
   await f.run();f.addWednesday();await f.run();
   assert.deepEqual(f.events().map(e=>[e.id,e.status]),[['evt:staff-1','published']]);
   assert.deepEqual(f.offers('evt:staff-1'),['Any Burger, Side and Drink $7']);
-  assert.ok(f.sql("SELECT detail FROM special_event_log WHERE action='conflict'").some(l=>/veterans-day/.test(l.detail)));
+  assert.ok(f.sql("SELECT detail FROM special_event_log WHERE action='protected'").some(l=>/veterans-day/.test(l.detail)));
   assert.deepEqual(f.wednesdaySlots().map(({service,position,content})=>({service,position,content})),REGULAR);
 });
 

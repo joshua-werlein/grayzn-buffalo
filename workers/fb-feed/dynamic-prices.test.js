@@ -95,7 +95,7 @@ test('capitalization and whitespace preserve every printed size, choice and chan
 // Facebook is the canonical source: only a staff edit recorded after the post is kept.
 for (const [name,origin,lock,baseline,expected,edited=null] of [
   ['untouched recurring default','manual',0,null,'new'],
-  ['legacy staff lock without an edit time','manual',1,null,'old'],
+  ['legacy staff lock without an edit time','manual',1,null,'new'],
   ['unchanged automation','automation',0,'old','new'],
   ['edited automation','automation',0,'original','new'],
   ['staff correction after the post','manual',1,null,'old','2099-12-31T00:00:00.000Z'],

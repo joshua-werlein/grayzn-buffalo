@@ -118,15 +118,14 @@ for(const [name,sql] of [
   assert.deepEqual(f.conflicts(),[]);
 });
 
-// A lock saved before edit times existed (the November 4 lunch correction) cannot be
-// shown older than any post: kept, as an informational hold, until its week rolls over.
-test('a legacy staff lock with no recorded edit time is kept and reported as a newer staff edit',async t=>{
+test('a poster after the edit-time migration replaces a legacy staff lock',async t=>{
   const f=setup(t);
   f.set('lunch',1,"content='Locked Wrap $8.00',origin='manual',manual_locked=1");
   await f.scan('2026-11-12T14:24:00Z',[POST]);
-  assert.equal(f.lunch().content,'Locked Wrap $8.00');
+  assert.equal(f.lunch().content,WRAP);
+  assert.equal(f.lunch().manual_locked,0);
   assert.deepEqual(f.allDay(),[WESTERN,HAM]);
-  assert.match(f.conflicts().at(-1),/Newer staff edit retained/);
+  assert.deepEqual(f.conflicts(),[]);
 });
 
 // ── 4. Staff corrections and approvals against unchanged versus newer sources ─

@@ -5,12 +5,13 @@ import {composeMexicanItem,normalizeMexicanPrices} from '../../src/lib/mexican-i
 import {normalizeMenuCase} from '../../src/lib/text-case.js';
 // The Worker owns only automatic writes. Manual saves remain in specials-store.ts.
 // Every write, revision bump and acceptance audit commits in one D1 batch.
-import {reconcilePosterEvidence,validateWeeklyLunch,applySharedWeeklyLunchPrice,validateMexicanNight,canonicalizeSlotContent,singleDayLunchEvidence,singleDayLunchEvidenceV2} from './reconcile.js';
+import {reconcilePosterEvidence,validateWeeklyLunch,applySharedWeeklyLunchPrice,validateMexicanNight,canonicalizeSlotContent,singleDayLunchEvidence,singleDayLunchEvidenceV2,MEXICAN_NIGHT_SHAPE_ERROR} from './reconcile.js';
 import {parserVersionFor} from './classify.js';
 import {soupGroupId,blankSoupGroup} from '../../src/lib/daily-soup.js';
-import {normalizeWeeklyRange,factKey,analyzeDailyEvidence,hasPrintedPrice} from './evidence.js';
+import {normalizeWeeklyRange,factKey,sameOffer,analyzeDailyEvidence,hasPrintedPrice} from './evidence.js';
 import {approvalEvents,staffConfirmedCandidate} from './staff-review.js';
 import {eventSourceIndexes} from './event-store.js';
+import {verifiedPostTimes} from './graph.js';
 import {NEWER_STAFF_EDIT} from './alert-detail.js';
 
 // Facebook is the canonical source for specials (docs/facebook-specials-source-of-truth.md).
@@ -22,34 +23,17 @@ import {NEWER_STAFF_EDIT} from './alert-detail.js';
 // edited image) can. Import processing time never counts.
 const newerThanStaffEdit=(slot,postedMs)=>slot.manual_edited_at==null
   || (Number.isFinite(postedMs) && postedMs>Date.parse(slot.manual_edited_at));
-// A staff lock saved before edit times were recorded (such as the November 4 lunch
-// correction) has an unknown edit time, so no post can be shown to be newer than it.
-// Every current save and approval records its time and the editor offers no lock, so
-// only existing slots are affected, and only until their week rolls over.
-const untimedStaffLock=s=>s.manual_locked===1 && s.manual_edited_at==null && !!String(s.content ?? '').trim();
-const facebookMayReplace=(s,postedMs)=>!!s && !untimedStaffLock(s) && newerThanStaffEdit(s,postedMs);
+// The production migration that introduced edit times was applied at this instant.
+// It gives pre-existing locks a finite upper bound while protecting old replays.
+const LEGACY_LOCK_CUTOFF=Date.parse('2026-11-05T07:19:50Z');
+const facebookMayReplace=(s,postedMs)=>!!s && newerThanStaffEdit(s,postedMs)
+  && (s.manual_edited_at!=null || s.manual_locked!==1 || !(s.content?.trim() || s.price?.trim()) || postedMs>LEGACY_LOCK_CUTOFF);
+export const DAILY_POST_TIMES='facebook_daily_post_times';
 // An unchanged value automation itself wrote. Only these establish facts, such as
 // the All Day pair a night poster repeats; defaults and staff values never do.
 const automationValue=s=>s.origin==='automation' && typeof s.last_auto_value==='string' && s.content===s.last_auto_value
   && s.manual_locked===0 && s.price==='' && s.section_link==='' && s.manual_edited_at==null;
-
-// When each source's poster was verifiably posted. A Facebook updated time alone
-// proves nothing: comments can change it. It counts only for a version whose stored
-// image or caption actually differs from the post's earlier version.
-export async function verifiedPostTimes(env,sources) {
-  const posts=[...new Set(sources.map(s=>s.fb_post_id))];
-  const {results:versions}=await env.DB.prepare(`SELECT id,fb_post_id,fb_created_time,fb_updated_time,image_hash,caption_hash
-    FROM special_imports WHERE fb_post_id IN (SELECT value FROM json_each(?1)) ORDER BY rowid`).bind(JSON.stringify(posts)).all();
-  const times=new Map(),state=new Map();
-  for(const v of versions) {
-    const prior=state.get(v.fb_post_id);
-    const changed=prior && v.image_hash && prior.image_hash && (v.image_hash!==prior.image_hash || v.caption_hash!==prior.caption_hash);
-    const time=!prior?Date.parse(v.fb_created_time):changed?Date.parse(v.fb_updated_time):prior.time;
-    state.set(v.fb_post_id,{time,image_hash:v.image_hash ?? prior?.image_hash,caption_hash:v.caption_hash});
-    times.set(v.id,time<=Date.now()?time:NaN);
-  }
-  return times;
-}
+const populatedAutomation=s=>s.origin==='automation' && !!(s.content?.trim() || s.price?.trim() || s.section_link);
 
 export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=false}) {
   const stage=reason=>({written:false,reason});
@@ -85,19 +69,44 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
   const eventSourceIds=storedSources.filter((_,i)=>events.has(i)).map(s=>s.id);
   const sources=storedSources.filter((_,i)=>!events.has(i));
   if (!sources.length) return {...stage('No extracted evidence'),...(eventSourceIds.length?{eventSourceIds,excludedSourceIds:eventSourceIds}:{})};
-  const {results:weeks}=await env.DB.prepare(`SELECT w.id,c.id collection_id,c.revision FROM weekly_specials w
+  const {results:weeks}=await env.DB.prepare(`SELECT w.id,w.updated_at,c.id collection_id,c.revision FROM weekly_specials w
     LEFT JOIN special_collections c ON c.weekly_special_id=w.id AND c.kind='week'
     WHERE w.week_start_date<=?1 AND w.week_end_date>=?1`).bind(today).all();
   if (weeks.length!==1 || !weeks[0].collection_id) return stage('No unique current saved week');
   const week=weeks[0];
+  // Before per-slot tracking, the publication batch always updated the week.
+  // Its save time bounds the latest possible publication. The old audit lists
+  // all sources in a batch and cannot prove which one supplied a given slot.
+  const savedAt=week.updated_at ?? '';
+  const sqliteTime=/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(savedAt);
+  const weekBound=sqliteTime ? sqlTime(savedAt)+999
+    : /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(savedAt) ? sqlTime(savedAt) : NaN;
+  const previous=await env.DB.prepare("SELECT value FROM settings WHERE key=?1").bind(DAILY_POST_TIMES).first();
+  const prior=previous ? JSON.parse(previous.value) : null;
+  if (prior?.day>today) return stage('Concurrent change; nothing written');
+  const publishedTimes=prior?.day===today ? prior.times : {};
+  // Subsequent writes to other slots must not move the bound for legacy slots.
+  const legacyPublicationBound=prior?.day===today && prior.weekId===week.id ? prior.legacyBound : weekBound;
+  const publications={...publishedTimes};
   const {results:groups}=await env.DB.prepare('SELECT * FROM special_groups WHERE collection_id=?1 AND day_of_week=?2').bind(week.collection_id,weekday).all();
   const {results:slots}=await env.DB.prepare(`SELECT s.* FROM special_slots s JOIN special_groups g ON g.id=s.group_id
     WHERE g.collection_id=?1 AND g.day_of_week=?2 ORDER BY s.position`).bind(week.collection_id,weekday).all();
+  // If Daily has never written today, a matching audited Weekly Lunch value
+  // can yield to a later Daily poster even if the Weekly batch landed later.
+  let weeklyLunchTimes=[];
+  const legacyLunch=slots.find(s=>s.position===1 && populatedAutomation(s) && !publishedTimes[`${s.group_id}:1`]
+    && groups.some(g=>g.id===s.group_id && g.service==='lunch'));
+  if(legacyLunch && !await env.DB.prepare(`SELECT 1 FROM special_import_events WHERE event_type='review'
+    AND detail LIKE ?1 AND detail NOT LIKE '%; 0 slot(s)%' LIMIT 1`).bind(`GUARDED_AUTO: ${today}; reconciled %`).first()) {
+    const writers=await priorWeeklyWriters(env,week,today);
+    weeklyLunchTimes=writers.filter(w=>w.byDay.get(weekday)?.has(legacyLunch.content)).map(w=>w.created);
+  }
   const allDayGroups=groups.filter(g=>g.service==='all-day' && g.enabled===1);
   const existing=allDayGroups.length===1 ? slots.filter(s=>s.group_id===allDayGroups[0].id && s.content && automationValue(s)) : [];
   const {results:staffEvents}=await env.DB.prepare(`SELECT import_id,event_type,detail FROM special_import_events
     WHERE import_id IN (SELECT value FROM json_each(?1)) AND event_type='review' AND detail LIKE 'STAFF_APPROVAL:%' ORDER BY id DESC LIMIT 240`).bind(JSON.stringify(sources.map(s=>s.id))).all();
   const candidates=sources.map(s=>{
+    if(s.validation_reason===MEXICAN_NIGHT_SHAPE_ERROR) return {type:'mexican-night'};
     const json=s.processing_status==='failed' ? s.extracted_json : s.candidate_json;
     try { return staffConfirmedCandidate(JSON.parse(json.replace(/^```(?:json)?\n?|\n?```$/gm,'').trim()),approvalEvents(staffEvents.filter(e=>e.import_id===s.id)),groups,slots); }
     catch { return null; }
@@ -113,8 +122,16 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
   // The newest post printing this offer. With no per-offer record, the oldest source.
   const postedAt=(service,content)=>{
     const indexes=offeredBy?.(service,content);
-    const times=(indexes?.length?indexes:sources.map((_,i)=>i)).map(i=>postTimes.get(sources[i].id)).filter(Number.isFinite);
-    return times.length ? (offeredBy ? Math.max(...times) : Math.min(...times)) : NaN;
+    const matching=(indexes?.length?indexes:sources.map((_,i)=>i)).map(i=>sources[i].id);
+    const times=matching.map(id=>postTimes.get(id)).filter(Number.isFinite);
+    const time=times.length ? (offeredBy ? Math.max(...times) : Math.min(...times)) : NaN;
+    return {time,ids:matching.filter(id=>postTimes.get(id)===time).sort()};
+  };
+  const remember=(key,posted)=>{
+    if(!Number.isFinite(posted.time)) return;
+    const last=publishedTimes[key];
+    const ids=[...new Set([...(last?.time===posted.time ? last.ids : []),...posted.ids])].sort();
+    if(last?.time!==posted.time || JSON.stringify(last.ids)!==JSON.stringify(ids)) publications[key]={time:posted.time,ids};
   };
   const dailySourceIndices=new Set();
   sources.forEach((s,index)=>{
@@ -142,6 +159,7 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
       rejected.push({index,reason:s.validation_reason || 'Rejected extracted evidence'});
     }
   });
+  const staleSlots=new Set();
   const targets=rejected.length ? [] : proposedTargets;
   const rejectedSources=rejected.map(r=>({source_id:sources[r.index].id,fb_post_id:sources[r.index].fb_post_id,reason:r.reason}));
   const rows=[],createdGroups=[],blocked=rejected.length ? [] : unresolvedTargets.map(t=>({...t,day_of_week:weekday,group_id:null}));
@@ -153,6 +171,7 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
       const group=blankSoupGroup(week.collection_id,weekday);
       createdGroups.push(group);
       rows.push({group_id:group.id,position:1,content:target.items[0].content,old:group.slots[0]});
+      remember(`${group.id}:1`,postedAt(target.service,target.items[0].content));
       continue;
     }
     const block=(item,position,reason,group_id=null)=>blocked.push({day_of_week:weekday,service:target.service,group_id,position,content:item.content,reason});
@@ -176,7 +195,21 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
     }
     const eligible=proposed.filter(r=>{
       if (!r.old) { block(r,r.position,'Protected or ineligible destination slot',dest.id); return false; }
-      if (facebookMayReplace(r.old,postedAt(target.service,r.content))) return true;
+      const key=`${r.group_id}:${r.position}`,posted=postedAt(target.service,r.content);
+      const last=publishedTimes[key];
+      const newerThanWeekly=r.old===legacyLunch && weeklyLunchTimes.length && weeklyLunchTimes.every(time=>posted.time>time);
+      const stale=last ? (!(posted.time>=last.time) || (posted.time===last.time && automationValue(r.old)
+        && !posted.ids.some(id=>last.ids.includes(id)) && !sameOffer(r.old.content,r.content)))
+        : populatedAutomation(r.old) && !newerThanWeekly
+          && !(Number.isFinite(legacyPublicationBound) && posted.time>legacyPublicationBound);
+      if (stale) {
+        staleSlots.add(`${target.service}:${r.position}`);
+        return false;
+      }
+      if (facebookMayReplace(r.old,posted.time)) {
+        remember(key,posted);
+        return true;
+      }
       // Staff corrected this slot after the post. Already showing the post's value
       // is no hold at all; anything else is kept until a newer post arrives.
       if (r.old.content!==r.content || r.old.price) block(r,r.position,NEWER_STAFF_EDIT,dest.id);
@@ -189,10 +222,11 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
   // Published meals with no printed price: the plan reproduces these on every
   // scan, so the alert needs no separate record. Soup is never priced.
   const pricelessOffers=targets.flatMap(t=>t.role==='soup'?[]:t.items.filter(item=>!hasPrintedPrice(item.content)).map(item=>({service:t.service,position:item.position})))
-    .filter(p=>!blocked.some(b=>b.service===p.service && b.position===p.position));
+    .filter(p=>!staleSlots.has(`${p.service}:${p.position}`) && !blocked.some(b=>b.service===p.service && b.position===p.position));
   const conflictDetail=blocked.length || rejectedSources.length
     ? `GUARDED_AUTO_CONFLICT: ${today}; blocked proposals: ${JSON.stringify(blocked)}${rejectedSources.length ? `; rejected sources: ${JSON.stringify(rejectedSources)}` : ''}` : null;
   const dailySources=sources.filter((_,i)=>dailySourceIndices.has(i));
+  const timesChanged=Object.keys(publications).some(key=>publications[key]!==publishedTimes[key]);
   // Only evaluated daily proposals/rejections establish publication coverage.
   // Dedicated weekly/Mexican no-ops must not resolve daily incidents.
   const withOutcome=(result,revision=week.revision)=>({...result,pricelessOffers,
@@ -209,7 +243,7 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
   // Monitoring uses the same proposal rules, without publication or audit writes.
   if (inspectOnly) return withOutcome({written:false,reason:rows.length?'Publication incomplete':'No unambiguous eligible changes',
     blocked,rejectedSources,requiresWrite:rows.length>0,excludedSourceIds:[...excludedSources.map(s=>sources[s.index].id),...eventSourceIds]});
-  if (!rows.length) {
+  if (!rows.length && !timesChanged) {
     if (!conflictDetail) return withOutcome(stage('No unambiguous eligible changes'));
     // Avoid revision/audit churn when a cron sees the same unresolved conflict.
     const {results:audited}=await env.DB.prepare(`SELECT import_id FROM special_import_events e
@@ -224,11 +258,12 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
   // used to remove repeats. A manual edit to that pair invalidates the plan too.
   const claim=prepare(`UPDATE special_collections SET revision=revision+1,mutation_token=?1
     WHERE id=?2 AND revision=?3 AND kind='week' AND weekly_special_id=?4
+    AND (SELECT value FROM settings WHERE key=?11) IS ?12
     AND NOT EXISTS(SELECT 1 FROM special_imports WHERE id IN (SELECT value FROM json_each(?10))
       AND review_status='pending' AND processing_status IN ('pending','processing'))
     AND EXISTS(SELECT 1 FROM special_migration_checks WHERE version=15 AND mismatches=0)
     AND (SELECT count(*) FROM weekly_specials WHERE week_start_date<=?5 AND week_end_date>=?5)=1
-    AND EXISTS(SELECT 1 FROM weekly_specials WHERE id=?4 AND week_start_date<=?5 AND week_end_date>=?5)
+    AND EXISTS(SELECT 1 FROM weekly_specials WHERE id=?4 AND week_start_date<=?5 AND week_end_date>=?5 AND updated_at IS ?13)
     AND (SELECT count(*) FROM special_groups WHERE collection_id=?2 AND day_of_week=?6)=json_array_length(?7)
     AND NOT EXISTS(SELECT 1 FROM json_each(?7) j WHERE NOT EXISTS(SELECT 1 FROM special_groups g
       WHERE g.id=json_extract(j.value,'$.id') AND g.collection_id=?2 AND g.day_of_week=?6
@@ -240,7 +275,8 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
       WHERE s.group_id=json_extract(j.value,'$.group_id') AND s.position=json_extract(j.value,'$.position')
       AND s.content IS json_extract(j.value,'$.content') AND s.price=json_extract(j.value,'$.price')
       AND s.section_link=json_extract(j.value,'$.section_link') AND s.origin=json_extract(j.value,'$.origin')
-      AND s.manual_locked=json_extract(j.value,'$.manual_locked') AND s.last_auto_value IS json_extract(j.value,'$.last_auto_value')))
+      AND s.manual_locked=json_extract(j.value,'$.manual_locked') AND s.last_auto_value IS json_extract(j.value,'$.last_auto_value')
+      AND s.manual_edited_at IS json_extract(j.value,'$.manual_edited_at')))
     AND NOT EXISTS(SELECT 1 FROM json_each(?9) j WHERE NOT EXISTS(SELECT 1 FROM special_imports i
       WHERE i.id=json_extract(j.value,'$.id') AND i.candidate_json IS json_extract(j.value,'$.candidate_json')
       AND i.extracted_json IS json_extract(j.value,'$.extracted_json')
@@ -249,13 +285,17 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
       AND i.review_status=json_extract(j.value,'$.review_status')
       AND i.image_r2_key IS NOT NULL AND NOT EXISTS(SELECT 1 FROM special_imports newer
         WHERE newer.fb_post_id=i.fb_post_id AND newer.parser_version=i.parser_version AND newer.rowid>i.rowid)))`,
-    token,week.collection_id,week.revision,week.id,today,weekday,JSON.stringify(groups),JSON.stringify(slots),JSON.stringify(sources),JSON.stringify(sourceIds));
+    token,week.collection_id,week.revision,week.id,today,weekday,JSON.stringify(groups),JSON.stringify(slots),JSON.stringify(sources),JSON.stringify(sourceIds),
+    DAILY_POST_TIMES,previous?.value ?? null,week.updated_at);
   const gate='EXISTS(SELECT 1 FROM special_collections WHERE id=?1 AND mutation_token=?2)';
   const detail=rejectedSources.length
     ? `GUARDED_AUTO: ${today}; no publication; CONFLICT: ${rejectedSources.length} rejected source(s), review required`
     : `GUARDED_AUTO: ${today}; reconciled ${sources.length} source(s); ${rows.length} slot(s)${blocked.length ? `; CONFLICT: ${blocked.length} blocked proposal(s), review required` : ''}`;
   const results=await env.DB.batch([
     claim,
+    ...(timesChanged ? [prepare(`INSERT INTO settings(key,value) SELECT ?3,?4 WHERE ${gate}
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value`,week.collection_id,token,DAILY_POST_TIMES,
+      JSON.stringify({day:today,weekId:week.id,legacyBound:Number.isFinite(legacyPublicationBound)?legacyPublicationBound:null,times:publications}))] : []),
     ...createdGroups.flatMap(g=>[
       prepare(`INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled)
         SELECT ?3,?1,?4,'custom','Soup','',99,1 WHERE ${gate}`,week.collection_id,token,g.id,weekday),
@@ -402,7 +442,8 @@ async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=
       WHERE s.group_id=json_extract(j.value,'$.group_id') AND s.position=json_extract(j.value,'$.position')
       AND s.content IS json_extract(j.value,'$.content') AND s.price=json_extract(j.value,'$.price')
       AND s.section_link=json_extract(j.value,'$.section_link') AND s.origin=json_extract(j.value,'$.origin')
-      AND s.manual_locked=json_extract(j.value,'$.manual_locked') AND s.last_auto_value IS json_extract(j.value,'$.last_auto_value')))
+      AND s.manual_locked=json_extract(j.value,'$.manual_locked') AND s.last_auto_value IS json_extract(j.value,'$.last_auto_value')
+      AND s.manual_edited_at IS json_extract(j.value,'$.manual_edited_at')))
     AND NOT EXISTS(SELECT 1 FROM json_each(?7) j WHERE NOT EXISTS(SELECT 1 FROM special_imports i
       WHERE i.id=json_extract(j.value,'$.id') AND i.candidate_json=json_extract(j.value,'$.candidate_json')
       AND i.fb_created_time IS json_extract(j.value,'$.fb_created_time')
@@ -441,9 +482,10 @@ const weeklyEvidence = raw => applySharedWeeklyLunchPrice({...validateWeeklyLunc
 // Slot values that earlier weekly posters actually wrote for this week (audited
 // GUARDED_WEEKLY_LUNCH writes), by weekday. Used only as replacement provenance.
 async function priorWeeklyWriters(env, week, today) {
-  const {results} = await env.DB.prepare(`SELECT i.id,i.fb_created_time,i.candidate_json FROM special_imports i
+  const {results} = await env.DB.prepare(`SELECT i.id,i.fb_post_id,i.fb_created_time,i.candidate_json FROM special_imports i
     WHERE i.candidate_json LIKE ?1 AND EXISTS(SELECT 1 FROM special_import_events e
       WHERE e.import_id=i.id AND e.event_type='review' AND e.detail LIKE 'GUARDED_WEEKLY_LUNCH:%')`).bind('{"type":"weekly-lunch"%').all();
+  const times=await verifiedPostTimes(env,results);
   const writers = [];
   for (const row of results) {
     try {
@@ -453,7 +495,7 @@ async function priorWeeklyWriters(env, week, today) {
       const byDay = new Map();
       for (const e of evidence.entries) for (const value of [e.content, e.base_content].filter(v => typeof v === 'string'))
         byDay.set(e.day_of_week, (byDay.get(e.day_of_week) ?? new Set()).add(canonicalizeSlotContent(value, e.day_of_week, 'lunch')));
-      writers.push({id: row.id, created: Date.parse(row.fb_created_time), byDay});
+      writers.push({id: row.id, created: times.get(row.id), byDay});
     } catch { /* Unusable history never authorizes a replacement. */ }
   }
   return writers;
@@ -512,7 +554,7 @@ export async function reconcileWeeklyLunch(env, today, {sourceIds=null, inspectO
       const created=postTimes.get(plan.source.id),map=new Map();
       for(const w of writersByWeek.get(plan.week.id)??[]) {
         // A poster still up can be replaced too, but only by one verified as newer.
-        if(w.id===plan.source.id || !(w.created<=created) || (current.has(w.id) && !(w.created<created))) continue;
+        if(w.id===plan.source.id || !(w.created<created)) continue;
         for(const [day,values] of w.byDay) map.set(day,new Set([...(map.get(day)??[]),...values]));
       }
       return map;
@@ -569,7 +611,7 @@ export async function reconcileWeeklyLunch(env, today, {sourceIds=null, inspectO
   return perSource;
 }
 
-async function applyMexicanNight(env, source, evidence, weekStart) {
+async function applyMexicanNight(env, source, evidence, weekStart, today, publicationId) {
   const stage = reason => ({written: false, reason});
   const collection = await env.DB.prepare(
     "SELECT * FROM special_collections WHERE id='mexican-night' AND kind='section'"
@@ -633,6 +675,9 @@ async function applyMexicanNight(env, source, evidence, weekStart) {
     prepare(`UPDATE special_collections SET revision=revision+1,mutation_token=?1,title=?2,schedule=?3,updated_at=?13,
       section_week_start=?12,section_service_date=date(?12,'+1 day'),section_source='facebook'
       WHERE id='mexican-night' AND kind='section' AND revision=?4
+      AND (SELECT MAX(e.id) FROM special_import_events e JOIN special_imports i ON i.id=e.import_id
+        WHERE e.event_type='review' AND e.detail LIKE 'GUARDED_MEXICAN_NIGHT:%'
+        AND substr(i.fb_created_time,1,10)>=date(?18,'-1 day')) IS ?19
       AND (?17=1 OR (COALESCE(section_source,'')<>'manual' AND NOT ${protectedMexicanSlots}))
       AND (SELECT revision FROM special_collections WHERE id='mexican-night-defaults') IS ?14
       AND (SELECT count(*) FROM special_groups WHERE collection_id='mexican-night-defaults')=json_array_length(?15)
@@ -662,7 +707,7 @@ async function applyMexicanNight(env, source, evidence, weekStart) {
       currentGroups.length, JSON.stringify(currentGroups),
       currentSlots.length, JSON.stringify(currentSlots),
       source.id, source.candidate_json, parserVersionFor(env), weekStart, new Date(Date.now()).toISOString(), defaults?.revision ?? null, JSON.stringify(defaultGroups), JSON.stringify(defaultSlots),
-      staffSaved ? 1 : 0),
+      staffSaved ? 1 : 0,today,publicationId),
     prepare(`DELETE FROM special_groups WHERE collection_id='mexican-night' AND id NOT IN (SELECT value FROM json_each(?2)) AND ${gate}`, token, JSON.stringify(retainedIds)),
     prepare(`INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled)
       SELECT json_extract(value,'$[0]'),'mexican-night',-1,'custom',json_extract(value,'$[1]'),'',json_extract(value,'$[2]'),1
@@ -677,28 +722,32 @@ async function applyMexicanNight(env, source, evidence, weekStart) {
   return results.at(-1)?.results?.length ? {written: true, reason: detail} : stage('Concurrent change; nothing written');
 }
 
-export async function reconcileMexicanNight(env) {
+export async function reconcileMexicanNight(env,{sourceIds=[]}={}) {
+  const today=chicagoDayOf(Date.now());
   const {results: sources} = await env.DB.prepare(
-    `SELECT * FROM special_imports WHERE parser_version=?1 AND processing_status='staged' AND validation_result='ok'
-     AND image_r2_key IS NOT NULL AND review_status IN ('pending','accepted')
-     AND target_collection_id='mexican-night'
-     AND candidate_json LIKE ?2
-     AND NOT EXISTS(SELECT 1 FROM special_imports newer WHERE newer.fb_post_id=special_imports.fb_post_id
-       AND newer.parser_version=?1 AND newer.rowid>special_imports.rowid)
-     AND NOT EXISTS(SELECT 1 FROM special_import_events WHERE import_id=special_imports.id AND event_type='review')
-     ORDER BY fb_created_time DESC`
-  ).bind(parserVersionFor(env), '{"type":"mexican-night"%').all();
-  if (!sources.length) return {written: false, reason: 'No new Mexican Night source'};
-  const dateOf=value=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
-  const today=dateOf(Date.now());
-  const source=sources.find(s=>Number.isFinite(Date.parse(s.fb_created_time)) && dateOf(s.fb_created_time)===today);
-  if (!source) return {written:false,reason:'No current-day Mexican Night source'};
+    `SELECT i.*, (SELECT MAX(e.id) FROM special_import_events e WHERE e.import_id=i.id
+      AND e.event_type='review' AND e.detail LIKE 'GUARDED_MEXICAN_NIGHT:%') AS published
+     FROM special_imports i WHERE (
+       (i.id IN (SELECT value FROM json_each(?1)) AND i.parser_version=?2
+        AND i.review_status IN ('pending','accepted')
+        AND (i.target_collection_id='mexican-night' OR i.candidate_json LIKE ?3 OR i.validation_reason=?4))
+       OR published
+     ) AND substr(i.fb_created_time,1,10)>=date(?5,'-1 day')`
+  ).bind(JSON.stringify(sourceIds),parserVersionFor(env),'{"type":"mexican-night"%',MEXICAN_NIGHT_SHAPE_ERROR,today).all();
+  const current=sources.filter(s=>Number.isFinite(Date.parse(s.fb_created_time)) && chicagoDayOf(s.fb_created_time)===today);
+  const times=await verifiedPostTimes(env,current);
+  const ranked=current.sort((a,b)=>times.get(b.id)-times.get(a.id));
+  const [source,peer]=ranked;
+  if (!source || !ranked.every(s=>Number.isFinite(times.get(s.id))) || (peer && times.get(source.id)===times.get(peer.id))
+    || source.published || !sourceIds.includes(source.id) || source.processing_status!=='staged'
+    || source.validation_result!=='ok' || !source.image_r2_key) return {written:false,reason:'No newer verified Mexican Night source'};
   const weekday=new Date(`${today}T12:00:00Z`).getUTCDay();
   const {start}=automaticWeekRange(today,weekday,weekday===0 ? 19 : 0);
   let evidence;
   try { evidence = validateMexicanNight(JSON.parse(source.candidate_json)); }
   catch { return {written: false, reason: 'Invalid Mexican Night evidence'}; }
-  return applyMexicanNight(env, source, evidence, start);
+  const publicationId=sources.reduce((last,row)=>Math.max(last,row.published ?? 0),0) || null;
+  return applyMexicanNight(env, source, evidence, start, today, publicationId);
 }
 
 export async function pruneImportHistory(env, now) {

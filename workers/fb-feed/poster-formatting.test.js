@@ -119,7 +119,7 @@ for (const [name,build] of [['daily',buildExtractionRequest],['weekly retry',bui
 
 // Facebook is the canonical source: only a staff edit recorded after the 14:00 post is kept.
 for(const [origin,lock,last,expected,edited=null] of [
-  ['automation',0,'old','new'],['manual',1,null,'old'],['automation',0,'original','new'],
+  ['automation',0,'old','new'],['manual',1,null,'new'],['automation',0,'original','new'],
   ['manual',1,null,'old','2030-01-13T15:00:00.000Z'],['manual',0,null,'new','2030-01-13T13:00:00.000Z'],
 ]) test(`formatted bundle obeys guarded ownership: ${origin}/${lock}/${last}/${edited}`,async t=>{
   const p=poster(0,'Sunday Specials',[

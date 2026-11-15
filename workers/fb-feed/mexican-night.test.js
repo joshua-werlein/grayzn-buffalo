@@ -421,10 +421,15 @@ test('concurrent revision bump causes write to fail closed', async t => {
   f.state.candidate = mexicanNightCandidate({groups: [{label: 'New', items: [{description: '', title: 'New item $5'}]}]});
   const oldMode = f.env.SPECIALS_IMPORT_MODE;
   f.env.SPECIALS_IMPORT_MODE = 'DRY_RUN';
+  f.state.now=Date.parse('2030-01-14T16:01:00Z');
   await f.run();
   f.env.SPECIALS_IMPORT_MODE = oldMode;
-  f.sql("UPDATE special_collections SET revision=revision+1 WHERE id='mexican-night'");
-  const result = await reconcileMexicanNight(f.env);
+  const batch=f.env.DB.batch;
+  f.env.DB.batch=async statements=>{
+    f.sql("UPDATE special_collections SET revision=revision+1 WHERE id='mexican-night'");
+    return batch(statements);
+  };
+  const result = await reconcileMexicanNight(f.env,{sourceIds:f.imports().filter(row=>row.fb_post_id==='p2').map(row=>row.id)});
   assert.equal(result.written, false);
   assert.ok(!mnSlots(f).some(s => s.content === normalizeMenuCase('New item $5')));
 });

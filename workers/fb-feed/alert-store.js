@@ -41,7 +41,7 @@ export function alertEvidenceFence({data,sourceIds,day},start) {
   const tables=[['special_imports',`t.id IN (SELECT value FROM json_each(${ids}))`],
     ['weekly_specials',`t.week_start_date<=${date} AND t.week_end_date>=${date}`],
     ['special_collections','1=1'],['special_groups','1=1'],['special_slots','1=1'],
-    ['settings',"t.key='delivery_display'"],['delivery_automation','1=1'],['special_migration_checks','1=1'],
+    ['settings',"t.key IN ('delivery_display','facebook_daily_post_times')"],['delivery_automation','1=1'],['special_migration_checks','1=1'],
     ['special_events',`t.source_post_id IN (SELECT fb_post_id FROM special_imports WHERE id IN (SELECT value FROM json_each(${ids})))`]].slice(0,data.length);
   const sql=tables.map(([table,filter],i)=>{
     const keys=Object.keys(data[i][0]??{});

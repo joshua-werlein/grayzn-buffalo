@@ -32,6 +32,16 @@ function provider(respond=()=>accepted()) {
 }
 const transport=(overrides={},fetch)=>alertTransport({...ENV,...overrides},{fetch,recipientSha256:DIGEST});
 
+test('Resend accepts distinct Weekly Lunch and Wing Wednesday incident fingerprints',async()=>{
+  const p=provider(),send=await transport({},p.fetch);
+  for(const [scope,code] of [['weekly','weekly_lunch_failed'],['wing','wing_wednesday_failed']]) {
+    for(const hash of ['abcdef0123456789','abcdef012345678a']) {
+      await send({...MESSAGE,code,incidentKey:`2030-01-09:${scope}:${code}:${hash}`});
+    }
+  }
+  assert.equal(new Set(p.calls.map(call=>call.init.headers['Idempotency-Key'])).size,4);
+});
+
 test('Resend success posts one fixed request and returns the provider message id',async()=>{
   const p=provider(),send=await transport({},p.fetch);
   assert.deepEqual(await send({...MESSAGE,signal:new AbortController().signal}),{provider:'resend',id:ID});

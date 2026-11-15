@@ -64,7 +64,8 @@ test('partial changes retain descriptions, omitted foods and individual accessor
 });
 test('schedule discrepancy creates one review flag and never changes the published menu',async t=>{
   const f=setup(t);await f.run();const before=contents(f);
-  f.state.posts[0].id='changed-hours';f.state.candidate.schedule='Tuesday 6-10 PM';await f.run();await f.run();
+  Object.assign(f.state.posts[0],{id:'changed-hours',created_time:new Date(f.state.now-1000).toISOString()});
+  f.state.candidate.schedule='Tuesday 6-10 PM';await f.run();await f.run();
   assert.deepEqual(contents(f),before);
   assert.equal(f.sql("SELECT * FROM special_import_events WHERE detail LIKE 'REVIEW_REQUIRED_MEXICAN_SCHEDULE:%'").length,1);
 });

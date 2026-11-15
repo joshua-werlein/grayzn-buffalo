@@ -30,13 +30,15 @@ may replace it. Only *time* does:
 | Staff edit (`manual_edited_at` recorded) | Replaced | **Kept** — reason `Newer staff edit retained` |
 | Staff lock (`manual_locked=1`) with an edit time | Replaced | **Kept** when the edit time is after the post |
 | Staff approval of an import | Replaced | **Kept** — the approval records its time |
-| Legacy staff lock with **no** recorded edit time | Kept (see below) | Kept |
+| Legacy staff lock with **no** recorded edit time | Replaced by verified evidence after the edit-time migration | Kept against pre-migration evidence |
 
 "Published" is the verified Facebook time from `verifiedPostTimes()` in
-`workers/fb-feed/guarded-auto.js`: the post's creation time, or its updated time
+`workers/fb-feed/graph.js`: the post's creation time, or its updated time
 only when the stored image or caption actually changed (an edited poster). A
 comment that bumps Facebook's `updated_time` proves nothing. Import processing
-time never counts.
+time never counts. A change to Facebook's update time triggers an image comparison
+when the caption is unchanged. Matching bytes reuse the existing import and its
+validation, review state and retry history.
 
 When the website already shows exactly the Facebook value, nothing is written and
 nothing is reported, whoever owns the slot.
@@ -47,19 +49,21 @@ page opened before the lock control was retired. A value without a recorded edit
 time (default, legacy, automation drift) is not a correction made after the post, so
 a verified post replaces it.
 
-**One narrow legacy exception:** a non-blank staff lock saved before edit times were
-recorded (`manual_locked=1`, `manual_edited_at IS NULL`, for example the November 4
-lunch correction) has an unknown edit time. No post can be shown to be newer than it,
-and replacing it could let the same old post undo a correction. Automation keeps it
-and reports `Newer staff edit retained` (informational). The editor can no longer
-create such a slot. A read-only production check on November 12, 2026 found **none**
-in the current week (week of 2026-11-09), so the exception affects no live specials;
-it disappears as weeks roll over.
+A populated pre-timestamp staff lock has an unknown edit time. Automation uses
+the verified production application time of migration 0026, November 5, 2026 at
+07:19:50 UTC, as its upper bound. A later verified poster can replace the lock.
+The November 14 production check found zero such locks in the current week.
 
 ### Where it is implemented
 
-- Daily specials and Soup: `facebookMayReplace()` in `workers/fb-feed/guarded-auto.js`
-  (`reconcileToday`).
+- Daily specials and Soup: `reconcileToday` compares publication and staff-edit
+  times. The same D1 batch records the latest verified publication time per
+  destination in `settings.facebook_daily_post_times` so an older scan cannot
+  restore superseded specials. Only the current Chicago day's map is used.
+  For a previously published slot with no entry, the saved week's last update
+  provides a conservative upper bound on the prior publication. A post must be
+  verifiably later than that bound to replace the value. If the bound is unavailable,
+  automation retains the saved value.
 - Weekly lunch: `applyWeeklyLunch()` in the same file. Facebook-vs-Facebook
   precedence is unchanged there: a same-day daily poster outranks a weekly
   poster, and a weekly value from another current weekly poster is replaced only
@@ -68,8 +72,8 @@ it disappears as weeks roll over.
   (`section_source='manual'` or staff-edited slots) is replaced by a Mexican Night
   post published after the collection's last staff save (`updated_at`). Each post
   is still applied at most once, so the same post never undoes a later staff edit.
-- Wing Wednesday already worked this way: a verified poster's price replaces any
-  earlier price, staff-entered included.
+- Wing Wednesday applies the same ordering to recorded staff price edits
+  and prior poster decisions.
 - Staff editor: `src/lib/specials-store.ts` records the edit time; the editor no
   longer offers a "keep even when Facebook posts something newer" lock.
 
@@ -100,6 +104,7 @@ slots beyond a service's capacity, still hold publication and are reported.
 
 ## Special events
 
-Special events are keyed to their own Facebook post. A newer post creates its own
-event, so staff edits to an earlier post's event never block it. A staff edit to an
-event keeps that event's values for that same post (see `docs/special-events.md`).
+A newer verified poster that matches a single existing event can update its offers
+and other printed fields on the same card. A staff edit protects the card against
+unchanged or older posts. A staff removal and an explicit cancellation retain their
+existing lifecycle rules.

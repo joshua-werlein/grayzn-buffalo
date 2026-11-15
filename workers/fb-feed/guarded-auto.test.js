@@ -63,11 +63,10 @@ for(const [name,content,origin,lock,baseline,edited,expected] of [
   ['eligible blank','','legacy',0,null,null,wingCanonical],
   ['manual value','Manual','manual',0,null,null,wingCanonical],
   ['manual blank','','manual',0,null,null,wingCanonical],['locked blank','','automation',1,null,null,wingCanonical],
-  ['locked value','Old','automation',1,'Old',null,'Old'],['owned baseline','Old','automation',0,'Old',null,wingCanonical],
+  ['legacy locked value','Old','automation',1,'Old',null,wingCanonical],['owned baseline','Old','automation',0,'Old',null,wingCanonical],
   ['missing baseline','Old','automation',0,null,null,wingCanonical],['manual edit','Corrected','automation',0,'Old',null,wingCanonical],
   ['manual clear','','automation',0,'Old',null,wingCanonical],['legacy value','Legacy','legacy',0,'Legacy',null,wingCanonical],
-  // A lock with no recorded edit time predates edit times: no post is provably newer.
-  ['confirmed manual','Staff pick','manual',1,null,null,'Staff pick'],
+  ['legacy confirmed manual','Staff pick','manual',1,null,null,wingCanonical],
   ['staff edit before the post','Staff pick','manual',0,null,BEFORE_POST,wingCanonical],
   ['staff lock before the post','Staff pick','manual',1,null,BEFORE_POST,wingCanonical],
   ['staff edit after the post','Staff pick','manual',0,null,AFTER_POST,'Staff pick'],
@@ -85,6 +84,7 @@ for(const [value,expectedLock] of [['Bartender correction',0],['',0]]) test(`adm
 test('concurrent unchanged claims extract once; changed source replaces only its previous evidence',async t=>{
   const f=harness(t,{candidate:dayPoster(3)});await Promise.all([f.run(),f.run()]);assert.equal(f.state.aiCalls,1);
   f.state.posts[0].updated_time='2030-01-09T14:30:00Z';f.state.candidate.offers[0].content='Pizza Bread & Drink $9.75';
+  f.state.posts[0].message+=' corrected';
   await f.run();assert.equal(f.state.aiCalls,2);assert.equal(f.slots(3,'lunch')[0].content,'Pizza Bread & Drink $9.75');
 });
 test('parser 3 source claim cannot block parser 4 extraction',async t=>{
@@ -134,8 +134,10 @@ test('manual race invalidates the whole plan; transaction failure rolls back wri
   f.env.DB.batch=statements=>batch(statements[0].sql.startsWith('UPDATE special_collections')?[...statements,{sql:'INSERT INTO missing_table VALUES(1)',args:[]}]:statements);
   await assert.rejects(()=>f.run());assert.equal(f.slots(3,'lunch')[0].content,'');assert.equal(f.sql("SELECT revision FROM special_collections WHERE id='auto-week'")[0].revision,0);
 });
-test('yesterday, future and malformed creation dates never reach AI; Graph stays today-only',async t=>{
+test('a malformed post invalidates the scan; valid posts are still restricted to today',async t=>{
   const f=harness(t);const p=f.state.posts[0];f.state.posts.push({...p,id:'y',created_time:'2030-01-09T05:59:59Z'},{...p,id:'future',created_time:'2030-01-10T06:00:00Z'},{...p,id:'bad',created_time:'bad'});
+  await f.run();assert.equal(f.state.aiCalls,0);
+  f.state.posts.pop();
   await f.run();assert.equal(f.state.aiCalls,1);assert.equal(f.state.calls[0].searchParams.get('since'),String(Date.parse('2030-01-09T06:00:00Z')/1000));assert.notEqual(f.state.calls[0].searchParams.get('limit'),'20');
 });
 for(const [hour,expected] of [['12:59:59',0],['13:00:00',1],['01:59:59',1],['02:00:00',0]]) test(`Chicago hour boundary ${hour}`,async t=>{
@@ -180,10 +182,10 @@ test('new safe(): blank slot with origin=manual,manual_locked=1 is NOW eligible'
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1','','manual',1,null,f.slots()[0].group_id);
   await f.run();assert.equal(f.slots()[0].content,wingCanonical);
 });
-test('new safe(): a populated staff lock with no recorded edit time is kept (no post is provably newer)',async t=>{
+test('a legacy staff lock with no edit time yields to post-migration evidence',async t=>{
   const f=harness(t);
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=?,last_auto_value=? WHERE group_id=? AND position=1','Staff special','manual',1,null,f.slots()[0].group_id);
-  await f.run();assert.equal(f.slots()[0].content,'Staff special');
+  await f.run();assert.equal(f.slots()[0].content,wingCanonical);
 });
 test('new safe(): prior automation value unchanged with manual_locked=0 is eligible',async t=>{
   const f=harness(t);
@@ -300,7 +302,7 @@ test('arm 3: Friday 4-offer fallback replaces a recurring default slot',async t=
   assert.equal(f.slots(5,'nightly')[0].content,'Fri a');
   assert.equal(f.slots(5,'all-day')[0].content,'Fri C');
 });
-test('arm 3: confirmed manual entry in a nightly slot blocks the entire nightly group write',async t=>{
+test('an extra populated nightly slot holds an ambiguous replacement',async t=>{
   const f=harness(t,{now:'2030-01-09T15:00:00Z'});
   const nightGroup=f.sql("SELECT id FROM special_groups WHERE collection_id='auto-week' AND day_of_week=3 AND service='nightly'")[0];
   // Position 1 has a confirmed manual entry (manual_locked=1, origin='manual', populated)
@@ -310,7 +312,7 @@ test('arm 3: confirmed manual entry in a nightly slot blocks the entire nightly 
   f.sql('UPDATE special_slots SET content=?,origin=?,manual_locked=? WHERE group_id=? AND position=2',
     'Recurring default value','manual',0,nightGroup.id);
   await f.run();
-  // The whole nightly group is blocked because position 1 failed safe()
+  // The extra slot exceeds this service's capacity, so the entire group is held.
   assert.equal(f.slots()[0].content,'Confirmed manual entry');
   assert.equal(f.slots()[1].content,'Recurring default value');
 });
