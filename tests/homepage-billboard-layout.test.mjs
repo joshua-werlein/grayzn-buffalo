@@ -74,3 +74,32 @@ test('menu-card copy stays inside the printed sheet at intermediate widths',()=>
 test('Facebook images are never cropped or stretched',()=>{
   assert.match(rules('#social .fb-media img')[0],/object-fit:contain/);
 });
+
+test('rotated cards that hold text never carry a filter; the sheet and its shadow sit on a text-free layer',()=>{
+  // Edge's GPU rasteriser drops text drawn inside an element that is both rotated and filtered
+  // (reproduced in Edge 157: menu headings and posting dates unpainted while still in the DOM at
+  // full opacity). The paper artwork and drop shadow therefore belong to ::before, never the card.
+  const cardSelector=/(^|[\s,}])(#menu-preview |#social )?\.(menu-card|fb-card)(--[a-z]+|\.reveal\.in)?(:hover|:focus-visible)?$/;
+  const styles=source.slice(source.indexOf('<style>'),source.lastIndexOf('</style>'));
+  let checked=0;
+  for(const [,selectors,body] of styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)){
+    for(const selector of selectors.split(',').map(part=>part.trim())){
+      if(!cardSelector.test(selector)) continue;
+      checked+=1;
+      assert.doesNotMatch(body,/(^|;)\s*filter:/,`${selector} must not be filtered`);
+    }
+  }
+  assert.ok(checked>=10,`expected to inspect the card rules, saw ${checked}`);
+  for(const selector of ['.menu-card::before','#social .fb-card::before']){
+    // An older .menu-card::before rule earlier in the cascade is overridden by the sheet rule.
+    const sheet=rules(selector).find(body=>body.includes('inset:0'));
+    assert.ok(sheet,`${selector} sheet rule`);
+    assert.match(sheet,/content:"";/);
+    assert.match(sheet,/position:absolute;z-index:-1;inset:0/);
+    assert.match(sheet,/background:var\(--(menu-poster|poster-sheet)\) center \/ 100% 100% no-repeat/);
+    assert.match(sheet,/filter:drop-shadow\(/);
+  }
+  assert.match(rules('#menu-preview .menu-card::before')[0],/filter:drop-shadow\(4px 14px 8px rgba\(7,3,1,\.7\)\)/);
+  // The hover skirt on the poster sheet is padding the artwork is not painted into.
+  assert.match(rules('#social .fb-card:hover::before')[0],/padding:4px 12px 10px;background-origin:content-box;background-clip:content-box/);
+});
