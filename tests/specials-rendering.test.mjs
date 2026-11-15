@@ -132,12 +132,12 @@ test('October 15–16 accepted production evidence displays every meal price and
   }
 });
 
-// Returns a Tuesday Date within the same Sun–Sat week as now, at 15:00 UTC (9 AM Chicago).
-// Keeps mexicanNightDetailVisible() returning true regardless of what day the test runs.
-function mexicanTestNow() {
-  const d=new Date(); const dow=d.getUTCDay();
-  d.setUTCDate(d.getUTCDate()+(dow<=2 ? 2-dow : -(dow-2)));
-  d.setUTCHours(15,0,0,0); return d;
+// Sunday midnight in Chicago, just before the fall DST transition.
+const mexicanPublishedAt = '2026-11-01T05:00:00Z';
+
+function setMexicanPublicationTime(f, publishedAt) {
+  // SQLite's CURRENT_TIMESTAMP is independent of the JavaScript test clock.
+  f.sql("UPDATE special_collections SET updated_at=? WHERE id='mexican-night'", publishedAt);
 }
 
 test('automated Mexican items reopen as stacked title and description controls',async t=>{
@@ -165,8 +165,10 @@ test('compiled shared renderer emits exactly 0–4 populated items and escapes i
   assert.ok(!html.includes('<script>bad'));assert.ok(html.includes('&lt;script&gt;'));
 });
 test('homepage and specials hide empty days/groups, render four items and keep Mexican Night separate',async t=>{
+  const now = new Date('2026-11-02T06:00:00Z'); // Monday midnight CST, start of the specials board week.
+  t.mock.timers.enable({apis:['Date'],now:now.getTime()});
   const f=fixture(t);f.sql("UPDATE special_slots SET content='',price='',section_link=''");
-  const today=dates.chicagoCalendarDate();
+  const today=dates.chicagoCalendarDate(now);
   let row=f.sql('SELECT id FROM weekly_specials WHERE week_start_date<=? AND week_end_date>=?',today,today)[0];
   if(!row) {
     const week=s.newWeekFromDefaults(await s.readCollection(f.env,'defaults'));
@@ -179,8 +181,9 @@ test('homepage and specials hide empty days/groups, render four items and keep M
   group.slots[0].section_link='mexican-night';
   await s.saveCollection(f.env,week.collection,{start:week.week_start_date,end:week.week_end_date});
   const mexican=await s.readCollection(f.env,'mexican-night');const menu=s.blankGroup(-1);menu.label='Test menu';menu.slots[0].content='SeparateMexicanItem';mexican.groups=[menu];await s.saveCollection(f.env,mexican);
+  setMexicanPublicationTime(f, mexicanPublishedAt);
   for(const [component,path] of [[publicPage,'/specials'],[homePage,'/']]) {
-    const html=await container.renderToString(component,{request:new Request('http://localhost'+path),locals:{runtime:{env:f.env,now:mexicanTestNow()}}});
+    const html=await container.renderToString(component,{request:new Request('http://localhost'+path),locals:{runtime:{env:f.env,now}}});
     for(let i=1;i<=4;i++) assert.ok(html.includes(`VisibleSpecial${i}`));
     assert.ok(!html.includes('No special posted.'));
     assert.ok(html.includes('/specials#mexican-night'));
@@ -191,6 +194,8 @@ test('homepage and specials hide empty days/groups, render four items and keep M
 });
 
 test('Mexican menu merges stored food groups, separates accessories and preserves text and order without writes',async t=>{
+  const now = new Date('2026-11-03T23:00:00Z'); // Tuesday 5 PM CST.
+  t.mock.timers.enable({apis:['Date'],now:now.getTime()});
   const f=fixture(t);
   const mexican=await s.readCollection(f.env,'mexican-night');
   const entries=[
@@ -209,8 +214,10 @@ test('Mexican menu merges stored food groups, separates accessories and preserve
     g.slots.forEach((slot,i)=>slot.content=items[i]??'');return g;
   });
   await s.saveCollection(f.env,mexican);
+  setMexicanPublicationTime(f, mexicanPublishedAt);
   const before=await s.readCollection(f.env,'mexican-night');
-  const html=await container.renderToString(publicPage,{request:new Request('http://localhost/specials'),locals:{runtime:{env:f.env,now:mexicanTestNow()}}});
+  const render = () => container.renderToString(publicPage,{request:new Request('http://localhost/specials'),locals:{runtime:{env:f.env,now:new Date()}}});
+  const html=await render();
   const food=html.match(/<ul class="menu-grid menu-grid--food"[^>]*>([\s\S]*?)<\/ul>/)[1];
   const extras=html.match(/<ul class="menu-grid menu-grid--extras"[^>]*>([\s\S]*?)<\/ul>/)[1];
   assert.equal((food.match(/<li[ >]/g)||[]).length,7);
@@ -233,6 +240,23 @@ test('Mexican menu merges stored food groups, separates accessories and preserve
   assert.doesNotMatch(html,/<p[^>]*>5–10 PM<\/p>/);
   assert.equal((html.match(/Consuming raw or undercooked/g)||[]).length,1);
   assert.deepEqual(await s.readCollection(f.env,'mexican-night'),before);
+
+  const chicagoSaturday = '2026-11-01T03:00:00Z';
+  for (const [publishedAt, viewedAt, visible, label] of [
+    [chicagoSaturday, '2026-11-01T04:59:59Z', false, 'Saturday in Chicago, already Sunday UTC'],
+    [chicagoSaturday, mexicanPublishedAt, false, 'old menu at the Sunday rollover'],
+    [mexicanPublishedAt, mexicanPublishedAt, true, 'new menu at the Sunday rollover'],
+    [mexicanPublishedAt, '2026-11-01T06:59:59Z', true, 'just before fall DST ends'],
+    [mexicanPublishedAt, '2026-11-01T07:00:00Z', true, 'just after fall DST ends'],
+    [mexicanPublishedAt, '2026-11-02T05:59:59Z', true, 'last second of Sunday'],
+    [mexicanPublishedAt, '2026-11-02T06:00:00Z', true, 'first second of Monday'],
+    ['2026-03-08T06:00:00Z', '2026-03-08T07:59:59Z', true, 'just before spring DST starts'],
+    ['2026-03-08T06:00:00Z', '2026-03-08T08:00:00Z', true, 'just after spring DST starts'],
+  ]) {
+    setMexicanPublicationTime(f, publishedAt);
+    t.mock.timers.setTime(Date.parse(viewedAt));
+    assert.equal((await render()).includes('id="mexican-night"'), visible, label);
+  }
 });
 
 test('Mexican menu uses one phone column, two tablet columns and four desktop columns without reordering',()=>{
