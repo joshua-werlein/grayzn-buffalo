@@ -524,7 +524,7 @@ const welcomeHolderAssets = [
   #menu-preview::before{top:0}#menu-preview::after{bottom:0;transform:scaleY(-1)}#menu-preview > *{position:relative;z-index:1}
   #menu-preview .section-head :is(h1,h2){color:var(--cream)}#menu-preview .section-head p{color:var(--cream-2)}#menu-preview .section-head .kicker{color:#e3bd75}
   /* Generated paper sheets provide the aging, torn edges, printed border, and ornaments. */
-  .menu-card{--menu-poster:url('/images/menu/menu-poster-daily.webp');--poster-tilt:-1deg;--poster-hover-tilt:-.3deg;position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:center;justify-content:center;aspect-ratio:4 / 3;min-height:0;padding:clamp(34px,5vw,55px) clamp(30px,4.4vw,48px) clamp(37px,5.4vw,58px);overflow:visible;border:0;border-radius:0;background:var(--menu-poster) center / 100% 100% no-repeat;box-shadow:none;cursor:pointer;filter:drop-shadow(2px 3px 2px rgba(18,10,6,.38)) drop-shadow(7px 11px 14px rgba(18,10,6,.32));color:var(--ink);text-decoration:none;transform:rotate(var(--poster-tilt));transition:transform .2s ease,filter .2s ease}
+  .menu-card{--menu-poster:url('/images/menu/menu-poster-daily.webp');--poster-tilt:-1deg;--poster-hover-tilt:-.3deg;position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:center;justify-content:center;aspect-ratio:4 / 3;min-height:0;padding:min(13.25%,clamp(34px,5vw,55px)) min(11.6%,clamp(30px,4.4vw,48px)) min(14%,clamp(37px,5.4vw,58px));overflow:visible;border:0;border-radius:0;background:var(--menu-poster) center / 100% 100% no-repeat;box-shadow:none;cursor:pointer;filter:drop-shadow(2px 3px 2px rgba(18,10,6,.38)) drop-shadow(7px 11px 14px rgba(18,10,6,.32));color:var(--ink);text-decoration:none;transform:rotate(var(--poster-tilt));transition:transform .2s ease,filter .2s ease}
   .menu-card::before,.menu-card::after{content:none}
   .menu-card__eyebrow{margin:0 0 10px;color:#69401e;font-family:var(--label);font-size:.76rem;font-weight:700;letter-spacing:.2em;line-height:1.2;text-transform:uppercase}
   .menu-card h3{margin:0 0 10px;color:#3c2416;font-family:var(--display);font-size:clamp(1.32rem,2.1vw,1.82rem);line-height:1.08;text-transform:uppercase}
@@ -808,10 +808,18 @@ const welcomeHolderAssets = [
   #menu-preview .menu-card--late{--poster-tilt:.25deg}
   #menu-preview .menu-card--specials{--poster-tilt:1.5deg}
   #menu-preview .menu-card:hover,#menu-preview .menu-card:focus-visible,#menu-preview .menu-card.reveal.in:hover,#menu-preview .menu-card.reveal.in:focus-visible{transform:translateY(-5px) rotate(var(--poster-tilt));filter:drop-shadow(4px 20px 11px rgba(7,3,1,.76))}
+  /* The lift moves the card out from under a pointer resting on its lower edge. While hovered,
+     an invisible skirt keeps that vacated strip part of the card so :hover cannot flip on and off. */
+  #menu-preview .menu-card:hover::after{content:"";position:absolute;z-index:-1;inset:-2px -2px -9px}
 
   @media (max-width:1100px){
     #welcome{aspect-ratio:auto;padding:42px 16px 36px;background-size:auto 100%;background-position:center top}
     #welcome .welcome-intro{margin-top:clamp(62px,8vw,82px)}
+  }
+  /* Three 4:3 sheets are too small for their copy at tablet widths: two up, Specials centred beneath. */
+  @media (min-width:621px) and (max-width:900px){
+    #menu-preview .menu-cards{grid-template-columns:repeat(2,minmax(0,1fr));max-width:760px}
+    #menu-preview .menu-card--specials{grid-column:1 / -1;justify-self:center;width:calc(50% - clamp(8px,1.25vw,15px))}
   }
   @media (max-width:900px){
     #welcome{padding:42px 16px 48px;background-size:auto 100%;background-position:center top}
@@ -899,7 +907,7 @@ const welcomeHolderAssets = [
      than the one-time shift it would prevent — so mobile only gets one row's worth too. */
   #social .fb-billboard__middle-slices{position:absolute;z-index:0;inset:0;display:flex;flex-direction:column;overflow:hidden;pointer-events:none}
   /* This three-board source shares the top and bottom slices' rail bounds at both joins, so it renders at the billboard's full effective width. */
-  #social .fb-billboard__middle-slice{display:block;flex:0 0 auto;width:100%;object-fit:fill}
+  #social .fb-billboard__middle-slice{display:block;flex:0 0 auto;width:100%;height:auto;aspect-ratio:16 / 3;object-fit:fill}
   #social .fb-billboard__bottom{position:relative;aspect-ratio:1600 / 261;background-image:url('/images/facebook/facebook-billboard-bottom.webp');background-position:center top}
   #social .fb-bottom-actions{position:absolute;z-index:1;top:0;right:clamp(68px,9vw,124px);left:clamp(68px,9vw,124px);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(18px,2.4vw,32px);height:68%;padding-top:clamp(20px,2.7vw,34px);box-sizing:border-box;align-items:start;justify-items:center}
   #social .fb-bottom-actions[data-count="1"]{grid-template-columns:1fr}
@@ -922,6 +930,9 @@ const welcomeHolderAssets = [
   #social .fb-item--without-caption{--fb-card-offset:52px}
   #social .fb-card{--poster-inset:clamp(18px,1.65vw,22px);position:relative;z-index:0;grid-row:2;display:flex;flex-direction:column;width:100%;min-width:0;aspect-ratio:2 / 3;overflow:visible;padding:var(--poster-inset);background:var(--poster-sheet) center / 100% 100% no-repeat;border:0;box-shadow:none;filter:drop-shadow(2px 4px 3px rgba(65,40,22,.22)) drop-shadow(8px 15px 22px rgba(43,27,20,.24));transform:rotate(var(--post-tilt));transform-origin:center top;transition:transform .2s ease,filter .2s ease}
   #social .fb-card::before{display:none}
+  /* Hover lifts and straightens the sheet, moving its edges out from under a resting pointer.
+     While hovered, an invisible skirt keeps those vacated strips part of the card. */
+  #social .fb-card:hover::before{content:"";display:block;position:absolute;z-index:-1;inset:-4px -12px -10px}
   #social .fb-card::after{content:"";position:absolute;z-index:2;top:3px;left:50%;width:16px;height:16px;border:1px solid #4a351e;border-radius:50%;background:radial-gradient(circle at 31% 25%,#d7b465 0 11%,#a47b37 31%,#765326 58%,#48321e 100%);box-shadow:inset -2px -2px 2px rgba(52,31,14,.4),inset 1px 1px 1px rgba(238,210,133,.52),2px 4px 4px rgba(43,27,20,.48);transform:translateX(-50%);pointer-events:none}
   #social .fb-item:nth-child(4n + 2){--poster-sheet:url('/images/facebook/fb-poster-2.webp');--post-tilt:.6deg;--post-hover-tilt:.25deg}
   #social .fb-item:nth-child(4n + 3){--poster-sheet:url('/images/facebook/fb-poster-3.webp');--post-tilt:-.4deg;--post-hover-tilt:-.15deg}
@@ -952,8 +963,15 @@ const welcomeHolderAssets = [
   #social .social-cta .btn{position:relative;border:1px solid rgba(238,224,196,.56);background:var(--brick);box-shadow:inset 0 1px rgba(255,255,255,.2),0 3px 0 rgba(67,30,24,.35);color:var(--cream)}
   #social .social-cta .btn::before,#social .social-cta .btn::after{content:'★';margin:0 10px;color:var(--gold);font-size:.75em}
   #social .social-cta .btn:hover,#social .social-cta .btn:focus-visible{background:var(--brick-hover);transform:translateY(-2px);box-shadow:inset 0 1px rgba(255,255,255,.2),0 5px 0 rgba(67,30,24,.35)}
-  @media (min-width:1101px){#social{margin-top:-184px}#social .social-heading{transform:translateY(-10px)}#social .fb-billboard__middle{padding-top:14px;min-height:600px}#social .fb-grid,#social .fb-bottom-actions{transform:translateY(-15px)}#social .fb-caption{margin-top:0;margin-bottom:4px}#social .fb-card{top:calc(clamp(16px,1.4vw,20px) + var(--fb-card-offset))}}
-  @media (max-width:1100px){#social .fb-item--without-caption{--fb-card-offset:28px}#social .fb-card{top:var(--fb-card-offset)}#social .fb-billboard{max-width:820px}#social .fb-billboard__middle{padding:clamp(16px,3vw,24px) clamp(54px,9vw,76px) clamp(18px,3vw,28px);min-height:700px}#social .fb-bottom-actions{display:none}#social .fb-grid,#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (min-width:1101px){#social{margin-top:-184px}#social .social-heading{transform:translateY(-10px)}}
+  /* Four posters across need the full-width billboard (1601px and up) to stay readable; below that it is two across.
+     The poster offset is a margin, not a relative shift, so the billboard grows with it and the
+     posting-date line can never slide under the middle section's clipped edge.
+     Keep these two widths in step with facebookDesktopQuery in the script below. */
+  @media (min-width:1601px){#social .fb-billboard__middle{padding-top:14px;min-height:600px}#social .fb-grid,#social .fb-bottom-actions{transform:translateY(-15px)}#social .fb-caption{margin-top:0;margin-bottom:4px}#social .fb-card{margin-top:calc(clamp(16px,1.4vw,20px) + var(--fb-card-offset))}}
+  /* The reserved heights only steady the short fallback message; real posts set their own height. */
+  #social .fb-billboard__middle:has(.fb-grid[data-count]){min-height:0}
+  @media (max-width:1600px){#social .fb-item--without-caption{--fb-card-offset:28px}#social .fb-card{margin-top:var(--fb-card-offset)}#social .fb-item--without-caption .fb-post-link{margin-top:calc(clamp(42px,3vw,48px) - var(--fb-card-offset))}#social .fb-billboard,#social .fb-billboard:has(.fb-grid[data-count="3"]){max-width:820px}#social .fb-billboard__middle{padding:clamp(16px,3vw,24px) clamp(54px,9vw,76px) clamp(18px,3vw,28px);min-height:700px}#social .fb-bottom-actions{display:none}#social .fb-grid,#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media (min-width:601px) and (max-width:1100px){#social .social-heading{transform:translateY(16px)}}
   @media (max-width:600px){#social .social-heading,#menu-preview .menu-heading{grid-template-columns:minmax(16px,1fr) auto auto auto minmax(16px,1fr);gap:6px}#social .social-heading{margin-bottom:14px}#social .social-heading :is(h1,h2),#menu-preview .menu-heading :is(h1,h2){font-size:clamp(1.4rem,7.1vw,1.8rem)}#social .fb-billboard{width:min(calc(100% - 20px),440px);max-width:440px}#social .fb-billboard__middle{padding:16px clamp(32px,10vw,44px) clamp(18px,4vw,28px);min-height:650px}#social .fb-grid,#social .fb-grid[data-count="2"],#social .fb-grid[data-count="3"],#social .fb-grid[data-count="4"]{grid-template-columns:1fr;gap:30px}#social .fb-item{--post-tilt:-.7deg;--post-hover-tilt:-.3deg}#social .fb-item:nth-child(even){--post-tilt:.7deg;--post-hover-tilt:.3deg}#social .fb-item .fb-card,#social .fb-item:nth-child(n) .fb-card{transform:rotate(var(--post-tilt))}#social .fb-card::after{top:3px;width:15px;height:15px}#social .fb-card:hover,#social .fb-item:nth-child(n) .fb-card:hover{transform:translateY(-2px) rotate(var(--post-hover-tilt))}#social .fb-caption{width:min(calc(100% - 12px),220px);font-size:clamp(.82rem,3.6vw,.94rem)}#social .fb-caption p{-webkit-line-clamp:4;line-clamp:4}}
   @media (prefers-reduced-motion:reduce){#social .fb-card{transition:none}#social .fb-card:hover,#social .fb-item:nth-child(n) .fb-card:hover{transform:rotate(var(--post-tilt))}}
@@ -1038,8 +1056,8 @@ const welcomeHolderAssets = [
       .join('\n')
       .trim() ?? '';
   const trimFacebookLightboxText = (message?: string | null) => message?.trim() ?? '';
-  const facebookDesktopQuery = window.matchMedia('(min-width: 1101px)');
-  let billboardSliceSignature = '';
+  // Matches the four-across billboard breakpoint in the styles above.
+  const facebookDesktopQuery = window.matchMedia('(min-width: 1601px)');
   const facebookWallSeams = [0, 115, 230, 344, 458, 572, 685, 790];
 
   function alignFacebookSectionToWallSeam() {
@@ -1082,30 +1100,27 @@ const welcomeHolderAssets = [
   function syncBillboardMiddleSlices() {
     if (!billboardMiddle || !billboardMiddleSlices) return;
 
-    const width = billboardMiddle.clientWidth;
-    const height = billboardMiddle.clientHeight;
+    const { width, height } = billboardMiddle.getBoundingClientRect();
     if (!width || !height) return;
 
+    // Each plank slice is 16:3 of the billboard width (sized in CSS). Lay enough of them to
+    // cover the section's real height at every width; the extra pixel absorbs sub-pixel rounding.
     const sliceHeight = (width * 3) / 16;
-    const sliceCount = facebookDesktopQuery.matches
-      ? 3
-      : Math.max(1, Math.ceil(height / sliceHeight));
-    const signature = `${Math.round(width)}:${Math.round(height)}:${sliceCount}`;
-    if (signature === billboardSliceSignature) return;
+    const sliceCount = Math.max(1, Math.ceil((height + 1) / sliceHeight));
 
-    const slices = document.createDocumentFragment();
-    for (let index = 0; index < sliceCount; index += 1) {
+    // Only the difference is added or removed, so a continuous resize keeps the planks already
+    // on screen instead of replacing (and re-decoding) every image on each frame.
+    for (let index = billboardMiddleSlices.childElementCount; index < sliceCount; index += 1) {
       const slice = document.createElement('img');
       slice.className = 'fb-billboard__middle-slice';
       slice.src = '/images/facebook/facebook-billboard-middle.webp';
-      slice.style.height = `${sliceHeight}px`;
       slice.dataset.slice = 'middle';
       slice.alt = '';
-      slices.append(slice);
+      billboardMiddleSlices.append(slice);
     }
-
-    billboardMiddleSlices.replaceChildren(slices);
-    billboardSliceSignature = signature;
+    while (billboardMiddleSlices.childElementCount > sliceCount) {
+      billboardMiddleSlices.lastElementChild?.remove();
+    }
   }
 
   if (billboardMiddle && billboardMiddleSlices) {
