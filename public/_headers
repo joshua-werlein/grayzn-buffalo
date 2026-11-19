@@ -69,7 +69,14 @@
 /parchment-texture.webp
   X-Robots-Tag: noindex
 
-# Deliberately NOT listed (remain indexable): /social-share-black-white.png and
-# /GrayznLogo.png (complete logo), /apple-touch-icon.png and the icons, the
-# buffalo-mark SVGs (the header logo), and food/restaurant photography under /img/.
-# docs/google-images-cleanup.md records the reasoning.
+# Standalone buffalo brand marks are excluded from Google Images.
+# They remain visible on the website and in its navigation.
+/buffalo-mark.svg
+  X-Robots-Tag: noindex
+
+/buffalo-mark-gold.svg
+  X-Robots-Tag: noindex
+
+# Remain indexable: complete logos (/social-share-black-white.png,
+# /GrayznLogo.png), site icons, and food/restaurant photos under /img/.
+# See docs/google-images-cleanup.md for the indexing policy.
