@@ -56,9 +56,12 @@ test('prose AI response (not JSON) still produces validation_result=rejected', a
   assert.match(row.validation_reason, /not valid JSON/);
 });
 
-test('AI thrown error is retained in the import, audit and logs with credentials redacted', async t => {
+test('AI thrown error is retained in the import and audit with metadata-only logs', async t => {
   const f = harness(t);
   f.env.FB_SYSTEM_TOKEN = 'private-facebook-credential';
+  f.env.IMPORT_TRIGGER = {send:async () => {}};
+  const warn = t.mock.method(console, 'warn', () => {});
+  const log = t.mock.method(console, 'log', () => {});
   t.mock.method(f.env.AI, 'run', async () => {
     throw new Error('503 upstream unavailable; Bearer private-auth-credential; access_token=private-query-credential; private-facebook-credential');
   });
@@ -72,8 +75,10 @@ test('AI thrown error is retained in the import, audit and logs with credentials
   assert.equal(row.validation_reason, row.last_error);
   const events = f.sql("SELECT detail FROM special_import_events WHERE import_id=? AND event_type='error'", row.id);
   assert.deepEqual(events, [{detail: row.last_error}]);
-  const logs = JSON.stringify(console.error.mock.calls.map(c => c.arguments));
-  assert.match(logs, /503 upstream unavailable/);
+  const logs = JSON.stringify([console.error,warn,log].flatMap(method => method.mock.calls.map(c => c.arguments)));
+  assert.match(logs, /Workers AI transient failure detected/);
+  assert.match(logs, /Workers AI delayed retry scheduled/);
+  assert.doesNotMatch(logs, /503 upstream unavailable/);
   assert.doesNotMatch(JSON.stringify({row, events, logs}), /private-(auth|query|facebook)-credential/);
   assert.ok(f.slots().every(s => s.content === ''));
 });

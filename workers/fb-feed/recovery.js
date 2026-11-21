@@ -3,6 +3,7 @@
 export const MAX_IMPORT_ATTEMPTS = 3;
 export const IMPORT_LEASE_MS = 20 * 60 * 1000;
 export const IMPORT_RETRY_MS = 30 * 60 * 1000;
+export const AI_RETRY_DELAY_SECONDS = 120;
 // Graph/legacy rows can contain +0000 (valid JS, not a SQLite date). Do not
 // rewrite audit timestamps or source identities just to make SQL parse them.
 const CREATED_AT_SQL = `julianday(CASE WHEN substr(fb_created_time,-5,1) IN ('+','-')
@@ -87,12 +88,13 @@ export async function finishImportAttempt(env, record, outcome) {
   const event = (type,detail)=>prepare(`INSERT INTO special_import_events(import_id,event_type,detail,occurred_at)
     SELECT ?1,?4,?5,?3 WHERE ${OWNS_ATTEMPT_SQL}`,...args,type,detail);
   const status = outcome.status;
+  const nextAttemptAt = status==='pending' ? outcome.nextAttemptAt ?? record.next_attempt_at : null;
   const eventType = {staged:'stage',failed:'fail',skipped:'skip',pending:'requeue'}[status];
   // Events and status commit together. A late attempt cannot write even its audit.
   const results = await env.DB.batch([
     ...(outcome.lastError ? [event('error',outcome.lastError)] : []),
     event('validate',outcome.reason),
-    event(eventType,status==='pending' ? `${outcome.reason}; retry not before ${record.next_attempt_at}` : outcome.reason),
+    event(eventType,status==='pending' ? `${outcome.reason}; retry not before ${nextAttemptAt}` : outcome.reason),
     prepare(`UPDATE special_imports SET extracted_json=?4,candidate_json=?5,validation_result=?6,
       validation_reason=?7,processing_status=?8,processed_at=?9,last_error=?10,failure_kind=?11,
       lease_expires_at=NULL,next_attempt_at=?12,
@@ -102,7 +104,7 @@ export async function finishImportAttempt(env, record, outcome) {
       WHERE id=?1 AND ${OWNS_ATTEMPT_SQL}`,...args,
       outcome.extractedJson ?? null,outcome.candidateJson ?? null,outcome.validationResult ?? null,
       outcome.reason,status,outcome.processedAt ?? null,outcome.lastError ?? null,outcome.failureKind ?? null,
-      status==='pending' ? record.next_attempt_at : null,outcome.clearImage ? 1 : 0,
+      nextAttemptAt,outcome.clearImage ? 1 : 0,
       outcome.reason==='mexican night evidence' ? 'section' : null,
       outcome.reason==='mexican night evidence' ? 'mexican-night' : null),
   ]);

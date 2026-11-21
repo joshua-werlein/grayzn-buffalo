@@ -4,7 +4,7 @@ import { classifyCaption, parserVersionFor, confidentMexicanNightCaption } from 
 import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexicanNight } from './guarded-auto.js';
 import {reconcileWingWednesday,recordWingScan} from './wing-wednesday.js';
 import {ensureAutomaticWeek} from './auto-week.js';
-import {MAX_IMPORT_ATTEMPTS,OWNS_ATTEMPT_SQL,isTransientFailure,claimImportAttempt,attemptEvent,saveAttemptImage,finishImportAttempt,retireImportAttempts} from './recovery.js';
+import {AI_RETRY_DELAY_SECONDS,MAX_IMPORT_ATTEMPTS,OWNS_ATTEMPT_SQL,isTransientFailure,claimImportAttempt,attemptEvent,saveAttemptImage,finishImportAttempt,retireImportAttempts} from './recovery.js';
 import {validateEvidence, validateWeeklyLunch, validateMexicanNight, singleDayLunchEvidence, singleDayLunchEvidenceV2, validateCurrentDay, hasWeeklyLunchEvidence, WEEKLY_LUNCH_SHAPE_ERROR, MEXICAN_NIGHT_SHAPE_ERROR, WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
 import {WEBHOOK_PATH, handleFacebookWebhook} from './webhook.js';
 import {expireDelivery,reconcileDelivery,completeDeliveryReading,recoveredDeliveryReading,deliveryReadingsAgree} from './delivery.js';
@@ -453,6 +453,7 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
     if (!isWithinProcessingHours(callNow) || chicagoDate(callNow)!==budget.window.today ||
       !await env.DB.prepare(`SELECT 1 WHERE ${OWNS_ATTEMPT_SQL}`)
         .bind(budget.importId,budget.record.attempt_token,callNow.toISOString()).first()) return {cancelled:true};
+    const previousOutcome = outcome;
     try {
       const started=Date.now();
       const result = await env.AI.run(modelId,request);
@@ -463,10 +464,14 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
     } catch(error) {
       const aiError = safeAiError(error,env);
       if(deliveryRecovery) return {...priorOutcome,deliveryConflict:true};
-      outcome = {extractedJson:null,aiError,transient:isTransientFailure(error),processedAt:now.toISOString()};
+      const transient = isTransientFailure(error);
       // A failed repair/verification call never discards the first reading. It
       // keeps its own per-offer issues; "always" requires a completed second read.
       if (reliable && attempt && priorOutcome) return strategy==='always' ? {...priorOutcome,verificationConflict:true} : priorOutcome;
+      // A temporary failure during schema repair must not turn the original
+      // malformed response or schema rejection into a new import attempt.
+      if (attempt && transient) return previousOutcome;
+      outcome = {extractedJson:null,aiError,transient,processedAt:now.toISOString()};
       if (!/json[ _]mode|json[ _]schema/i.test(aiError)) return outcome;
       continue;
     }
@@ -721,11 +726,57 @@ async function pruneImportImages(env) {
   } while (cursor);
 }
 
+const AI_RETRY_TRIGGER = 'facebook-ai-retry';
+
+async function recoverTransientAiFailure(env, record, day, reason, processedAt) {
+  const attempt = record.retry_count;
+  console.warn('Workers AI transient failure detected',{attempt});
+  const pending = attempt < MAX_IMPORT_ATTEMPTS;
+  const nextAttemptAt = pending ? new Date(Date.now()+AI_RETRY_DELAY_SECONDS*1000).toISOString() : null;
+  const saved = await finishImportAttempt(env,record,{
+    status:pending ? 'pending' : 'failed',failureKind:pending ? 'transient_ai' : 'exhausted',
+    reason,lastError:reason,processedAt,nextAttemptAt,
+  });
+  if (!saved) return;
+  if (!pending) {
+    console.warn('Workers AI retry exhausted',{attempt});
+    return;
+  }
+  // Commit the fenced outcome before sending. If delivery fails, the same
+  // pending row is already eligible for the next regular cron after the delay.
+  try {
+    await env.IMPORT_TRIGGER.send({type:AI_RETRY_TRIGGER,day,importId:record.id,attemptToken:record.attempt_token},
+      {delaySeconds:AI_RETRY_DELAY_SECONDS});
+    console.log('Workers AI delayed retry scheduled',{attempt:attempt+1,nextAttemptAt});
+  } catch {
+    console.warn('Workers AI delayed retry scheduling failed; cron fallback retained',{attempt:attempt+1,nextAttemptAt});
+  }
+}
+
+async function hasDueAiRetry(env, messages, now) {
+  if (!env.DB || !isWithinProcessingHours(now)) return false;
+  const day = chicagoDate(now);
+  for (const {body} of messages) {
+    if (body?.type!==AI_RETRY_TRIGGER || body.day!==day ||
+        typeof body.importId!=='string' || typeof body.attemptToken!=='string') continue;
+    // This is a wake-up check only. The complete Graph scan and atomic claim
+    // still enforce source freshness, eligibility and ownership.
+    const row = await env.DB.prepare(`SELECT next_attempt_at FROM special_imports
+      WHERE id=?1 AND attempt_token=?2 AND review_status='pending'
+        AND processing_status='pending' AND failure_kind='transient_ai'`)
+      .bind(body.importId,body.attemptToken).first();
+    if (row?.next_attempt_at && Date.parse(row.next_attempt_at)<=now.getTime()) return true;
+  }
+  return false;
+}
+
 async function processImportAttempt(env, record, raw, {window,modelId,dailyLimit}) {
   const retry = async (reason,kind,extra={}) => finishImportAttempt(env,record,{
     ...extra,status:record.retry_count<MAX_IMPORT_ATTEMPTS ? 'pending' : 'failed',
     failureKind:record.retry_count<MAX_IMPORT_ATTEMPTS ? kind : 'exhausted',reason,lastError:reason,
   });
+  const recoveringAi = record.failure_kind==='transient_ai';
+  if (recoveringAi) console.log('Workers AI retry started',{attempt:record.retry_count});
   try {
     if (!record.image_r2_key) {
       const image = await storeImportImage(env,raw,record.image_source_version,record.attempt_token);
@@ -749,8 +800,8 @@ async function processImportAttempt(env, record, raw, {window,modelId,dailyLimit
     });
     if (result.aiError) {
       const reason=`Workers AI extraction failed: ${result.aiError}`;
-      console.error('Import pipeline: Workers AI extraction failed',{importId:record.id,modelId,error:result.aiError});
-      if (result.transient) return await retry(reason,'transient_ai',{processedAt:result.processedAt});
+      if (result.transient) return await recoverTransientAiFailure(env,record,window.today,reason,result.processedAt);
+      console.error('Import pipeline: Workers AI extraction failed',{attempt:record.retry_count});
       return await finishImportAttempt(env,record,{
         status:'failed',failureKind:'permanent',reason,lastError:reason,
         validationResult:'rejected',processedAt:result.processedAt,
@@ -766,17 +817,20 @@ async function processImportAttempt(env, record, raw, {window,modelId,dailyLimit
     if (result.deliveryRecovery && validation.candidateJson) {
       validation.candidateJson=JSON.stringify({...JSON.parse(validation.candidateJson),delivery_recovery:result.deliveryRecovery});
     }
-    await finishImportAttempt(env,record,{
+    const saved = await finishImportAttempt(env,record,{
       status:validation.validationResult==='ok' ? 'staged' : 'failed',
       failureKind:validation.validationResult==='ok' ? null : 'permanent',
       reason:validation.validationReason,validationResult:validation.validationResult,
       candidateJson:validation.candidateJson,extractedJson:result.extractedJson,processedAt:result.processedAt,
     });
+    if (saved && recoveringAi && validation.validationResult==='ok') {
+      console.log('Workers AI retry succeeded',{attempt:record.retry_count});
+    }
   } catch (error) {
     // Infrastructure failure only: validation produces explicit permanent outcomes.
     // If D1 is unavailable too, keep the lease; cron can reclaim it after expiry.
     const reason=safeAiError(error,env);
-    console.error('Import pipeline: attempt storage error',{importId:record.id,error:reason});
+    console.error('Import pipeline: attempt storage error',{attempt:record.retry_count});
     try { await retry(reason,'transient_storage'); } catch { /* Durable lease remains. */ }
   }
 }
@@ -962,15 +1016,22 @@ export default {
     ctx.waitUntil(refreshFeed(env));
     ctx.waitUntil(runImportPipeline(env).catch((err) => console.error('Import pipeline fatal error', String(err))));
   },
-  // Webhook triggers run the same complete-day work as the cron, once per batch:
-  // redundant deliveries in a burst collapse, and repeats are idempotent claims.
+  // Webhooks refresh the feed as before. A due AI retry wakes up the same
+  // complete-day import once per batch, with no need for a separate feed refresh.
   // A pipeline error is rethrown so Queues retries the batch, then dead-letters it.
   async queue(batch, env) {
-    console.log('Facebook webhook trigger batch', {messages: batch.messages.length});
-    const [, imports] = await Promise.allSettled([refreshFeed(env), runImportPipeline(env)]);
-    if (imports.status === 'rejected') {
-      console.error('Import pipeline fatal error (webhook trigger)', String(imports.reason));
-      throw imports.reason;
+    const webhook = batch.messages.some(({body}) => body?.type==='facebook-feed-change');
+    try {
+      if (webhook) {
+        console.log('Facebook webhook trigger batch', {messages: batch.messages.length});
+        const [, imports] = await Promise.allSettled([refreshFeed(env), runImportPipeline(env)]);
+        if (imports.status==='rejected') throw imports.reason;
+      } else if (await hasDueAiRetry(env,batch.messages,new Date(Date.now()))) {
+        await runImportPipeline(env);
+      }
+    } catch (error) {
+      console.error('Import pipeline fatal error (queue trigger)',{webhook});
+      throw error;
     }
   },
  async fetch(request, env, ctx) {

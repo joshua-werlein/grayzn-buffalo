@@ -4,10 +4,11 @@ import {readFileSync} from 'node:fs';
 import {harness,poster,offer} from './test-fixture.js';
 import {fixture} from '../../tests/specials-fixture.mjs';
 import worker,{requeueFailedImport} from './worker.js';
-import {isTransientFailure,IMPORT_RETRY_MS,IMPORT_LEASE_MS} from './recovery.js';
+import {isTransientFailure,AI_RETRY_DELAY_SECONDS,IMPORT_RETRY_MS,IMPORT_LEASE_MS} from './recovery.js';
 import {reconcileToday} from './guarded-auto.js';
 
 const advance=f=>{f.state.now+=IMPORT_RETRY_MS;};
+const aiRetryMs=AI_RETRY_DELAY_SECONDS*1000;
 const row=f=>f.imports()[0];
 const calls=f=>f.sql("SELECT count(*) n FROM special_import_events WHERE event_type='extract'")[0].n;
 const events=f=>f.sql('SELECT * FROM special_import_events ORDER BY id');
@@ -23,10 +24,10 @@ function deferred() {
 test('transient provider failure recovers only when due; success remains idempotent',async t=>{
   const f=harness(t);failOnce(f);await f.run();
   assert.equal(row(f).processing_status,'pending');assert.equal(row(f).failure_kind,'transient_ai');
-  assert.equal(row(f).retry_count,1);assert.equal(Date.parse(row(f).next_attempt_at),f.state.now+IMPORT_RETRY_MS);
+  assert.equal(row(f).retry_count,1);assert.equal(Date.parse(row(f).next_attempt_at),f.state.now+aiRetryMs);
   assert.equal(calls(f),1);assert.ok(f.slots().every(s=>s.content===''));
   const image=row(f).image_r2_key;
-  f.state.now+=IMPORT_RETRY_MS-1;await f.run();assert.equal(f.state.aiCalls,1);
+  f.state.now+=aiRetryMs-1;await f.run();assert.equal(f.state.aiCalls,1);
   f.state.now++;await f.run();
   assert.equal(row(f).processing_status,'staged');assert.equal(row(f).retry_count,2);
   assert.equal(row(f).image_r2_key,image);assert.equal(row(f).next_attempt_at,null);assert.equal(row(f).lease_expires_at,null);
@@ -278,8 +279,8 @@ test('November 8: Workers AI 8005 retries once due, recovers Sunday offers and p
   const run=f.env.AI.run;let first=true;
   f.env.AI.run=async(...args)=>{if(first){first=false;f.state.aiCalls++;throw Error('AiError: 8005: Internal server error');}return run(...args);};
   await f.run();assert.equal(row(f).processing_status,'pending');assert.equal(row(f).failure_kind,'transient_ai');
-  assert.equal(row(f).retry_count,1);assert.equal(Date.parse(row(f).next_attempt_at),f.state.now+IMPORT_RETRY_MS);
-  f.state.now+=IMPORT_RETRY_MS-1;await f.run();assert.equal(f.state.aiCalls,1);
+  assert.equal(row(f).retry_count,1);assert.equal(Date.parse(row(f).next_attempt_at),f.state.now+aiRetryMs);
+  f.state.now+=aiRetryMs-1;await f.run();assert.equal(f.state.aiCalls,1);
   f.state.now++;await Promise.all([f.run(),f.run()]);
   assert.equal(row(f).processing_status,'staged');assert.equal(row(f).retry_count,2);assert.equal(f.state.aiCalls,2);
   assert.match(f.slots(0,'lunch')[0].content,/Pizza.*\$30/);

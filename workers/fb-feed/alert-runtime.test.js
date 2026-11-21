@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {Miniflare} from 'miniflare';
 import {readFileSync} from 'node:fs';
 import {harness} from './test-fixture.js';
-import {runImportPipeline,requeueFailedImport,validateExtraction} from './worker.js';
+import worker,{runImportPipeline,requeueFailedImport,validateExtraction} from './worker.js';
 import {beginAlertScan,finishAlertScan,dispatchVerifiedAlerts,revalidateAlert,readAlertHealth} from './alert-runtime.js';
 import {ALERT_GRACE_MS,dispatchAlert} from './alert-store.js';
 import {reconcileToday} from './guarded-auto.js';
@@ -99,6 +99,68 @@ test('Worker: successful import, repeated cron and read-only assessment are sile
   const before=f.db.prepare('SELECT * FROM special_slots ORDER BY group_id,position').all();
   await reconcileToday(f.env,{sourceIds:f.imports().map(s=>s.id),today:'2030-01-09',weekday:3,inspectOnly:true});
   assert.deepEqual(f.db.prepare('SELECT * FROM special_slots ORDER BY group_id,position').all(),before);
+});
+
+for (const recovers of [true,false]) {
+  test(`Worker: delayed AI recovery ${recovers?'stays silent on success':'alerts once after exhaustion and grace'}`,async t=>{
+    const f=setup(t);
+    const messages=[];
+    f.env.IMPORT_TRIGGER={send:async body=>messages.push({body})};
+    const succeed=f.env.AI.run;
+    f.env.AI.run=async (...args)=>{
+      if (!recovers || messages.length===0) throw new Error('AiError: 8005: Internal server error');
+      return succeed(...args);
+    };
+
+    await f.run();
+    assert.equal(messages.length,1);
+    assert.equal(f.all().length,0);
+    f.advance(120_000);
+    await worker.queue({messages:[messages[0]]},f.env);
+    if (!recovers) {
+      assert.equal(messages.length,2);
+      assert.equal(f.all().length,0);
+      f.advance(120_000);
+      await worker.queue({messages:[messages[1]]},f.env);
+      assert.equal(f.row()?.state,'attention');
+      assert.equal(JSON.parse(f.row().proof_json).cause,'retry_exhausted');
+    } else {
+      assert.equal(messages.length,1);
+      assert.equal(f.imports()[0].processing_status,'staged');
+      assert.ok(f.slots()[0].content);
+      assert.equal(f.all().length,0);
+    }
+    f.advance(ALERT_GRACE_MS-1);
+    await f.send();
+    assert.equal(f.sent.length,0);
+    f.advance(1);
+    await f.send();
+    await f.send();
+    assert.equal(f.sent.length,recovers?0:1);
+  });
+}
+
+test('Worker: delayed AI recovery resolves an existing incident before email dispatch',async t=>{
+  const f=await failure(t);
+  const key=f.row().incident_key;
+  await requeueFailedImport(f.env,f.imports()[0].id);
+  const messages=[];
+  f.env.IMPORT_TRIGGER={send:async body=>messages.push({body})};
+  f.env.AI.run=async()=>{throw new Error('AiError: 8005: Internal server error');};
+  f.advance(1);
+  await f.run();
+  assert.equal(f.row().state,'pending');
+  assert.equal(messages.length,1);
+
+  f.env.AI.run=async()=>({response:JSON.stringify(f.state.candidate)});
+  f.advance(120_000);
+  await worker.queue({messages},f.env);
+  assert.equal(f.row().incident_key,key);
+  assert.equal(f.row().state,'resolved');
+  assert.ok(f.slots()[0].content);
+  f.advance(ALERT_GRACE_MS);
+  await f.send();
+  assert.equal(f.sent.length,0);
 });
 
 test('Worker: permanent extraction failure observes grace, sends once and groups the cause',async t=>{

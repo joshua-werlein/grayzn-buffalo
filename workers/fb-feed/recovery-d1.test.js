@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {Miniflare} from 'miniflare';
 import {harness} from './test-fixture.js';
-import {finishImportAttempt,IMPORT_RETRY_MS} from './recovery.js';
+import {finishImportAttempt} from './recovery.js';
+import worker from './worker.js';
 
 test('real local D1: recovery claims serialize, late results are fenced, and status/audit roll back together',async t=>{
   const f=harness(t);
@@ -13,10 +14,20 @@ test('real local D1: recovery claims serialize, late results are fenced, and sta
     for(const row of f.sql(`SELECT * FROM ${table}`))await DB.prepare(`INSERT INTO ${table} (${Object.keys(row).join(',')}) VALUES (${Object.keys(row).map(()=>'?').join(',')})`).bind(...Object.values(row)).run();
   }
   f.env.DB=DB;const run=f.env.AI.run;let fail=true;
+  f.env.FB_KV={get:async()=>null,put:async()=>{}};
+  const messages=[];
+  f.env.IMPORT_TRIGGER={send:async body=>messages.push({body})};
   f.env.AI.run=async(...args)=>{if(fail){fail=false;f.state.aiCalls++;throw Error('503 temporarily unavailable');}return run(...args);};
-  await f.run();const first=await DB.prepare('SELECT * FROM special_imports').first();
+  const webhook={body:{type:'facebook-feed-change'}};
+  await worker.queue({messages:[webhook,webhook]},f.env);
+  const first=await DB.prepare('SELECT * FROM special_imports').first();
   assert.equal(first.processing_status,'pending');assert.equal(first.retry_count,1);
-  f.state.now+=IMPORT_RETRY_MS;await Promise.all([f.run(),f.run()]);
+  assert.equal(messages.length,1);
+  f.state.now+=120_000;
+  const cronTasks=[];
+  await worker.scheduled({},f.env,{waitUntil:task=>cronTasks.push(task)});
+  await Promise.all([...cronTasks,worker.queue({messages:[...messages,...messages]},f.env),
+    worker.queue({messages:[webhook]},f.env)]);
   const saved=await DB.prepare('SELECT * FROM special_imports').first();
   assert.equal(saved.processing_status,'staged');assert.equal(saved.retry_count,2);assert.equal(f.state.aiCalls,2);
   assert.equal((await DB.prepare("SELECT count(*) n FROM special_import_events WHERE event_type='extract'").first()).n,2);
