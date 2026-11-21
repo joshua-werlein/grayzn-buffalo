@@ -8,12 +8,12 @@
 
 [![Live Website](https://img.shields.io/badge/Live_Site-grayznbuffalo.com-111827?style=for-the-badge)](https://grayznbuffalo.com)
 [![Astro](https://img.shields.io/badge/Astro-7-BC52EE?style=flat-square&logo=astro&logoColor=white)](https://astro.build/)
-[![Cloudflare](https://img.shields.io/badge/Cloudflare-Workers_·_D1_·_KV_·_R2-F38020?style=flat-square&logo=cloudflare&logoColor=white)](https://www.cloudflare.com/)
+[![Cloudflare](https://img.shields.io/badge/Cloudflare-Workers_%C2%B7_D1_%C2%B7_KV_%C2%B7_R2-F38020?style=flat-square&logo=cloudflare&logoColor=white)](https://www.cloudflare.com/)
 [![AI](https://img.shields.io/badge/Workers_AI-Gemma_4-3C4B66?style=flat-square)](https://developers.cloudflare.com/workers-ai/)
 ![Status](https://img.shields.io/badge/Status-Production-2EA44F?style=flat-square)
 ![License](https://img.shields.io/badge/License-Proprietary-5B5B5B?style=flat-square)
 
-**[🌐 Live Site](https://grayznbuffalo.com)** · **[📖 Menu](https://grayznbuffalo.com/menu)** · **[👨‍💻 Developer Portfolio](https://joshuawerlein.com)**
+**[🌐 Live Site](https://grayznbuffalo.com)** · **[📖 Menu](https://grayznbuffalo.com/menu)** · **[GitHub](https://github.com/joshua-werlein/grayzn-buffalo)** · **[👨‍💻 Developer Portfolio](https://joshuawerlein.com)**
 
 </div>
 
@@ -23,7 +23,7 @@
 
 A production website and staff operations system for a Wisconsin restaurant. The public site serves menus, specials, photos, and contact information while authenticated staff manage the underlying content through a custom dashboard.
 
-The most complex feature is a **Facebook-to-website content pipeline**: a scheduled Worker reads restaurant posts, extracts specials from images with Workers AI, verifies source evidence, and safely updates the D1 database **without guessing missing prices or overwriting newer corrections with old posts**.
+A scheduled Cloudflare Worker reads Facebook posts through the Meta Graph API, extracts structured specials with Workers AI, and verifies the poster evidence before applying guarded D1 updates.
 
 ## 🚀 Features
 
@@ -39,7 +39,12 @@ The most complex feature is a **Facebook-to-website content pipeline**: a schedu
 | 🛡️ **Public protection** | Turnstile-verified contact forms, Resend email, sessions, input checks, and security headers |
 | ♿ **Accessibility** | Keyboard-operable interfaces, focus states, reduced-motion support, and responsive layouts |
 
-## 🔎 How the automation works
+## 🔎 Publishing rules
+
+The restaurant’s Facebook Page is the canonical source for specials. A newer verified post can replace an earlier staff edit or approval. A staff correction made after an unchanged or older post stays in place. The Worker checks for a change to the caption or image before treating an edited post’s timestamp as new evidence.
+
+<details>
+<summary><strong>From Facebook poster to D1</strong></summary>
 
 ```mermaid
 flowchart LR
@@ -57,9 +62,11 @@ flowchart LR
 2. **Extract** structured dishes, prices, weekdays, and service times from source images.
 3. **Validate** facts against the post/image evidence; reject ambiguous or contradictory readings.
 4. **Reconcile** repeated offers and destination slots across daily, weekly lunch, and Mexican Night formats.
-5. **Publish or hold** through guarded D1 updates—no fabricated prices or unsafe stale writes.
+5. **Publish or hold**. Commit eligible values and provenance together in D1. Send uncertain readings to staff review.
 
-> **📌 Source-of-truth policy (November 12, 2026):** A correctly verified **newer Facebook post** can update website specials, including earlier staff edits. A staff correction made **after an unchanged or older post** remains protected from that older post. Manual locks are not permanent barriers to newer verified evidence. See [the detailed precedence rules](docs/facebook-specials-source-of-truth.md).
+See the [source and ordering rules](docs/facebook-specials-source-of-truth.md) and [guarded publication code](workers/fb-feed/guarded-auto.js).
+
+</details>
 
 ## 🧩 Architecture
 
@@ -99,13 +106,14 @@ The site and the Facebook Worker have **separate configuration, tests, and deplo
 
 ## 💻 Development
 
-The current `package.json` declares **Astro 7.4.7** and **Node 24**. Use the repository's configured Node version.
+The site uses **Astro 7** and **Node 24**. See [package.json](package.json) and [.nvmrc](.nvmrc) for configured versions.
 
 ```bash
-npm install
+npm ci
 npm run dev
+npx astro check
 npm run build
-npm run preview
+node --test --test-concurrency=4 tests/*.test.mjs workers/fb-feed/*.test.js
 ```
 
 The Facebook Worker has its own deployment and automated tests in [`workers/fb-feed/`](workers/fb-feed/). Do not rerun historical D1 migrations or redeploy the Worker just to update documentation.
