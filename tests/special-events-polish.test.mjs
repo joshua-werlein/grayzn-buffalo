@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 // Run the production build first: these tests exercise the compiled routes.
 // Special Event entry, Event Message, text normalization, the two Automation
@@ -23,7 +24,7 @@ const CAPS={action:'create-event',request_id:RID,title:'VETERANS DAY SPECIAL',ev
   start_time:'',end_time:'',time_text:'',offer_1:'CHOICE OF ANY BURGER AND SIDE WITH A DRINK $7'};
 const OFFER='Choice of Any Burger and Side with a Drink $7',MESSAGE='Thank You To All Who Served';
 
-const setup=(t,options)=>{const f=fixture(t,options);f.env.SESSIONS={get:async()=>'1'};return f;};
+const setup=(t,options)=>{const f=fixture(t,options);Object.assign(f.env, adminSessionEnv());return f;};
 const render=(page,f,path='/',now=NOW)=>container.renderToString(page,{request:new Request('http://localhost'+path,{headers:{cookie}}),locals:{runtime:{env:f.env,now}}});
 const post=(f,fields,{now=NOW}={})=>{
   const body=new FormData();for(const [k,v] of Object.entries(fields)) body.set(k,String(v));

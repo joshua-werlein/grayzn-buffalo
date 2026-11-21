@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {harness} from '../workers/fb-feed/test-fixture.js';
@@ -16,7 +17,7 @@ const poster=time=>({day_of_week:2,day_evidence:'TUESDAY',poster_evidence:'TUESD
     offer('Grilled Ham and Cheese With Cup of Chili or Coleslaw $7.25','3) GRILLED HAM AND CHEESE\nWITH CUP OF CHILI OR COLESLAW — $7.25')]});
 async function model(t,raw) {
   const f=harness(t,{now:now.toISOString(),candidate:raw});
-  f.env.SESSIONS={get:async()=>'1'};
+  Object.assign(f.env, adminSessionEnv());
   f.env.SPECIALS_EVIDENCE_VERSION='2';
   f.sql("UPDATE weekly_specials SET week_start_date='2026-11-02',week_end_date='2026-11-08' WHERE id=9000");
   const {candidateJson,validationResult,validationReason}=validateExtraction(JSON.stringify(raw),true,window);

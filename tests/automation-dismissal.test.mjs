@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,7 +16,7 @@ const page=(await builtRoute('admin/automation')).default;
 const container=await AstroContainer.create();
 function setup(t,review='pending') {
   const f=harness(t,{now:now.toISOString(),candidate:source.daily});
-  f.env.SESSIONS={get:async()=> '1'};
+  Object.assign(f.env, adminSessionEnv());
   f.sql("UPDATE weekly_specials SET week_start_date='2026-10-26',week_end_date='2026-11-01' WHERE id=9000");
   f.sql(`INSERT INTO special_imports(id,fb_post_id,fb_created_time,image_r2_key,candidate_json,extracted_json,processing_status,validation_result,review_status,fetched_at)
     VALUES('test','post','2026-10-27T15:00:00+0000','test.jpg',?,?,'staged','ok',?,'2026-10-27T15:01:00Z')`,JSON.stringify(source.dailyCandidate),JSON.stringify(source.daily),review);

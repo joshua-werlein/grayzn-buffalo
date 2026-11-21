@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute,builtComponent} from './built-output.mjs';
 // Run npm run build first: exercise the compiled production Astro components.
 import test from 'node:test';
@@ -143,7 +144,7 @@ function setMexicanPublicationTime(f, publishedAt) {
 test('automated Mexican items reopen as stacked title and description controls',async t=>{
   const {harness}=await import('../workers/fb-feed/test-fixture.js');
   const f=harness(t,{caption:'Mexican Night',candidate:{type:'mexican-night',poster_evidence:'Mexican Night',schedule:'Tuesdays 5–10 PM',groups:[{label:'Entrees',items:[{title:'Burrito $10',description:'Beans\nSalsa'}]},{label:'Add-Ons',items:[{title:'Chicken +$1',description:''}]}]}});
-  await f.run();f.env.SESSIONS={get:async()=> '1'};
+  await f.run();Object.assign(f.env, adminSessionEnv());
   const html=await container.renderToString(adminPage,{request:new Request('http://localhost/admin/specials',{headers:{cookie:'gb_session='+'a'.repeat(32)}}),locals:{runtime:{env:f.env}}});
   const form=html.match(/<form[^>]*id="mexican-form"[\s\S]*?<\/form>/)[0];
   assert.match(form,/name="g0_1_title"[^>]*value="Burrito \$10"/);
@@ -268,7 +269,7 @@ test('Mexican menu uses one phone column, two tablet columns and four desktop co
   assert.match(component,/white-space:pre-wrap/);
 });
 test('compiled admin preserves drafts on stale POST and rejects wrong origin without writes',async t=>{
-  const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};
+  const f=fixture(t);Object.assign(f.env, adminSessionEnv());
   const weekRow=f.sql('SELECT * FROM weekly_specials LIMIT 1')[0];const week=await s.readWeek(f.env,weekRow.id);
   function form() {
     const body=new FormData();body.set('action','save-weekly-specials');body.set('weekly_id',String(week.id));body.set('revision',String(week.collection.revision));body.set('week_start_date',week.week_start_date);body.set('group_count',String(week.collection.groups.length));body.set('weekly_active_day','6');
@@ -288,7 +289,7 @@ test('compiled admin preserves drafts on stale POST and rejects wrong origin wit
 // Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): the editor no
 // longer offers a lock. A lock field from a form opened earlier still saves, with its edit time.
 test('compiled Admin new-week POST saves recurring prefills unlocked, honors an older form\'s Lock, and renders no lock control',async t=>{
-  const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};
+  const f=fixture(t);Object.assign(f.env, adminSessionEnv());
   const defaults=await s.readCollection(f.env,'defaults');
   const group=defaults.groups.find(g=>g.day_of_week===6 && g.service==='all-day');
   f.sql("UPDATE special_slots SET content='Recurring sandwich $10.25',price='',section_link='' WHERE group_id=? AND position=1",group.id);
@@ -319,7 +320,7 @@ test('compiled Admin new-week POST saves recurring prefills unlocked, honors an 
 });
 
 test('compiled simple editor has service-specific inputs, inline prices and no database controls',async t=>{
-  const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};
+  const f=fixture(t);Object.assign(f.env, adminSessionEnv());
   const week=f.sql('SELECT id FROM weekly_specials LIMIT 1')[0];
   const g=f.sql("SELECT id FROM special_groups WHERE collection_id=(SELECT id FROM special_collections WHERE weekly_special_id=?) AND day_of_week=1 AND service='lunch'",week.id)[0];
   f.sql("UPDATE special_slots SET content='Pizza Bread',price='$9.75' WHERE group_id=? AND position=1",g.id);

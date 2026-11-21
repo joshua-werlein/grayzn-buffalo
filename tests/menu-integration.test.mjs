@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 // Integration-only regressions: real isolated SQLite, compiled pages, no production bindings.
 import test from 'node:test';
@@ -14,7 +15,7 @@ function fixture(t){
  db.exec('CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
  const schema=readFileSync('schema.sql','utf8');
  for(const table of ['categories','items']){db.exec(schema.match(new RegExp(`CREATE TABLE IF NOT EXISTS ${table} \\([\\s\\S]*?\\n\\);`))[0]); for(const row of baseline[table]){const keys=Object.keys(row);db.prepare(`INSERT INTO ${table} (${keys.join(',')}) VALUES (${keys.map(()=>'?').join(',')})`).run(...Object.values(row));}}
- const env={SESSIONS:{get:async()=> '1'},DB:{prepare(sql){const q=args=>({sql,args,bind:(...a)=>q(a),first:async()=>db.prepare(sql).get(...args)??null,all:async()=>({results:db.prepare(sql).all(...args)}),run:async()=>{const r=db.prepare(sql).run(...args);return{meta:{changes:Number(r.changes)}}}});return q([])},async batch(statements){db.exec('BEGIN');try{const out=[];for(const s of statements){const st=db.prepare(s.sql);out.push(/^\s*SELECT/i.test(s.sql)?{results:st.all(...s.args)}:{meta:{changes:Number(st.run(...s.args).changes)}})}db.exec('COMMIT');return out}catch(e){db.exec('ROLLBACK');throw e}}}};
+ const env={...adminSessionEnv(),DB:{prepare(sql){const q=args=>({sql,args,bind:(...a)=>q(a),first:async()=>db.prepare(sql).get(...args)??null,all:async()=>({results:db.prepare(sql).all(...args)}),run:async()=>{const r=db.prepare(sql).run(...args);return{meta:{changes:Number(r.changes)}}}});return q([])},async batch(statements){db.exec('BEGIN');try{const out=[];for(const s of statements){const st=db.prepare(s.sql);out.push(/^\s*SELECT/i.test(s.sql)?{results:st.all(...s.args)}:{meta:{changes:Number(st.run(...s.args).changes)}})}db.exec('COMMIT');return out}catch(e){db.exec('ROLLBACK');throw e}}}};
  return {db,env};
 }
 const request=(f,path,init={})=>({request:new Request('http://localhost'+path,{...init,headers:{cookie:'gb_session='+ 'a'.repeat(32),origin:'http://localhost',...(init.headers??{})}}),locals:{runtime:{env:f.env}}});

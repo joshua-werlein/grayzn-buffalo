@@ -7,7 +7,7 @@ import {checkWorkerSecrets, REQUIRED_SECRETS} from '../scripts/check-worker-secr
 const vars = {CF_ANALYTICS_ACCOUNT_ID: 'a', CF_ANALYTICS_SITE_TAG: 'b'};
 const list = names => names.map(name => ({name, type: 'secret_text'}));
 
-test('the six runtime secrets with no [vars] overlap pass', () => {
+test('all required runtime secrets with no [vars] overlap pass', () => {
   assert.deepEqual(checkWorkerSecrets(list(REQUIRED_SECRETS), vars), []);
 });
 
@@ -19,8 +19,10 @@ test('analytics identifiers duplicated as secrets are rejected by name', () => {
 });
 
 test('a missing required secret is rejected', () => {
-  assert.deepEqual(checkWorkerSecrets(list(REQUIRED_SECRETS.filter(n => n !== 'TURNSTILE_SECRET')), vars),
-    ['Required Worker secret TURNSTILE_SECRET is missing.']);
+  for (const name of ['TURNSTILE_SECRET', 'ADMIN_SESSION_KEY']) {
+    assert.deepEqual(checkWorkerSecrets(list(REQUIRED_SECRETS.filter(n => n !== name)), vars),
+      [`Required Worker secret ${name} is missing.`]);
+  }
 });
 
 test('unexpected input fails closed', () => {

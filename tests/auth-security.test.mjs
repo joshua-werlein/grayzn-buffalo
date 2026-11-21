@@ -4,7 +4,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { experimental_AstroContainer as AstroContainer } from 'astro/container';
 import { loadTs } from './load-ts.mjs';
+import { adminCredentials } from './admin-session-fixture.mjs';
 import { createOriginCheckMiddleware } from '../node_modules/astro/dist/core/app/origin-check.js';
+import { getSetCookiesFromResponse } from '../node_modules/astro/dist/core/cookies/index.js';
 
 const { login, logout, isAuthed, verifyTurnstile } = loadTs('src/lib/auth.ts');
 const { onRequest } = loadTs('src/middleware.ts');
@@ -15,7 +17,7 @@ const origin = 'https://grayznbuffalo.com';
 function setup() {
   const values = new Map(), calls = [], jar = new Map();
   const env = {
-    ADMIN_PASSWORD: 'test-password', TURNSTILE_SITEKEY: 'test-sitekey', TURNSTILE_SECRET: 'test-secret',
+    ...adminCredentials, TURNSTILE_SITEKEY: 'test-sitekey', TURNSTILE_SECRET: 'test-secret',
     SESSIONS: {
       get: async key => values.get(key) ?? null,
       put: async (key, value, options) => { calls.push({ key, options }); values.set(key, value); },
@@ -53,10 +55,81 @@ test('session cookies have secure flags and a matching 24-hour server expiry; lo
 
 test('malformed and expired sessions cannot authorize', async () => {
   const f = setup();
-  for (const value of ['', 'bad-token', 'a'.repeat(32)]) {
-    assert.equal(await isAuthed({ get: () => ({ value }) }, f.env), false);
+  const withToken = value => ({ get: () => ({ value }) });
+  let kvReads = 0;
+  const env = { ...f.env, SESSIONS: { get: async () => { kvReads++; return null; } } };
+  for (const value of ['', 'bad-token', 'A'.repeat(32), 'a'.repeat(33)]) {
+    assert.equal(await isAuthed(withToken(value), env), false);
   }
-  assert.equal(await isAuthed(f.cookies, {}), false);
+  assert.equal(kvReads, 0);
+  await login(f.env.ADMIN_PASSWORD, f.cookies, f.env);
+  const token = f.jar.get('gb_session').value;
+  f.values.delete('session:' + token); // KV returns null after the configured TTL.
+  assert.equal(await isAuthed(f.cookies, f.env), false);
+  for (const stored of ['1', 'v1:bad', { invalid: true }]) {
+    f.values.set('session:' + token, stored);
+    assert.equal(await isAuthed(f.cookies, f.env), false);
+  }
+});
+
+test('missing session configuration and KV failures deny access and never issue a cookie', async () => {
+  const f = setup();
+  assert.equal(await login(f.env.ADMIN_PASSWORD, f.cookies, f.env), true);
+  const fresh = setup();
+  const configOverrides = [
+    { ADMIN_PASSWORD: undefined }, { ADMIN_PASSWORD: '' }, { ADMIN_SESSION_KEY: undefined },
+    { ADMIN_SESSION_KEY: 'short' }, { SESSIONS: undefined },
+    { SESSIONS: { get: async () => { throw new Error('KV read failed'); },
+      put: async () => { throw new Error('KV write failed'); } } },
+  ];
+  for (const overrides of configOverrides) {
+    const env = { ...f.env, ...overrides };
+    assert.equal(await isAuthed(f.cookies, env), false);
+    assert.equal(await login(f.env.ADMIN_PASSWORD, fresh.cookies, env), false);
+    assert.equal(fresh.jar.size, 0);
+  }
+  assert.equal(f.calls.length, 1);
+});
+
+test('password rotation rejects old sessions and accepts a fresh login with the new password', async t => {
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ success: true }));
+  const f = setup();
+  const signIn = (env, password) => post(env, { action: 'login', password, 'cf-turnstile-response': 'test-token' });
+  const sessionCookie = async (env, password) => {
+    const response = await signIn(env, password);
+    assert.equal(response.status, 303);
+    const cookie = [...getSetCookiesFromResponse(response)].find(value => value.startsWith('gb_session='));
+    assert.ok(cookie);
+    return cookie.split(';')[0];
+  };
+  const getAdmin = (env, cookie) => container.renderToResponse(admin, {
+    request: new Request(origin + '/admin', { headers: { cookie } }), locals: { runtime: { env } },
+  });
+  const oldCookie = await sessionCookie(f.env, f.env.ADMIN_PASSWORD);
+  const redeployed = { ...f.env, SESSIONS: { ...f.env.SESSIONS } };
+  assert.equal((await getAdmin(redeployed, oldCookie)).headers.get('location'), '/admin/specials');
+
+  const rotated = { ...redeployed, ADMIN_PASSWORD: 'new-test-password' };
+  const denied = await getAdmin(rotated, oldCookie);
+  assert.equal(denied.status, 200);
+  assert.match(await denied.text(), /Staff Sign In/);
+  assert.deepEqual([...getSetCookiesFromResponse(await signIn(rotated, f.env.ADMIN_PASSWORD))], []);
+  const newCookie = await sessionCookie(rotated, rotated.ADMIN_PASSWORD);
+  assert.notEqual(newCookie, oldCookie);
+  assert.equal((await getAdmin(rotated, newCookie)).headers.get('location'), '/admin/specials');
+  assert.equal((await getAdmin(rotated, oldCookie)).status, 200);
+  assert.equal(f.calls.length, 2);
+  assert.equal(f.values.size, 2); // The previous record may still be served from KV.
+});
+
+test('a session signature cannot be copied to a different token', async () => {
+  const f = setup();
+  await login(f.env.ADMIN_PASSWORD, f.cookies, f.env);
+  const [signature] = f.values.values();
+  assert.match(signature, /^v1:[0-9a-f]{64}$/);
+  const token = 'a'.repeat(32);
+  f.values.set('session:' + token, signature);
+  assert.equal(await isAuthed({ get: () => ({ value: token }) }, f.env), false);
 });
 
 test('Turnstile fails closed for missing config/token and provider failures', async t => {
@@ -111,17 +184,25 @@ test('compiled logout revokes the stored session; unauthenticated settings actio
   }
 });
 
-test('photo mutations reject unauthenticated/expired sessions before touching data', async () => {
+test('photo mutations reject unauthenticated, expired and previous-password sessions before touching data', async () => {
+  const f = setup();
+  await login(f.env.ADMIN_PASSWORD, f.cookies, f.env);
+  const staleToken = f.jar.get('gb_session').value;
+  let storageAccesses = 0;
+  const recordAccess = () => { storageAccesses++; throw new Error('Unauthorized storage access'); };
+  const env = { ...f.env, ADMIN_PASSWORD: 'new-test-password', DB: { prepare: recordAccess },
+    PHOTOS: { put: recordAccess, delete: recordAccess } };
   for (const path of ['menu-photo', 'welcome-photo']) {
     const { POST } = loadTs('src/pages/api/' + path + '.ts');
-    for (const token of [undefined, 'a'.repeat(32)]) {
+    for (const token of [undefined, 'a'.repeat(32), staleToken]) {
       const response = await POST({ request: new Request(origin + '/api/' + path, { method: 'POST' }),
         cookies: { get: () => token ? { value: token } : undefined },
-        locals: { runtime: { env: { SESSIONS: { get: async () => null }, DB: { prepare() { throw new Error('Unexpected write'); } } } } },
+        locals: { runtime: { env } },
       });
       assert.equal(response.status, 401);
     }
   }
+  assert.equal(storageAccesses, 0);
 });
 
 test('all staff pages and photo API responses are no-store, including errors', async () => {
@@ -151,21 +232,25 @@ test('Astro origin protection rejects cross-origin or missing-origin staff form 
   }
 });
 
-test('compiled staff pages reject unauthenticated and expired sessions before loading data', async () => {
+test('compiled staff pages reject anonymous, expired and previous-password sessions before loading data', async () => {
+  const f = setup();
+  await login(f.env.ADMIN_PASSWORD, f.cookies, f.env);
+  const env = { ...f.env, ADMIN_PASSWORD: 'new-test-password',
+    DB: { prepare() { assert.fail('Unauthorized DB access'); } } };
   for (const name of ['menu', 'specials', 'welcome-photos', 'analytics']) {
     const page = (await builtRoute('admin/' + name)).default;
     for (const method of ['GET', 'POST']) {
-      const response = await container.renderToResponse(page, {
-        request: new Request(origin + '/admin/' + name, {
-          method, headers: { origin, cookie: 'gb_session=' + 'a'.repeat(32) },
-        }), locals: { runtime: { env: {
-          SESSIONS: { get: async () => null }, DB: { prepare() { throw new Error('Unauthorized DB access'); } },
-        } } },
-      });
-      assert.equal(response.status, 302);
-      // Menu sends staff back to itself after sign-in and says an unsaved change was lost.
-      const expected = name !== 'menu' ? '/admin' : method === 'POST' ? '/admin?next=/admin/menu&expired=1' : '/admin?next=/admin/menu';
-      assert.equal(response.headers.get('location'), expected);
+      for (const token of [undefined, 'a'.repeat(32), f.jar.get('gb_session').value]) {
+        const response = await container.renderToResponse(page, {
+          request: new Request(origin + '/admin/' + name, {
+            method, headers: { origin, ...(token ? { cookie: 'gb_session=' + token } : {}) },
+          }), locals: { runtime: { env } },
+        });
+        assert.equal(response.status, 302);
+        // Menu sends staff back to itself after sign-in and says an unsaved change was lost.
+        const expected = name !== 'menu' ? '/admin' : method === 'POST' ? '/admin?next=/admin/menu&expired=1' : '/admin?next=/admin/menu';
+        assert.equal(response.headers.get('location'), expected);
+      }
     }
   }
 });

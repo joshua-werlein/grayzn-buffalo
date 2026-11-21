@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 // Run the production build first: these tests exercise the compiled admin route.
 import test from 'node:test';
@@ -12,7 +13,7 @@ const publicPage=(await builtRoute('specials')).default;
 const container=await AstroContainer.create();
 const cookie='gb_session='+'a'.repeat(32);
 async function setup(t) {
-  const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};
+  const f=fixture(t);Object.assign(f.env, adminSessionEnv());
   const defaults=await store.readCollection(f.env,'mexican-night-defaults');
   defaults.groups=['Favorites','Substitutions & Add-ons'].map((label,i)=>{
     const group=store.blankGroup(-1,i);group.label=label;

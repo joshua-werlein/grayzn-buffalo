@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 // Run the production build first: these tests exercise the compiled routes.
 import test from 'node:test';
@@ -45,7 +46,7 @@ test('a hidden section never gets a link',()=>{
 // Week of Jan 14, 2030; Chicago is UTC-6. Prepared Sunday Jan 13 at 7 PM.
 const PREPARED='2030-01-14T01:00:00Z';
 async function setup(t) {
-  const f=fixture(t);f.env.SESSIONS={get:async()=>'1'};f.env.SPECIALS_IMPORT_MODE='GUARDED_AUTO';
+  const f=fixture(t);Object.assign(f.env, adminSessionEnv());f.env.SPECIALS_IMPORT_MODE='GUARDED_AUTO';
   t.mock.timers.enable({apis:['Date'],now:Date.parse(PREPARED)});
   // A Mexican menu so that section has something to show.
   const mexican=await store.readCollection(f.env,'mexican-night-defaults');

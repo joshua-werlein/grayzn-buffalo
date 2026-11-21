@@ -1,3 +1,4 @@
+import { adminSessionEnv, adminCredentials } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 // Admin Menu editing: the item editor and section filter, saving and refreshing, and staff
 // working from more than one tab. Build first. Local SQLite fixtures only.
@@ -22,7 +23,7 @@ const decode = s => s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&l
 
 function menuFixture(t) {
   const f = fixture(t);
-  f.env.SESSIONS = { get: async () => '1' };
+  Object.assign(f.env, adminSessionEnv());
   for (const table of ['categories', 'items']) {
     f.sql(tableSql(table));
     for (const row of baseline[table]) {
@@ -264,7 +265,7 @@ test('expired sessions: in-page saves get a JSON 401, forms return to Admin Menu
   assert.match(page, /Your session expired, so your last change was not saved\./);
   assert.match(page, /name="next" value="\/admin\/menu"/);
   t.mock.method(globalThis, 'fetch', async () => Response.json({ success: true }));
-  const env = { ADMIN_PASSWORD: 'pw', TURNSTILE_SITEKEY: 'k', TURNSTILE_SECRET: 's', SESSIONS: { get: async () => null, put: async () => {} } };
+  const env = { ...adminCredentials, ADMIN_PASSWORD: 'pw', TURNSTILE_SITEKEY: 'k', TURNSTILE_SECRET: 's', SESSIONS: { get: async () => null, put: async () => {} } };
   for (const [next, expected] of [['/admin/menu', '/admin/menu'], ['https://evil.example/admin/menu', '/admin/specials'], ['//evil.example', '/admin/specials'], ['/admin/menu?x=1', '/admin/specials']]) {
     const body = new FormData();
     for (const [key, value] of Object.entries({ action: 'login', password: 'pw', 'cf-turnstile-response': 't', next })) body.set(key, value);

@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +9,7 @@ import {loadTs} from './load-ts.mjs';
 const store=loadTs('src/lib/specials-store.ts');
 const admin=(await builtRoute('admin/specials')).default;
 test('preset UI, hardcoded options, markers and handlers are removed; both per-day All Day fields remain editable',async t=>{
-  const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};
+  const f=fixture(t);Object.assign(f.env, adminSessionEnv());
   const before=f.sql('SELECT * FROM special_slots ORDER BY group_id,position');
   const html=await (await AstroContainer.create()).renderToString(admin,{request:new Request('https://grayznbuffalo.com/admin/specials',{headers:{cookie:'gb_session='+'a'.repeat(32)}}),locals:{runtime:{env:f.env}}});
   const form=html.match(/<form[^>]*id="recurring-defaults-form"[\s\S]*?<\/form>/)[0];

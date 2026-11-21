@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -13,7 +14,7 @@ test('compiled chart renders covered calendar rows; provider failure keeps metri
   const { experimental_AstroContainer: AstroContainer } = await import('astro/container');
   const page = (await builtRoute('admin/analytics')).default;
   const container = await AstroContainer.create();
-  const env = { ...config, SESSIONS: { get: async () => '1' }, DB: { prepare(sql) {
+  const env = { ...config, ...adminSessionEnv('c'.repeat(32)), DB: { prepare(sql) {
     const statement = { bind() { return statement; }, all: async () => ({ results: [] }),
       first: async () => sql.includes('settings') ? { value: '2026-01-01' } : { total: 18 } };
     return statement;

@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute,builtComponent} from './built-output.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -102,7 +103,7 @@ test('October 25 Sunday poster: Soups render once in the Soup line beside every 
 });
 
 test('admin adds seven weekly and recurring optional controls without read-time writes or extra Soup slots',async t=>{
-  const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};const w=await weekFor(f);const before=f.sql('SELECT * FROM special_groups ORDER BY id');
+  const f=fixture(t);Object.assign(f.env, adminSessionEnv());const w=await weekFor(f);const before=f.sql('SELECT * FROM special_groups ORDER BY id');
   const html=await container.renderToString(adminPage,{request:new Request('http://localhost/admin/specials?week='+w.id,{headers:{cookie:'gb_session='+'a'.repeat(32)}}),locals:{runtime:{env:f.env}}});
   const form=html.match(/<form[^>]*id="weekly-form"[\s\S]*?<\/form>/)[0];
   assert.equal((form.match(/Soup today — optional/g)||[]).length,7);assert.equal((form.match(/Keep Soup hidden today/g)||[]).length,7);
@@ -139,7 +140,7 @@ test('new-week Soup identity survives GET/POST and recurring content remains abs
   assert.ok(!(await s.readCollection(f.env,'defaults')).groups.some(isSoupGroup));
 });
 test('stale admin Soup draft is preserved and cannot create rows',async t=>{
-  const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};const w=await weekFor(f),c=withSoupControls(w.collection),form=formFor(c);
+  const f=fixture(t);Object.assign(f.env, adminSessionEnv());const w=await weekFor(f),c=withSoupControls(w.collection),form=formFor(c);
   const i=c.groups.findIndex(g=>isSoupGroup(g)&&g.day_of_week===3);form.set(`g${i}_1_content`,'UnsavedSoupDraft');
   for(const [key,value]of Object.entries({action:'save-weekly-specials',weekly_id:w.id,week_start_date:w.week_start_date}))form.set(key,String(value));
   f.sql('UPDATE special_collections SET revision=revision+1 WHERE id=?',w.collection.id);const before=f.sql('SELECT * FROM special_groups ORDER BY id');

@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute,builtManifest} from './built-output.mjs';
 // Build first. All writes use an isolated local SQLite fixture.
 import test from 'node:test';
@@ -32,7 +33,7 @@ function fixture(t) {
     db.prepare(`INSERT INTO ${table} (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`).run(...Object.values(row));
   }
   const rows = table => db.prepare(`SELECT * FROM ${table} ORDER BY id`).all().map(row => ({ ...row }));
-  const env = { SESSIONS: { get: async () => '1' }, DB: { prepare(sql) {
+  const env = { ...adminSessionEnv(), DB: { prepare(sql) {
     const statement = db.prepare(sql);
     const query = args => ({
       bind: (...args) => query(args),
@@ -145,7 +146,7 @@ test('topping markup is escaped in Menu and admin, and database errors never rep
     assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
     assert.match(html, /&lt;script&gt;/);
   }
-  const broken = { env: { SESSIONS: f.env.SESSIONS, DB: { prepare() { throw new Error('Local database unavailable.'); } } } };
+  const broken = { env: { ...f.env, DB: { prepare() { throw new Error('Local database unavailable.'); } } } };
   const response = await post(broken, form(), { cookie, origin: 'http://localhost', accept: 'application/json' });
   assert.equal(response.status, 500);
   assert.equal((await response.json()).ok, false);

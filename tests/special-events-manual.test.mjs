@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 // Run the production build first: these tests exercise the compiled routes.
 import test from 'node:test';
@@ -22,7 +23,7 @@ const VETERANS={action:'create-event',request_id:RID,title:'Veterans Day Special
 const PACKERS={action:'create-event',request_id:'22222222-2222-4333-8444-555555555555',title:'Packers Game Special',event_date:'2026-11-15',
   hours_mode:'hours',start_time:'12:00',end_time:'16:00',time_text:'',offer_1:'Game-day pulled pork sandwich $8'};
 
-const setup=(t,options)=>{const f=fixture(t,options);f.env.SESSIONS={get:async()=>'1'};return f;};
+const setup=(t,options)=>{const f=fixture(t,options);Object.assign(f.env, adminSessionEnv());return f;};
 const render=(page,f,path='/',now=NOW)=>container.renderToString(page,{request:new Request('http://localhost'+path,{headers:{cookie}}),locals:{runtime:{env:f.env,now}}});
 const post=(f,fields,{origin='http://localhost',now=NOW,auth=true}={})=>{
   const body=new FormData();for(const [k,v] of Object.entries(fields)) body.set(k,String(v));

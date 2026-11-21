@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -9,7 +10,7 @@ for(const route of ['menu-photo','welcome-photo']) {
   const {POST}=loadTs(`src/pages/api/${route}.ts`);
   function setup({full=image,thumb=image,mime='image/webp',failure}={}) {
     const calls={puts:[],writes:0,deletes:[]};
-    const env={SESSIONS:{get:async()=> '1'},PHOTOS:{
+    const env={...adminSessionEnv(),PHOTOS:{
       put:async(key,bytes)=>{if(failure==='r2')throw Error('private provider credential marker');calls.puts.push({key,bytes});},
       delete:async key=>{calls.deletes.push(key);},
     },DB:{prepare:()=>({bind(){return this;},first:async()=>({photo_key:'welcome/old.webp'}),

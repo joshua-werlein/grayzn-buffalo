@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 // Shared Menu options panels: Wraps, Salads (dressings, greens, shells) and the reorderable
 // Substitute Sides section. Build first. Local SQLite fixtures only; nothing touches D1.
@@ -28,7 +29,7 @@ const PRICE = /\$|¢|€|£|price|charg|surcharge|for free|no (?:extra )?(?:cost
 
 function menuFixture(t) {
   const f = fixture(t);
-  f.env.SESSIONS = { get: async () => '1' };
+  Object.assign(f.env, adminSessionEnv());
   for (const table of ['categories', 'items']) {
     f.sql(tableSql(table));
     for (const row of baseline[table]) {

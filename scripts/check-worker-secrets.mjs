@@ -11,7 +11,7 @@
 import {readFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 
-export const REQUIRED_SECRETS = ['ADMIN_PASSWORD', 'CF_ANALYTICS_API_TOKEN', 'CONTACT_TO_EMAIL',
+export const REQUIRED_SECRETS = ['ADMIN_PASSWORD', 'ADMIN_SESSION_KEY', 'CF_ANALYTICS_API_TOKEN', 'CONTACT_TO_EMAIL',
   'RESEND_API_KEY', 'TURNSTILE_SECRET', 'TURNSTILE_SITEKEY'];
 
 export function checkWorkerSecrets(secretList, vars) {

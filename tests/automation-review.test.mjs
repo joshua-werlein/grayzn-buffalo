@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,7 +19,7 @@ const addImport=(f,id,candidate,created='2026-10-26T14:00:00Z')=>f.sql(`INSERT I
 function setup(t) {
   const f=harness(t,{now:now.toISOString(),candidate:posters.morning});
   f.sql("UPDATE weekly_specials SET week_start_date='2026-10-26',week_end_date='2026-11-01' WHERE id=9000");
-  f.env.SESSIONS={get:async()=> '1'};
+  Object.assign(f.env, adminSessionEnv());
   return f;
 }
 test('review defaults to Chicago date and rejects malformed, future and out-of-retention dates',()=>{

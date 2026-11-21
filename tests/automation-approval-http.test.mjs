@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -8,7 +9,7 @@ const {approvalModel}=loadTs('src/lib/automation-approval.ts');
 const source=JSON.parse(readFileSync('tests/fixtures/oct27-production.json','utf8'));
 const now=new Date('2026-10-27T21:00:00Z'),origin='https://grayznbuffalo.com';
 function setup(t){
-  const f=harness(t,{now:now.toISOString()});f.env.SESSIONS={get:async()=> '1'};
+  const f=harness(t,{now:now.toISOString()});Object.assign(f.env, adminSessionEnv());
   f.sql("UPDATE weekly_specials SET week_start_date='2026-10-26',week_end_date='2026-11-01' WHERE id=9000");
   f.sql("INSERT INTO special_imports(id,fb_post_id,fb_created_time,image_r2_key,extracted_json,processing_status,validation_result) VALUES('test','post','2026-10-27T15:00:00Z','test.jpg',?,'staged','ok')",JSON.stringify(source.daily));
   return f;
@@ -20,7 +21,7 @@ async function call(f,body,{authed=true,requestOrigin=origin,type='application/j
 test('approval HTTP rejects anonymous, expired, cross-origin, missing-origin and unsupported requests before writes',async t=>{
   const f=setup(t);const initial=f.sql('SELECT * FROM special_slots');
   assert.equal((await call(f,{}, {authed:false})).status,401);
-  f.env.SESSIONS.get=async()=>null;assert.equal((await call(f,{})).status,401);f.env.SESSIONS.get=async()=> '1';
+  f.env.SESSIONS.get=async()=>null;assert.equal((await call(f,{})).status,401);f.env.SESSIONS=adminSessionEnv().SESSIONS;
   for(const requestOrigin of ['https://evil.example',null])assert.equal((await call(f,{}, {requestOrigin})).status,403);
   assert.equal((await call(f,{}, {type:'text/plain'})).status,415);
   assert.equal((await ALL({})).status,405);

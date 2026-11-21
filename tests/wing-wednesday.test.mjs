@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 // Run the production build first: these tests exercise the compiled routes.
 import test from 'node:test';
@@ -14,7 +15,7 @@ const container=await AstroContainer.create();
 const cookie='gb_session='+'a'.repeat(32);
 const SUNDAY_NIGHT='2030-01-14T01:00:00Z', WEDNESDAY_NIGHT='2030-01-17T02:00:00Z', THURSDAY_159='2030-01-17T07:59:00Z', THURSDAY_200='2030-01-17T08:00:00Z';
 async function setup(t) {
-  const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};f.env.SPECIALS_IMPORT_MODE='GUARDED_AUTO';
+  const f=fixture(t);Object.assign(f.env, adminSessionEnv());f.env.SPECIALS_IMPORT_MODE='GUARDED_AUTO';
   t.mock.method(Date,'now',()=>Date.parse(SUNDAY_NIGHT));
   await ensureAutomaticWeek(f.env,{today:'2030-01-13',weekday:0,hour:19});
   return f;
@@ -140,7 +141,7 @@ for(const recurring of [true,false]) test(`admin ${recurring?'recurring':'live'}
 });
 // Sunday afternoon: last week's section still holds last week's published prices.
 async function lastWeekPublished(t) {
-  const f=fixture(t);f.env.SESSIONS={get:async()=> '1'};f.env.SPECIALS_IMPORT_MODE='GUARDED_AUTO';
+  const f=fixture(t);Object.assign(f.env, adminSessionEnv());f.env.SPECIALS_IMPORT_MODE='GUARDED_AUTO';
   const clock=t.mock.method(Date,'now',()=>Date.parse('2030-01-07T01:00:00Z'));
   await ensureAutomaticWeek(f.env,{today:'2030-01-06',weekday:0,hour:19});
   f.sql("UPDATE special_slots SET content='Bone-In Wings $.89 each',origin='automation',last_auto_value='Bone-In Wings $.89 each' WHERE group_id='ww-live:ww-default:wings' AND position=1");

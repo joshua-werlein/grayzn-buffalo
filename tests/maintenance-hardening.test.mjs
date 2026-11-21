@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 // November 21 maintenance: bounded request bodies, explicit-column readers,
 // server-side staff limits and sanitized staff errors. Build first.
@@ -79,7 +80,7 @@ test('photo APIs reject an oversized upload body before parsing it or touching R
     const untouched = {get() { throw Error('Unexpected R2'); }, put() { throw Error('Unexpected R2'); }, delete() { throw Error('Unexpected R2'); }};
     const response = await POST({request: streamed(origin + '/api/' + path, stream, {'content-type': 'multipart/form-data; boundary=x'}),
       cookies: {get: () => ({value: 'a'.repeat(32)})},
-      locals: {runtime: {env: {SESSIONS: {get: async () => '1'}, PHOTOS: untouched, DB: {prepare() { throw Error('Unexpected D1'); }}}}}});
+      locals: {runtime: {env: {...adminSessionEnv(), PHOTOS: untouched, DB: {prepare() { throw Error('Unexpected D1'); }}}}}});
     assert.equal(response.status, 413, path);
     assert.ok(state.cancelled && state.pulled <= 22 * 1024 * 1024, path);
     assert.match((await response.json()).error, /too big/);
@@ -137,7 +138,7 @@ const schema = readFileSync('schema.sql', 'utf8');
 const tableSql = table => schema.match(new RegExp(`CREATE TABLE IF NOT EXISTS ${table} \\([\\s\\S]*?\\n\\);`))[0];
 function menuFixture(t) {
   const f = fixture(t);
-  f.env.SESSIONS = {get: async () => '1'};
+  Object.assign(f.env, adminSessionEnv());
   f.sql(tableSql('categories')); f.sql(tableSql('items'));
   f.sql("INSERT INTO categories(id,name,sort) VALUES(1,'Wings',0)");
   f.sql("INSERT INTO items(id,category_id,name,description,sort) VALUES(1,1,'Bone-In Wings','Six wings',0)");
@@ -194,7 +195,7 @@ test('Admin Menu hides unexpected database errors from staff responses and rejec
 
 test('announcements are length-checked server-side and saved together in one batch', async () => {
   const batches = [];
-  const env = {SESSIONS: {get: async () => '1'}, DB: {
+  const env = {...adminSessionEnv(), DB: {
     prepare: sql => ({bind: (...args) => ({sql, args}), first: async () => null}),
     batch: async statements => { batches.push(statements); return statements.map(() => ({})); },
   }};

@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadTs } from './load-ts.mjs';
@@ -17,7 +18,8 @@ function makeCookies(authed = true) {
 
 function makeEnv({ hasPhotos = true, photoObjects = new Map(), hasSession = true } = {}) {
   return {
-    SESSIONS: hasSession ? { get: async (key) => key === 'session:' + SESSION_TOKEN ? '1' : null } : null,
+    ...adminSessionEnv(SESSION_TOKEN),
+    ...(hasSession ? {} : { SESSIONS: null }),
     PHOTOS: !hasPhotos ? undefined : {
       get: async (key) => {
         const obj = photoObjects.get(key);

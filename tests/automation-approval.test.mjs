@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -12,7 +13,7 @@ const now=new Date('2026-10-27T21:00:00Z'),day='2026-10-27';
 function setup(t,mexican=false) {
   const raw=mexican?source.mexican:source.daily;
   const f=harness(t,{now:now.toISOString(),candidate:raw});
-  f.env.SESSIONS={get:async()=> '1'};
+  Object.assign(f.env, adminSessionEnv());
   f.env.SPECIALS_EVIDENCE_VERSION='2';
   f.sql("UPDATE weekly_specials SET week_start_date='2026-10-26',week_end_date='2026-11-01' WHERE id=9000");
   f.sql(`INSERT INTO special_imports(id,fb_post_id,fb_created_time,parser_version,image_r2_key,candidate_json,extracted_json,processing_status,validation_result,validation_reason)

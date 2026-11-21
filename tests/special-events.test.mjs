@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 // Run the production build first: these tests exercise the compiled routes.
 import test from 'node:test';
@@ -27,7 +28,7 @@ const post=(f,fields,{origin='http://localhost',now=NOW,auth=true}={})=>{
   return container.renderToResponse(adminPage,{request:new Request('http://localhost/admin/specials',{method:'POST',
     headers:{...(origin?{origin}:{}),...(auth?{cookie}:{})},body}),locals:{runtime:{env:f.env,now}}});
 };
-const setup=t=>{const f=fixture(t);f.env.SESSIONS={get:async()=>'1'};return f;};
+const setup=t=>{const f=fixture(t);Object.assign(f.env, adminSessionEnv());return f;};
 const event=(f,id)=>f.sql('SELECT * FROM special_events WHERE id=?',id)[0];
 const offers=(f,id)=>f.sql('SELECT content FROM special_event_offers WHERE event_id=? ORDER BY position',id).map(o=>o.content);
 const fields=(over={})=>({title:'Packers Game Day Special',event_date:'2026-10-25',time_text:'',start_time:'',end_time:'',offer_1:'Pulled Pork Sandwich w/ Chips $4',...over});

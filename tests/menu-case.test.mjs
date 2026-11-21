@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 // House capitalization for Menu and Specials text (src/lib/text-case.js).
 // Run the production build first: the menu admin test exercises the compiled route.
@@ -237,7 +238,7 @@ const menuTables=f=>{
 test('compiled menu editor saves item names, descriptions and section names in the house capitalization',async t=>{
   const page=(await builtRoute('admin/menu')).default;
   const container=await AstroContainer.create();
-  const f=fixture(t);menuTables(f);f.env.SESSIONS={get:async()=>'1'};
+  const f=fixture(t);menuTables(f);Object.assign(f.env, adminSessionEnv());
   const post=fields=>{
     const body=new FormData();for(const [k,v] of Object.entries(fields)) body.set(k,v);
     return container.renderToResponse(page,{request:new Request('http://localhost/admin/menu',{method:'POST',

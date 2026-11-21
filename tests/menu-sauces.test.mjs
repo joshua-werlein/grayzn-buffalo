@@ -1,3 +1,4 @@
+import { adminSessionEnv } from './admin-session-fixture.mjs';
 import {builtRoute} from './built-output.mjs';
 // Sauces as its own, reorderable public Menu section. Build first. Local SQLite fixtures only.
 import test from 'node:test';
@@ -25,7 +26,7 @@ const tableSql = table => schema.match(new RegExp(`CREATE TABLE IF NOT EXISTS ${
 
 function menuFixture(t) {
   const f = fixture(t);
-  f.env.SESSIONS = { get: async () => '1' };
+  Object.assign(f.env, adminSessionEnv());
   for (const table of ['categories', 'items']) {
     f.sql(tableSql(table));
     for (const row of baseline[table]) {
