@@ -21,8 +21,8 @@ export type EventStatus = 'review' | 'published' | 'disabled' | 'rejected' | 'ca
 export type SpecialEvent = {
   id: string; title: string; event_date: string; time_text: string; start_time: string | null; end_time: string | null;
   details: string; status: EventStatus; origin: 'manual' | 'automation'; manual_locked: number; date_basis: string;
-  source_post_id: string | null; source_permalink: string; source_created_time: string | null; evidence_json: string | null;
-  last_auto_json: string | null; review_reason: string; revision: number; updated_at: string; offers: string[];
+  source_post_id: string | null; source_permalink: string; source_created_time: string | null;
+  review_reason: string; revision: number; updated_at: string; offers: string[];
   /** Migration 0028: first Chicago date customers see the event advertised. */
   display_from?: string | null;
 };
@@ -64,6 +64,19 @@ export function eventState(event: Pick<SpecialEvent, 'event_date' | 'end_time'> 
 export const eventDisplayed = (event: { display_from?: string | null }, now = new Date()) =>
   !event.display_from || event.display_from <= chicagoCalendarDate(now);
 
+// The columns pages display. evidence_json/last_auto_json (stored Facebook
+// evidence, often kilobytes per event) and the write token are never read here.
+const EVENT_COLUMNS = 'id,title,event_date,time_text,start_time,end_time,details,status,origin,manual_locked,date_basis,'
+  + 'source_post_id,source_permalink,source_created_time,review_reason,revision,updated_at';
+/** display_from arrives with migration 0028; without it, events still read. */
+async function selectEvents(env: any, where: string, ...args: unknown[]): Promise<any[]> {
+  const run = async (columns: string) => (await env.DB.prepare(`SELECT ${columns} FROM special_events WHERE ${where}`).bind(...args).all()).results ?? [];
+  try { return await run(`${EVENT_COLUMNS},display_from`); }
+  catch (error) {
+    if (!/no such column/i.test(String((error as any)?.message ?? error))) throw error;
+    return run(EVENT_COLUMNS);
+  }
+}
 async function withOffers(env: any, events: any[]): Promise<SpecialEvent[]> {
   if (!events.length) return [];
   const { results: offers } = await env.DB.prepare('SELECT event_id,position,content FROM special_event_offers WHERE event_id IN (SELECT value FROM json_each(?1)) ORDER BY event_id,position')
@@ -76,9 +89,9 @@ const byDateAndTime = (a: SpecialEvent, b: SpecialEvent) => a.event_date.localeC
 /** Published events that have not expired, today and upcoming, earliest first.
  *  Bounded: at most 50 current events are read. */
 async function readCurrentEvents(env: any, now: Date): Promise<SpecialEvent[]> {
-  const { results } = await env.DB.prepare(`SELECT * FROM special_events WHERE status='published'
-    AND event_date>=?1 ORDER BY event_date,start_time,title LIMIT 50`).bind(chicagoCalendarDate(now)).all();
-  return (await withOffers(env, results ?? [])).filter(e => e.offers.length && eventState(e, now) !== 'expired').sort(byDateAndTime);
+  const results = await selectEvents(env, `status='published'
+    AND event_date>=?1 ORDER BY event_date,start_time,title LIMIT 50`, chicagoCalendarDate(now));
+  return (await withOffers(env, results)).filter(e => e.offers.length && eventState(e, now) !== 'expired').sort(byDateAndTime);
 }
 /** Public pages: upcoming events show before their date, from their display date
  *  when staff set one. A missing table or database means no events, never a page error. */
@@ -127,7 +140,7 @@ export async function eventDisplaySupported(env: any): Promise<boolean> {
 }
 export async function readEvent(env: any, id: string): Promise<SpecialEvent | null> {
   if (!/^evt:[\w-]{1,64}$/.test(id)) return null;
-  const row = await env.DB.prepare('SELECT * FROM special_events WHERE id=?1').bind(id).first();
+  const [row] = await selectEvents(env, 'id=?1', id);
   return row ? (await withOffers(env, [row]))[0] : null;
 }
 

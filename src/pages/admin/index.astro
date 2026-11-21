@@ -3,11 +3,15 @@ import { runtimeEnv } from '../../lib/runtime-env';
 import Base from '../../layouts/Base.astro';
 import { isAuthed, login, logout, verifyTurnstile } from '../../lib/auth';
 import { getSetting, setSetting } from '../../lib/db';
+import { readFormData, rejectedBody } from '../../lib/request-body';
 
 const env = runtimeEnv(Astro.locals);
 const sitekey = env.TURNSTILE_SITEKEY;
 const turnstileOn = Boolean(sitekey && env.TURNSTILE_SECRET);
 
+// Matches the inputs' maxlength. The login, logout and settings forms are tiny.
+const ANNOUNCEMENT_LIMIT = 140;
+const ADMIN_FORM_LIMIT = 16 * 1024;
 let authed = await isAuthed(Astro.cookies, env);
 let error = '';
 let notice = '';
@@ -22,7 +26,9 @@ if (Astro.request.method === 'GET' && authed && !Astro.url.searchParams.has('set
 }
 
 if (Astro.request.method === 'POST') {
-  const form = await Astro.request.formData();
+  // Sign-in is reachable before authentication: read a bounded body only.
+  let form: FormData;
+  try { form = await readFormData(Astro.request, ADMIN_FORM_LIMIT); } catch (e) { return rejectedBody(e); }
   const action = form.get('action');
   next = safeNext(form.get('next')) ?? next;
 
@@ -49,12 +55,13 @@ if (Astro.request.method === 'POST') {
     return Astro.redirect('/', 303);
 
   } else if (action === 'save-announcements' && authed) {
+    const submitted = [1, 2, 3].map(n => String(form.get(`announcement_${n}`) ?? '').trim());
+    if (submitted.some(value => value.length > ANNOUNCEMENT_LIMIT)) return Astro.redirect('/admin?settings=1&saved=ann-long', 303);
     try {
-      await Promise.all([
-        setSetting(env, 'announcement_1', String(form.get('announcement_1') ?? '').trim()),
-        setSetting(env, 'announcement_2', String(form.get('announcement_2') ?? '').trim()),
-        setSetting(env, 'announcement_3', String(form.get('announcement_3') ?? '').trim()),
-      ]);
+      // One batch: all three announcements are saved, or none are.
+      await env.DB.batch(submitted.map((value, i) => env.DB.prepare(
+        'INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?2',
+      ).bind(`announcement_${i + 1}`, value)));
       return Astro.redirect('/admin?settings=1&saved=ann', 303);
     } catch {
       return Astro.redirect('/admin?settings=1&saved=ann-err', 303);
@@ -77,6 +84,7 @@ if (Astro.request.method === 'POST') {
 const SETTINGS_MESSAGES: Record<string, string> = {
   'ann':     'Announcements saved.',
   'ann-err': 'Database not connected — see README.',
+  'ann-long': `Each announcement can be at most ${ANNOUNCEMENT_LIMIT} characters. Nothing was saved.`,
   'del-a':   'Delivery marked available.',
   'del-auto': 'Delivery follows today’s confirmed Facebook poster until 1:30 PM.',
   'del-u':   'Delivery marked unavailable.',

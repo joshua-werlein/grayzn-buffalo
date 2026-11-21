@@ -3,6 +3,7 @@ import type {APIRoute} from 'astro';
 import {isAuthed} from '../../../lib/auth';
 import {approveWingImport} from '../../../lib/wing-approval';
 import {SpecialConflict} from '../../../lib/specials-store';
+import {BodyTooLarge,readBodyText} from '../../../lib/request-body';
 
 export const POST: APIRoute=async({request,cookies,locals,url})=>{
   const env=runtimeEnv(locals);
@@ -11,7 +12,9 @@ export const POST: APIRoute=async({request,cookies,locals,url})=>{
   if(request.headers.get('origin')!==url.origin || request.headers.get('sec-fetch-site')==='cross-site') return reply({error:'Invalid request origin.'},403);
   if(request.headers.get('content-type')?.split(';')[0]!=='application/json') return reply({error:'Expected an approval request.'},415);
   try {
-    const text=await request.text();
+    // At most 4,000 characters; never buffer more than their UTF-8 worst case.
+    let text: string;
+    try { text=await readBodyText(request,16000); } catch(error) { if(error instanceof BodyTooLarge) return reply({error:'Request is too large.'},413); throw error; }
     if(text.length>4000) return reply({error:'Request is too large.'},413);
     return reply({ok:true,...await approveWingImport(env,JSON.parse(text))});
   } catch(error) {

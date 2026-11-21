@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { isAuthed } from '../../lib/auth';
 import { thumbKey } from '../../lib/db';
 import { isWebpUpload } from '../../lib/photo-upload';
+import { BodyTooLarge, readFormData } from '../../lib/request-body';
 
 export const prerender = false;
 
@@ -44,7 +45,14 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
   }
 
   try {
-    const f = await request.formData();
+    // Two files plus a few fields; reject anything larger before parsing it.
+    let f: FormData;
+    try { f = await readFormData(request, 2 * MAX_UPLOAD + 64 * 1024); }
+    catch (error) {
+      return error instanceof BodyTooLarge
+        ? json({ ok: false, error: 'That photo is too big. Try a smaller one.' }, 413)
+        : json({ ok: false, error: 'That upload could not be read. Reload the page and try again.' }, 400);
+    }
     const id = Number(f.get('id'));
     if (!Number.isInteger(id) || id <= 0) {
       return json({ ok: false, error: 'That item could not be found. Reload the page.' }, 400);

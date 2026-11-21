@@ -1,5 +1,10 @@
 import { runtimeEnv } from '../../lib/runtime-env';
 import type { APIRoute } from 'astro';
+import { BodyTooLarge, readBodyText } from '../../lib/request-body';
+
+// Fields allow 100 + 254 + 5,000 characters and a 2,048-character token: about
+// 23 KB even at three UTF-8 bytes per character, so real messages fit easily.
+const CONTACT_BODY_LIMIT = 32 * 1024;
 
 function escapeHtml(value: unknown): string {
   return String(value ?? '')
@@ -22,8 +27,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
   let parsed: unknown;
 
   try {
-    parsed = await request.json();
-  } catch {
+    parsed = JSON.parse(await readBodyText(request, CONTACT_BODY_LIMIT));
+  } catch (error) {
+    if (error instanceof BodyTooLarge) return json({ ok: false, error: 'Your message is too long. Please shorten it or call us.' }, 413);
     return json({ ok: false, error: 'Bad request' }, 400);
   }
 

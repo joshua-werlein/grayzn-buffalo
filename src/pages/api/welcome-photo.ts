@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { isAuthed } from '../../lib/auth';
 import { thumbKey } from '../../lib/db';
 import { isWebpUpload } from '../../lib/photo-upload';
+import { BodyTooLarge, readFormData } from '../../lib/request-body';
 
 export const prerender = false;
 
@@ -39,7 +40,14 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
   if (!env.PHOTOS || !env.DB) return json({ ok: false, error: 'Photo storage is not connected yet.' }, 503);
 
   try {
-    const form = await request.formData();
+    // Two files plus a few fields; reject anything larger before parsing it.
+    let form: FormData;
+    try { form = await readFormData(request, 2 * MAX_UPLOAD + 64 * 1024); }
+    catch (error) {
+      return error instanceof BodyTooLarge
+        ? json({ ok: false, error: 'That photo is too big. Try a smaller one.' }, 413)
+        : json({ ok: false, error: 'That upload could not be read. Reload the page and try again.' }, 400);
+    }
     const slot = slotFrom(form);
     if (!slot) return json({ ok: false, error: 'That photo slot could not be found. Reload the page.' }, 400);
 

@@ -13,10 +13,14 @@ const FALLBACK_ITEMS: Item[] = menuBaseline.items.map(item => ({ ...item, descri
 
 export { getWeeklySpecialsForDateRange, type WeeklySpecial } from './specials-store';
 
+// Explicit columns: only what Category and Item carry, never future additions.
+export const CATEGORY_COLUMNS = 'id, name, sort, subtitle, note';
+export const ITEM_COLUMNS = 'id, category_id, name, description, sort, active, photo_key, photo_orientation, late_night';
+
 export async function getMenu(env: any): Promise<{ categories: Category[]; items: Item[] }> {
   try {
-    const cats = await env.DB.prepare('SELECT * FROM categories ORDER BY sort, id').all();
-    const items = await env.DB.prepare('SELECT * FROM items WHERE active = 1 ORDER BY category_id, sort, id').all();
+    const cats = await env.DB.prepare(`SELECT ${CATEGORY_COLUMNS} FROM categories ORDER BY sort, id`).all();
+    const items = await env.DB.prepare(`SELECT ${ITEM_COLUMNS} FROM items WHERE active = 1 ORDER BY category_id, sort, id`).all();
     if (cats.results?.length) return { categories: cats.results as Category[], items: (items.results ?? []) as Item[] };
   } catch {}
   return { categories: FALLBACK_CATEGORIES, items: FALLBACK_ITEMS.filter(item => item.active === 1) };

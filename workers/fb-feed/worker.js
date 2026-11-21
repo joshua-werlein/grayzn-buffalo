@@ -54,6 +54,35 @@ function cleanMessage(value) {
   // if Meta includes one in a future response shape.
   return value.replace(/(?:\r?\n)?(?:See more|See less)\s*$/i, '').trim();
 }
+// Outbound fetches are bounded: a stalled Graph or image CDN response must not
+// hold a cron or queue invocation open. A timeout surfaces as a transient
+// failure ("TimeoutError"), never as a complete scan or a usable image.
+const GRAPH_TIMEOUT_MS = 15000;
+const IMAGE_TIMEOUT_MS = 20000;
+export const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+/** The body, or null when it is (or declares itself) larger than max. */
+export async function readCappedBody(response, max) {
+  const declared = response.headers.get('content-length');
+  if (declared !== null && /^\d+$/.test(declared.trim()) && Number(declared) > max) {
+    await response.body?.cancel().catch(() => {});
+    return null;
+  }
+  const reader = response.body?.getReader();
+  if (!reader) return new Uint8Array();
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) { await reader.cancel().catch(() => {}); return null; }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+  return body;
+}
 const IMAGE_FORMATS = {
   'image/jpeg': { extension: 'jpg', contentType: 'image/jpeg' },
   'image/png': { extension: 'png', contentType: 'image/png' },
@@ -116,11 +145,16 @@ async function saveImage(post, env, previousPost) {
     return { imageKey: key, imageUrl: `/img/${key}`, imageSourceVersion: sourceVersion };
   }
   try {
-    const response = await fetch(post.full_picture);
+    const response = await fetch(post.full_picture, { signal: AbortSignal.timeout(IMAGE_TIMEOUT_MS) });
     if (!response.ok) throw new Error(`Facebook image returned ${response.status}`);
     const format = imageFormat(response.headers.get('content-type'));
+    // A declared length streams straight to R2; otherwise buffer, capped.
+    const declared = response.headers.get('content-length');
+    const known = declared !== null && /^\d+$/.test(declared.trim()) && Number(declared) <= IMAGE_MAX_BYTES;
+    const body = known ? response.body : await readCappedBody(response, IMAGE_MAX_BYTES);
+    if (!body) throw new Error('Facebook image is too large');
     const key = imageKey(post.id, await versionToken(sourceVersion), format.extension);
-    await env.PHOTOS.put(key, response.body, { httpMetadata: { contentType: format.contentType } });
+    await env.PHOTOS.put(key, body, { httpMetadata: { contentType: format.contentType } });
     return { imageKey: key, imageUrl: `/img/${key}`, imageSourceVersion: sourceVersion };
   } catch (error) {
     const previousKey = imageKeyFromPost(previousPost ?? {});
@@ -191,7 +225,7 @@ async function refreshFeed(env) {
   url.search = new URLSearchParams({ fields: 'id,message,created_time,updated_time,permalink_url,full_picture', limit: String(MAX_POSTS) }).toString();
   let response;
   try {
-    response = await fetch(url, { headers: { Authorization: `Bearer ${env.FB_SYSTEM_TOKEN}` } });
+    response = await fetch(url, { headers: { Authorization: `Bearer ${env.FB_SYSTEM_TOKEN}` }, signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) });
   } catch (error) {
     console.error('Facebook Graph API request failed', String(error));
     return;
@@ -321,7 +355,7 @@ async function fetchScanPosts(env, now, window) {
   try {
     // Page only within today's bounds; never fall back to a recent-post scan.
     for (let page=0;page<10;page++) {
-      const response = await fetch(url, { headers: { Authorization: `Bearer ${env.FB_SYSTEM_TOKEN}` } });
+      const response = await fetch(url, { headers: { Authorization: `Bearer ${env.FB_SYSTEM_TOKEN}` }, signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) });
       if (!response.ok) return null;
       const result = await response.json();
       if (!Array.isArray(result?.data)) return null;
@@ -343,12 +377,14 @@ async function fetchScanPosts(env, now, window) {
 async function readImportImage(env, post) {
   if (!post.full_picture) return { imageR2Key: null, imageHash: null };
   try {
-    const response = await fetch(post.full_picture);
+    const response = await fetch(post.full_picture, {signal: AbortSignal.timeout(IMAGE_TIMEOUT_MS)});
     if (!response.ok) return {imageR2Key:null,imageHash:null,
       transient:isTransientFailure({status:response.status}),reason:`Image HTTP ${response.status}`};
     const format = imageFormat(response.headers.get('content-type'));
-    const bytes = await response.arrayBuffer();
-    const data = new Uint8Array(bytes);
+    // Stop reading past the limit instead of buffering an oversized image first.
+    const data = await readCappedBody(response, IMAGE_MAX_BYTES);
+    if (!data) return {imageR2Key:null,imageHash:null,reason:'invalid or oversized image'};
+    const bytes = data.buffer;
     const starts = signature => signature.every((byte,i)=>data[i]===byte);
     const valid = format.contentType === 'image/jpeg' ? starts([255,216,255]) :
       format.contentType === 'image/png' ? starts([137,80,78,71,13,10,26,10]) :

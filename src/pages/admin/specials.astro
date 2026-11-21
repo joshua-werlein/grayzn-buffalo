@@ -11,6 +11,8 @@ import { DAY_NUMBERS, DAY_NAMES, blankGroup, newWeekFromDefaults, wingEditorValu
 import {withSoupControls} from '../../lib/daily-soup.js';
 import {readWingAttention} from '../../../workers/fb-feed/wing-review.js';
 import {wingWeekFor} from '../../lib/wing-wednesday.js';
+import {readFormData, rejectedBody, STAFF_FORM_LIMIT} from '../../lib/request-body';
+import {staffErrorMessage} from '../../lib/staff-error';
 const env = runtimeEnv(Astro.locals);
 if (!(await isAuthed(Astro.cookies, env))) return Astro.redirect('/admin');
 const empty = (kind: SpecialCollection['kind'], id=''): SpecialCollection => ({ id,kind,weekly_special_id:null,title:'',schedule:'',revision:0,groups:[] });
@@ -43,9 +45,10 @@ if (Number.isSafeInteger(requestedId) && requestedId>0) {
 else ready=false;
 weekly=withSoupControls(weekly);
 if (Astro.request.method==='POST') {
-  const form=await Astro.request.formData();
-  const action=String(form.get('action') ?? 'save-weekly-specials');
   const json=Astro.request.headers.get('accept')?.includes('application/json');
+  let form: FormData;
+  try { form=await readFormData(Astro.request,STAFF_FORM_LIMIT); } catch (caught) { return rejectedBody(caught,json); }
+  const action=String(form.get('action') ?? 'save-weekly-specials');
   try {
     // Astro already checks form origins. This explicit check also covers future
     // content types; no separate CSRF framework or shared abstraction is needed.
@@ -99,7 +102,7 @@ if (Astro.request.method==='POST') {
       return Astro.redirect(`/admin/specials?event=created#${encodeURIComponent(id)}`,303);
     } else throw new Error('Invalid form action.');
   } catch (caught) {
-    const message=caught instanceof Error ? caught.message : 'Could not save specials.';
+    const message=staffErrorMessage(caught,'Could not save specials. Nothing was changed; reload the page and try again.');
     if (json) return Response.json({ok:false,error:message},{status:caught instanceof SpecialConflict || caught instanceof EventConflict || caught instanceof EventDuplicate ? 409 : 400});
     if (form.get('action')==='create-event') {
       // The Add Special Event form reopens with everything staff typed.
