@@ -142,6 +142,18 @@ Production browser checks confirmed the same choices and transferred bytes at 39
 | Local browser | Confirmed candidate selection, byte counts, sign appearance, link, dimensions and noindex treatment. |
 | `git diff --check` | Passed. |
 
+## Welcome photo layout fix · Local verification
+
+The browser showed that `object-fit: contain` centered each printed frame inside a box with a different aspect ratio, while the photo aperture's percentage dimensions filled that larger box. The worst measured aperture mismatch was about 53 CSS pixels at 620 pixels. Earlier `grid-auto-rows` rules also constrained the final photo grid, putting the tagline about 41 pixels inside the frames' vertical bounds at 900 pixels.
+
+Each frame now determines the aspect ratio of its grid item. Its artwork and image aperture share that box, with the existing responsive height caps translated into width caps. The grid rows grow with the frames, the tagline follows in normal document flow, and the wood section can grow beyond its desktop background minimum height. The paper artwork, rotations, crop settings, hover lift, photo cycling, and lightbox were retained. The keyboard outline is drawn around the holder where it remains visible.
+
+Local Edge checks used the real holder artwork and local fixture images at 1920, 1440, 1366, 1280, 1024, 900, 768, 620, 390 and 360 CSS pixels. Aperture alignment stayed within one CSS pixel, the tagline stayed at least 30 pixels below the rotated frames, and the page had no horizontal overflow. Before-and-after captures at 1366, 1280, 1024, 900, 620, 390 and 360 pixels are in `.wrangler/welcome-overflow-evidence` in the primary checkout.
+
+Interaction checks verified the hover lift, visible keyboard focus, Enter to open the lightbox, Escape with focus restoration, cycling paused while the lightbox was open, normal timed transitions, and static photos and tagline under reduced motion. All 496 application tests passed with zero failures or skips. Astro check passed with zero errors, zero warnings and 28 hints. The local production build and `git diff --check` passed.
+
+Branch `codex/welcome-photo-overflow` is based on `c2630201b0d75bcf9cd0b49c5b2d83c42fc0f863`. The change awaits owner review and approval to merge or deploy. Photos and Reviews remains a separate assignment after approval of this fix.
+
 ## Seven-item backlog
 
 | # | Priority | Task | Current status | Exact next action |
@@ -150,7 +162,7 @@ Production browser checks confirmed the same choices and transferred bytes at 39
 | 2 | High | Cloudflare security configuration audit | Completed within verified scope. Account phases and crawler verification remain open. | Request read-only account WAF evidence and use Search Console if the owner wants to close those gaps. Obtain separate approval for a particular configuration change. |
 | 3 | Medium | Complete R2 backup inventory | Complete at the November 22 cut-off. | Keep the archive pair and local key available for recovery, then agree an owner and cadence for later snapshots. |
 | 4 | Medium | Refresh emergency fallback menu | Deployed and verified November 22. | Refresh the snapshot again after material menu edits using the read-only recovery procedure. |
-| 5 | Feature | Photos and Reviews | Pending. Next customer-facing feature. | Inspect current routes, components and R2 image assets. Obtain the owner's approved method for showing genuine Google reviews. Design for mobile, accessibility and SEO, then implement and test locally. |
+| 5 | Feature | Photos and Reviews | Pending. Next customer-facing feature after approval of the Welcome fix. | Review the agreed requirements, existing photo infrastructure, genuine Google review links, mobile image delivery and accessibility. Implement behind access restrictions and add public footer navigation after owner approval. |
 | 6 | Release validation | Final performance, accessibility, mobile and SEO audit | Waiting on task 5. | Audit the finished public pages for Lighthouse and Core Web Vitals, mobile layout, keyboard and screen-reader navigation, imaging, metadata, sitemaps, structured data and indexing. Run the site regression suite. |
 | 7 | Medium | Facebook alert snapshot optimization | Deployed and verified. Responsive footer artwork also deployed and verified. | Observe production D1 metrics over a representative window. Follow up on `recovery-d1.test.js` if the Miniflare failure recurs. |
 

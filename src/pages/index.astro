@@ -76,15 +76,16 @@ for (let round = 0; categoryPhotoQueues.some((queue) => round < queue.length); r
 // holder count is derived separately so it never exceeds four regardless of the cap.
 const cappedWelcomeTiles = welcomeTiles.slice(0, 12);
 const welcomeSlotCount = Math.min(4, cappedWelcomeTiles.length);
-const welcomePhotoSlots = Array.from({ length: welcomeSlotCount }, (_, slotIndex) =>
-  cappedWelcomeTiles.filter((_, tileIndex) => tileIndex % welcomeSlotCount === slotIndex),
-);
 const welcomeHolderAssets = [
   { src: '/images/welcome/photo1.webp', small: '/images/welcome/photo1-400.webp', width: 800, height: 1000 },
   { src: '/images/welcome/photo2.webp', small: '/images/welcome/photo2-400.webp', width: 800, height: 1000 },
   { src: '/images/welcome/photo3.webp', small: '/images/welcome/photo3-400.webp', width: 820, height: 1000 },
   { src: '/images/welcome/photo4.webp', small: '/images/welcome/photo4-400.webp', width: 800, height: 1000 },
 ];
+const welcomePhotoSlots = Array.from({ length: welcomeSlotCount }, (_, slotIndex) => ({
+  holder: welcomeHolderAssets[slotIndex],
+  tiles: cappedWelcomeTiles.filter((_, tileIndex) => tileIndex % welcomeSlotCount === slotIndex),
+}));
 ---
 <Base>
 <header class="hero" id="top">
@@ -150,10 +151,10 @@ const welcomeHolderAssets = [
     <img class="welcome-divider" src="/images/welcome/center-divider.webp" alt="" aria-hidden="true" width="700" height="233" loading="lazy" decoding="async" />
     {welcomePhotoSlots.length > 0 && (
       <div class="photo-stack" role="region" aria-label="Welcome and menu photos" tabindex="0">
-        {welcomePhotoSlots.map((slot, slotIndex) => (
-          <div class={`photo-position photo-position--${slotIndex + 1}`}>
+        {welcomePhotoSlots.map(({ holder, tiles }, slotIndex) => (
+          <div class={`photo-position photo-position--${slotIndex + 1}`} style={`--holder-ratio:${holder.width / holder.height}`}>
             <div class="photo-viewport">
-            {slot.map((tile, photoIndex) => {
+            {tiles.map((tile, photoIndex) => {
         const { photo, menuItem } = tile;
         const photoKey = photo.photo_key;
         if (!photoKey) return null;
@@ -191,21 +192,18 @@ const welcomeHolderAssets = [
         );
       })}
             </div>
-            {(() => {
-              const holder = welcomeHolderAssets[slotIndex % welcomeHolderAssets.length];
-              return <img
-                class="photo-holder"
-                src={holder.src}
-                srcset={`${holder.small} 400w, ${holder.src} ${holder.width}w`}
-                sizes="(max-width: 600px) 46vw, (max-width: 900px) 40vw, 240px"
-                alt=""
-                aria-hidden="true"
-                width={holder.width}
-                height={holder.height}
-                loading="lazy"
-                decoding="async"
-              />;
-            })()}
+            <img
+              class="photo-holder"
+              src={holder.src}
+              srcset={`${holder.small} 400w, ${holder.src} ${holder.width}w`}
+              sizes="(max-width: 600px) 46vw, (max-width: 900px) 40vw, 240px"
+              alt=""
+              aria-hidden="true"
+              width={holder.width}
+              height={holder.height}
+              loading="lazy"
+              decoding="async"
+            />
           </div>
         ))}
       </div>
@@ -757,19 +755,22 @@ const welcomeHolderAssets = [
   }
 
   /* Barn-door Welcome and tavern-table Menu environments. */
-  #welcome{box-sizing:border-box;aspect-ratio:1920 / 867;min-height:0;padding:clamp(34px,3vw,46px) clamp(16px,4vw,48px) clamp(16px,2vw,26px);background:#21160f url('/images/welcome/welcome-background.webp') center top / 100% 100% no-repeat;color:#f1d9a4}
+  #welcome{box-sizing:border-box;min-height:calc(100vw * 867 / 1920);padding:clamp(34px,3vw,46px) clamp(16px,4vw,48px) clamp(16px,2vw,26px);background:#21160f url('/images/welcome/welcome-background.webp') center top / 100% 100% no-repeat;color:#f1d9a4}
   #welcome .welcome-grid{display:block;max-width:1280px;margin:0 auto}
   #welcome .welcome-copy{max-width:1080px;margin:0 auto;text-align:center}
   #welcome .welcome-title{grid-template-columns:minmax(44px,1fr) auto auto auto minmax(44px,1fr);max-width:1080px;margin:0 auto;color:#f1d9a4}
   #welcome .welcome-copy p{max-width:68ch;color:#f7e5bc;font-size:clamp(.98rem,1.3vw,1.1rem);line-height:1.42;text-shadow:0 1px 2px rgba(24,12,7,.75)}
   #welcome .welcome-intro{position:relative;top:-10px;margin:clamp(42px,3.4vw,52px) auto 0}
   #welcome .welcome-divider{position:relative;top:-10px;display:block;width:clamp(180px,15vw,230px);height:auto;margin:4px auto 0;pointer-events:none}
-  #welcome .photo-stack{position:relative;top:-20px;display:grid;width:min(100%,950px);margin:6px auto 0;padding:0;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(14px,1.8vw,24px);overflow:visible}
-  #welcome .photo-position{--photo-tilt:-2deg;position:relative;height:clamp(238px,18vw,260px);min-width:0;transform:rotate(var(--photo-tilt));filter:drop-shadow(3px 8px 6px rgba(16,8,4,.5));transition:transform .2s ease,filter .2s ease}
-  #welcome .photo-position--2{--photo-tilt:1.6deg;top:10px}
-  #welcome .photo-position--3{--photo-tilt:-1.3deg;top:-5px}
-  #welcome .photo-position--4{--photo-tilt:2.1deg;top:8px}
+  #welcome .photo-stack{--holder-max-height:clamp(238px,18vw,260px);position:relative;top:-20px;display:grid;width:min(100%,950px);margin:6px auto 0;padding:0;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:auto;gap:clamp(14px,1.8vw,24px);overflow:visible}
+  /* Size the grid item to the artwork so the frame and aperture share one box.
+     Keep the old height caps as width caps at each frame's intrinsic ratio. */
+  #welcome .photo-position{--photo-tilt:-2deg;position:relative;width:100%;max-width:calc(var(--holder-max-height) * var(--holder-ratio));aspect-ratio:var(--holder-ratio);min-width:0;justify-self:center;align-self:start;transform:rotate(var(--photo-tilt));filter:drop-shadow(3px 8px 6px rgba(16,8,4,.5));transition:transform .2s ease,filter .2s ease}
+  #welcome .photo-position--2{--photo-tilt:1.6deg;margin-top:10px}
+  #welcome .photo-position--3{--photo-tilt:-1.3deg;margin-top:-5px}
+  #welcome .photo-position--4{--photo-tilt:2.1deg;margin-top:8px}
   #welcome .photo-position:hover{z-index:2;transform:translateY(-5px) rotate(0);filter:drop-shadow(4px 13px 10px rgba(16,8,4,.58))}
+  #welcome .photo-position:has(.photo:focus-visible){z-index:2;outline:3px solid var(--gold);outline-offset:3px}
   /* The transparent windows differ slightly between the four paper holders. */
   #welcome .photo-viewport{position:absolute;z-index:0;top:var(--viewport-top);left:var(--viewport-left);width:var(--viewport-width);height:var(--viewport-height);overflow:hidden;isolation:isolate;clip-path:inset(0);background:#1f120b}
   #welcome .photo-position--1{--viewport-left:6.375%;--viewport-top:5.4%;--viewport-width:87.75%;--viewport-height:72.1%}
@@ -788,7 +789,7 @@ const welcomeHolderAssets = [
   #welcome .photo-position .photo--landscape img{object-position:50% 50%}
   #welcome .photo-position .photo span{position:absolute;right:0;bottom:0;left:0;width:auto;padding:5px 7px;background:linear-gradient(transparent,rgba(25,13,7,.8));color:var(--cream);font-size:.62rem}
   #welcome .photo-holder{position:absolute;z-index:1;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none}
-  #welcome .welcome-closing{position:relative;top:12px;max-width:760px;margin:10px auto 0;padding:0;color:#f1d9a4}
+  #welcome .welcome-closing{max-width:760px;margin:clamp(12px,2vw,24px) auto 0;padding:0;color:#f1d9a4}
   #welcome .welcome-script{display:block;margin:0;color:#f1d9a4;text-align:center;text-shadow:0 1px 2px rgba(24,12,7,.85)}
   #welcome .welcome-script__visual{display:flex;align-items:center;justify-content:center;gap:clamp(10px,1.8vw,18px);white-space:nowrap}
   #welcome .welcome-script::before,#welcome .welcome-script::after{content:none}
@@ -799,10 +800,6 @@ const welcomeHolderAssets = [
   #welcome .welcome-script__compact span:nth-child(3){animation-delay:10s}
   #welcome .welcome-script__flourish{display:block;width:clamp(72px,9vw,120px);height:auto;flex:0 1 auto;opacity:.92;pointer-events:none}
   #welcome .welcome-script__flourish--right{transform:scaleX(-1)}
-
-  @media (min-width:1101px){
-    #welcome .welcome-closing{position:relative;top:clamp(40px,3.7vw,54px);margin:10px auto 0}
-  }
 
   #menu-preview{min-height:clamp(880px,72vw,1080px);padding:clamp(58px,6vw,94px) clamp(16px,4vw,48px) clamp(52px,5vw,84px);background:#21140d url('/images/menu/menu-background.webp') center top / cover no-repeat;box-shadow:none}
   #menu-preview::before,#menu-preview::after{content:none}
@@ -820,7 +817,7 @@ const welcomeHolderAssets = [
   #menu-preview .menu-card:hover::after{content:"";position:absolute;z-index:-1;inset:-2px -2px -9px}
 
   @media (max-width:1100px){
-    #welcome{aspect-ratio:auto;padding:42px 16px 36px;background-size:auto 100%;background-position:center top}
+    #welcome{min-height:0;padding:42px 16px 36px;background-size:auto 100%;background-position:center top}
     #welcome .welcome-intro{margin-top:clamp(62px,8vw,82px)}
   }
   /* Three 4:3 sheets are too small for their copy at tablet widths: two up, Specials centred beneath. */
@@ -832,8 +829,7 @@ const welcomeHolderAssets = [
     #welcome{padding:42px 16px 48px;background-size:auto 100%;background-position:center top}
     #welcome .welcome-intro{margin-top:clamp(78px,13vw,112px)}
     #welcome .welcome-divider{width:clamp(160px,28vw,210px)}
-    #welcome .photo-stack{grid-template-columns:repeat(2,minmax(0,1fr));max-width:610px;gap:12px 22px}
-    #welcome .photo-position{height:clamp(250px,52vw,330px)}
+    #welcome .photo-stack{--holder-max-height:clamp(250px,52vw,330px);grid-template-columns:repeat(2,minmax(0,1fr));max-width:610px;gap:22px}
     #menu-preview{min-height:0;background-size:auto 900px;background-repeat:no-repeat;background-color:#25160d}
     #menu-preview .menu-cards{margin-top:clamp(160px,20vw,210px);max-width:760px}
   }
@@ -843,9 +839,9 @@ const welcomeHolderAssets = [
     #welcome .welcome-title{grid-template-columns:minmax(16px,1fr) auto auto auto minmax(16px,1fr);margin:0 auto}
     #welcome .welcome-intro{margin:clamp(72px,24vw,98px) auto 0}
     #welcome .welcome-divider{margin-top:4px}
-    #welcome .photo-stack{width:100%;margin-top:6px;gap:12px}
-    #welcome .photo-position{height:clamp(210px,60vw,290px)}
-    #welcome .photo-position--2{top:5px}#welcome .photo-position--3{top:0}#welcome .photo-position--4{top:5px}
+    #welcome .photo-stack{--holder-max-height:clamp(210px,60vw,290px);width:100%;margin-top:6px;gap:16px 12px}
+    #welcome .photo-position--2,#welcome .photo-position--4{margin-top:5px}
+    #welcome .photo-position--3{margin-top:0}
     #welcome .welcome-closing{margin-top:16px}
     #welcome .welcome-script__visual{gap:8px}
     #welcome .welcome-script__flourish{width:clamp(54px,16vw,72px)}
