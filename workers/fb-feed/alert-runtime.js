@@ -442,28 +442,25 @@ async function assess(env,scan,snap) {
 // Every other incident of the day in that scope takes the current state (superseded by a newer,
 // different failure, or resolved/pending/suppressed), so an unsent stale
 // failure cannot send and a resolution clears all of them.
-function recordFingerprinted(env,scan,scope,code,observation,evidence) {
-  const fence=alertEvidenceFence(evidence,6);
+function recordFingerprinted(env,scan,scope,code,observation,evidence,writeToken) {
   const key=observation.state==='attention' && observation.fingerprint ? `${scan.day}:${scope}:${code}:${observation.fingerprint}` : '';
   const others=env.DB.prepare(`UPDATE facebook_alert_incidents SET state=?3,observed_ms=?4
     WHERE day=?1 AND scope='${scope}' AND incident_key<>?2 AND observed_ms<=?4
-      AND EXISTS(SELECT 1 FROM facebook_alert_scans WHERE day=?1 AND token=?5 AND completed_ms IS NOT NULL)
-      ${fence.sql}`).bind(scan.day,key,observation.state==='attention'?'suppressed':observation.state,scan.started_ms,scan.token,...fence.args);
-  return key ? [others,recordVerified(env,scan,scope,observation,evidence,key)] : [others];
+      AND EXISTS(SELECT 1 FROM facebook_alert_scans WHERE day=?1 AND token=?5 AND completed_ms IS NOT NULL)`)
+    .bind(scan.day,key,observation.state==='attention'?'suppressed':observation.state,scan.started_ms,writeToken);
+  return key ? [others,recordVerified(env,scan,scope,observation,evidence,writeToken,key)] : [others];
 }
 
-function recordVerified(env,scan,scope,observation,evidence,incidentKey=null) {
-  const {hash}=evidence,fence=alertEvidenceFence(evidence,10);
+function recordVerified(env,scan,scope,observation,evidence,writeToken,incidentKey=null) {
   const code=scope.startsWith('image_')?'automation_failed':scope==='daily'?'publication_blocked':scope==='weekly'?'weekly_lunch_failed':scope==='wing'?'wing_wednesday_failed':scope==='mexican'?'mexican_night_failed':scope==='event'?'special_event_held':'delivery_failed';
   const deliveryEnd=Date.parse(deliveryWindow(new Date(scan.completed_ms)).expiresAt);
-  const proof=JSON.stringify({version:1,token:scan.token,hash,cause:observation.cause,parser:scan.parser,
+  const proof=JSON.stringify({version:1,token:scan.token,hash:evidence.hash,cause:observation.cause,parser:scan.parser,
     ...(observation.fingerprint?{fingerprint:observation.fingerprint}:{}),
     expires_ms:scope==='delivery' ? Math.min(scan.completed_ms+FRESH_MS,deliveryEnd) : scan.completed_ms+FRESH_MS});
   return env.DB.prepare(`INSERT INTO facebook_alert_incidents
     (incident_key,day,scope,code,state,first_seen_ms,observed_ms,due_ms,proof_json)
     SELECT ?1,?2,?3,?4,?5,?6,?6,?7,?8 WHERE EXISTS(SELECT 1 FROM facebook_alert_scans
       WHERE day=?2 AND token=?9 AND completed_ms IS NOT NULL)
-      ${fence.sql}
       AND (?5='attention' OR EXISTS(SELECT 1 FROM facebook_alert_incidents WHERE incident_key=?1))
     ON CONFLICT(incident_key) DO UPDATE SET state=excluded.state,observed_ms=excluded.observed_ms,proof_json=excluded.proof_json,
       first_seen_ms=CASE WHEN facebook_alert_incidents.state='attention' AND excluded.state='attention'
@@ -472,7 +469,7 @@ function recordVerified(env,scan,scope,observation,evidence,incidentKey=null) {
         THEN facebook_alert_incidents.due_ms ELSE excluded.due_ms END
     WHERE excluded.observed_ms>=facebook_alert_incidents.observed_ms`)
     .bind(incidentKey ?? `${scan.day}:${scope}:${code}`,scan.day,scope,code,observation.state,scan.started_ms,
-      scan.completed_ms+ALERT_GRACE_MS,proof,scan.token,...fence.args);
+      scan.completed_ms+ALERT_GRACE_MS,proof,writeToken);
 }
 
 export async function revalidateAlert(env,row,{withEvidence=false}={}) {
@@ -554,26 +551,29 @@ export async function finishAlertScan(env,context,sourceIds,options={}) {
     if(!before) {await mark('skipped','evidence_changed');return;}
     const outcomes=await assess(env,scan,before),after=await snapshot(env,scan);
     if(after?.hash!==before.hash) {await mark('skipped','evidence_changed');return;}
-    // Both incident outcomes and successful evaluation are committed together.
-    // A failed batch rolls back all three, and the token/fence protects against
-    // newer scans or business writes between assessment and persistence.
+    // D1 executes this batch in one transaction. Check the full snapshot once,
+    // then gate every incident write on a token issued only by that check.
+    // The last statement restores the scan token used by the proofs. The
+    // temporary token is never visible to dispatch or another transaction.
     const fence=alertEvidenceFence(before,4);
+    const writeToken=`evaluation:${crypto.randomUUID()}`;
     const imageScopes=Object.keys(outcomes).filter(scope=>scope.startsWith('image_'));
-    const imageFence=alertEvidenceFence(before,5);
     const persisted=await env.DB.batch([
-      ...['daily','delivery','mexican','event'].map(scope=>recordVerified(env,scan,scope,outcomes[scope],before)),
-      ...recordFingerprinted(env,scan,'weekly','weekly_lunch_failed',outcomes.weekly,before),
-      ...recordFingerprinted(env,scan,'wing','wing_wednesday_failed',outcomes.wing,before),
+      env.DB.prepare(`UPDATE facebook_alert_scans SET token=?3
+        WHERE day=?1 AND token=?2 AND completed_ms IS NOT NULL ${fence.sql}`)
+        .bind(scan.day,scan.token,writeToken,...fence.args),
+      ...['daily','delivery','mexican','event'].map(scope=>recordVerified(env,scan,scope,outcomes[scope],before,writeToken)),
+      ...recordFingerprinted(env,scan,'weekly','weekly_lunch_failed',outcomes.weekly,before,writeToken),
+      ...recordFingerprinted(env,scan,'wing','wing_wednesday_failed',outcomes.wing,before,writeToken),
       // A removed/superseded post cannot leave an unsent technical alert live.
       env.DB.prepare(`UPDATE facebook_alert_incidents SET state='suppressed',observed_ms=?2
         WHERE day=?1 AND scope GLOB 'image_*' AND observed_ms<=?2
           AND scope NOT IN (SELECT value FROM json_each(?3))
-          AND EXISTS(SELECT 1 FROM facebook_alert_scans WHERE day=?1 AND token=?4 AND completed_ms IS NOT NULL)
-          ${imageFence.sql}`).bind(scan.day,scan.started_ms,JSON.stringify(imageScopes),scan.token,...imageFence.args),
-      ...imageScopes.map(scope=>recordVerified(env,scan,scope,outcomes[scope],before)),
-      env.DB.prepare(`UPDATE facebook_alert_scans SET evaluated_ms=?3,evaluation_state='complete',evaluation_error=NULL
-        WHERE day=?1 AND token=?2 ${fence.sql}`)
-        .bind(scan.day,scan.token,Date.now(),...fence.args),
+          AND EXISTS(SELECT 1 FROM facebook_alert_scans WHERE day=?1 AND token=?4 AND completed_ms IS NOT NULL)`)
+        .bind(scan.day,scan.started_ms,JSON.stringify(imageScopes),writeToken),
+      ...imageScopes.map(scope=>recordVerified(env,scan,scope,outcomes[scope],before,writeToken)),
+      env.DB.prepare(`UPDATE facebook_alert_scans SET token=?3,evaluated_ms=?4,evaluation_state='complete',evaluation_error=NULL
+        WHERE day=?1 AND token=?2`).bind(scan.day,writeToken,scan.token,Date.now()),
     ]);
     if(persisted.at(-1).meta?.changes!==1) {await mark('skipped','evidence_changed');return;}
     console.log('Facebook alert observation',{daily:outcomes.daily.state,delivery:outcomes.delivery.state,weekly:outcomes.weekly.state,wing:outcomes.wing.state,mexican:outcomes.mexican.state,event:outcomes.event.state});
