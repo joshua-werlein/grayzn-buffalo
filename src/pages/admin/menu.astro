@@ -2,6 +2,7 @@
 import { runtimeEnv } from '../../lib/runtime-env';
 import Base from '../../layouts/Base.astro';
 import { isAuthed } from '../../lib/auth';
+import { reviewPreviewEnabled } from '../../lib/review-preview';
 import { thumbKey, CATEGORY_COLUMNS, ITEM_COLUMNS } from '../../lib/db';
 import { readFormData, rejectedBody, STAFF_FORM_LIMIT } from '../../lib/request-body';
 import { staffErrorMessage } from '../../lib/staff-error';
@@ -385,6 +386,7 @@ const pizzaEditor = pizzaDraft ? {
   <div class="section-head">
     <h2>Menu Items</h2>
     <p>Find an item, update its details, or add a photo.</p>
+    {reviewPreviewEnabled(Astro.url, env) && <p><a href="/admin/reviews">Manage Photos &amp; Reviews</a></p>}
     {notice && <p class="flash ok">{notice}</p>}
     {problem && <p class="flash bad">{problem}</p>}
   </div>

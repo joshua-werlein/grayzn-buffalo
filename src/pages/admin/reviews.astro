@@ -1,0 +1,223 @@
+---
+import Base from '../../layouts/Base.astro';
+import { isAuthed } from '../../lib/auth';
+import {
+  REVIEW_CATEGORIES, REVIEW_DESCRIPTION_LIMIT, reviewCsrf, reviewImageUrl,
+  reviewPreviewEnabled, reviewResponse, type ReviewCategory,
+} from '../../lib/review-preview';
+import { runtimeEnv } from '../../lib/runtime-env';
+
+const env = runtimeEnv(Astro.locals);
+if (!reviewPreviewEnabled(Astro.url, env)) return reviewResponse('Not found', 404);
+if (!await isAuthed(Astro.cookies, env)) return Astro.redirect('/admin?next=/admin/reviews', 302);
+if (!env.DB || !env.REVIEW_PHOTOS) return reviewResponse('Review storage is unavailable.', 503);
+const statuses = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn' } as const;
+type ReviewStatus = keyof typeof statuses;
+type Photo = {
+  id: string; submission_id: string; category: ReviewCategory; description: string;
+  status: ReviewStatus; revision: number; created_at: string; submission_count: number;
+};
+type MenuItem = { id: number; name: string; category: string };
+type Assignment = { photo_id: string; revision: string };
+const requested = Astro.url.searchParams.get('status') ?? '';
+const status: ReviewStatus = Object.hasOwn(statuses, requested) ? requested as ReviewStatus : 'pending';
+const requestedPage = Number(Astro.url.searchParams.get('page'));
+const page = Number.isSafeInteger(requestedPage) && requestedPage >= 1 && requestedPage <= 10000 ? requestedPage : 1;
+const pageSize = 20;
+const requestedItem = Number(Astro.url.searchParams.get('item'));
+const csrf = await reviewCsrf(Astro.cookies, env, 'moderate');
+let photos: Photo[];
+let items: MenuItem[];
+let food: Pick<Photo, 'id' | 'description'>[] = [];
+let assignment: Assignment | null = null;
+let selected: MenuItem | undefined;
+try {
+  const db = env.DB.withSession('first-primary');
+  const gallery = await db.prepare(
+    `SELECT id, submission_id, category, description, status, revision, created_at,
+      COUNT(*) OVER (PARTITION BY submission_id) AS submission_count
+     FROM review_photos WHERE status = ? ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`,
+  ).bind(status, pageSize + 1, (page - 1) * pageSize).all();
+  photos = gallery.results;
+  const menu = await db.prepare(
+    `SELECT i.id, i.name, c.name AS category FROM items i JOIN categories c ON c.id = i.category_id
+     WHERE i.active = 1 ORDER BY c.sort, c.id, i.sort, i.name, i.id`,
+  ).all();
+  items = menu.results;
+  selected = items.find(item => item.id === requestedItem);
+  if (selected) {
+    const result = await db.prepare(
+      "SELECT id, description FROM review_photos WHERE status = 'approved' AND category = 'food' ORDER BY description, id",
+    ).all();
+    food = result.results;
+    assignment = await db.prepare(
+      'SELECT photo_id, revision FROM review_menu_photos WHERE item_id = ?',
+    ).bind(selected.id).first();
+  }
+} catch {
+  return reviewResponse('Review storage is unavailable.', 503);
+}
+const feedbacks: Record<string, string> = {
+  approve: 'Photo approved.',
+  edit: 'Photo updated.',
+  reject: 'Photo rejected.',
+  'reject-submission': 'Pending photos in this submission were rejected.',
+  withdraw: 'Photo withdrawn and its menu associations removed.',
+  feature: 'Featured gallery photo saved.',
+  unfeature: 'Menu association removed.',
+  conflict: 'This photo or menu selection changed. Check the latest state and try again.',
+  invalid: 'The request was invalid. Nothing was saved.',
+  'too-large': 'The request was too large. Nothing was saved.',
+  unavailable: 'Review storage is temporarily unavailable. Check the current state before trying again.',
+  cleanup: 'The photo is hidden. Storage cleanup needs to be retried.',
+};
+const result = Astro.url.searchParams.get('result') ?? '';
+const feedback = Object.hasOwn(feedbacks, result) ? feedbacks[result] : '';
+const statusLink = (key: string, number = 1) => `/admin/reviews?status=${key}${number > 1 ? `&page=${number}` : ''}#moderation`;
+---
+
+<Base title="Manage Photos & Reviews — Grayz’n Buffalo">
+  <section class="review-admin">
+    <header>
+      <h1>Manage Photos &amp; Reviews</h1>
+      <div class="review-admin-links">
+        <a href="/reviews">Open gallery preview</a>
+        <a href="/menu">Open menu preview</a>
+        <a href="#menu-assignment">Feature a menu photo</a>
+      </div>
+    </header>
+    {feedback && <p class="moderation-notice" role="status">{feedback}</p>}
+    <section id="moderation" aria-labelledby="moderation-title">
+      <h2 id="moderation-title">Photo moderation</h2>
+      <nav class="review-admin-links" aria-label="Moderation status">
+        {Object.entries(statuses).map(([key, label]) =>
+          <a href={statusLink(key)} aria-current={status === key ? 'true' : undefined}>{label}</a>
+        )}
+      </nav>
+      {!photos.length && <p>No {status} photos on this page.</p>}
+      <ul class="photo-queue" role="list">
+        {photos.slice(0, pageSize).map(photo => (
+          <li>
+            {(status === 'pending' || status === 'approved') && (
+              <img src={`${reviewImageUrl(photo.id, 'medium')}${status === 'pending' ? '?moderation=1' : ''}`}
+                width="240" height="180" alt={photo.description} loading="lazy" decoding="async" />
+            )}
+            <div>
+              <h3>{photo.description}</h3>
+              <p>{statuses[status]} · {REVIEW_CATEGORIES[photo.category]}<br />
+                Submitted {photo.created_at.slice(0, 10)} · Submission {photo.submission_id.slice(0, 8)}
+              </p>
+              {(status === 'pending' || status === 'approved') && (
+                <div class="photo-actions">
+                  <form method="post" action="/admin/review-action">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="photo_id" value={photo.id} />
+                    <input type="hidden" name="revision" value={photo.revision} />
+                    <label>Category
+                      <select name="category" required>
+                        {Object.entries(REVIEW_CATEGORIES).map(([key, label]) =>
+                          <option value={key} selected={photo.category === key}>{label}</option>
+                        )}
+                      </select>
+                    </label>
+                    <label>Photo description
+                      <input name="description" value={photo.description} maxlength={REVIEW_DESCRIPTION_LIMIT} required />
+                    </label>
+                    <button class="btn btn-primary" name="action" value={status === 'pending' ? 'approve' : 'edit'}>
+                      {status === 'pending' ? 'Approve photo' : 'Save photo details'}
+                    </button>
+                  </form>
+                  <form method="post" action="/admin/review-action">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="photo_id" value={photo.id} />
+                    <input type="hidden" name="revision" value={photo.revision} />
+                    <button class="secondary" name="action" value={status === 'pending' ? 'reject' : 'withdraw'}>
+                      {status === 'pending' ? 'Reject photo' : 'Withdraw photo'}
+                    </button>
+                    {status === 'pending' && photo.submission_count > 1 && photos.find(p => p.submission_id === photo.submission_id)?.id === photo.id && (
+                      <button class="secondary" name="action" value="reject-submission">Reject pending photos in this submission</button>
+                    )}
+                  </form>
+                </div>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {(page > 1 || photos.length > pageSize) && (
+        <nav class="review-admin-links" aria-label="Moderation pages">
+          {page > 1 && <a href={statusLink(status, page - 1)}>Previous</a>}
+          {photos.length > pageSize && <a href={statusLink(status, page + 1)}>Next</a>}
+        </nav>
+      )}
+    </section>
+    <section id="menu-assignment" aria-labelledby="assignment-title">
+      <h2 id="assignment-title">Featured menu photo</h2>
+      <p>Choose an approved Food photo. The gallery photo takes precedence in the menu preview. Removing the association restores any existing staff photo.</p>
+      <form class="item-picker" action="/admin/reviews#menu-assignment">
+        <label>Menu item
+          <select name="item" required>
+            <option value="">Choose a menu item</option>
+            {items.map(item => <option value={item.id} selected={selected?.id === item.id}>{item.name} · {item.category}</option>)}
+          </select>
+        </label>
+        <button class="secondary">Load item</button>
+      </form>
+      {selected && (
+        <div class="menu-selection">
+          <h3>{selected.name}</h3>
+          {assignment && <img src={reviewImageUrl(assignment.photo_id, 'small')}
+            alt={food.find(photo => photo.id === assignment?.photo_id)?.description ?? 'Current featured photo'}
+            width="160" height="120" loading="lazy" decoding="async" />}
+          {food.length > 0 ? (
+            <form method="post" action="/admin/review-action">
+              <input type="hidden" name="csrf" value={csrf} />
+              <input type="hidden" name="item_id" value={selected.id} />
+              <input type="hidden" name="revision" value={assignment?.revision ?? ''} />
+              <label>Approved Food photo
+                <select name="photo_id" required>
+                  <option value="">Choose a photo</option>
+                  {food.map(photo => <option value={photo.id} selected={assignment?.photo_id === photo.id}>{photo.description} · {photo.id.slice(0, 8)}</option>)}
+                </select>
+              </label>
+              <button class="btn btn-primary" name="action" value="feature">Set featured photo</button>
+            </form>
+          ) : <p>No approved Food photos are available.</p>}
+          {assignment && (
+            <form method="post" action="/admin/review-action">
+              <input type="hidden" name="csrf" value={csrf} />
+              <input type="hidden" name="item_id" value={selected.id} />
+              <input type="hidden" name="photo_id" value={assignment.photo_id} />
+              <input type="hidden" name="revision" value={assignment.revision} />
+              <button class="secondary" name="action" value="unfeature">Remove menu association</button>
+            </form>
+          )}
+        </div>
+      )}
+    </section>
+  </section>
+</Base>
+
+<style>
+  .review-admin {max-width:1080px;margin-inline:auto;padding:24px clamp(14px,4vw,40px) 48px;color:var(--ink)}
+  h1,h2 {font-family:var(--display);font-weight:400}
+  h1 {font-size:clamp(1.5rem,5vw,2.35rem)}
+  h2 {font-size:clamp(1.25rem,4vw,1.75rem)}
+  h3 {overflow-wrap:anywhere;margin-top:0}
+  .review-admin section {margin-top:24px;padding:clamp(12px,3vw,24px);border:1px solid var(--rule);background:var(--cream)}
+  .review-admin-links {display:flex;flex-wrap:wrap;gap:8px}
+  .review-admin-links a,.secondary {display:inline-block;padding:8px 12px;border:1px solid var(--ink);border-radius:4px;background:var(--cream);color:var(--ink);font:inherit;font-weight:700;cursor:pointer}
+  .review-admin-links a[aria-current] {background:var(--ink);color:var(--cream)}
+  .photo-queue {padding:0;list-style:none}
+  .photo-queue li {display:grid;grid-template-columns:minmax(140px,240px) minmax(0,1fr);gap:16px;padding:14px 0;border-top:1px solid var(--rule)}
+  .photo-queue img,.menu-selection img {width:100%;height:auto;aspect-ratio:4/3;object-fit:contain;background:var(--ink)}
+  .menu-selection img {max-width:160px}
+  .photo-actions,.item-picker,.menu-selection {display:grid;gap:9px;justify-items:start}
+  label {display:block;margin-bottom:8px}
+  input:not([type=hidden]),select {display:block;max-width:100%;min-width:0;padding:7px;margin-top:5px;font:inherit;color:var(--ink);background:var(--cream);border:1px solid var(--rule)}
+  form {min-width:0;max-width:100%}
+  .menu-selection {margin-top:18px}
+  .moderation-notice {padding:10px 14px;border-inline-start:4px solid var(--btn-crimson);background:var(--cream)}
+  :is(a,button,input,select):focus-visible {outline:3px solid var(--ink);outline-offset:3px}
+  @media (max-width:650px) {.photo-queue li {grid-template-columns:1fr}.photo-queue img {max-width:240px}}
+</style>

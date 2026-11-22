@@ -1,6 +1,6 @@
 # Grayz'n Buffalo project status
 
-Updated November 22, 2026 (Central time). Admin session invalidation, the refreshed emergency menu, the Facebook alert optimization and responsive footer artwork are live. The Cloudflare audit is complete within the verified scope below. The full November 22 R2 snapshot is archived. Photos and Reviews is the next development phase.
+Updated November 22, 2026 (Central time). Admin session invalidation, the refreshed emergency menu, the Facebook alert optimization and responsive footer artwork are live. The Cloudflare audit is complete within the verified scope below. The full November 22 R2 snapshot is archived. Photos and Reviews is implemented on a private local feature branch and awaits owner review.
 
 ## Verified production baseline
 
@@ -154,6 +154,78 @@ Interaction checks verified the hover lift, visible keyboard focus, Enter to ope
 
 Branch `codex/welcome-photo-overflow` is based on `c2630201b0d75bcf9cd0b49c5b2d83c42fc0f863`. The change awaits owner review and approval to merge or deploy. Photos and Reviews remains a separate assignment after approval of this fix.
 
+## Photos and Reviews · Owner preview
+
+Implemented November 22, 2026 in the local `task/photos-and-reviews` worktree at `C:\Users\Jwerl\dev\.worktrees\grayzn-buffalo\photos-and-reviews`. The worktree belongs to the Photos and Reviews Codex chat and isolates the feature from the primary Welcome checkout. Its base is the verified `origin/main` tip, `8070438d3a5bb3290fb80fc74cb16d608bc97da7`. The site deployment workflow for that base was running when inspected. This feature stays in the local worktree for owner review. [PR #5 base](https://github.com/joshua-werlein/grayzn-buffalo/pull/5) · [Deployment workflow at branch creation](https://github.com/joshua-werlein/grayzn-buffalo/actions/runs/45065025259)
+
+- The gallery filters approved photos by Food, Drinks and The Bar. It reuses the site layout, typography and keyboard-operable lightbox. Cards use responsive 320px and 640px maximum-edge WebP variants, and opening the lightbox requests a variant up to 1440px. Google Maps showed 4.6 out of 5 from 291 reviews for the listing at 102 S Eau Claire St on November 22, 2026. The write-review link reached Google sign-in with the verified place ID in the return URL. [Read Google reviews](https://www.google.com/maps/search/?api=1&query=Grayz%27n+Buffalo+Bar+%26+Grill%2C+Mondovi%2C+WI&query_place_id=ChIJAwP5xdDv-IcRiYQJPU_9snY) · [Write a review](https://search.google.com/local/writereview?placeid=ChIJAwP5xdDv-IcRiYQJPU_9snY)
+- The upload form asks for a category, a description per photo and consent. It uses the existing Turnstile verification and bounded request reader. Up to three JPEG, PNG or WebP files are accepted, each up to 5 MiB and 24 megapixels. The aggregate body is capped at 15 MiB plus 32 KiB for form fields. The server checks the signature and dimensions, decodes and re-encodes each image, and retains only still-image WebP chunks in the displayed copies. A database uniqueness constraint prevents duplicate active photos, including competing submissions.
+- Staff sign in with the existing signed KV session. They can preview and approve pending photos, reject a photo or the remaining pending photos in its submission, update a description or category, and withdraw an approved photo. Same-origin POSTs, session-bound CSRF tokens, bounded bodies and conditional updates protect writes. D1 commits each submission as an atomic batch. Rejected and withdrawn images are immediately ineligible for delivery, and R2 deletion follows the D1 decision.
+- Staff select one approved Food photo per active menu item. It takes precedence in the signed-in menu preview. Removing the association restores any existing staff photo. Withdrawal or recategorizing a photo away from Food revokes the association in the same database statement. The original staff upload flow supersedes an association when staff change the item's photo key. The gallery stores its own objects, independently of Menu and Welcome storage.
+- The preview requires a valid staff session, the local preview binding value, and a loopback host. The local configuration disables Cloudflare's storage explorer, local observability and the debugger. The gallery and media responses are never cached or indexed. Protected image URLs serve approved variants, with a separate authenticated moderation mode for one pending thumbnail size. Original files have no HTTP serving route. The prior R2 audit found public R2 access disabled. The review bucket is still distinct so existing menu, Welcome and Facebook R2 objects remain outside the review workflow. Public navigation, footer links and the generated sitemap exclude the preview. [Existing R2 audit](security-reliability-audit-2026-11-08.md) · [Cloudflare Local Explorer](https://developers.cloudflare.com/workers/local-development/local-explorer/)
+
+### Open the local owner preview
+
+Open [Manage Photos and Reviews](http://127.0.0.1:4396/admin?next=/admin/reviews) on the machine running the preview. Sign in with the local fixture password from the worktree's ignored `.dev.vars`. Follow **Open gallery preview** to submit a photo or **Featured menu photo** to assign an approved Food photo to the local Cheeseburger fixture. The retained browser fixture gallery uses labeled site artwork. Use your own photos to inspect portrait images, descriptions and moderation.
+
+If the server has stopped, restart it in the feature worktree using the existing local fixtures.
+
+```powershell
+$env:GRAYZN_REVIEWS_LOCAL = '1'
+npx astro dev --host 127.0.0.1 --port 4396
+```
+
+For a fresh feature checkout, install the lockfile dependencies with `npm ci`. Create an ignored `.dev.vars` with a local-only `ADMIN_PASSWORD`, a random 64-character hex `ADMIN_SESSION_KEY`, `TURNSTILE_SITEKEY=1x00000000000000000000AA` and `TURNSTILE_SECRET=1x0000000000000000000000000000000AA`. These keys make the real Turnstile widget and server verification testable from localhost. Bootstrap the local D1 store and add the disposable menu item before starting the server. [Cloudflare test keys](https://developers.cloudflare.com/turnstile/troubleshooting/testing/)
+
+```powershell
+npx wrangler d1 execute DB --config wrangler.reviews-local.toml --local --persist-to .wrangler/reviews-local --file schema.sql
+npx wrangler d1 execute DB --config wrangler.reviews-local.toml --local --persist-to .wrangler/reviews-local --command "INSERT OR IGNORE INTO categories (id,name) VALUES (1,'Burgers'); INSERT OR IGNORE INTO items (id,category_id,name,description,late_night) VALUES (1,1,'Cheeseburger','Local preview fixture',1);"
+$env:GRAYZN_REVIEWS_LOCAL = '1'
+npx astro dev --host 127.0.0.1 --port 4396
+```
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| Astro check | 38 files, 0 errors, 0 warnings, 28 existing hints. |
+| Production build and sitemap | Build passed locally. The default bundle returned 404 for the page, anonymous upload, moderation and image access. The served sitemap excluded `/reviews`. |
+| Application suite | 500 passed, 0 failures or skips. Four review tests exercised real local Workerd D1, R2 and Images bindings. They covered upload limits, spoofed or truncated files, EXIF removal, Turnstile rejection, authorization, CSRF, duplicates, concurrent approval, group rejection, legacy image isolation and menu revocation. |
+| Facebook Worker suite | 1,835 mocked regressions passed, 0 failures or skips. |
+| Local Edge | Verified Turnstile sign-in and submission, all three filters, approval, rejection, featured-photo replacement and removal, and revocation with conditional request headers. Signed-out requests and Local Explorer probes were denied. |
+| Browser layout and accessibility | Gallery and moderation layouts passed at 320, 390, 768 and 1280 CSS pixels, with no horizontal overflow and maximum measured gallery layout shift of 0.00006. Verified keyboard focus, Enter, Tab, Escape, focus restoration, reduced motion and accessible names in the browser accessibility tree. A native screen-reader pass remains before public launch. |
+| Browser image delivery | The measured fixture transferred 11,282 bytes for the small gallery variant and 75,658 bytes for the lightbox variant. Gallery cards chose small or medium at all tested widths. |
+| Git patch formatting | `git diff --check` passed. |
+
+Local browser captures and measurements are under `.wrangler/reviews-browser`. The local test logs are under `.wrangler`.
+
+The existing `public/footer-reviews.webp` uses the same wood, cream sign and crimson palette as the optimized Contact Us sign. Its left-facing arrow complements the right-facing Contact Us arrow. The existing art stays available for the separately approved footer step.
+
+The local Images simulator strips EXIF rotation without applying it. Test photos encoded with EXIF-only orientation against the real Images binding in the approved release rehearsal. Cloudflare documents automatic EXIF rotation for image optimization. [Cloudflare image optimization features](https://developers.cloudflare.com/images/optimization/features/#metadata)
+
+### Before any production change
+
+1. Obtain separate approval for integration, migration, deployment, public access and the footer. If the owner needs a remote private preview, the smallest safe setup is a dedicated preview hostname and Worker behind Cloudflare Access, bound only to disposable D1, KV and R2 resources. Restrict the preview environment to staff, maintain the application session and deny public access at the edge before publishing any route. Verify the Access boundary and Turnstile with the real preview hostname.
+2. Before approved rollout, back up D1 and establish the new review bucket's retention and recovery policy. Keep the bucket private with R2 public access and custom delivery domains disabled. Verify the Images binding and resize quotas. Stage and rehearse additive D1 migration `0029_review_photos.sql` before applying it to the approved target. Use the upgrade migration for existing databases and `schema.sql` for fresh ones.
+3. Prepare the public gallery and upload policy separately from moderation. Use a customer submission flow without staff credentials, bind real Turnstile verification to the expected hostname and action, and set upload abuse controls before opening the endpoint. Allow approved derivatives only after checking current D1 state and keep revocable media out of shared caches and public image transformations. Check the Google snapshot again, update the public privacy policy with retention and removal information, and test with a real screen reader. Mark the gallery for indexing and add the existing footer sign after the owner authorizes those changes.
+4. Roll back by disabling the feature or restoring the last known-good Worker version, then verify that review routes and media are inaccessible. Leave the additive tables and private objects in place for reconciliation. Record and investigate R2 deletion failures or unused keys from indeterminate D1 outcomes by comparing the review bucket's UUIDs with D1. Keep referenced approved and pending images, and separately authorize any pruning or data restoration. Preserve the existing menu and Welcome photo keys and objects.
+
+## Photos and Reviews · Restricted production release
+
+November 22, 2026. This release enables the staff preview on the existing HTTPS production origin. The feature uses the existing signed staff session for the gallery, review API, moderation, image delivery and menu preview. It returns a non-public response when the mode is unset, the host is incorrect or the session is invalid. Review responses carry `no-store` for browsers and CDNs. The gallery is excluded from the sitemap and includes a noindex directive. No anonymous photo upload, new public route mapping or footer link is part of this release.
+
+### Authorized release plan
+
+1. Confirm the release is based on `8070438d3a5bb3290fb80fc74cb16d608bc97da7` or recheck the release against any newer `main` tip. The previous site Worker version is `e864e6c1-3ef7-4820-8273-582188c51951`. Record the active Facebook Worker version for comparison.
+2. Retain the ACL-restricted D1 export and verified restore. The preflight export contained 977,544 bytes with SHA-256 `81d7210d435b303ebac6650898709d4993a047efe4381286745e42d94b3d8c2e`. It restored 23 tables in local Workerd with no foreign-key violations or row-count mismatches. The migration rehearsal on that snapshot preserved all 115 existing menu-photo rows.
+3. Create `grayzn-review-photos` with default private access. Check that `r2.dev` is off and no custom domains are attached. The new `REVIEW_PHOTOS` binding isolates it from `PHOTOS`. The site Worker uses the `REVIEW_IMAGES` binding to render still WebP files directly from bytes in private storage. The preview needs no image-delivery domain or publicly accessible source. [Private R2 buckets](https://developers.cloudflare.com/r2/buckets/public-buckets/) · [Images binding](https://developers.cloudflare.com/images/optimization/binding/)
+4. Recheck that `0029_review_photos.sql` is the sole pending migration. Run `npx wrangler d1 migrations apply grayzn-db --remote` and verify the receipt, two tables, three indexes and two triggers. The migration is additive.
+5. Merge the gated change into `main` after the application, security, Astro and build checks pass. Let the existing **Deploy site Worker** workflow deploy the site. It runs its own application and Facebook regressions.
+6. Verify the deployed version and inspect signed-out responses before uploading test files. Use the existing staff sign-in and Turnstile. Identify any test submissions as private tests. Remove test menu associations before leaving the site for owner review. Reject or withdraw surplus test photos through moderation. Confirm the affected image URLs return 404 and retain only clearly labeled samples useful to the owner.
+
+If the site or access controls regress, restore Worker version `e864e6c1-3ef7-4820-8273-582188c51951` and verify public pages and closed review routes. Preserve the additive tables and private bucket for audit and reconciliation. Before public launch, obtain separate approval for the anonymous access and upload controls, public indexing and the footer. Verify real-host Turnstile, abuse protection, image revocation, retention policy, review links and assistive technology. Then run the final public-site audit.
+
+
 ## Seven-item backlog
 
 | # | Priority | Task | Current status | Exact next action |
@@ -162,14 +234,14 @@ Branch `codex/welcome-photo-overflow` is based on `c2630201b0d75bcf9cd0b49c5b2d8
 | 2 | High | Cloudflare security configuration audit | Completed within verified scope. Account phases and crawler verification remain open. | Request read-only account WAF evidence and use Search Console if the owner wants to close those gaps. Obtain separate approval for a particular configuration change. |
 | 3 | Medium | Complete R2 backup inventory | Complete at the November 22 cut-off. | Keep the archive pair and local key available for recovery, then agree an owner and cadence for later snapshots. |
 | 4 | Medium | Refresh emergency fallback menu | Deployed and verified November 22. | Refresh the snapshot again after material menu edits using the read-only recovery procedure. |
-| 5 | Feature | Photos and Reviews | Pending. Next customer-facing feature after approval of the Welcome fix. | Review the agreed requirements, existing photo infrastructure, genuine Google review links, mobile image delivery and accessibility. Implement behind access restrictions and add public footer navigation after owner approval. |
+| 5 | Feature | Photos and Reviews | Implemented in a signed-in local preview. | Inspect the preview and review the production prerequisites. Obtain separate approval for integration, deployment, access and footer navigation. |
 | 6 | Release validation | Final performance, accessibility, mobile and SEO audit | Waiting on task 5. | Audit the finished public pages for Lighthouse and Core Web Vitals, mobile layout, keyboard and screen-reader navigation, imaging, metadata, sitemaps, structured data and indexing. Run the site regression suite. |
 | 7 | Medium | Facebook alert snapshot optimization | Deployed and verified. Responsive footer artwork also deployed and verified. | Observe production D1 metrics over a representative window. Follow up on `recovery-d1.test.js` if the Miniflare failure recurs. |
 
 ## Resume in a new ChatGPT conversation
 
 1. Open `C:\Users\Jwerl\dev\Grayzn Buffalo` in Codex and read `C:\Users\Jwerl\dev\AGENTS.md`. Check `git status --short --branch`, `git worktree list --porcelain`, `git ls-remote origin refs/heads/main` and active chats before editing. Read this handoff with `git show codex/r2-backup-menu-baseline:docs/PROJECT_STATUS.md` if the feature branch is not checked out.
-2. For the next customer-facing task, start Task 5 by inspecting the existing photo infrastructure, Google Reviews integration options, mobile image delivery and accessibility requirements before writing code. Follow Task 5 with the final performance, accessibility, mobile and SEO audit in Task 6.
+2. For Task 5, open the Photos and Reviews feature worktree and use the owner preview above. After the approved public release, run the final performance, accessibility, mobile and SEO audit in Task 6.
 3. Use the Task 3 archive pair and manifest for recovery. Keep recovery rehearsals isolated. Coordinate cross-project updates with the owner of `C:\Users\Jwerl\dev\.archives\development-audits\DEFERRED_TASKS.md`.
 
 For documentation-only handoffs, the repository has used `[skip ci]` on the commit pushed to `main`. GitHub lists no Actions runs for the previous November 21 documentation-only commit `2691524c65d6642bf1e19b4d23cf5ab4fa59d1a7`. At this handoff the only workflow file on `main` was the `push`-triggered site deployment. Verify the staged paths and current workflow before using the same procedure. [GitHub workflow skip instructions](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs)

@@ -1,0 +1,28 @@
+# For the loopback-only owner preview. The binding identifiers are local fixtures.
+name = "grayzn-reviews-local"
+compatibility_date = "2026-01-01"
+workers_dev = false
+preview_urls = false
+
+[vars]
+REVIEWS_PREVIEW = "local"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "grayzn-reviews-local"
+database_id = "7c7b2ae2-9947-4153-93ea-41df57c81eb6"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "1d5155850caa4b2099ca7efb285cb2767"
+
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "grayzn-reviews-local-legacy-fixture"
+
+[[r2_buckets]]
+binding = "REVIEW_PHOTOS"
+bucket_name = "grayzn-reviews-local-private-fixture"
+
+[images]
+binding = "REVIEW_IMAGES"

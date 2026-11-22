@@ -46,7 +46,12 @@ test('site Worker keeps the Pages D1/KV/R2 resources and serves only client asse
     [['DB', 'c998bfd4-7031-4ae2-9eea-df86f16ddb15']]);
   assert.deepEqual(generated.kv_namespaces.map(k => [k.binding, k.id]),
     [['SESSIONS', '3c31559924b64014844778c431b80ef1']]);
-  assert.deepEqual(generated.r2_buckets.map(r => [r.binding, r.bucket_name]), [['PHOTOS', 'grayzn-photos']]);
+  assert.deepEqual(generated.r2_buckets.map(r => [r.binding, r.bucket_name]), [
+    ['PHOTOS', 'grayzn-photos'], ['REVIEW_PHOTOS', 'grayzn-review-photos'],
+  ]);
+  assert.equal(generated.images.binding, 'REVIEW_IMAGES');
+  assert.equal(generated.vars.REVIEWS_PREVIEW, 'staff-production');
+  assert.doesNotMatch(readFileSync('dist/client/sitemap-0.xml', 'utf8'), /\/reviews\/?</);
   assert.deepEqual(generated.assets, { binding: 'ASSETS', directory: '../client' });
   assert.equal(generated.upload_source_maps, false);
 });

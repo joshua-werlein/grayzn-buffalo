@@ -1,7 +1,9 @@
 ---
 import { runtimeEnv } from '../lib/runtime-env';
 import Base from '../layouts/Base.astro';
-import { getMenu, thumbKey } from '../lib/db';
+import { getMenu, thumbKey, type Item } from '../lib/db';
+import { isAuthed } from '../lib/auth';
+import { REVIEW_HEADERS, reviewImageUrl, reviewPreviewEnabled } from '../lib/review-preview';
 import PizzaOptions from '../components/PizzaOptions.astro';
 import { getPizzaOptions, isPizzaCategory } from '../lib/pizza-options.js';
 import SaucesPanel from '../components/SaucesPanel.astro';
@@ -14,6 +16,24 @@ import { getMenuOptions, hasShell, isSaladCategory, isWrapCategory, SALAD_OPTION
  
 const env = runtimeEnv(Astro.locals);
 const { categories, items } = await getMenu(env);
+const featured = new Map<number, { id: string; description: string }>();
+if (reviewPreviewEnabled(Astro.url, env) && env.REVIEW_PHOTOS && await isAuthed(Astro.cookies, env)) {
+  for (const [name, value] of Object.entries(REVIEW_HEADERS)) Astro.response.headers.set(name, value);
+  try {
+    const db = env.DB.withSession('first-primary');
+    const { results } = await db.prepare(
+      `SELECT m.item_id, p.id, p.description FROM review_menu_photos m
+       JOIN review_photos p ON p.id = m.photo_id WHERE p.status = 'approved' AND p.category = 'food'`,
+    ).all();
+    for (const row of results) featured.set(row.item_id, row);
+  } catch {}
+}
+const menuPhoto = (item: Item, size: 'small' | 'large') => {
+  const galleryPhoto = featured.get(item.id);
+  if (galleryPhoto) return reviewImageUrl(galleryPhoto.id, size);
+  if (item.photo_key) return `/img/${size === 'small' ? thumbKey(item.photo_key) : item.photo_key}`;
+  return undefined;
+};
 const [pizzaOptions, sauces, saucesSort, sidesSort, wrapOptions, saladOptions, sidesOptions] = await Promise.all([
   getPizzaOptions(env), getMenuSauces(env), getSectionSort(env, SAUCES_SECTION), getSectionSort(env, SIDES_SECTION),
   getMenuOptions(env, WRAP_OPTIONS_KEY), getMenuOptions(env, SALAD_OPTIONS_KEY), getMenuOptions(env, SUBSTITUTE_SIDES_KEY),
@@ -174,9 +194,9 @@ const dailyChips: { name: string; href: string }[] = interleave(daily, placed(da
               <ul class="menu-list">
                 {g.items.map((it) => (
                   <li class="item" id={`menu-item-${it.id}`}>
-                    {it.photo_key && (
-                      <button class="item-photo-trigger" type="button" data-lightbox-src={`/img/${it.photo_key}`} data-lightbox-alt={it.name} aria-label={`View larger photo of ${it.name}`}>
-                        <img class="item-photo" src={`/img/${thumbKey(it.photo_key)}`} alt="" width="72" height="56" loading="lazy" decoding="async" />
+                    {(featured.has(it.id) || it.photo_key) && (
+                      <button class="item-photo-trigger" type="button" data-lightbox-src={menuPhoto(it, 'large')} data-lightbox-alt={featured.get(it.id)?.description ?? it.name} aria-label={`View larger photo of ${it.name}`}>
+                        <img class="item-photo" src={menuPhoto(it, 'small')} alt="" width="72" height="56" loading="lazy" decoding="async" />
                       </button>
                     )}
                       <div class="item-copy">
@@ -218,9 +238,9 @@ const dailyChips: { name: string; href: string }[] = interleave(daily, placed(da
                 <ul class="menu-list">
                   {g.items.map((it) => (
                     <li class="item">
-                      {it.photo_key && (
-                        <button class="item-photo-trigger" type="button" data-lightbox-src={`/img/${it.photo_key}`} data-lightbox-alt={it.name} aria-label={`View larger photo of ${it.name}`}>
-                          <img class="item-photo" src={`/img/${thumbKey(it.photo_key)}`} alt="" width="72" height="56" loading="lazy" decoding="async" />
+                      {(featured.has(it.id) || it.photo_key) && (
+                        <button class="item-photo-trigger" type="button" data-lightbox-src={menuPhoto(it, 'large')} data-lightbox-alt={featured.get(it.id)?.description ?? it.name} aria-label={`View larger photo of ${it.name}`}>
+                          <img class="item-photo" src={menuPhoto(it, 'small')} alt="" width="72" height="56" loading="lazy" decoding="async" />
                         </button>
                       )}
                       <div class="item-copy">
