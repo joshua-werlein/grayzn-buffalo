@@ -11,9 +11,9 @@ import {reconcileToday} from './guarded-auto.js';
 import {emailTransport,alertTransport,alertMessage} from './alert-email.js';
 import {imageAlertDetail} from './alert-detail.js';
 
-function setup(t) {
+function setup(t,options) {
   let db;t.after(()=>db?.close());
-  const f=harness(t);
+  const f=harness(t,options);
   db=new DatabaseSync(f.path);
   db.exec("CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT); INSERT OR REPLACE INTO settings VALUES('delivery_display','auto');");
   for(const name of ['0022_delivery_automation.sql','0023_facebook_alert_incidents.sql','0024_facebook_alert_evidence.sql']) db.exec(readFileSync(new URL('../../migrations/'+name,import.meta.url),'utf8'));
@@ -425,6 +425,100 @@ test('real local D1: snapshot fences preserve successful imports, row-change gua
   assert.equal(saved.content,'Staff correction');assert.equal(saved.manual_locked,1);assert.equal(f.sent.length,0);
 });
 
+test('real local D1: an empty source and week snapshot completes without creating an incident',async t=>{
+  const f=setup(t,{week:false}),DB=await localD1(t,f);
+  f.env.DB=DB;
+  const context=await beginAlertScan(f.env,'2030-01-09');
+  await finishAlertScan(f.env,context,[]);
+  const scan=await DB.prepare('SELECT token,source_ids,evaluation_state FROM facebook_alert_scans').first();
+  assert.deepEqual(scan,{token:context.token,source_ids:'[]',evaluation_state:'complete'});
+  assert.equal((await readAlertHealth(f.env)).actionable,0);
+  assert.equal(await DB.prepare('SELECT count(*) FROM facebook_alert_incidents').first('count(*)'),0);
+});
+
+for(const [label,groupId] of [['current week','auto-default:3:nightly'],['historical week','prior-lunch']]) {
+  test(`real local D1: a ${label} edit before the batch rejects every stale incident change`,async t=>{
+    const f=await failure(t),old=f.row();
+    f.db.exec(`INSERT INTO weekly_specials(id,week_start_date,week_end_date) VALUES(8999,'2029-12-31','2030-01-06');
+      INSERT INTO special_collections(id,kind,weekly_special_id) VALUES('prior-week','week',8999);
+      INSERT INTO special_groups(id,collection_id,day_of_week,service,label) VALUES('prior-lunch','prior-week',1,'lunch','Lunch');
+      INSERT INTO special_slots(group_id,position,content) VALUES('prior-lunch',1,'Prior meal');`);
+    const DB=await localD1(t,f);
+    let edited=false,persisting=false;
+    f.env.DB={prepare(query){
+      persisting ||= query.includes('INSERT INTO facebook_alert_incidents');
+      return DB.prepare(query);
+    },async batch(statements){
+      if(persisting && !edited) {
+        const result=await DB.prepare("UPDATE special_slots SET content='Staff edit',manual_locked=1 WHERE group_id=?1 AND position=1").bind(groupId).run();
+        edited=result.meta.changes===1;
+      }
+      return DB.batch(statements);
+    }};
+    f.advance(ALERT_GRACE_MS);
+    const context=await beginAlertScan(f.env,'2030-01-09');
+    await finishAlertScan(f.env,context,f.imports().map(s=>s.id),{send:async m=>f.sent.push(m)});
+    assert.equal(edited,true);
+    assert.deepEqual(await DB.prepare("SELECT * FROM facebook_alert_incidents WHERE scope='daily'").first(),{...old});
+    const scan=await DB.prepare('SELECT token,evaluation_state,evaluation_error,evaluated_ms FROM facebook_alert_scans').first();
+    assert.deepEqual(scan,{token:context.token,evaluation_state:'skipped',evaluation_error:'evidence_changed',evaluated_ms:null});
+    assert.equal(f.sent.length,0);
+  });
+}
+
+test('real local D1: a newer scan still owns the day when the prior batch runs',async t=>{
+  const f=await failure(t),old=f.row(),DB=await localD1(t,f);
+  let newer,persisting=false;
+  f.env.DB={prepare(query){
+    persisting ||= query.includes('INSERT INTO facebook_alert_incidents');
+    return DB.prepare(query);
+  },async batch(statements){
+    if(persisting && !newer) {
+      f.advance(1);
+      newer=await beginAlertScan(f.env,'2030-01-09');
+    }
+    return DB.batch(statements);
+  }};
+  f.advance(1);
+  const context=await beginAlertScan(f.env,'2030-01-09');
+  await finishAlertScan(f.env,context,f.imports().map(s=>s.id));
+  assert.ok(newer);
+  const scan=await DB.prepare('SELECT token,evaluation_state,completed_ms FROM facebook_alert_scans').first();
+  assert.deepEqual(scan,{token:newer.token,evaluation_state:'pending',completed_ms:null});
+  assert.deepEqual(await DB.prepare("SELECT * FROM facebook_alert_incidents WHERE scope='daily'").first(),{...old});
+});
+
+test('real local D1: a cross-week poster reports the printed week and sends once',async t=>{
+  const f=setup(t,{caption:'Weekly Lunch Specials'});
+  f.env.SPECIALS_EVIDENCE_VERSION='2';
+  f.state.candidate={type:'weekly-lunch',date_range:'1/14-1/18',service_time:'11am-1:30pm',
+    poster_evidence:'WEEKLY LUNCH SPECIALS 1/14-1/18 11am-1:30pm',entries:[
+      {day_of_week:1,content:'Chicken Wrap $10',evidence:'MONDAY Chicken Wrap $10',uncertainties:[]},
+      {day_of_week:2,content:'Taco Salad $10',evidence:'TUESDAY Taco Salad $10',uncertainties:[]},
+      {day_of_week:3,content:'Fish Fry $10',evidence:'WEDNESDAY Fish Fry $10',uncertainties:['Price unclear']},
+    ]};
+  f.db.exec(`INSERT INTO weekly_specials(id,week_start_date,week_end_date) VALUES(9001,'2030-01-14','2030-01-20');
+    INSERT INTO special_collections(id,kind,weekly_special_id) VALUES('next-week','week',9001);
+    INSERT INTO special_groups(id,collection_id,day_of_week,service,label,service_time,sort,enabled)
+      SELECT 'next-'||id,'next-week',day_of_week,service,label,service_time,sort,enabled FROM special_groups WHERE collection_id='defaults';
+    INSERT INTO special_slots(group_id,position,content,origin,manual_locked)
+      SELECT g.id,p.position,'','automation',0 FROM special_groups g JOIN special_slots p ON p.group_id=substr(g.id,6)
+      WHERE g.collection_id='next-week';`);
+  const DB=await localD1(t,f);
+  f.env.DB=DB;
+  await f.run();
+  const row=await DB.prepare("SELECT * FROM facebook_alert_incidents WHERE scope='weekly'").first();
+  assert.equal(row?.state,'attention');
+  assert.equal(row.day,'2030-01-09');
+  const meals=await DB.prepare(`SELECT g.collection_id,s.content FROM special_slots s JOIN special_groups g ON g.id=s.group_id
+    WHERE g.service='lunch' AND s.content='Chicken Wrap $10' ORDER BY g.collection_id`).all();
+  assert.deepEqual(meals.results,[{collection_id:'next-week',content:'Chicken Wrap $10'}]);
+  f.advance(ALERT_GRACE_MS);
+  await f.send();await f.send();
+  assert.equal(f.sent.length,1);
+  assert.match(alertMessage(row.day,row.code,f.sent[0]).text,/\/admin\/specials\?week=9001/);
+});
+
 test('disabled and unapproved email configuration performs no provider calls',async t=>{
   let calls=0;const binding={send:async()=>{calls++;return {messageId:'mock'};}};
   for(const mode of ['OFF','OBSERVE','MOCK','EMAIL']) {
@@ -563,9 +657,10 @@ test('incident persistence failure rolls back an actionable observation and succ
   const f=await failure(t),batch=f.DB.batch;
   const old=f.row();f.advance(1);const context=await beginAlertScan(f.env,'2030-01-09');
   f.DB.batch=async statements=>statements.some(s=>s.sql.includes('INSERT INTO facebook_alert_incidents'))
-    ? batch([statements[0],f.DB.prepare('INSERT INTO nonexistent_alert_test_table VALUES(1)'),...statements.slice(1)]) : batch(statements);
+    ? batch([...statements.slice(0,2),f.DB.prepare('INSERT INTO nonexistent_alert_test_table VALUES(1)'),...statements.slice(2)]) : batch(statements);
   await finishAlertScan(f.env,context,f.imports().map(s=>s.id));
   assert.deepEqual(f.row(),old);assert.equal((await readAlertHealth(f.env)).failed_evaluations,1);
+  assert.equal(f.db.prepare('SELECT token FROM facebook_alert_scans').get().token,context.token);
   f.advance(ALERT_GRACE_MS);await f.send();assert.equal(f.sent.length,0);
 });
 
