@@ -626,7 +626,12 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     )}
     {!isAdmin && (
       <a class="footer-contact" href="/contact" aria-label="Contact Us">
-        <img src="/footer-contact.webp" alt="" width="1600" height="1067" loading="lazy" />
+        <picture>
+          <source media="(max-width: 1099px)"
+            srcset="/footer-contact-480.webp 480w, /footer-contact-800.webp 800w, /footer-contact.webp 1600w"
+            sizes="clamp(130px, 39vw, 260px)" />
+          <img src="/footer-contact.webp" alt="" width="1600" height="1067" loading="lazy" />
+        </picture>
       </a>
     )}
   </div>
