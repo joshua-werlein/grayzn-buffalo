@@ -1,13 +1,13 @@
 # Grayz'n Buffalo project status
 
-Updated November 22, 2026 (Central time). Admin session invalidation, the refreshed emergency menu, the Facebook alert optimization and responsive footer artwork are live. The Cloudflare audit is complete within the verified scope below. The full November 22 R2 snapshot is archived. Photos and Reviews is implemented on a private local feature branch and awaits owner review.
+Updated November 22, 2026 (Central time). Admin session invalidation, the refreshed emergency menu, the Facebook alert optimization and responsive footer artwork are live. The Cloudflare audit is complete within the verified scope below. The full November 22 R2 snapshot is archived. Photos and Reviews is live for signed-in staff and awaits owner review before any public launch.
 
 ## Verified production baseline
 
 | Item | State |
 | --- | --- |
-| Primary checkout | `C:\Users\Jwerl\dev\Grayzn Buffalo`. Latest deployed source is `9607b5ef0ecce959e1e5231c435dc084d1fd6ab6` on `main`, merged through PR #4. [Merged PR](https://github.com/joshua-werlein/grayzn-buffalo/pull/4) |
-| Live site | Astro 7.4.7 on `grayzn-buffalo`, version `2f93f599-1d62-43ee-a0dd-9ee3e617ce7d` at 100% from 11:08 a.m. Central. GitHub Actions run #534 succeeded on attempt 2. [Public site](https://grayznbuffalo.com/) · [Actions release](https://github.com/joshua-werlein/grayzn-buffalo/actions/runs/45044539344/attempts/2) |
+| Primary checkout | `C:\Users\Jwerl\dev\Grayzn Buffalo`. The deployed source is `df0ea1a2187b74d0dd08959498c5d1363630aa07` on `main`, merged through PR #6. [Merged PR](https://github.com/joshua-werlein/grayzn-buffalo/pull/6) |
+| Live site | Astro 7.4.7 on `grayzn-buffalo`, version `ee689404-b8a0-43e5-9029-eee6bd8ea14d` at 100%. [Public site](https://grayznbuffalo.com/) · [Deployment workflow](https://github.com/joshua-werlein/grayzn-buffalo/actions/runs/45070923816) |
 | Facebook Worker | `grayzn-fb-feed`, version `260c8ad8-b4a2-4cc4-b28a-12954b543e53` at 100% from 11:10 a.m. Central. The separate Wrangler deployment and active bundle were verified. |
 | November 21 release evidence | CI passed 491 app tests and 1,830 Facebook Worker tests. Maintenance covered bounded request bodies, input validation, Facebook API and image timeouts, private error handling, explicit database columns and GitHub Actions permissions. [Release record](maintenance-hardening-2026-11-21.md) · [CI run](https://github.com/joshua-werlein/grayzn-buffalo/actions/runs/44936454618) |
 | D1 recovery | The November 21 post-release export was restored into isolated local workerd, with all 23 table counts, quick check, foreign keys, indexes and migration receipts verified. The pre-release D1 export and photo archive were verified after encrypted offsite upload and download. The two D1 recovery points are distinct. |
@@ -226,6 +226,24 @@ November 22, 2026. This release enables the staff preview on the existing HTTPS 
 If the site or access controls regress, restore Worker version `e864e6c1-3ef7-4820-8273-582188c51951` and verify public pages and closed review routes. Preserve the additive tables and private bucket for audit and reconciliation. Before public launch, obtain separate approval for the anonymous access and upload controls, public indexing and the footer. Verify real-host Turnstile, abuse protection, image revocation, retention policy, review links and assistive technology. Then run the final public-site audit.
 
 
+### Live verification for restricted Photos and Reviews
+
+The site Worker `grayzn-buffalo` is serving version `ee689404-b8a0-43e5-9029-eee6bd8ea14d` at 100% from 3:27 p.m. Central on November 22, 2026. The deployed merge commit is `df0ea1a2187b74d0dd08959498c5d1363630aa07`. GitHub Actions passed Astro check, build, 500 application tests, 1,835 mocked Facebook tests and the names-only secret preflight. The workflow deployed the site Worker. Wrangler confirmed `grayzn-fb-feed` remained on `260c8ad8-b4a2-4cc4-b28a-12954b543e53`. [PR #6](https://github.com/joshua-werlein/grayzn-buffalo/pull/6) · [Deployment workflow](https://github.com/joshua-werlein/grayzn-buffalo/actions/runs/45070923816)
+
+- The private R2 bucket was created and Cloudflare confirmed `r2.dev` access is off and no custom domains are attached. The deployment includes `REVIEW_PHOTOS`, `REVIEW_IMAGES` and `REVIEWS_PREVIEW=staff-production`. The legacy `PHOTOS` binding serves the existing menu and Welcome images.
+- D1 recorded `0029_review_photos.sql` as applied. Both review tables, all three indexes and both triggers were verified. The verified preflight export and restore remain in the private local backup directory `grayzn-backups/reviews-preflight-20261122T210631Z`. Big Pretzel retained its existing `items.photo_key`.
+- Signed-out GET and HEAD for `/reviews` and POSTs to both review write APIs returned 404 with `no-store`. Anonymous moderation redirected to staff sign-in. Home, Menu, Specials, Contact, the existing menu image and the Facebook feed returned 200. Public navigation and the served sitemap omit Reviews. The existing footer appeared with Contact Us and no Reviews sign.
+- The existing admin session opened the [private production preview](https://grayznbuffalo.com/admin?next=/admin/reviews). The signed-in gallery and upload form rendered, and the Turnstile widget issued a token. The narrow browser pane had no horizontal scroll. Local browser coverage from the earlier implementation includes 320, 390, 768 and 1280 pixels with loaded review photos.
+- The original black-looking fixtures were decorative frame assets. Their WebP alpha channels averaged 82–89 out of 255, leaving transparent areas against the preview background. The replacement JPEG, PNG and WebP test inputs are real photographs from the site's existing images. The live browser stalled at the OS file picker before submission, so Cloudflare photo processing, EXIF-only rotation, moderation, menu association, approved-photo denial and revocation still need their live pass. The production review tables contained zero submissions and zero menu associations at the handoff.
+
+### Finish the private production acceptance test
+
+In the existing staff browser session, use the prepared `pretzel-exif.jpg`, `alternate-food.png` and `welcome.webp` from the feature worktree's `.wrangler/reviews-production-fixtures` directory. Label the files `PRIVATE TEST 1122 - Big Pretzel`, `PRIVATE TEST 1122 - Philly Cheese` and `PRIVATE TEST 1122 - Bar exterior`. Submit, check that pending thumbnails work only in moderation, approve the Food example, recategorize the exterior, and reject the remaining sample. With an authenticated and an anonymous browser, compare the same image URLs and the menu item. Remove the temporary Big Pretzel association, confirm the gallery photo still works, then reassign it and withdraw approval. Verify revocation, confirm the original staff image returns, clear any remaining test associations and withdraw any leftover sample after owner review. Use these images to check the populated layout on phone, tablet and desktop. Keep review originals in the private bucket, and identify any rows and object keys left by a failed cleanup using the test labels.
+
+### Public launch remains a separate decision
+
+After the owner accepts the live private preview, authorize public access and the footer separately. Implement and test anonymous read access to approved photos and a customer upload route with hostname-bound Turnstile, abuse controls and no staff cookie dependency. Keep the moderation paths and original objects private. Confirm storage retention and cleanup, recheck Google links and accessible image descriptions, verify cache and revocation behavior, and run the signed-in and signed-out smoke checks. After approval, add the sitemap and footer entry and run the final public-site audit.
+
 ## Seven-item backlog
 
 | # | Priority | Task | Current status | Exact next action |
@@ -234,14 +252,14 @@ If the site or access controls regress, restore Worker version `e864e6c1-3ef7-48
 | 2 | High | Cloudflare security configuration audit | Completed within verified scope. Account phases and crawler verification remain open. | Request read-only account WAF evidence and use Search Console if the owner wants to close those gaps. Obtain separate approval for a particular configuration change. |
 | 3 | Medium | Complete R2 backup inventory | Complete at the November 22 cut-off. | Keep the archive pair and local key available for recovery, then agree an owner and cadence for later snapshots. |
 | 4 | Medium | Refresh emergency fallback menu | Deployed and verified November 22. | Refresh the snapshot again after material menu edits using the read-only recovery procedure. |
-| 5 | Feature | Photos and Reviews | Implemented in a signed-in local preview. | Inspect the preview and review the production prerequisites. Obtain separate approval for integration, deployment, access and footer navigation. |
+| 5 | Feature | Photos and Reviews | Deployed with verified staff-only access. The live photo lifecycle test is pending. | Select the prepared photos in the staff upload form and finish the production acceptance checks. Obtain separate approval before anonymous access or footer placement. |
 | 6 | Release validation | Final performance, accessibility, mobile and SEO audit | Waiting on task 5. | Audit the finished public pages for Lighthouse and Core Web Vitals, mobile layout, keyboard and screen-reader navigation, imaging, metadata, sitemaps, structured data and indexing. Run the site regression suite. |
 | 7 | Medium | Facebook alert snapshot optimization | Deployed and verified. Responsive footer artwork also deployed and verified. | Observe production D1 metrics over a representative window. Follow up on `recovery-d1.test.js` if the Miniflare failure recurs. |
 
 ## Resume in a new ChatGPT conversation
 
 1. Open `C:\Users\Jwerl\dev\Grayzn Buffalo` in Codex and read `C:\Users\Jwerl\dev\AGENTS.md`. Check `git status --short --branch`, `git worktree list --porcelain`, `git ls-remote origin refs/heads/main` and active chats before editing. Read this handoff with `git show codex/r2-backup-menu-baseline:docs/PROJECT_STATUS.md` if the feature branch is not checked out.
-2. For Task 5, open the Photos and Reviews feature worktree and use the owner preview above. After the approved public release, run the final performance, accessibility, mobile and SEO audit in Task 6.
+2. For Task 5, use the signed-in production Photos and Reviews link above. After the approved public release, run the final performance, accessibility, mobile and SEO audit in Task 6.
 3. Use the Task 3 archive pair and manifest for recovery. Keep recovery rehearsals isolated. Coordinate cross-project updates with the owner of `C:\Users\Jwerl\dev\.archives\development-audits\DEFERRED_TASKS.md`.
 
 For documentation-only handoffs, the repository has used `[skip ci]` on the commit pushed to `main`. GitHub lists no Actions runs for the previous November 21 documentation-only commit `2691524c65d6642bf1e19b4d23cf5ab4fa59d1a7`. At this handoff the only workflow file on `main` was the `push`-triggered site deployment. Verify the staged paths and current workflow before using the same procedure. [GitHub workflow skip instructions](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs)
