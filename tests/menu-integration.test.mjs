@@ -9,6 +9,7 @@ import { experimental_AstroContainer as AstroContainer } from 'astro/container';
 const container=await AstroContainer.create();
 const admin=(await builtRoute('admin/menu')).default;
 const menu=(await builtRoute('menu')).default;
+const { GET: menuFeed } = await builtRoute('menu.json');
 const baseline=JSON.parse(readFileSync('src/data/menu-baseline.json','utf8'));
 function fixture(t){
  const db=new DatabaseSync(':memory:'); t.after(()=>db.close());
@@ -22,6 +23,45 @@ const request=(f,path,init={})=>({request:new Request('http://localhost'+path,{.
 const load=(f,page=admin)=>container.renderToString(page,request(f,page===menu?'/menu':'/admin/menu'));
 const post=(f,fields,json=false)=>{const body=new FormData();for(const [k,v]of Object.entries(fields))for(const val of [v].flat())body.append(k,String(val));return container.renderToResponse(admin,request(f,'/admin/menu',{method:'POST',body,headers:json?{accept:'application/json'}:{}}))};
 const value=(f,key)=>f.db.prepare('SELECT value FROM settings WHERE key=?').get(key)?.value;
+
+test('recovery SQL reproduces the menu snapshot and rejects a populated target', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(readFileSync('schema.sql', 'utf8'));
+    const sql = readFileSync('recovery/menu-canonical.sql', 'utf8');
+    db.exec(`BEGIN; ${sql} COMMIT;`);
+    for (const [table, order] of [['categories', 'sort, id'], ['items', 'category_id, sort, id']]) {
+      const columns = Object.keys(baseline[table][0]).join(', ');
+      const restored = db.prepare(`SELECT ${columns} FROM ${table} ORDER BY ${order}`).all();
+      assert.deepEqual(restored.map(row => ({ ...row })), baseline[table]);
+    }
+    assert.throws(() => db.exec(`BEGIN; ${sql} COMMIT;`), /CHECK constraint failed/);
+    db.exec('ROLLBACK;');
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM items').get().count, baseline.items.length);
+  } finally {
+    db.close();
+  }
+});
+
+test('the public menu and feed use the refreshed price-free snapshot when D1 is unavailable', async t => {
+  const live = fixture(t);
+  const outage = { env: { DB: { prepare() { throw new Error('D1 unavailable'); } } } };
+  const readFeed = async f => {
+    const response = await menuFeed(request(f, '/menu.json'));
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  const expected = await readFeed(live);
+  assert.deepEqual(await readFeed(outage), expected);
+  assert.match(JSON.stringify(expected), /10pc Shrimp Basket/);
+  assert.match(JSON.stringify(expected), /On the Lighter Side/);
+  assert.doesNotMatch(JSON.stringify(expected), /"(?:price|priceCurrency)"\s*:|\$\s*\d/i);
+  const offlineMenu = await load(outage, menu);
+  assert.match(offlineMenu, /10pc Shrimp Basket/);
+  assert.match(offlineMenu, /On the Lighter Side/);
+  const itemText = offlineMenu.replace(/<script\b[\s\S]*?<\/script>/gi, '').replace(/<style\b[\s\S]*?<\/style>/gi, '');
+  assert.doesNotMatch(itemText, /\$\s*\d/);
+});
 for(const [action,key,fields,changed]of[
  ['wrap-options','menu_wrap_options',{wrap_notes:'Original wrap note.'},{wrap_notes:'New wrap note.'}],
  ['salad-options','menu_salad_options',{salad_dressings:'Ranch',salad_greens:'Iceberg'},{salad_dressings:'French',salad_greens:'Spinach Mix'}],

@@ -2,7 +2,13 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 // The JSON is the shared fallback and recovery source; SQL is generated only.
 const baseline = JSON.parse(readFileSync(new URL('../src/data/menu-baseline.json', import.meta.url), 'utf8'));
-const quote = value => value === null ? 'NULL' : typeof value === 'number' ? String(value) : "'" + value.replaceAll("'", "''") + "'";
+function quote(value) {
+  if (value === null) return 'NULL';
+  if (typeof value === 'number') return String(value);
+  // Preserve the original line endings inside descriptions while keeping each SQL row on one line.
+  const escaped = value.replaceAll("'", "''").replaceAll('\r', "'||char(13)||'").replaceAll('\n', "'||char(10)||'");
+  return "'" + escaped + "'";
+}
 const insert = (table, rows) => {
   const fields = Object.keys(rows[0]);
   return `INSERT INTO ${table} (${fields.join(', ')}) VALUES\n` + rows.map(row => '(' + fields.map(key => quote(row[key])).join(', ') + ')').join(',\n') + ';\n';

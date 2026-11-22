@@ -132,7 +132,7 @@ test('shell daggers mark exactly the four printed salads, never other salads, Li
   for (const name of ['Side Salad', 'Chicken Chipotle Salad', 'Gyro Salad', 'Chicken Cranberry Salad', 'Hawaiian Chicken Salad']) assert.ok(salads.includes(name), name);
   assert.equal((section(html, 'daily', 'Salads').match(/<span class="sr-only"[^>]*> \(comes with a shell\)<\/span>/g) ?? []).length, 4);
   assert.ok(itemNames(section(html, 'daily', 'Mexican Night')).includes('Taco Salad'), 'Mexican Night Taco Salad stays unmarked');
-  assert.ok(itemNames(section(html, 'daily', 'On The Lighter Side')).every(n => !/^[*†]/.test(n)));
+  assert.ok(itemNames(section(html, 'daily', 'On the Lighter Side')).every(n => !/^[*†]/.test(n)));
   // Burgers keep their own (raw meat advisory) asterisk, on both tabs.
   assert.ok(itemNames(section(html, 'daily', 'Burgers')).every(n => n.startsWith('*') && !n.includes('†')));
   assert.ok(itemNames(section(html, 'late-night', 'Burgers')).every(n => n.startsWith('*')));
