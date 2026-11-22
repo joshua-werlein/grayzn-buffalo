@@ -13,7 +13,8 @@ const { GET: image } = loadTs('src/pages/admin/review-image/[id]/[size].ts');
 const { GET: oldImage } = loadTs('src/pages/img/[...key].ts');
 const { GET: oldPrivateImage } = loadTs('src/pages/admin/img/[...key].ts');
 const { reviewCsrf, reviewObjectKey } = loadTs('src/lib/review-preview.ts');
-const origin = 'http://127.0.0.1:4396';
+const localOrigin = 'http://127.0.0.1:4396';
+const productionOrigin = 'https://grayznbuffalo.com';
 const authenticated = { get: () => ({ value: 'a'.repeat(32) }) };
 const anonymous = { get: () => undefined };
 const anotherSession = { get: () => ({ value: 'b'.repeat(32) }) };
@@ -24,7 +25,8 @@ const jpeg = new File([await source().withExif({ IFD0: { ImageDescription: 'Priv
 const png = new File([await source('photo2').png().toBuffer()], 'bar.png', { type: 'image/png' });
 const webp = new File([await source('photo3').webp().toBuffer()], 'drinks.webp', { type: 'image/webp' });
 
-async function setup(t, { upgrade = false } = {}) {
+async function setup(t, { upgrade = false, production = false } = {}) {
+  const origin = production ? productionOrigin : localOrigin;
   const mf = new Miniflare({
     modules: true,
     script: 'export default { fetch: () => new Response() };',
@@ -48,7 +50,8 @@ async function setup(t, { upgrade = false } = {}) {
   }
   const env = {
     ...adminSessionEnv(), DB, REVIEW_PHOTOS: await mf.getR2Bucket('REVIEW_PHOTOS'), PHOTOS: await mf.getR2Bucket('PHOTOS'),
-    REVIEW_IMAGES: await mf.getImagesBinding('REVIEW_IMAGES'), REVIEWS_PREVIEW: 'local', TURNSTILE_SECRET: 'dummy',
+    REVIEW_IMAGES: await mf.getImagesBinding('REVIEW_IMAGES'),
+    REVIEWS_PREVIEW: production ? 'staff-production' : 'local', TURNSTILE_SECRET: 'dummy',
   };
   let turnstile = 0;
   const fetch = globalThis.fetch;
@@ -103,7 +106,17 @@ test('preview routes reject missing auth, wrong host, cross-origin and wrong-ses
   body.delete('csrf');
   assert.equal((await f.send(body)).status, 403);
   assert.equal(f.turnstile(), 0);
+  f.env.REVIEWS_PREVIEW = 'staff-production';
+  const production = { host: productionOrigin };
+  assert.equal((await f.send(await f.upload(), { ...production, cookies: anonymous })).status, 404);
+  assert.equal((await f.action(fields, { ...production, cookies: anonymous })).status, 404);
+  assert.equal((await f.serve(fields.photo_id, 'small', { ...production, cookies: anonymous })).status, 404);
+  for (const host of [localOrigin, 'http://grayznbuffalo.com', 'https://www.grayznbuffalo.com', 'https://grayznbuffalo.com:444']) {
+    assert.equal((await f.send(await f.upload(), { host })).status, 404);
+  }
+  assert.equal((await f.send(await f.upload(), { ...production, requestOrigin: 'https://www.grayznbuffalo.com' })).status, 403);
   delete f.env.REVIEWS_PREVIEW;
+  assert.equal((await f.send(await f.upload(), production)).status, 404);
   assert.equal((await f.action(fields)).status, 404);
   assert.equal((await f.serve(fields.photo_id, 'small')).status, 404);
 });
@@ -135,7 +148,7 @@ test('bounded request, consent, malformed content and Turnstile checks leave no 
 });
 
 test('D1 and R2 handle all formats, private originals, duplicate races, review transitions and menu revocation', async t => {
-  const f = await setup(t, { upgrade: true });
+  const f = await setup(t, { upgrade: true, production: true });
   const sendThree = await f.upload([jpeg, png, webp]);
   const submissions = await Promise.all([f.send(sendThree), f.send(sendThree)]);
   assert.deepEqual(submissions.map(response => response.status).sort(), [201, 409]);
@@ -149,7 +162,9 @@ test('D1 and R2 handle all formats, private originals, duplicate races, review t
   assert.deepEqual(Buffer.from(await file.arrayBuffer()), Buffer.from(await jpeg.arrayBuffer()));
   const configuredPreview = await f.serve(first, 'medium', { query: '?moderation=1' });
   assert.equal(configuredPreview.status, 200);
-  assert.match(configuredPreview.headers.get('cache-control'), /no-store/);
+  assert.match(configuredPreview.headers.get('cache-control'), /private, no-store/);
+  assert.equal(configuredPreview.headers.get('cloudflare-cdn-cache-control'), 'no-store');
+  assert.equal(configuredPreview.headers.get('vary'), 'Cookie');
   const medium = Buffer.from(await configuredPreview.arrayBuffer());
   const meta = await sharp(medium).metadata();
   assert.equal(meta.width, 640);

@@ -5,12 +5,16 @@ export const REVIEW_DESCRIPTION_LIMIT = 180;
 
 export const REVIEW_HEADERS = {
   'Cache-Control': 'private, no-store',
+  'CDN-Cache-Control': 'no-store',
+  'Cloudflare-CDN-Cache-Control': 'no-store',
+  Vary: 'Cookie',
   'X-Robots-Tag': 'noindex, nofollow',
   'X-Content-Type-Options': 'nosniff',
   'Cross-Origin-Resource-Policy': 'same-origin',
 };
 
 export function reviewPreviewEnabled(url: URL, env: any): boolean {
+  if (env.REVIEWS_PREVIEW === 'staff-production') return url.origin === 'https://grayznbuffalo.com';
   return env.REVIEWS_PREVIEW === 'local'
     && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
 }

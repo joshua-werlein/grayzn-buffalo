@@ -32,6 +32,8 @@ enabled = false
 CF_ANALYTICS_ACCOUNT_ID = "a79e3b4a2bb8dad70c75bceac4b1d3f9"
 CF_ANALYTICS_SITE_TAG = "55e9cf9f06fd4bffbb3ea50f6f1b0993"
 # CF_ANALYTICS_API_TOKEN is a runtime secret, never committed here.
+# Only authenticated staff can access Reviews or its uploads on the HTTPS apex.
+REVIEWS_PREVIEW = "staff-production"
 
 [[d1_databases]]
 binding = "DB"
@@ -45,3 +47,10 @@ id = "3c31559924b64014844778c431b80ef1"
 [[r2_buckets]]
 binding = "PHOTOS"
 bucket_name = "grayzn-photos"
+
+[[r2_buckets]]
+binding = "REVIEW_PHOTOS"
+bucket_name = "grayzn-review-photos"
+
+[images]
+binding = "REVIEW_IMAGES"

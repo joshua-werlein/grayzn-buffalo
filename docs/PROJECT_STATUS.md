@@ -210,6 +210,22 @@ The local Images simulator strips EXIF rotation without applying it. Test photos
 3. Prepare the public gallery and upload policy separately from moderation. Use a customer submission flow without staff credentials, bind real Turnstile verification to the expected hostname and action, and set upload abuse controls before opening the endpoint. Allow approved derivatives only after checking current D1 state and keep revocable media out of shared caches and public image transformations. Check the Google snapshot again, update the public privacy policy with retention and removal information, and test with a real screen reader. Mark the gallery for indexing and add the existing footer sign after the owner authorizes those changes.
 4. Roll back by disabling the feature or restoring the last known-good Worker version, then verify that review routes and media are inaccessible. Leave the additive tables and private objects in place for reconciliation. Record and investigate R2 deletion failures or unused keys from indeterminate D1 outcomes by comparing the review bucket's UUIDs with D1. Keep referenced approved and pending images, and separately authorize any pruning or data restoration. Preserve the existing menu and Welcome photo keys and objects.
 
+## Photos and Reviews · Restricted production release
+
+November 22, 2026. This release enables the staff preview on the existing HTTPS production origin. The feature uses the existing signed staff session for the gallery, review API, moderation, image delivery and menu preview. It returns a non-public response when the mode is unset, the host is incorrect or the session is invalid. Review responses carry `no-store` for browsers and CDNs. The gallery is excluded from the sitemap and includes a noindex directive. No anonymous photo upload, new public route mapping or footer link is part of this release.
+
+### Authorized release plan
+
+1. Confirm the release is based on `8070438d3a5bb3290fb80fc74cb16d608bc97da7` or recheck the release against any newer `main` tip. The previous site Worker version is `e864e6c1-3ef7-4820-8273-582188c51951`. Record the active Facebook Worker version for comparison.
+2. Retain the ACL-restricted D1 export and verified restore. The preflight export contained 977,544 bytes with SHA-256 `81d7210d435b303ebac6650898709d4993a047efe4381286745e42d94b3d8c2e`. It restored 23 tables in local Workerd with no foreign-key violations or row-count mismatches. The migration rehearsal on that snapshot preserved all 115 existing menu-photo rows.
+3. Create `grayzn-review-photos` with default private access. Check that `r2.dev` is off and no custom domains are attached. The new `REVIEW_PHOTOS` binding isolates it from `PHOTOS`. The site Worker uses the `REVIEW_IMAGES` binding to render still WebP files directly from bytes in private storage. The preview needs no image-delivery domain or publicly accessible source. [Private R2 buckets](https://developers.cloudflare.com/r2/buckets/public-buckets/) · [Images binding](https://developers.cloudflare.com/images/optimization/binding/)
+4. Recheck that `0029_review_photos.sql` is the sole pending migration. Run `npx wrangler d1 migrations apply grayzn-db --remote` and verify the receipt, two tables, three indexes and two triggers. The migration is additive.
+5. Merge the gated change into `main` after the application, security, Astro and build checks pass. Let the existing **Deploy site Worker** workflow deploy the site. It runs its own application and Facebook regressions.
+6. Verify the deployed version and inspect signed-out responses before uploading test files. Use the existing staff sign-in and Turnstile. Identify any test submissions as private tests. Remove test menu associations before leaving the site for owner review. Reject or withdraw surplus test photos through moderation. Confirm the affected image URLs return 404 and retain only clearly labeled samples useful to the owner.
+
+If the site or access controls regress, restore Worker version `e864e6c1-3ef7-4820-8273-582188c51951` and verify public pages and closed review routes. Preserve the additive tables and private bucket for audit and reconciliation. Before public launch, obtain separate approval for the anonymous access and upload controls, public indexing and the footer. Verify real-host Turnstile, abuse protection, image revocation, retention policy, review links and assistive technology. Then run the final public-site audit.
+
+
 ## Seven-item backlog
 
 | # | Priority | Task | Current status | Exact next action |
