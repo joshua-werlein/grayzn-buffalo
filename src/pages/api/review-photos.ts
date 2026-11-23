@@ -6,7 +6,7 @@ import {
   discardReviewImage, prepareReviewImage, storeReviewImage,
 } from '../../lib/review-images';
 import {
-  reviewCategory, reviewCsrfMatches, reviewDescription, reviewFormFeedback, reviewOriginMatches,
+  reviewCategory, reviewCsrfMatches, reviewDescription, reviewDisplayName, reviewFormFeedback, reviewOriginMatches,
   reviewPreviewEnabled, reviewResponse,
 } from '../../lib/review-preview';
 import { runtimeEnv } from '../../lib/runtime-env';
@@ -45,6 +45,8 @@ export const POST: APIRoute = async ({ request, url, cookies, locals }) => {
     // runtimes return an empty File for the same unselected browser control.
     .filter(({ file }) => file !== '' && !(file instanceof File && !file.name && !file.size));
   const category = form.get('category');
+  const displayName = reviewDisplayName(form.get('display_name'));
+  if (displayName === undefined) return feedback('invalid-name', 400, 'display-name');
   if (!photos.length || fields.length > MAX_REVIEW_PHOTOS || !reviewCategory(category)
       || form.get('consent') !== 'yes'
       || !photos.every((photo): photo is { file: File; description: string } =>
@@ -87,9 +89,9 @@ export const POST: APIRoute = async ({ request, url, cookies, locals }) => {
   try {
     await env.DB.batch(stored.map((photo, index) => env.DB.prepare(
       `INSERT INTO review_photos
-        (id, submission_id, digest, category, description, small_width, medium_width, medium_height)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(photo.id, submitted, photo.digest, category, photos[index].description, photo.small, photo.medium, photo.height)));
+        (id, submission_id, digest, category, description, small_width, medium_width, medium_height, display_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(photo.id, submitted, photo.digest, category, photos[index].description, photo.small, photo.medium, photo.height, displayName)));
   } catch {
     try {
       // A transport failure can occur after a successful atomic batch. Keep

@@ -222,8 +222,8 @@ test('admin page authenticates before loading and nav has no shared logout forms
   assert.ok(page.indexOf('await isAuthed') < page.indexOf('Promise.all'));
   const base = readFileSync('src/layouts/Base.astro', 'utf8');
   assert.ok(!base.includes('value="logout"'));
-  assert.ok(base.includes('class="admin-analytics-circle"'));
-  assert.ok(base.includes('Admin Analytics'));
+  assert.match(base, /<ul id="admin-destinations">[\s\S]*?<a href="\/admin\/analytics"[^>]*>Analytics<\/a>/);
+  assert.doesNotMatch(base, /admin-analytics-circle/);
   const settings = readFileSync('src/pages/admin/index.astro', 'utf8');
   assert.match(settings, /<form method="post" action="\/admin" class="signout-form">\s*<input type="hidden" name="action" value="logout"/);
 });

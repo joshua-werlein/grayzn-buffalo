@@ -1,12 +1,14 @@
 ---
 import Base from '../layouts/Base.astro';
+import ReviewGalleryResults from '../components/ReviewGalleryResults.astro';
+import { readReviewGallery, reviewGalleryHref, reviewGalleryCategory } from '../lib/review-gallery';
 import displayFont from '@fontsource/alfa-slab-one/files/alfa-slab-one-latin-400-normal.woff2?url';
 import bodyFont from '@fontsource/barlow/files/barlow-latin-400-normal.woff2?url';
 import boldFont from '@fontsource/barlow/files/barlow-latin-700-normal.woff2?url';
 import labelFont from '@fontsource/barlow-condensed/files/barlow-condensed-latin-700-normal.woff2?url';
 import { isAuthed } from '../lib/auth';
 import {
-  REVIEW_CATEGORIES, REVIEW_DESCRIPTION_LIMIT, REVIEW_HEADERS, reviewCategory, reviewCsrf, reviewImageUrl,
+  REVIEW_CATEGORIES, REVIEW_DESCRIPTION_LIMIT, REVIEW_DISPLAY_NAME_LIMIT, REVIEW_HEADERS, reviewCsrf,
   reviewPreviewEnabled, reviewResponse, type ReviewCategory,
 } from '../lib/review-preview';
 import { uploadMessage } from '../lib/review-feedback';
@@ -16,38 +18,11 @@ const env = runtimeEnv(Astro.locals);
 if (!reviewPreviewEnabled(Astro.url, env) || !await isAuthed(Astro.cookies, env)) return reviewResponse('Not found', 404);
 for (const [name, value] of Object.entries(REVIEW_HEADERS)) Astro.response.headers.set(name, value);
 
-const requestedCategory = Astro.url.searchParams.get('category');
-const category = reviewCategory(requestedCategory) ? requestedCategory : null;
-const requestedPage = Number(Astro.url.searchParams.get('page'));
-const page = Number.isSafeInteger(requestedPage) && requestedPage >= 1 && requestedPage <= 10000 ? requestedPage : 1;
-const pageSize = 18;
-type GalleryPhoto = {
-  id: string; category: ReviewCategory; description: string;
-  small_width: number; medium_width: number; medium_height: number;
-};
-let photos: GalleryPhoto[] = [];
-let unavailable = false;
-try {
-  const db = env.DB.withSession('first-primary');
-  const statement = db.prepare(
-    `SELECT id, category, description, small_width, medium_width, medium_height
-     FROM review_photos WHERE status = 'approved' ${category ? 'AND category = ?' : ''}
-     ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`,
-  );
-  const result = await statement.bind(...(category ? [category] : []), pageSize + 1, (page - 1) * pageSize).all();
-  photos = result.results;
-} catch {
-  unavailable = true;
-}
-const href = (filter: ReviewCategory | null, number = 1) => {
-  const params = new URLSearchParams();
-  if (filter) params.set('category', filter);
-  if (number > 1) params.set('page', String(number));
-  return `/reviews${params.size ? `?${params}` : ''}#gallery`;
-};
+const category = reviewGalleryCategory(Astro.url);
+const gallery = await readReviewGallery(env, Astro.url);
 const result = Astro.url.searchParams.get('result') ?? '';
 const feedback = uploadMessage(result);
-const canUpload = Boolean(env.REVIEW_PHOTOS && env.REVIEW_IMAGES && env.TURNSTILE_SITEKEY && env.TURNSTILE_SECRET && !unavailable);
+const canUpload = Boolean(env.REVIEW_PHOTOS && env.REVIEW_IMAGES && env.TURNSTILE_SITEKEY && env.TURNSTILE_SECRET && gallery !== null);
 const csrf = await reviewCsrf(Astro.cookies, env, 'upload');
 // Google Maps matched the place ID against the business name, street address
 // and phone number. Recheck the dated snapshot before enabling public access.
@@ -63,7 +38,7 @@ const googleWriteReview = `https://search.google.com/local/writereview?placeid=$
     ))}
   </Fragment>
   <div class="reviews-page">
-    <header class="reviews-heading">
+    <header class="reviews-heading section-head">
       <p class="kicker">Grayz’n Buffalo Bar &amp; Grill</p>
       <h1>Photos &amp; Reviews</h1>
       <span class="vintage-rule" aria-hidden="true"></span>
@@ -73,40 +48,19 @@ const googleWriteReview = `https://search.google.com/local/writereview?placeid=$
     <div class="reviews-sheet">
       <section id="gallery" aria-labelledby="gallery-title">
         <div class="gallery-heading">
-          <h2 id="gallery-title">From our guests</h2>
+          <h2 id="gallery-title" tabindex="-1">From our guests</h2>
           <a href="#submit-photo">Share a photo <span aria-hidden="true">↓</span></a>
         </div>
         <nav class="review-filters" aria-label="Photo categories">
-          <a href={href(null)} aria-current={!category ? 'true' : undefined}>All photos</a>
+          <a href={reviewGalleryHref(null)} data-gallery-category="" aria-current={!category ? 'true' : undefined}>All Photos</a>
           {(Object.entries(REVIEW_CATEGORIES) as [ReviewCategory, string][]).map(([key, label]) => (
-            <a href={href(key)} aria-current={category === key ? 'true' : undefined}>{label}</a>
+            <a href={reviewGalleryHref(key)} data-gallery-category={key} aria-current={category === key ? 'true' : undefined}>{label}</a>
           ))}
         </nav>
 
-        {unavailable ? <p class="gallery-empty">The gallery is temporarily unavailable.</p>
-          : photos.length ? (
-            <ul class="review-gallery" role="list">
-              {photos.slice(0, pageSize).map(photo => (
-                <li>
-                  <button type="button" data-lightbox-src={reviewImageUrl(photo.id, 'large')}
-                    data-lightbox-alt={photo.description} aria-label={`View larger photo: ${photo.description}`}>
-                    <img src={reviewImageUrl(photo.id, 'small')}
-                      srcset={photo.medium_width > photo.small_width ? `${reviewImageUrl(photo.id, 'small')} ${photo.small_width}w, ${reviewImageUrl(photo.id, 'medium')} ${photo.medium_width}w` : undefined}
-                      sizes="(max-width: 560px) calc(100vw - clamp(28px, 8vw, 96px) - 20px), (max-width: 900px) calc((100vw - clamp(28px, 8vw, 96px) - 58px) / 2), calc((min(100vw, 1160px) - clamp(28px, 8vw, 96px) - 96px) / 3)"
-                      width={photo.medium_width} height={photo.medium_height} alt="" loading="lazy" decoding="async" />
-                  </button>
-                  <p>{photo.description}</p>
-                  <span>{REVIEW_CATEGORIES[photo.category]}</span>
-                </li>
-              ))}
-            </ul>
-          ) : <p class="gallery-empty">No photos to show here yet.</p>}
-        {(page > 1 || photos.length > pageSize) && (
-          <nav class="review-paging" aria-label="Gallery pages">
-            {page > 1 && <a href={href(category, page - 1)}>Previous</a>}
-            {photos.length > pageSize && <a href={href(category, page + 1)}>Next</a>}
-          </nav>
-        )}
+        <p class="sr-only" data-gallery-status role="status"></p>
+        <p class="gallery-error" data-gallery-error role="alert" hidden></p>
+        <ReviewGalleryResults {gallery} {category} />
       </section>
 
       <aside class="google-reviews" aria-labelledby="google-title">
@@ -132,6 +86,10 @@ const googleWriteReview = `https://search.google.com/local/writereview?placeid=$
                 <option value="">Choose a category</option>
                 {Object.entries(REVIEW_CATEGORIES).map(([key, label]) => <option value={key}>{label}</option>)}
               </select>
+            </label>
+            <label>Name to display with your photo (optional)
+              <input name="display_name" maxlength={REVIEW_DISPLAY_NAME_LIMIT} aria-describedby="display-name-note" />
+              <span id="display-name-note">Use any display name you like. It will appear publicly if your photo is approved for publication. Leave it blank to appear as Anonymous.</span>
             </label>
             {[1, 2, 3].map(index => (
               <fieldset>
@@ -164,32 +122,29 @@ const googleWriteReview = `https://search.google.com/local/writereview?placeid=$
 {canUpload && <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>}
 
 <script>
+  import { connectReviewGallery } from '../lib/review-gallery-client';
   import { connectReviewUpload } from '../lib/review-upload-client';
 
+  connectReviewGallery();
   connectReviewUpload(document);
 </script>
 
 <style>
   .reviews-page {background:var(--surface-parchment) url('/parchment-texture.webp');color:var(--ink)}
-  .reviews-heading {text-align:center;padding:clamp(38px,7vw,88px) 20px;background:var(--ink);color:var(--cream);border-block-end:4px solid var(--gold)}
-  .reviews-heading .kicker {color:var(--gold)}
-  .reviews-heading h1 {font:400 clamp(1.9rem,6vw,4.5rem)/1.12 var(--display);margin:12px 0}
-  .reviews-heading p:last-child {margin:10px auto 0;max-width:32rem}
-  .reviews-sheet {max-width:1160px;margin-inline:auto;padding:clamp(28px,5vw,64px) clamp(14px,4vw,48px)}
+  .reviews-heading {padding:clamp(17px,3vw,38px) 14px 0;margin:0 auto;color:var(--ink)}
+  .reviews-heading h1 {font-size:clamp(1.75rem,4vw,2.8rem);margin:6px 0 4px}
+  .reviews-heading .vintage-rule {display:block;width:min(19rem,75%);border-block-start:4px double var(--ink);margin:9px auto}
+  .reviews-heading p:last-child {margin:0 auto;max-width:32rem;line-height:1.35}
+  .reviews-sheet {max-width:1160px;margin-inline:auto;padding:clamp(18px,3vw,38px) clamp(14px,4vw,48px) clamp(28px,5vw,64px)}
   .reviews-sheet > section {padding:0}
   h2 {font:400 clamp(1.3rem,3vw,2.05rem)/1.25 var(--display);margin:0 0 10px}
   .gallery-heading,.google-reviews {display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:baseline}
   .reviews-sheet a:not(.btn) {color:var(--btn-crimson);text-decoration:underline;text-underline-offset:3px;font-weight:700}
-  .review-filters,.review-paging {display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px}
+  .review-filters {display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px}
   .review-filters a {padding:9px 16px;border:1px solid var(--rule);border-radius:4px;background:var(--cream)}
-  .review-filters a[aria-current] {background:var(--ink);color:var(--cream);text-decoration:none}
-  .review-gallery {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;list-style:none;margin:0;padding:0}
-  .review-gallery li {background:var(--cream);padding:9px 9px 12px;border:1px solid var(--rule);box-shadow:0 4px 8px #27180f23;overflow-wrap:anywhere}
-  .review-gallery button {display:block;width:100%;padding:0;border:0;background:var(--ink);cursor:zoom-in}
-  .review-gallery img {display:block;width:100%;height:auto;aspect-ratio:4/3;object-fit:contain}
-  .review-gallery p {margin:8px 3px 1px;font-weight:600}
-  .review-gallery span {display:block;margin-inline:3px;font-size:.9rem}
-  .gallery-empty {padding:20px;border:1px dashed var(--rule)}
+  .reviews-sheet .review-filters a[aria-current] {background:var(--ink);color:var(--cream);text-decoration:none}
+  #gallery {scroll-margin-top:16px;overflow-anchor:none}
+  .gallery-error:not([hidden]) {padding:8px 12px;border-inline-start:4px solid var(--btn-crimson);background:var(--cream)}
   .google-reviews {margin:clamp(30px,6vw,68px) 0;padding:clamp(16px,3vw,32px);border-block:2px solid var(--rule);background:var(--cream)}
   .google-reviews p {margin:0}
   .review-links {display:flex;flex-wrap:wrap;gap:8px}
@@ -205,13 +160,7 @@ const googleWriteReview = `https://search.google.com/local/writereview?placeid=$
   .review-feedback:empty {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);padding:0;border:0;margin:0}
   .review-feedback {scroll-margin-block:100px;padding:12px;border-inline-start:4px solid var(--btn-crimson);background:var(--cream)}
   .reviews-sheet :is(a,button,input,select):focus-visible {outline:3px solid var(--ink);outline-offset:3px}
-  @media (max-width:900px) {.review-gallery {grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media (max-width:560px) {
-    .review-gallery {grid-template-columns:1fr}
     :global(body:has(.reviews-page) .delivery-notice) {width:100%}
-  }
-  @media (max-width:350px) {
-    .reviews-heading h1 {min-height:2.24em}
-    .reviews-heading p:last-child {min-height:3.2em}
   }
 </style>

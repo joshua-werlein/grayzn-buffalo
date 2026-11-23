@@ -363,12 +363,14 @@ CREATE TABLE IF NOT EXISTS review_photos (
   medium_width INTEGER NOT NULL CHECK (medium_width BETWEEN 1 AND 640),
   medium_height INTEGER NOT NULL CHECK (medium_height BETWEEN 1 AND 640),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  display_name TEXT CHECK (display_name IS NULL OR length(trim(display_name)) BETWEEN 1 AND 60)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS review_photos_active_digest ON review_photos(digest)
   WHERE status IN ('pending', 'approved');
 CREATE INDEX IF NOT EXISTS review_photos_gallery ON review_photos(status, updated_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS review_photos_category_gallery ON review_photos(status, category, updated_at DESC, id DESC);
 
 CREATE TABLE IF NOT EXISTS review_menu_photos (
   item_id INTEGER PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,

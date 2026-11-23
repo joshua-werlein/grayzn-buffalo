@@ -4,7 +4,7 @@ import WelcomePhotosEditor from '../../components/WelcomePhotosEditor.astro';
 import { getWelcomePhotos } from '../../lib/db';
 import { isAuthed } from '../../lib/auth';
 import {
-  REVIEW_CATEGORIES, REVIEW_DESCRIPTION_LIMIT, reviewCsrf, reviewImageUrl,
+  REVIEW_CATEGORIES, REVIEW_DESCRIPTION_LIMIT, REVIEW_DISPLAY_NAME_LIMIT, reviewCsrf, reviewImageUrl,
   reviewPreviewEnabled, type ReviewCategory,
 } from '../../lib/review-preview';
 import { runtimeEnv } from '../../lib/runtime-env';
@@ -17,7 +17,7 @@ let reviewReady = preview && Boolean(env.DB && env.REVIEW_PHOTOS);
 const statuses = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn' } as const;
 type ReviewStatus = keyof typeof statuses;
 type Photo = {
-  id: string; submission_id: string; category: ReviewCategory; description: string;
+  id: string; submission_id: string; category: ReviewCategory; description: string; display_name: string | null;
   status: ReviewStatus; revision: number; created_at: string; submission_count: number;
 };
 type MenuItem = { id: number; name: string; category: string };
@@ -38,7 +38,7 @@ if (reviewReady) {
   try {
     const db = env.DB.withSession('first-primary');
     const gallery = await db.prepare(
-      `SELECT id, submission_id, category, description, status, revision, created_at,
+      `SELECT id, submission_id, category, description, display_name, status, revision, created_at,
         COUNT(*) OVER (PARTITION BY submission_id) AS submission_count
        FROM review_photos WHERE status = ? ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`,
     ).bind(status, pageSize + 1, (page - 1) * pageSize).all();
@@ -72,6 +72,7 @@ const feedbacks: Record<string, string> = {
   feature: 'Featured gallery photo saved.',
   unfeature: 'Menu association removed.',
   conflict: 'This photo or menu selection changed. Check the latest state and try again.',
+  'invalid-name': 'Use a display name up to 60 characters without HTML characters, or leave it blank for Anonymous.',
   invalid: 'The request was invalid. Nothing was saved.',
   'too-large': 'The request was too large. Nothing was saved.',
   unavailable: 'Review storage is temporarily unavailable. Check the current state before trying again.',
@@ -88,12 +89,13 @@ const statusLink = (key: string, number = 1) => `/admin/reviews?status=${key}${n
       <h1>Manage photos</h1>
       <nav class="review-admin-links" aria-label="Photo management">
         {reviewReady && <>
-          <a href="/reviews">Open gallery preview</a>
-          <a href="/menu">Open menu preview</a>
+          <a href="/reviews" target="_blank" rel="noopener noreferrer" aria-describedby="preview-access">Preview Photos &amp; Reviews (Staff Only)</a>
+          <a href="/menu" target="_blank" rel="noopener noreferrer" aria-describedby="preview-access">View Public Menu</a>
           <a href="#menu-assignment">Feature a menu photo</a>
         </>}
         <a href="#welcome-photos">Edit Welcome photos</a>
       </nav>
+      {reviewReady && <p id="preview-access">Anyone can view the Menu. Photos &amp; Reviews is restricted to staff during testing. Both links open in a new tab.</p>}
     </header>
     {preview && !reviewReady && <p role="status">Customer photo moderation and menu assignments are temporarily unavailable.</p>}
     {feedback && !selected && reviewReady && <p class="moderation-notice" role="status">{feedback}</p>}
@@ -114,6 +116,7 @@ const statusLink = (key: string, number = 1) => `/admin/reviews?status=${key}${n
             )}
             <div>
               <h3>{photo.description}</h3>
+              <p>Display name: {photo.display_name ?? 'Anonymous'}</p>
               <p>{statuses[status]} · {REVIEW_CATEGORIES[photo.category]}<br />
                 Submitted {photo.created_at.slice(0, 10)} · Submission {photo.submission_id.slice(0, 8)}
               </p>
@@ -132,6 +135,9 @@ const statusLink = (key: string, number = 1) => `/admin/reviews?status=${key}${n
                     </label>
                     <label>Photo description
                       <input name="description" value={photo.description} maxlength={REVIEW_DESCRIPTION_LIMIT} required />
+                    </label>
+                    <label>Display name (optional)
+                      <input name="display_name" value={photo.display_name ?? ''} maxlength={REVIEW_DISPLAY_NAME_LIMIT} placeholder="Anonymous" />
                     </label>
                     <button class="btn btn-primary" name="action" value={status === 'pending' ? 'approve' : 'edit'}>
                       {status === 'pending' ? 'Approve photo' : 'Save photo details'}
