@@ -133,6 +133,8 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   .delivery-notice .qualifier{white-space:nowrap}
   .delivery-notice .qualifier::before{content:", "}
   main{flex:1 0 auto;width:100%}
+  /* Contact places its main inside the scenic wrapper, which must also grow. */
+  .footer-composition--contact{display:flex;flex-direction:column;flex:1 0 auto}
   img,iframe{max-width:100%}
   .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
   .checker{height:8px;background:repeating-conic-gradient(var(--ink) 0% 25%, var(--cream) 0% 50%) 0 0/24px 24px}
