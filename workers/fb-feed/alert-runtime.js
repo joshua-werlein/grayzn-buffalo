@@ -195,7 +195,8 @@ async function assessWeekly(env,scan,snap,now,sourceIds) {
     for(const day of r.conflictDays??[]) own.push({category:'publication',reason:'source_conflict',day});
     for(const day of r.pendingDays??[]) own.push({category:'publication',reason:'unwritten',day});
     for(const h of r.held??[]) {
-      if(WEEKLY_PUBLICATION_HOLDS.has(h.reason)) own.push({category:'publication',reason:h.reason,day:h.day});
+      if(h.reason==='invalid_evidence') own.push({category:'validation',reason:h.reason,day:h.day});
+      else if(WEEKLY_PUBLICATION_HOLDS.has(h.reason)) own.push({category:'publication',reason:h.reason,day:h.day});
       else if(h.reason==='retained' && !dailyPublished(r.weekId,h.day)) own.push({category:'publication',reason:'retained_conflict',day:h.day});
       else if(h.reason!=='published') suppressedDays++;
     }

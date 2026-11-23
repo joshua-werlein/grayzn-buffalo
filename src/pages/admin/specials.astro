@@ -395,14 +395,14 @@ const mexicanEditors=[
     const dayInput = weeklyForm.querySelector<HTMLInputElement>('[name="weekly_active_day"]');
     const scrollInput = weeklyForm.querySelector<HTMLInputElement>('[name="weekly_scroll_y"]');
     if (dayInput) dayInput.value = String(currentDay);
-    if (scrollInput) scrollInput.value = String(Math.round(window.scrollY));
+    if (scrollInput) scrollInput.value = String(Math.round(document.querySelector('main')?.scrollTop ?? 0));
     leaving = true;
     weeklyForm.setAttribute('aria-busy', 'true');
   });
   if (phone.matches && weeklyForm?.dataset.saveAttempted === 'true') {
     // Failed POSTs keep the current day and viewing position; successful PRG GETs skip this.
     requestAnimationFrame(() => {
-      window.scrollTo({ top: Number(weeklyForm.dataset.scrollY) || 0, behavior: 'instant' });
+      document.querySelector('main')?.scrollTo({ top: Number(weeklyForm.dataset.scrollY) || 0, behavior: 'instant' });
       if (saveError && !saveError.hidden) saveError.focus({ preventScroll: true });
     });
   }

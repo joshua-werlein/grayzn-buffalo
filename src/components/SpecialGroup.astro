@@ -1,19 +1,29 @@
 ---
 import { visibleSlots, type SpecialGroup } from '../lib/specials-store';
 import {presentHomeSpecial,presentSpecial} from '../lib/section-links.js';
+import {isFullDayClosure} from '../lib/special-closure.js';
 interface Props { group: SpecialGroup; showTime?: boolean; sections?: string[]; wing?: {lines: string[]; priced: boolean; source: string} | null; homeCard?: boolean }
 const { group, showTime = true, sections = [], wing = null, homeCard = false } = Astro.props;
 const present = homeCard ? presentHomeSpecial : presentSpecial;
 // One link per promotion: a second special naming it reads normally.
 const linked = new Set<string>();
-const slots = (group.enabled ? visibleSlots(group) : []).map(slot => {
+const closures = new Set<string>();
+const visible = (group.enabled ? visibleSlots(group) : []).filter(slot => {
+  const closure = (slot.content ?? '').trim().toLowerCase();
+  if (!isFullDayClosure(closure)) return true;
+  if (closures.has(closure)) return false;
+  closures.add(closure);
+  return true;
+});
+const closureOnly = visible.every(slot => isFullDayClosure(slot.content));
+const slots = visible.map(slot => {
   const shown = present(group, slot, sections.filter(id => !linked.has(id)), wing);
   if (shown.link) linked.add(shown.link.id);
   return shown;
 });
 ---
 {slots.length > 0 && <section class="special-group">
-  <p class="special-group__label">{group.label}{showTime && group.service_time && <span>{group.service_time}</span>}</p>
+  <p class="special-group__label">{group.label}{showTime && !closureOnly && group.service_time && <span>{group.service_time}</span>}</p>
   <ul class="special-group__items">{slots.map(({link, text}) => <li>{link && <a class="special-group__section-link" href={link.href} data-section-link={link.id}>{link.label}</a>}{text && <span class:list={{'special-group__linked-text': link}}>{text}</span>}</li>)}</ul>
 </section>}
 <style>

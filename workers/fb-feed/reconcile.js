@@ -5,6 +5,7 @@ import {standaloneSoup,hasStandaloneSoupLabel} from '../../src/lib/daily-soup.js
 import {formatWingNight,validateWingNight,isWingOffer,WING_HEADING} from './wing-night.js';
 import {planDailyEvidence} from './evidence.js';
 import {normalizeMenuCase} from '../../src/lib/text-case.js';
+import {isFullDayClosure} from '../../src/lib/special-closure.js';
 // Evidence is persisted separately from the website's final group structure.
 // A poster-level night heading does NOT make every offer a night-only offer.
 const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
@@ -260,7 +261,7 @@ export function applySharedWeeklyLunchPrice(value) {
   const {price, ambiguous} = sharedWeeklyLunchPrice(value);
   const unresolved = [];
   const entries = value.entries.flatMap(e => {
-    if (e.content.includes('$') || (!price && !ambiguous)) return [e];
+    if (isFullDayClosure(e.content) || e.content.includes('$') || (!price && !ambiguous)) return [e];
     if (ambiguous) { unresolved.push({day: e.day_of_week, reason: SHARED_WEEKLY_PRICE_AMBIGUOUS}); return []; }
     const content = `${e.content.trim()} - ${price}`;
     if (content.length > 150) { unresolved.push({day: e.day_of_week, reason: 'Weekly lunch with shared price exceeds 150 characters'}); return []; }

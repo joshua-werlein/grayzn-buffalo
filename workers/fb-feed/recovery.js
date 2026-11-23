@@ -17,7 +17,7 @@ export const OWNS_ATTEMPT_SQL = `EXISTS(SELECT 1 FROM special_imports i
     AND NOT EXISTS(SELECT 1 FROM special_imports newer WHERE newer.fb_post_id=i.fb_post_id
       AND newer.parser_version=i.parser_version AND newer.rowid>i.rowid))`;
 
-export function isTransientFailure(error) {
+export function isTransientFailure(error, {workersAi = false} = {}) {
   const message = String(error);
   // Structured response failures keep the existing within-attempt retry contract.
   if (/json[ _]mode|json[ _]schema/i.test(message)) return false;
@@ -26,6 +26,8 @@ export function isTransientFailure(error) {
   // https://developers.cloudflare.com/workers-ai/platform/errors/
   const code=Number(error?.code ?? message.match(/\b(3003|3006|3007|3008|3023|3036|3039|3040|3041|3042|5004|5005|5007|5016|5018|5019|5035|8005)\b/)?.[1]);
   if ([3003,3006,3023,3036,3039,3041,3042,5004,5005,5007,5016,5018,5019,5035].includes(code)) return false;
+  // Workers AI can cancel upstream inference after accepting the request.
+  if (workersAi && /"httpCode"\s*:\s*499\b/.test(message) && /\bClient Closed Request\b/i.test(message)) return true;
   // Observed binding error: "AiError: 8005: Internal server error" may
   // omit HTTP status. An explicit permanent HTTP status still takes precedence.
   if (code===8005) {

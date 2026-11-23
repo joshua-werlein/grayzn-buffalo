@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {harness, offer, poster} from './test-fixture.js';
 import worker from './worker.js';
+import {isTransientFailure} from './recovery.js';
 
 const TWO_MINUTES = 120_000;
 const webhook = {body:{type:'facebook-feed-change'}};
@@ -85,6 +86,62 @@ test('November 20 error becomes eligible 120 seconds after failure and publishes
   assert.equal(f.state.aiCalls, 2);
   assert.deepEqual(f.sql('SELECT * FROM special_import_events ORDER BY id'), audit);
   assert.deepEqual(slotsForFriday(), slots);
+});
+
+test('November 23 Workers AI 499 retries the saved Monday image and publishes only the missing Nightly pair', async t => {
+  const [lunch, turkey, ham, burgers, ribs] = [
+    'GMAC Salad with a Drink $9.75',
+    'Turkey Wrap with Side Salad, Chili or Coleslaw $10.25',
+    'Grilled Ham & Cheese with Cup of Chili or Coleslaw $7.25',
+    '2 Burgers with an Order of Fries $14',
+    'Half Rack Ribs with Mac and Cheese and Coleslaw $18.75',
+  ];
+  const errors = new Error('InferenceUpstreamError: {"name":"AiError","internalCode":0,"httpCode":499,"message":"AiError: AiError: Client Closed Request (request-id)","description":"Client Closed Request"}');
+  assert.equal(isTransientFailure(errors), false, 'image failures keep their existing classification');
+  assert.equal(isTransientFailure(new Error('HTTP 499'), {workersAi:true}), false);
+  const f = setup(t, {
+    now:'2026-11-23T15:49:51Z', caption:'',
+    candidate:poster(1,'GRAYZ\'N BUFFALO BAR & GRILL MONDAY SPECIALS',[
+      offer(lunch, `1) ${lunch} (11-1:30)`, '11-1:30'), offer(turkey, `2) ${turkey}`), offer(ham, `3) ${ham}`),
+    ]),
+  });
+  f.env.SPECIALS_EVIDENCE_VERSION = '2';
+  f.env.SPECIALS_VERIFICATION_STRATEGY = 'conditional';
+  const morning = f.state.posts[0];
+  Object.assign(morning, {message:'',created_time:'2026-11-23T15:48:36Z',updated_time:'2026-11-23T15:48:36Z'});
+  f.sql("UPDATE weekly_specials SET week_start_date='2026-11-23',week_end_date='2026-11-29' WHERE id=9000");
+  await f.run();
+  const contents = service => f.slots(1,service).map(s => s.content).filter(Boolean);
+  assert.deepEqual(contents('all-day'), [turkey,ham]);
+  assert.match(contents('lunch')[0], /Gmac Salad with a Drink \$9\.75/i);
+  const morningSlots = [...f.slots(1,'lunch'), ...f.slots(1,'all-day')];
+
+  f.state.posts.unshift({...morning,id:'p2',created_time:'2026-11-23T22:18:33Z',updated_time:'2026-11-23T22:18:33Z'});
+  f.state.now = Date.parse('2026-11-23T22:20:12Z');
+  f.state.candidate = poster(1,'MONDAY NIGHT SPECIALS',[burgers,ribs,turkey,ham].map(text => offer(text, text)));
+  const succeed = f.env.AI.run;
+  f.env.AI.run = async () => { throw errors; };
+  // This fixture's first import is the morning post, so capture the retry directly.
+  const messages = [];
+  f.env.IMPORT_TRIGGER = {send:async (body, {delaySeconds}) => messages.push({body, delaySeconds})};
+  await f.run();
+  const nightlyImport = () => f.imports().find(row => row.fb_post_id==='p2');
+  assert.equal(nightlyImport().failure_kind, 'transient_ai');
+  assert.equal(nightlyImport().processing_status, 'pending');
+  assert.ok(nightlyImport().image_r2_key);
+  assert.deepEqual(contents('nightly'), []);
+  const [retry] = messages;
+  assert.equal(retry.delaySeconds, 120);
+  const downloads = f.state.calls.filter(url => url.hostname==='cdn.example').length;
+
+  f.env.AI.run = succeed;
+  f.state.now += TWO_MINUTES;
+  await runQueue(f, retry);
+  assert.equal(nightlyImport().processing_status, 'staged');
+  assert.equal(nightlyImport().retry_count, 2);
+  assert.equal(f.state.calls.filter(url => url.hostname==='cdn.example').length, downloads);
+  assert.deepEqual(contents('nightly'), [burgers,ribs]);
+  assert.deepEqual([...f.slots(1,'lunch'), ...f.slots(1,'all-day')], morningSlots);
 });
 
 for (const failures of [2, 3]) {
