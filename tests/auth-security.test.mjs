@@ -237,7 +237,7 @@ test('compiled staff pages reject anonymous, expired and previous-password sessi
   await login(f.env.ADMIN_PASSWORD, f.cookies, f.env);
   const env = { ...f.env, ADMIN_PASSWORD: 'new-test-password',
     DB: { prepare() { assert.fail('Unauthorized DB access'); } } };
-  for (const name of ['menu', 'specials', 'welcome-photos', 'analytics']) {
+  for (const name of ['menu', 'specials', 'welcome-photos', 'reviews', 'analytics']) {
     const page = (await builtRoute('admin/' + name)).default;
     for (const method of ['GET', 'POST']) {
       for (const token of [undefined, 'a'.repeat(32), f.jar.get('gb_session').value]) {
@@ -248,7 +248,11 @@ test('compiled staff pages reject anonymous, expired and previous-password sessi
         });
         assert.equal(response.status, 302);
         // Menu sends staff back to itself after sign-in and says an unsaved change was lost.
-        const expected = name !== 'menu' ? '/admin' : method === 'POST' ? '/admin?next=/admin/menu&expired=1' : '/admin?next=/admin/menu';
+        const expected = {
+          menu: method === 'POST' ? '/admin?next=/admin/menu&expired=1' : '/admin?next=/admin/menu',
+          'welcome-photos': '/admin?next=/admin/welcome-photos',
+          reviews: '/admin?next=/admin/reviews',
+        }[name] ?? '/admin';
         assert.equal(response.headers.get('location'), expected);
       }
     }

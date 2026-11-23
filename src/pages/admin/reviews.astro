@@ -1,16 +1,19 @@
 ---
 import Base from '../../layouts/Base.astro';
+import WelcomePhotosEditor from '../../components/WelcomePhotosEditor.astro';
+import { getWelcomePhotos } from '../../lib/db';
 import { isAuthed } from '../../lib/auth';
 import {
   REVIEW_CATEGORIES, REVIEW_DESCRIPTION_LIMIT, reviewCsrf, reviewImageUrl,
-  reviewPreviewEnabled, reviewResponse, type ReviewCategory,
+  reviewPreviewEnabled, type ReviewCategory,
 } from '../../lib/review-preview';
 import { runtimeEnv } from '../../lib/runtime-env';
 
 const env = runtimeEnv(Astro.locals);
-if (!reviewPreviewEnabled(Astro.url, env)) return reviewResponse('Not found', 404);
 if (!await isAuthed(Astro.cookies, env)) return Astro.redirect('/admin?next=/admin/reviews', 302);
-if (!env.DB || !env.REVIEW_PHOTOS) return reviewResponse('Review storage is unavailable.', 503);
+const welcomePhotos = await getWelcomePhotos(env);
+const preview = reviewPreviewEnabled(Astro.url, env);
+let reviewReady = preview && Boolean(env.DB && env.REVIEW_PHOTOS);
 const statuses = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn' } as const;
 type ReviewStatus = keyof typeof statuses;
 type Photo = {
@@ -25,37 +28,40 @@ const requestedPage = Number(Astro.url.searchParams.get('page'));
 const page = Number.isSafeInteger(requestedPage) && requestedPage >= 1 && requestedPage <= 10000 ? requestedPage : 1;
 const pageSize = 20;
 const requestedItem = Number(Astro.url.searchParams.get('item'));
-const csrf = await reviewCsrf(Astro.cookies, env, 'moderate');
-let photos: Photo[];
-let items: MenuItem[];
+const csrf = reviewReady ? await reviewCsrf(Astro.cookies, env, 'moderate') : '';
+let photos: Photo[] = [];
+let items: MenuItem[] = [];
 let food: Pick<Photo, 'id' | 'description'>[] = [];
 let assignment: Assignment | null = null;
 let selected: MenuItem | undefined;
-try {
-  const db = env.DB.withSession('first-primary');
-  const gallery = await db.prepare(
-    `SELECT id, submission_id, category, description, status, revision, created_at,
-      COUNT(*) OVER (PARTITION BY submission_id) AS submission_count
-     FROM review_photos WHERE status = ? ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`,
-  ).bind(status, pageSize + 1, (page - 1) * pageSize).all();
-  photos = gallery.results;
-  const menu = await db.prepare(
-    `SELECT i.id, i.name, c.name AS category FROM items i JOIN categories c ON c.id = i.category_id
-     WHERE i.active = 1 ORDER BY c.sort, c.id, i.sort, i.name, i.id`,
-  ).all();
-  items = menu.results;
-  selected = items.find(item => item.id === requestedItem);
-  if (selected) {
+if (reviewReady) {
+  try {
+    const db = env.DB.withSession('first-primary');
+    const gallery = await db.prepare(
+      `SELECT id, submission_id, category, description, status, revision, created_at,
+        COUNT(*) OVER (PARTITION BY submission_id) AS submission_count
+       FROM review_photos WHERE status = ? ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`,
+    ).bind(status, pageSize + 1, (page - 1) * pageSize).all();
+    photos = gallery.results;
+    const menu = await db.prepare(
+      `SELECT i.id, i.name, c.name AS category FROM items i JOIN categories c ON c.id = i.category_id
+       WHERE i.active = 1 ORDER BY c.sort, c.id, i.sort, i.name, i.id`,
+    ).all();
+    items = menu.results;
+    selected = items.find(item => item.id === requestedItem);
     const result = await db.prepare(
-      "SELECT id, description FROM review_photos WHERE status = 'approved' AND category = 'food' ORDER BY description, id",
+      `SELECT id, description FROM review_photos WHERE status = 'approved' AND category = 'food'
+       ORDER BY description, id ${selected ? '' : 'LIMIT 1'}`,
     ).all();
     food = result.results;
-    assignment = await db.prepare(
-      'SELECT photo_id, revision FROM review_menu_photos WHERE item_id = ?',
-    ).bind(selected.id).first();
+    if (selected) {
+      assignment = await db.prepare(
+        'SELECT photo_id, revision FROM review_menu_photos WHERE item_id = ?',
+      ).bind(selected.id).first();
+    }
+  } catch {
+    reviewReady = false;
   }
-} catch {
-  return reviewResponse('Review storage is unavailable.', 503);
 }
 const feedbacks: Record<string, string> = {
   approve: 'Photo approved.',
@@ -79,16 +85,20 @@ const statusLink = (key: string, number = 1) => `/admin/reviews?status=${key}${n
 <Base title="Manage Photos & Reviews — Grayz’n Buffalo">
   <section class="review-admin">
     <header>
-      <h1>Manage Photos &amp; Reviews</h1>
-      <div class="review-admin-links">
-        <a href="/reviews">Open gallery preview</a>
-        <a href="/menu">Open menu preview</a>
-        <a href="#menu-assignment">Feature a menu photo</a>
-      </div>
+      <h1>Manage photos</h1>
+      <nav class="review-admin-links" aria-label="Photo management">
+        {reviewReady && <>
+          <a href="/reviews">Open gallery preview</a>
+          <a href="/menu">Open menu preview</a>
+          <a href="#menu-assignment">Feature a menu photo</a>
+        </>}
+        <a href="#welcome-photos">Edit Welcome photos</a>
+      </nav>
     </header>
-    {feedback && <p class="moderation-notice" role="status">{feedback}</p>}
-    <section id="moderation" aria-labelledby="moderation-title">
-      <h2 id="moderation-title">Photo moderation</h2>
+    {preview && !reviewReady && <p role="status">Customer photo moderation and menu assignments are temporarily unavailable.</p>}
+    {feedback && !selected && reviewReady && <p class="moderation-notice" role="status">{feedback}</p>}
+    {reviewReady && <section id="moderation" aria-labelledby="moderation-title" tabindex="-1">
+      <h2 id="moderation-title">Customer Photo Moderation</h2>
       <nav class="review-admin-links" aria-label="Moderation status">
         {Object.entries(statuses).map(([key, label]) =>
           <a href={statusLink(key)} aria-current={status === key ? 'true' : undefined}>{label}</a>
@@ -150,19 +160,24 @@ const statusLink = (key: string, number = 1) => `/admin/reviews?status=${key}${n
           {photos.length > pageSize && <a href={statusLink(status, page + 1)}>Next</a>}
         </nav>
       )}
-    </section>
-    <section id="menu-assignment" aria-labelledby="assignment-title">
-      <h2 id="assignment-title">Featured menu photo</h2>
-      <p>Choose an approved Food photo. The gallery photo takes precedence in the menu preview. Removing the association restores any existing staff photo.</p>
-      <form class="item-picker" action="/admin/reviews#menu-assignment">
-        <label>Menu item
-          <select name="item" required>
-            <option value="">Choose a menu item</option>
-            {items.map(item => <option value={item.id} selected={selected?.id === item.id}>{item.name} · {item.category}</option>)}
-          </select>
-        </label>
-        <button class="secondary">Load item</button>
-      </form>
+    </section>}
+    {reviewReady && <section id="menu-assignment" aria-labelledby="assignment-title" tabindex="-1">
+      <h2 id="assignment-title">Featured Menu Photos</h2>
+      {feedback && selected && <p class="moderation-notice" role="status">{feedback}</p>}
+      <p>Choose an active menu item, then select an approved Food photo for its private menu preview. Removing the association restores any existing staff photo.</p>
+      {!food.length && <p>No approved Food photos are available. Approve a customer photo in the Food category first.</p>}
+      {!items.length && <p>No active menu items are available.</p>}
+      {items.length > 0 && (food.length > 0 || selected) && (
+        <form class="item-picker" action="/admin/reviews#menu-assignment">
+          <label>Menu item
+            <select name="item" required>
+              <option value="">Choose a menu item</option>
+              {items.map(item => <option value={item.id} selected={selected?.id === item.id}>{item.name} · {item.category}</option>)}
+            </select>
+          </label>
+          <button class="secondary">Continue to photo selection</button>
+        </form>
+      )}
       {selected && (
         <div class="menu-selection">
           <h3>{selected.name}</h3>
@@ -182,7 +197,7 @@ const statusLink = (key: string, number = 1) => `/admin/reviews?status=${key}${n
               </label>
               <button class="btn btn-primary" name="action" value="feature">Set featured photo</button>
             </form>
-          ) : <p>No approved Food photos are available.</p>}
+          ) : null}
           {assignment && (
             <form method="post" action="/admin/review-action">
               <input type="hidden" name="csrf" value={csrf} />
@@ -194,7 +209,8 @@ const statusLink = (key: string, number = 1) => `/admin/reviews?status=${key}${n
           )}
         </div>
       )}
-    </section>
+    </section>}
+    <WelcomePhotosEditor photos={welcomePhotos} />
   </section>
 </Base>
 
@@ -205,6 +221,7 @@ const statusLink = (key: string, number = 1) => `/admin/reviews?status=${key}${n
   h2 {font-size:clamp(1.25rem,4vw,1.75rem)}
   h3 {overflow-wrap:anywhere;margin-top:0}
   .review-admin section {margin-top:24px;padding:clamp(12px,3vw,24px);border:1px solid var(--rule);background:var(--cream)}
+  #moderation,#menu-assignment {scroll-margin-top:100px}
   .review-admin-links {display:flex;flex-wrap:wrap;gap:8px}
   .review-admin-links a,.secondary {display:inline-block;padding:8px 12px;border:1px solid var(--ink);border-radius:4px;background:var(--cream);color:var(--ink);font:inherit;font-weight:700;cursor:pointer}
   .review-admin-links a[aria-current] {background:var(--ink);color:var(--cream)}

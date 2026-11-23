@@ -7,7 +7,11 @@ export const MAX_REVIEW_REQUEST_BYTES = MAX_REVIEW_PHOTOS * MAX_REVIEW_PHOTO_BYT
 const MAX_PIXELS = 24_000_000;
 const VARIANTS = { small: 320, medium: 640, large: 1440 } as const;
 
-export class InvalidReviewImage extends Error {}
+export class InvalidReviewImage extends Error {
+  constructor(readonly stage = 'image-output') {
+    super('Invalid review image');
+  }
+}
 
 function mimeMatches(buffer: ArrayBuffer, type: string): boolean {
   const bytes = new Uint8Array(buffer);
@@ -79,13 +83,15 @@ const imageStream = (bytes: ArrayBuffer) => new Blob([bytes]).stream();
 
 export async function prepareReviewImage(file: File, images: any) {
   const original = await file.arrayBuffer();
-  if (!mimeMatches(original, file.type)) throw new InvalidReviewImage();
+  if (!mimeMatches(original, file.type)) throw new InvalidReviewImage('image-signature');
 
+  let stage = 'image-info';
   try {
     const info = await images.info(imageStream(original));
     if (info.format !== file.type || !Number.isSafeInteger(info.width) || !Number.isSafeInteger(info.height)
         || info.width <= 0 || info.height <= 0 || info.width * info.height > MAX_PIXELS) throw new InvalidReviewImage();
 
+    stage = 'image-transform';
     const resize = async (limit: number) => {
       const result = await images.input(imageStream(original))
         .transform({ width: limit, height: limit, fit: 'scale-down' })
@@ -104,7 +110,7 @@ export async function prepareReviewImage(file: File, images: any) {
     const digest = Array.from(new Uint8Array(digestBytes), byte => byte.toString(16).padStart(2, '0')).join('');
     return { original, digest, large, medium, small };
   } catch {
-    throw new InvalidReviewImage();
+    throw new InvalidReviewImage(stage);
   }
 }
 
