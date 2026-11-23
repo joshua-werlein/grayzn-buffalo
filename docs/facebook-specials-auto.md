@@ -82,6 +82,16 @@ A clearly single-day Lunch Specials heading with several weekly-shaped entries a
 
 If `poster_evidence` or `day_evidence` carries weekly lunch signals but the AI returned `daily-offers` shape, `WEEKLY_LUNCH_SHAPE_ERROR` triggers a retry with the weekly-lunch-only schema.
 
+Under evidence contract 2, a verified weekly lunch poster can also close the restaurant for a date. The image reading must identify a single printed Monday–Friday range and a matching weekday row with explicit full-restaurant closure wording. Partial closures, early closing, and holiday greetings alone do not close other services. Conflicting or missing date evidence holds the closure.
+
+For today or a future weekday in the matched week, the existing weekly transaction writes the holiday wording once in each eligible Lunch, All Day, and Nightly group and clears superseded recurring slots, prices, and links in those groups. Disabled or ambiguous groups, independently published meals, and staff edits newer than the source remain protected. A conflicting current daily poster takes precedence for today. No shared lunch price is applied to a closure. The homepage weekly board and Specials page render these rows without service hours for a closure-only group and collapse identical closure messages already entered in a group. The recurring template remains in place for the following week.
+
+### November 23 Monday Night Specials
+
+The [Monday Night Specials poster](https://www.facebook.com/583672228384067/posts/1778983197102890) was published at 4:18:33 p.m. Central. The Worker discovered it at 4:20:11 p.m., stored the image, and started inference at 4:20:12 p.m. At 4:21:23 p.m. Workers AI reported HTTP 499 `Client Closed Request`. The deployed classifier recorded a permanent failure after one attempt, with no due time or candidate for reconciliation. Production still showed the two unpriced recurring Nightly meals at verification. The verified morning poster had already published GMAC Salad with a Drink and the Turkey Wrap and Grilled Ham & Cheese All Day pair. A successful reading of the night poster uses the existing Monday four-offer rules to publish burgers and ribs in Nightly and deduplicate the matching All Day pair.
+
+New Workers AI responses with the observed 499 cancellation signature enter the durable AI retry path. The queue makes a retry eligible after 120 seconds, with the existing half-hour cron as fallback and a limit of three total attempts. The retry still requires a complete same-day scan, the same source version, remaining AI budget, and the Chicago processing window. The recorded November 23 terminal failure is left in place.
+
 ## Mexican Night Retry and Routing
 
 Two paths can route to Mexican Night extraction:

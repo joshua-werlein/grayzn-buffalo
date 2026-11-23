@@ -3,12 +3,13 @@ import {protectedMexicanSlots,staffOwnedSectionSlot,sqlTime} from './mexican-nig
 import {automaticWeekRange} from './auto-week.js';
 import {composeMexicanItem,normalizeMexicanPrices} from '../../src/lib/mexican-item.js';
 import {normalizeMenuCase} from '../../src/lib/text-case.js';
+import {isFullDayClosure} from '../../src/lib/special-closure.js';
 // The Worker owns only automatic writes. Manual saves remain in specials-store.ts.
 // Every write, revision bump and acceptance audit commits in one D1 batch.
 import {reconcilePosterEvidence,validateWeeklyLunch,applySharedWeeklyLunchPrice,validateMexicanNight,canonicalizeSlotContent,singleDayLunchEvidence,singleDayLunchEvidenceV2,MEXICAN_NIGHT_SHAPE_ERROR} from './reconcile.js';
 import {parserVersionFor} from './classify.js';
 import {soupGroupId,blankSoupGroup} from '../../src/lib/daily-soup.js';
-import {normalizeWeeklyRange,factKey,sameOffer,analyzeDailyEvidence,hasPrintedPrice} from './evidence.js';
+import {normalizeWeeklyRange,printedWeeklyRanges,weeklyEntryEvidence,factKey,sameOffer,analyzeDailyEvidence,hasPrintedPrice} from './evidence.js';
 import {approvalEvents,staffConfirmedCandidate} from './staff-review.js';
 import {eventSourceIndexes} from './event-store.js';
 import {verifiedPostTimes} from './graph.js';
@@ -355,9 +356,36 @@ async function resolveWeeklyLunchTargetWeek(env, evidence, fbCreatedTime, today)
   return results[0];
 }
 
-// replaceable: weekday -> slot values written by an older, no-longer-current
-// weekly poster for this week; only a current replacement poster receives it.
-// protectedDays: weekdays owned by a current daily poster (never overwritten).
+function confirmedClosure(source, entry, date) {
+  try {
+    const raw = JSON.parse(String(source.extracted_json).replace(/^```(?:json)?\n?|\n?```$/gm,'').trim());
+    if (printedWeeklyRanges(raw.poster_evidence).length!==1) return false;
+    const row = raw.entries.find(e => e.day_of_week===entry.day_of_week)?.evidence;
+    if (typeof row!=='string' || isFullDayClosure(row) || !isFullDayClosure(weeklyEntryEvidence(row, entry.day_of_week))) return false;
+    return [...row.matchAll(/\b(\d{1,2})\/(\d{1,2})\b/g)].every(([,month,day]) => +month===date.getUTCMonth()+1 && +day===date.getUTCDate());
+  } catch { return false; }
+}
+
+function planClosureGroup(slots, content, postedMs, replaceableLunch) {
+  const first = slots.find(s => s.position === 1);
+  if (!first) return {reason:'missing_destination', rows:[]};
+  const mayReplace = s => facebookMayReplace(s, postedMs) &&
+    (!s.content?.trim() || !populatedAutomation(s) || isFullDayClosure(s.content) || replaceableLunch?.has(s.content));
+  if (slots.some(s => !mayReplace(s) && s.content?.trim() && !isFullDayClosure(s.content)))
+    return {reason:slots.some(s => !facebookMayReplace(s, postedMs)) ? 'staff_edit_newer' : 'retained', rows:[]};
+  const protectedClosure = slots.some(s => !mayReplace(s) && isFullDayClosure(s.content));
+  if (!protectedClosure && !mayReplace(first)) return {reason:'staff_edit_newer',rows:[]};
+  const rows = slots.flatMap(s => {
+    if (!mayReplace(s)) return [];
+    const value = s === first && !protectedClosure ? content : '';
+    if ((s.content ?? '') === value && !s.price && !s.section_link) return [];
+    return [{group_id:s.group_id,position:s.position,content:value}];
+  });
+  return {reason:protectedClosure ? 'staff_edit_newer' : 'published',rows};
+}
+
+// replaceable: weekday -> slot values from older weekly posters.
+// protectedDays: weekdays with a current daily poster.
 async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=[source],{inspectOnly=false,replaceable=null,protectedDays=new Set(),postedMs=NaN}={}) {
   const stage = reason => ({written: false, reason});
   const {results: groups} = await env.DB.prepare(
@@ -375,7 +403,37 @@ async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=
   for (const entry of evidence.entries) {
     const date = new Date(`${week.week_start_date}T12:00:00Z`);
     date.setUTCDate(date.getUTCDate()+entry.day_of_week-1);
-    if (date.toISOString().slice(0,10)<today) continue;
+    const serviceDate = date.toISOString().slice(0,10);
+    if (serviceDate<today) continue;
+    if (env.SPECIALS_EVIDENCE_VERSION==='2' && isFullDayClosure(entry.content)) {
+      if (!Number.isFinite(postedMs) || !confirmedClosure(source, entry, date)) {
+        hold(entry, 'invalid_evidence');
+        continue;
+      }
+      if (serviceDate===today && protectedDays.has(entry.day_of_week)) {
+        hold(entry, 'retained');
+        continue;
+      }
+      const reasons = new Set();
+      const startingRowCount = rows.length;
+      for (const service of ['lunch','all-day','nightly']) {
+        const destinations = groups.filter(g => g.service===service && g.day_of_week===entry.day_of_week && g.enabled===1);
+        if (destinations.length!==1) {
+          const disabled = groups.some(g => g.service===service && g.day_of_week===entry.day_of_week && g.enabled===0);
+          reasons.add(!destinations.length && disabled ? 'disabled' : 'missing_destination');
+          continue;
+        }
+        const dest = destinations[0];
+        const planned = planClosureGroup(slots.filter(s => s.group_id===dest.id),
+          canonicalizeSlotContent(entry.content, entry.day_of_week, service), postedMs,
+          service==='lunch' ? replaceable?.get(entry.day_of_week) : null);
+        rows.push(...planned.rows);
+        if (planned.reason!=='published') reasons.add(planned.reason);
+      }
+      for (const reason of reasons) hold(entry, reason);
+      if (!reasons.size && rows.length===startingRowCount) hold(entry, 'published');
+      continue;
+    }
     const lunchGroups = groups.filter(g => g.service === 'lunch' && g.day_of_week === entry.day_of_week && g.enabled === 1);
     if (lunchGroups.length !== 1) {
       const all = groups.filter(g => g.service === 'lunch' && g.day_of_week === entry.day_of_week);
@@ -421,7 +479,7 @@ async function applyWeeklyLunch(env, source, evidence, week, today,dependencies=
     rows.push({group_id: dest.id, position: 1, content: canonicalContent, old: slot,
       priceRemoved: !!slot.manual_edited_at && hasPrintedPrice(slot.content ?? '') && !hasPrintedPrice(canonicalContent)});
   }
-  if (inspectOnly) return {written: false, requiresWrite: rows.length > 0, pendingDays: rows.map(r => groups.find(g => g.id === r.group_id).day_of_week), held,
+  if (inspectOnly) return {written: false, requiresWrite: rows.length > 0, pendingDays: [...new Set(rows.map(r => groups.find(g => g.id === r.group_id).day_of_week))], held,
     reason: rows.length ? 'Eligible weekly lunch changes remain unwritten' : 'No unambiguous eligible weekly lunch changes'};
   if (!rows.length) return stage('No unambiguous eligible weekly lunch changes');
 
@@ -583,7 +641,7 @@ export async function reconcileWeeklyLunch(env, today, {sourceIds=null, inspectO
           entries:plan.evidence.entries.map(e=>({day:e.day_of_week,key:factKey(e.base_content??e.content)})),
           unresolvedDays:plan.evidence.unresolved_days.filter(d=>!superseded(plan,d.day)).map(d=>({day:d.day,reason:d.reason})),conflictDays:conflicts,
           // An all-unpriced weekly poster is normal; an unpriced row beside priced ones is reported.
-          unpricedDays:entries.some(e=>hasPrintedPrice(e.content))?entries.filter(e=>!hasPrintedPrice(e.content)).map(e=>e.day_of_week):[]});
+          unpricedDays:entries.some(e=>hasPrintedPrice(e.content))?entries.filter(e=>!isFullDayClosure(e.content) && !hasPrintedPrice(e.content)).map(e=>e.day_of_week):[]});
         continue;
       }
       results.push(await applyWeeklyLunch(env,plan.source,{...plan.evidence,entries},plan.week,today,peers.map(p=>p.source),

@@ -16,6 +16,29 @@ const homePage=(await builtRoute('index')).default;
 const adminPage=(await builtRoute('admin/specials')).default;
 const container=await AstroContainer.create();
 
+test('both public boards show one holiday closure per service without service hours',async t=>{
+  t.mock.timers.enable({apis:['Date'],now:new Date('2026-11-23T16:00:00Z')});
+  const f=fixture(t);
+  f.sql("UPDATE special_slots SET content='',price='',section_link=''");
+  const week=s.newWeekFromDefaults(await s.readCollection(f.env,'defaults'));
+  const closure='Closed — Happy Thanksgiving';
+  for(const group of week.groups.filter(g=>g.day_of_week===4 && ['lunch','all-day','nightly'].includes(g.service))) {
+    group.slots[0].content=closure;
+    if(group.service==='all-day') group.slots[1].content=closure;
+  }
+  await s.saveCollection(f.env,week,{start:'2026-11-23',end:'2026-11-29'});
+  for(const [component,path] of [[homePage,'/'],[publicPage,'/specials']]) {
+    const html=await container.renderToString(component,{request:new Request('http://localhost'+path),locals:{runtime:{env:f.env}}});
+    const closureGroups=[...html.matchAll(/<section class="special-group[^"]*"[^>]*>([\s\S]*?)<\/section>/g)]
+      .map(match=>match[1]).filter(group=>group.includes(closure));
+    assert.equal(closureGroups.length,3,path);
+    for(const group of closureGroups) {
+      assert.equal(group.split(closure).length,2,path);
+      assert.doesNotMatch(group,/<p[^>]*>[^<]*<span/,path);
+    }
+  }
+});
+
 test('compiled home banner and specials accept the legacy Worker deadline only before 1:30 PM, with manual overrides intact',async t=>{
   const f=fixture(t);
   f.sql(readFileSync('migrations/0022_delivery_automation.sql','utf8'));

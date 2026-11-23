@@ -1,5 +1,6 @@
 import {buildExtractionRequest, buildWeeklyLunchExtractionRequest, buildMexicanNightExtractionRequest,buildReliableExtractionRequest} from './extraction.js';
 import {analyzeDailyEvidence,normalizeEvidenceOffer,factKey,serviceFromEvidence,normalizeWeeklyRange,weeklyEntryEvidence,sameMealFacts,sameMenuItemFacts,hasUnresolvedUncertainty} from './evidence.js';
+import {isFullDayClosure} from '../../src/lib/special-closure.js';
 import { classifyCaption, parserVersionFor, confidentMexicanNightCaption } from './classify.js';
 import { reconcileToday, pruneImportHistory, reconcileWeeklyLunch, reconcileMexicanNight } from './guarded-auto.js';
 import {reconcileWingWednesday,recordWingScan} from './wing-wednesday.js';
@@ -500,7 +501,7 @@ async function runAiExtraction(env, imageR2Key, caption, modelId, budget) {
     } catch(error) {
       const aiError = safeAiError(error,env);
       if(deliveryRecovery) return {...priorOutcome,deliveryConflict:true};
-      const transient = isTransientFailure(error);
+      const transient = isTransientFailure(error, {workersAi:true});
       // A failed repair/verification call never discards the first reading. It
       // keeps its own per-offer issues; "always" requires a completed second read.
       if (reliable && attempt && priorOutcome) return strategy==='always' ? {...priorOutcome,verificationConflict:true} : priorOutcome;
@@ -635,7 +636,8 @@ export function validateExtraction(extractedJson,reliable=false,window={}) {
             // The row's own weekday label is layout, not meal content.
             const evidence=weeklyEntryEvidence(e.evidence,e.day_of_week);
             const offer=normalizeEvidenceOffer({...e,evidence,service_time:''});
-            if(!sameMealFacts(offer.content,evidence)) throw Error('Weekly meal facts differ from original evidence');
+            if(!sameMealFacts(offer.content,evidence) || isFullDayClosure(offer.content)!==isFullDayClosure(evidence))
+              throw Error('Weekly meal facts differ from original evidence');
             return [{day_of_week:e.day_of_week,content:offer.content}];
           } catch(error) {unresolved.push({day:e.day_of_week,reason:error.message});return [];}
         })};

@@ -630,20 +630,25 @@ export function sameMenuItemFacts(title,description,evidence) {
 // Recover a printed overall weekly range without binding an old undated poster
 // to whichever week happens to be current when a later cron executes.
 // A printed range as M/D-M/D, from "10/12-10/16" or "OCT 12-16" forms.
-function parseWeeklyRange(text) {
+export function printedWeeklyRanges(text) {
   const t=String(text??'').replace(/[–—]/g,'-');
-  const slash=/\b(\d{1,2})\/(\d{1,2})\s*-\s*(\d{1,2})\/(\d{1,2})\b/.exec(t);
+  const slash=t.matchAll(/\b(\d{1,2})\/(\d{1,2})\s*-\s*(\d{1,2})\/(\d{1,2})\b/g);
   const names=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
-  const named=/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})\s*-\s*(\d{1,2})\b/i.exec(t);
-  const month=named?names.indexOf(named[1].slice(0,3).toLowerCase())+1:0;
-  return slash?`${+slash[1]}/${+slash[2]}-${+slash[3]}/${+slash[4]}`:named?`${month}/${+named[2]}-${month}/${+named[3]}`:null;
+  const named=t.matchAll(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})\s*-\s*(\d{1,2})\b/gi);
+  return [...new Set([
+    ...Array.from(slash, m => `${+m[1]}/${+m[2]}-${+m[3]}/${+m[4]}`),
+    ...Array.from(named, m => {
+      const month=names.indexOf(m[1].slice(0,3).toLowerCase())+1;
+      return `${month}/${+m[2]}-${month}/${+m[3]}`;
+    }),
+  ])];
 }
 export function normalizeWeeklyRange(value) {
   const given=value.date_range?.trim()||null;
-  const printed=parseWeeklyRange(value.poster_evidence);
+  const [printed=null]=printedWeeklyRanges(value.poster_evidence);
   // The model may copy the printed form ("OCT 12-16") instead of M/D-M/D. The
   // same range in another format is not a conflict; a different range is.
-  const range=given?(parseWeeklyRange(given)??given):null;
+  const range=given?(printedWeeklyRanges(given)[0]??given):null;
   if(range && printed && range!==printed) throw Error('Conflicting printed weekly date range');
   return {...value,date_range:range??printed};
 }
