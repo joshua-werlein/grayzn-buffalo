@@ -9,6 +9,7 @@ import {
   REVIEW_CATEGORIES, REVIEW_DESCRIPTION_LIMIT, REVIEW_HEADERS, reviewCategory, reviewCsrf, reviewImageUrl,
   reviewPreviewEnabled, reviewResponse, type ReviewCategory,
 } from '../lib/review-preview';
+import { uploadMessage } from '../lib/review-feedback';
 import { runtimeEnv } from '../lib/runtime-env';
 
 const env = runtimeEnv(Astro.locals);
@@ -44,17 +45,8 @@ const href = (filter: ReviewCategory | null, number = 1) => {
   if (number > 1) params.set('page', String(number));
   return `/reviews${params.size ? `?${params}` : ''}#gallery`;
 };
-const results: Record<string, string> = {
-  submitted: 'Thanks for sharing! Your photos are pending staff review.',
-  duplicate: 'At least one of these photos was already submitted. Remove the duplicate and try again.',
-  'invalid-form': 'Choose up to three photos, describe each one, and confirm you have permission to share them.',
-  'invalid-photo': 'A photo could not be read. Try another JPEG, PNG, or WebP file.',
-  'too-large': 'Each photo must be 5 MB or smaller.',
-  verification: 'Verification failed. Try the verification again before submitting.',
-  unavailable: 'Photo submissions are temporarily unavailable. Please try again later.',
-};
 const result = Astro.url.searchParams.get('result') ?? '';
-const feedback = Object.hasOwn(results, result) ? results[result] : '';
+const feedback = uploadMessage(result);
 const canUpload = Boolean(env.REVIEW_PHOTOS && env.REVIEW_IMAGES && env.TURNSTILE_SITEKEY && env.TURNSTILE_SECRET && !unavailable);
 const csrf = await reviewCsrf(Astro.cookies, env, 'upload');
 // Google Maps matched the place ID against the business name, street address
@@ -131,9 +123,9 @@ const googleWriteReview = `https://search.google.com/local/writereview?placeid=$
       <section id="submit-photo" class="review-submission" aria-labelledby="submission-title">
         <h2 id="submission-title">Share a photo</h2>
         <p id="photo-limits">Send up to three JPEG, PNG, or WebP photos. Each can be up to 5 MB and 24 megapixels. We review photos before sharing them.</p>
-        {feedback && <p class="review-feedback" role={result === 'submitted' ? 'status' : 'alert'}>{feedback}</p>}
+        {feedback && <p class="review-feedback" data-upload-fallback tabindex="-1" role={result === 'submitted' ? 'status' : 'alert'}>{feedback}</p>}
         {canUpload ? (
-          <form method="post" action="/api/review-photos" enctype="multipart/form-data" aria-describedby="photo-limits">
+          <form method="post" action="/api/review-photos" enctype="multipart/form-data" data-review-upload aria-describedby="photo-limits">
             <input type="hidden" name="csrf" value={csrf} />
             <label>Category
               <select name="category" required>
@@ -159,6 +151,10 @@ const googleWriteReview = `https://search.google.com/local/writereview?placeid=$
             </label>
             <div class="cf-turnstile" data-sitekey={env.TURNSTILE_SITEKEY} data-size="compact"></div>
             <button class="btn btn-primary" type="submit">Submit photos</button>
+            <div class="upload-live">
+              <p class="review-feedback" data-upload-status role="status" tabindex="-1"></p>
+              <p class="review-feedback" data-upload-error role="alert" tabindex="-1"></p>
+            </div>
           </form>
         ) : <p>Photo submissions are temporarily unavailable.</p>}
       </section>
@@ -166,6 +162,12 @@ const googleWriteReview = `https://search.google.com/local/writereview?placeid=$
   </div>
 </Base>
 {canUpload && <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>}
+
+<script>
+  import { connectReviewUpload } from '../lib/review-upload-client';
+
+  connectReviewUpload(document);
+</script>
 
 <style>
   .reviews-page {background:var(--surface-parchment) url('/parchment-texture.webp');color:var(--ink)}
@@ -191,7 +193,7 @@ const googleWriteReview = `https://search.google.com/local/writereview?placeid=$
   .google-reviews {margin:clamp(30px,6vw,68px) 0;padding:clamp(16px,3vw,32px);border-block:2px solid var(--rule);background:var(--cream)}
   .google-reviews p {margin:0}
   .review-links {display:flex;flex-wrap:wrap;gap:8px}
-  .review-submission {max-width:650px;margin-inline:auto}
+  .review-submission {scroll-margin-top:100px;max-width:650px;margin-inline:auto}
   .review-submission form {display:grid;gap:14px;margin-top:16px}
   .review-submission fieldset {min-width:0;margin:0;padding:10px 12px 12px;border:1px solid var(--rule)}
   .review-submission input:not([type=checkbox]),.review-submission select {display:block;max-width:100%;width:100%;margin:5px 0 8px;padding:8px;border:1px solid var(--rule);background:var(--cream);color:var(--ink);font:inherit}
@@ -199,7 +201,9 @@ const googleWriteReview = `https://search.google.com/local/writereview?placeid=$
   .review-consent input {margin-top:5px;width:18px;height:18px;flex:none}
   .review-submission button {justify-self:start}
   .review-submission .cf-turnstile {min-height:140px}
-  .review-feedback {padding:12px;border-inline-start:4px solid var(--btn-crimson);background:var(--cream)}
+  .upload-live:has(p:empty + p:empty) {position:absolute}
+  .review-feedback:empty {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);padding:0;border:0;margin:0}
+  .review-feedback {scroll-margin-block:100px;padding:12px;border-inline-start:4px solid var(--btn-crimson);background:var(--cream)}
   .reviews-sheet :is(a,button,input,select):focus-visible {outline:3px solid var(--ink);outline-offset:3px}
   @media (max-width:900px) {.review-gallery {grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media (max-width:560px) {

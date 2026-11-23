@@ -104,7 +104,12 @@ test('preview routes reject missing auth, wrong host, cross-origin and wrong-ses
   const wrongToken = await reviewCsrf(anotherSession, f.env, 'moderate');
   assert.equal((await f.action({ ...fields, csrf: wrongToken })).status, 403);
   body.delete('csrf');
-  assert.equal((await f.send(body)).status, 403);
+  const stale = await f.send(body);
+  assert.equal(stale.status, 403);
+  assert.deepEqual(await stale.json(), { code: 'stale-form' });
+  const nativeStale = await f.send(body, { headers: { accept: 'text/html' } });
+  assert.equal(nativeStale.status, 303);
+  assert.equal(nativeStale.headers.get('location'), '/reviews?result=stale-form#submit-photo');
   assert.equal(f.turnstile(), 0);
   f.env.REVIEWS_PREVIEW = 'staff-production';
   const production = { host: productionOrigin };
@@ -232,4 +237,20 @@ test('rejecting a submission removes every still-pending photo and keeps prior a
     assert.equal((await f.serve(id, 'medium', { query: '?moderation=1' })).status, 404);
     assert.equal(await f.env.REVIEW_PHOTOS.get(reviewObjectKey(id, 'original')), null);
   }
+});
+
+test('browser-style single upload ignores blank optional file controls and reports success or failure', async t => {
+  const f = await setup(t);
+  const single = await f.upload([jpeg]);
+  single.append('photo', new File([], '', { type: 'application/octet-stream' }));
+  // Workerd presents a browser's filename="" control as empty text.
+  single.append('photo', '');
+  const failed = await f.upload([new File(['invalid'], 'invalid.jpg', { type: 'image/jpeg' })]);
+  const invalid = await f.send(failed, { headers: { accept: 'text/html' } });
+  assert.equal(invalid.status, 303);
+  assert.equal(invalid.headers.get('location'), '/reviews?result=invalid-photo#submit-photo');
+  const success = await f.send(single);
+  assert.equal(success.status, 201);
+  assert.deepEqual(await success.json(), { code: 'submitted' });
+  assert.equal(await f.DB.prepare("SELECT COUNT(*) AS n FROM review_photos WHERE status = 'pending'").first('n'), 1);
 });
