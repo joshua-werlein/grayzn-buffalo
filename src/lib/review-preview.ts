@@ -2,6 +2,7 @@ export const REVIEW_CATEGORIES = { food: 'Food', drinks: 'Drinks', bar: 'The Bar
 export type ReviewCategory = keyof typeof REVIEW_CATEGORIES;
 export const REVIEW_ID = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 export const REVIEW_DESCRIPTION_LIMIT = 180;
+export const REVIEW_DISPLAY_NAME_LIMIT = 60;
 
 export const REVIEW_HEADERS = {
   'Cache-Control': 'private, no-store',
@@ -27,6 +28,13 @@ export function reviewDescription(value: FormDataEntryValue | null): string | nu
   if (typeof value !== 'string' || /[\u0000-\u001f\u007f]/.test(value)) return null;
   const description = value.trim();
   return description.length > 0 && description.length <= REVIEW_DESCRIPTION_LIMIT ? description : null;
+}
+
+/** null means Anonymous, undefined means invalid input. */
+export function reviewDisplayName(value: FormDataEntryValue | null): string | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== 'string' || value.length > REVIEW_DISPLAY_NAME_LIMIT || /[\p{C}<>&]/u.test(value)) return;
+  return value.trim().normalize('NFC') || null;
 }
 
 export const reviewResponse = (message: string, status: number) =>

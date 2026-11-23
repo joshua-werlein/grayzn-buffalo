@@ -1,0 +1,16 @@
+---
+import ReviewGalleryResults from '../../components/ReviewGalleryResults.astro';
+import { isAuthed } from '../../lib/auth';
+import { readReviewGallery, reviewGalleryCategory } from '../../lib/review-gallery';
+import { REVIEW_HEADERS, reviewPreviewEnabled, reviewResponse } from '../../lib/review-preview';
+import { runtimeEnv } from '../../lib/runtime-env';
+
+export const partial = true;
+const env = runtimeEnv(Astro.locals);
+if (!reviewPreviewEnabled(Astro.url, env) || !await isAuthed(Astro.cookies, env)) return reviewResponse('Not found', 404);
+for (const [name, value] of Object.entries(REVIEW_HEADERS)) Astro.response.headers.set(name, value);
+const gallery = await readReviewGallery(env, Astro.url);
+if (!gallery) return reviewResponse('Gallery unavailable', 503);
+const category = reviewGalleryCategory(Astro.url);
+---
+<ReviewGalleryResults {gallery} {category} />

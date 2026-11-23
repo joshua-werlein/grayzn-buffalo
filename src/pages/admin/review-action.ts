@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { isAuthed } from '../../lib/auth';
 import { discardReviewImage } from '../../lib/review-images';
 import {
-  REVIEW_ID, reviewCategory, reviewCsrfMatches, reviewDescription, reviewFormFeedback, reviewOriginMatches,
+  REVIEW_ID, reviewCategory, reviewCsrfMatches, reviewDescription, reviewDisplayName, reviewFormFeedback, reviewOriginMatches,
   reviewPreviewEnabled, reviewResponse,
 } from '../../lib/review-preview';
 import { BodyTooLarge, readFormData } from '../../lib/request-body';
@@ -78,12 +78,16 @@ export const POST: APIRoute = async ({ request, url, cookies, locals }) => {
     const changesDetails = action === 'approve' || action === 'edit';
     const category = form.get('category');
     const description = reviewDescription(form.get('description'));
+    const updateName = changesDetails && form.has('display_name');
+    const displayName = updateName ? reviewDisplayName(form.get('display_name')) : null;
+    if (displayName === undefined) return feedback('invalid-name', 400);
     if (changesDetails && (!reviewCategory(category) || !description)) return feedback('invalid', 400);
     const result = await env.DB.prepare(
       `UPDATE review_photos SET status = ?, category = COALESCE(?, category),
-       description = COALESCE(?, description), revision = revision + 1, updated_at = CURRENT_TIMESTAMP
+       description = COALESCE(?, description), display_name = CASE WHEN ? THEN ? ELSE display_name END,
+       revision = revision + 1, updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND status = ? AND revision = ?`,
-    ).bind(to, changesDetails ? category : null, changesDetails ? description : null, id, from, Number(revision)).run();
+    ).bind(to, changesDetails ? category : null, changesDetails ? description : null, Number(updateName), displayName, id, from, Number(revision)).run();
     if (!result.meta.changes) return feedback('conflict', 409);
     if (to === 'rejected' || to === 'withdrawn') {
       try {

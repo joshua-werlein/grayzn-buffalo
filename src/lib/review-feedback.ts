@@ -2,6 +2,7 @@ export const UPLOAD_MESSAGES = {
   submitted: 'Thanks for sharing! Your photos are pending staff review.',
   duplicate: 'At least one photo was already submitted. Remove the duplicate and try again.',
   'invalid-form': 'Choose up to three photos, describe each selected photo, choose a category, and confirm permission.',
+  'invalid-name': 'Use a display name up to 60 characters without HTML characters, or leave it blank for Anonymous.',
   'invalid-photo': 'A photo could not be processed. Try a different JPEG, PNG, or WebP, up to 24 megapixels.',
   'too-large': 'Use photos that are 5 MB or smaller and try again.',
   verification: 'Verification failed or expired. Wait for it to finish, then submit again.',

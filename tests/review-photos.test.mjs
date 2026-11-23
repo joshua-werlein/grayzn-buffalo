@@ -12,6 +12,7 @@ const { POST: moderate } = loadTs('src/pages/admin/review-action.ts');
 const { GET: image } = loadTs('src/pages/admin/review-image/[id]/[size].ts');
 const { GET: oldImage } = loadTs('src/pages/img/[...key].ts');
 const { GET: oldPrivateImage } = loadTs('src/pages/admin/img/[...key].ts');
+const { readReviewGallery } = loadTs('src/lib/review-gallery.ts');
 const { reviewCsrf, reviewObjectKey } = loadTs('src/lib/review-preview.ts');
 const localOrigin = 'http://127.0.0.1:4396';
 const productionOrigin = 'https://grayznbuffalo.com';
@@ -45,8 +46,10 @@ async function setup(t, { upgrade = false, production = false } = {}) {
     DB.prepare("INSERT INTO items (id, category_id, name, photo_key) VALUES (1, 1, 'Burger', 'menu/1/00000000-0000-0000-0000-000000000001.webp')"),
   ]);
   if (upgrade) {
-    const migration = readFileSync('migrations/0029_review_photos.sql', 'utf8');
-    await DB.batch(unstable_splitSqlQuery(migration).map(statement => DB.prepare(statement)));
+    for (const name of ['0029_review_photos', '0030_review_photo_attribution']) {
+      const migration = readFileSync('migrations/' + name + '.sql', 'utf8');
+      await DB.batch(unstable_splitSqlQuery(migration).map(statement => DB.prepare(statement)));
+    }
   }
   const env = {
     ...adminSessionEnv(), DB, REVIEW_PHOTOS: await mf.getR2Bucket('REVIEW_PHOTOS'), PHOTOS: await mf.getR2Bucket('PHOTOS'),
@@ -253,4 +256,56 @@ test('browser-style single upload ignores blank optional file controls and repor
   assert.equal(success.status, 201);
   assert.deepEqual(await success.json(), { code: 'submitted' });
   assert.equal(await f.DB.prepare("SELECT COUNT(*) AS n FROM review_photos WHERE status = 'pending'").first('n'), 1);
+});
+
+test('approved gallery loads bounded non-overlapping pages, filters categories, and excludes withdrawn attribution', async t => {
+  const f = await setup(t);
+  const rows = Array.from({ length: 43 }, (_, index) => {
+    const id = '00000000-0000-4000-8000-' + String(index).padStart(12, '0');
+    return f.DB.prepare(
+      "INSERT INTO review_photos (id, submission_id, digest, category, description, status, small_width, medium_width, medium_height, display_name, updated_at) VALUES (?, 'test', ?, ?, ?, ?, 1, 1, 1, ?, '2026-11-22 12:00:00')",
+    ).bind(id, 'digest-' + index, index < 37 ? 'food' : 'drinks', 'Photo ' + index, index === 42 ? 'withdrawn' : 'approved', index < 40 ? null : 'Test name');
+  });
+  await f.DB.batch(rows);
+  const url = new URL(localOrigin + '/reviews?category=food');
+  const batches = [];
+  for (const expected of [18, 18, 1]) {
+    const batch = await readReviewGallery(f.env, url);
+    assert.equal(batch.photos.length, expected);
+    batches.push(...batch.photos.map(photo => photo.id));
+    if (batch.next) url.searchParams.set('before', batch.next);
+    else assert.equal(expected, 1);
+  }
+  assert.equal(new Set(batches).size, 37);
+  const drinks = await readReviewGallery(f.env, new URL(localOrigin + '/reviews?category=drinks&before=invalid'));
+  assert.equal(drinks.photos.length, 5);
+  assert.equal(drinks.photos.filter(photo => photo.display_name).length, 2);
+  const empty = await readReviewGallery(f.env, new URL(localOrigin + '/reviews?category=bar'));
+  assert.deepEqual(empty, { photos: [], next: null });
+});
+
+test('optional display names reject unsafe input, can be corrected, and can be cleared before approval', async t => {
+  const f = await setup(t, { upgrade: true });
+  for (const value of ['<script>', 'x'.repeat(61), 'Name\nOther', 'Name\u202eOther']) {
+    const invalid = await f.upload();
+    invalid.set('display_name', value);
+    const response = await f.send(invalid);
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).code, 'invalid-name');
+  }
+  assert.equal(f.turnstile(), 0);
+  const form = await f.upload();
+  form.set('display_name', '  Cafe\u0301 O’Mara  ');
+  assert.equal((await f.send(form)).status, 201);
+  const pending = await f.DB.prepare('SELECT id, display_name FROM review_photos').first();
+  assert.equal(pending.display_name, 'Café O’Mara');
+  const fields = { action: 'approve', photo_id: pending.id, revision: '0', category: 'food', description: 'A photo' };
+  assert.equal((await f.action({ ...fields, display_name: '<b>' })).status, 400);
+  assert.equal((await f.action({ ...fields, display_name: 'Corrected name' })).status, 200);
+  const galleryUrl = new URL(localOrigin + '/reviews');
+  assert.equal((await readReviewGallery(f.env, galleryUrl)).photos[0].display_name, 'Corrected name');
+  assert.equal((await f.action({ ...fields, action: 'edit', revision: '1', display_name: '' })).status, 200);
+  assert.equal((await readReviewGallery(f.env, galleryUrl)).photos[0].display_name, null);
+  assert.equal((await f.action({ ...fields, action: 'withdraw', revision: '2' })).status, 200);
+  assert.deepEqual((await readReviewGallery(f.env, galleryUrl)).photos, []);
 });

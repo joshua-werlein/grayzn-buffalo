@@ -9,6 +9,8 @@ const container = await AstroContainer.create();
 const manage = (await builtRoute('admin/reviews')).default;
 const legacy = (await builtRoute('admin/welcome-photos')).default;
 const gallery = (await builtRoute('reviews')).default;
+const galleryFragment = (await builtRoute('admin/review-gallery')).default;
+const login = (await builtRoute('admin')).default;
 const { uploadMessage, uploadResult } = loadTs('src/lib/review-feedback.ts');
 const origin = 'https://grayznbuffalo.com';
 const cookie = 'gb_session=' + 'a'.repeat(32);
@@ -84,6 +86,9 @@ test('combined admin preserves navigation, authenticated legacy redirect, existi
   assert.match(html, /id="menu-assignment"[^>]*tabindex="-1"/);
   assert.match(html, /No approved Food photos are available/);
   assert.match(html, /href="\/admin\/reviews" aria-current="page"[^>]*>Photos/);
+  assert.match(html, /href="\/reviews" target="_blank" rel="noopener noreferrer"[^>]*>Preview Photos &amp; Reviews \(Staff Only\)/);
+  assert.match(html, /href="\/menu" target="_blank" rel="noopener noreferrer"[^>]*>View Public Menu/);
+  assert.match(html, /aria-controls="admin-destinations"/);
   assert.match(html, /Existing caption/);
   const eligible = envWithPhotos([{ id: photoId, description: 'Approved pretzel' }]);
   const assigned = await (await render(manage, '/admin/reviews?item=17', eligible)).text();
@@ -94,4 +99,15 @@ test('combined admin preserves navigation, authenticated legacy redirect, existi
   const welcomeOnly = await (await render(manage, '/admin/reviews', env)).text();
   assert.doesNotMatch(welcomeOnly, /Customer Photo Moderation|Featured Menu Photos/);
   assert.match(welcomeOnly, /Existing caption/);
+});
+
+test('staff gallery fragment has private headers and the mobile control is absent from login', async () => {
+  const env = envWithPhotos();
+  assert.equal((await render(galleryFragment, '/admin/review-gallery', env, false)).status, 404);
+  const signedIn = await render(galleryFragment, '/admin/review-gallery?category=bar', env);
+  assert.equal(signedIn.status, 200);
+  assert.match(signedIn.headers.get('cache-control'), /no-store/);
+  assert.match(await signedIn.text(), /No photos in The Bar yet/);
+  const signedOut = await render(login, '/admin', env, false);
+  assert.doesNotMatch(await signedOut.text(), /aria-controls="admin-destinations"/);
 });

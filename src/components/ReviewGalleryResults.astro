@@ -1,0 +1,42 @@
+---
+import { reviewGalleryHref, type ReviewGallery } from '../lib/review-gallery';
+import { REVIEW_CATEGORIES, reviewImageUrl, type ReviewCategory } from '../lib/review-preview';
+
+interface Props { gallery: ReviewGallery | null; category: ReviewCategory | null }
+const { gallery, category } = Astro.props;
+---
+<div data-gallery-results>
+  {!gallery ? <p class="gallery-empty">The gallery is temporarily unavailable.</p>
+    : gallery.photos.length ? (
+      <ul class="review-gallery" role="list">
+        {gallery.photos.map(photo => (
+          <li data-photo-id={photo.id}>
+            <button type="button" data-lightbox-src={reviewImageUrl(photo.id, 'large')}
+              data-lightbox-alt={photo.description} aria-label={`View larger photo: ${photo.description}`}>
+              <img src={reviewImageUrl(photo.id, 'small')}
+                srcset={photo.medium_width > photo.small_width ? `${reviewImageUrl(photo.id, 'small')} ${photo.small_width}w, ${reviewImageUrl(photo.id, 'medium')} ${photo.medium_width}w` : undefined}
+                sizes="(max-width: 560px) calc(100vw - clamp(28px, 8vw, 96px) - 20px), (max-width: 900px) calc((100vw - clamp(28px, 8vw, 96px) - 58px) / 2), calc((min(100vw, 1160px) - clamp(28px, 8vw, 96px) - 96px) / 3)"
+                width={photo.medium_width} height={photo.medium_height} alt="" loading="lazy" decoding="async" />
+            </button>
+            <p>{photo.description}</p>
+            <span>{photo.display_name ?? 'Anonymous'} · {REVIEW_CATEGORIES[photo.category]}</span>
+          </li>
+        ))}
+      </ul>
+    ) : <p class="gallery-empty">{category ? `No photos in ${REVIEW_CATEGORIES[category]} yet.` : 'No photos to show here yet.'}</p>}
+  {gallery?.next && <a class="btn btn-primary gallery-more" href={reviewGalleryHref(category, gallery.next)} data-gallery-more>Load More</a>}
+</div>
+
+<style>
+  .review-gallery {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;list-style:none;margin:0;padding:0}
+  .review-gallery li {background:var(--cream);padding:9px 9px 12px;border:1px solid var(--rule);box-shadow:0 4px 8px #27180f23;overflow-wrap:anywhere}
+  .review-gallery button {display:block;width:100%;padding:0;border:0;background:var(--ink);cursor:zoom-in}
+  .review-gallery img {display:block;width:100%;height:auto;aspect-ratio:4/3;object-fit:contain}
+  .review-gallery p {margin:8px 3px 1px;font-weight:600}
+  .review-gallery span {display:block;margin-inline:3px;font-size:.9rem}
+  .gallery-empty {padding:20px;border:1px dashed var(--rule)}
+  .gallery-more {margin-block-start:18px}
+  :is(button,a):focus-visible {outline:3px solid var(--ink);outline-offset:3px}
+  @media (max-width:900px) {.review-gallery {grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:560px) {.review-gallery {grid-template-columns:1fr}}
+</style>

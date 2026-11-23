@@ -1,4 +1,5 @@
 ---
+import { isAuthed } from '../lib/auth';
 import { runtimeEnv } from '../lib/runtime-env';
 import { getSetting } from '../lib/db';
 import {DELIVERY_HOURS,DELIVERY_AREA,readAutomaticDelivery,resolveDeliveryDisplay} from '../lib/delivery.js';
@@ -15,12 +16,10 @@ const { title = "Grayz'n Buffalo Bar & Grill — Mondovi, WI",
         description = "Grayz'n Buffalo Bar & Grill in Mondovi, WI. Burgers, Wraps, Pizzas & cold ones — open daily 10 AM to 2 AM." } = Astro.props;
 const path = Astro.url.pathname;
 const isHome = path === '/';
-const isContact = path === '/contact';
+const isContact = /^\/contact\/?$/.test(path);
 const isScenicFooter = isHome || isContact;
 const isAdmin = path.startsWith('/admin');
-const isAdminLogin = isAdmin && (path === '/admin' || path === '/admin/') && !Astro.url.searchParams.has('settings');
-const isAdminSettings = isAdmin && Astro.url.searchParams.has('settings');
-const hasInteriorNavDivider = isContact || path === '/menu' || path === '/specials';
+const hasInteriorNavDivider = isContact || /^\/(?:menu|specials|reviews)\/?$/.test(path);
 const siteUrl = 'https://grayznbuffalo.com';
 const productionHosts = new Set(['grayznbuffalo.com', 'www.grayznbuffalo.com']);
 const noindex = path.startsWith('/admin') || /^\/reviews\/?$/.test(path) || !productionHosts.has(Astro.url.hostname);
@@ -28,6 +27,7 @@ const canonicalUrl = new URL(path, siteUrl).toString();
 const socialImage = `${siteUrl}/social-share-black-white.png`;
 const socialImageAlt = "Grayz'n Buffalo Bar & Grill in Mondovi, Wisconsin";
 const env = runtimeEnv(Astro.locals);
+const staffNav = isAdmin && await isAuthed(Astro.cookies, env);
 const [announcement1, announcement2, announcement3, deliveryDisplaySetting, automaticDelivery] = await Promise.all([
   getSetting(env, 'announcement_1', ''),
   getSetting(env, 'announcement_2', ''),
@@ -509,7 +509,7 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   .admin-primary a[aria-current="page"],.admin-action-bar a[aria-current="page"]{background:var(--crimson);color:var(--cream);box-shadow:inset 0 -3px var(--gold)}
   .admin-primary a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
   .admin-shell .footer-composition--admin{display:none}
-  .admin-shell .admin-action-bar{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .admin-shell .admin-action-bar{grid-template-columns:repeat(3,minmax(0,1fr))}
   .admin-action-bar a>span:first-child{font-size:22px;line-height:1}
   .admin-shell main{padding-block-start:0}
   .admin-shell main>section{padding-block-start:16px}
@@ -517,33 +517,32 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     .admin-shell .site-chrome nav.site.admin-primary{background:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.35)}
     .admin-shell .admin-primary ul{display:flex;width:auto;margin:0;gap:8px}
     .admin-shell .admin-primary a{color:var(--cream)}
-    .admin-settings-circle,.admin-analytics-circle{display:none}
   }
+  .admin-menu-toggle{display:none}
   @media(max-width:1099px){
-    .admin-shell nav.site.admin-primary{display:none}
-    .admin-shell{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
+    .admin-shell:has(.admin-action-bar){padding-bottom:calc(62px + env(safe-area-inset-bottom))}
     .admin-shell .admin-action-bar a{min-height:60px;font-size:.8rem}
-    .admin-shell input,.admin-shell textarea,.admin-shell select{scroll-margin-block:150px}
+    .admin-shell input,.admin-shell textarea,.admin-shell select{scroll-margin-block:72px}
     .admin-shell main>section{padding-block-start:12px}
-    .admin-shell .action-bar-home{background:var(--denim)}
-    .admin-settings-circle{display:flex;align-items:center;justify-content:center;position:fixed;right:calc(100vw/6 - 32px);bottom:calc(70px + env(safe-area-inset-bottom));z-index:61;width:64px;height:64px;border:2px solid rgba(238,224,196,.78);border-radius:50%;background:var(--ink);box-shadow:0 5px 13px rgba(20,10,6,.42),inset 0 1px rgba(255,255,255,.16);text-decoration:none;color:var(--cream);font-size:1.5rem;line-height:1}
-    .admin-settings-circle:active{transform:translateY(1px)}
-    .admin-settings-circle:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
-    .admin-settings-circle--active{background:var(--crimson)}
-    .admin-analytics-circle{display:flex;align-items:center;justify-content:center;position:fixed;left:calc(100vw/6 - 32px);bottom:calc(70px + env(safe-area-inset-bottom));z-index:61;width:64px;height:64px;border:2px solid rgba(238,224,196,.78);border-radius:50%;background:var(--ink);box-shadow:0 5px 13px rgba(20,10,6,.42),inset 0 1px rgba(255,255,255,.16);color:var(--cream);text-decoration:none}
-    .admin-analytics-circle[aria-current="page"]{background:var(--crimson);color:var(--gold)}
-    .admin-analytics-circle:active{transform:translateY(1px)}
-    .admin-analytics-circle:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
+    .admin-shell nav.site.admin-primary{display:grid;grid-template-columns:minmax(0,1fr) auto;height:auto;gap:0 12px;padding:4px 14px}
+    .admin-menu-toggle:not([hidden]){display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:6px 10px;border:1px solid var(--gold);border-radius:4px;background:var(--ink);color:var(--cream);font:700 1rem var(--label);cursor:pointer}
+    .admin-menu-toggle:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+    .admin-shell nav.admin-primary ul{grid-column:1 / -1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;margin:4px 0 0;gap:4px;max-block-size:max(88px,calc(100dvh - 155px));overflow:auto;padding:3px}
+    .admin-shell .admin-menu-toggle:not([hidden])[aria-expanded="false"] + ul{display:none}
+    .admin-primary a{padding-inline:10px;overflow-wrap:anywhere}
   }
   @media(prefers-reduced-motion:reduce){.admin-shell .admin-primary{transition:none}}
 </style>}
 </head>
 <body class={isAdmin ? 'admin-shell' : undefined}>
 <header class={"site-chrome" + (isHome ? " site-chrome-home" : "") + (hasInteriorNavDivider ? " site-chrome--interior-divider" : "")}>
-  {isAdmin ? (
+  {isAdmin ? staffNav && (
     <nav class="site admin-primary" aria-label="Admin navigation">
       <span class="admin-brand">Staff workspace</span>
-      <ul>
+      <button class="admin-menu-toggle" type="button" aria-expanded="false" aria-controls="admin-destinations" hidden>
+        <span aria-hidden="true">☰</span> Staff navigation
+      </button>
+      <ul id="admin-destinations">
         <li><a href="/admin/specials" aria-current={path === '/admin/specials' ? 'page' : undefined}>Specials</a></li>
         <li><a href="/admin/menu" aria-current={path === '/admin/menu' ? 'page' : undefined}>Menu</a></li>
         <li><a href="/admin/reviews" aria-current={path === '/admin/reviews' ? 'page' : undefined}>Photos</a></li>
@@ -582,10 +581,9 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
     </ul>
   </div>
 </header>
-{isAdmin ? (
+{isAdmin ? staffNav && (
   <nav class="action-bar admin-action-bar" aria-label="Admin quick actions">
     <a href="/admin/specials" aria-current={path === '/admin/specials' ? 'page' : undefined}><span aria-hidden="true">▦</span><span>Specials</span></a>
-    <a href="/admin/automation" aria-current={path === '/admin/automation' ? 'page' : undefined}><span aria-hidden="true">↻</span><span>Automation Review</span></a>
     <a href="/admin/menu" aria-current={path === '/admin/menu' ? 'page' : undefined}><span aria-hidden="true">☷</span><span>Menu</span></a>
     <a href="/admin/reviews" aria-current={path === '/admin/reviews' ? 'page' : undefined}><span aria-hidden="true">▣</span><span>Photos</span></a>
   </nav>
@@ -605,16 +603,12 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
   </a>
 </nav>
 )}
-<a class="action-bar-home" href="/" aria-label="Go to the Grayz'n Buffalo home page" aria-current={isHome ? 'page' : undefined}>
-  <img src={isHome ? '/buffalo-mark-gold.svg' : '/buffalo-mark.svg'} alt="" width="44" height="26" />
-</a>
-{isAdmin && !isAdminLogin && (
-  <a class={"admin-settings-circle" + (isAdminSettings ? " admin-settings-circle--active" : "")} href="/admin?settings=1" aria-label="Admin Settings" aria-current={isAdminSettings ? 'page' : undefined}><img src={isAdminSettings ? '/admin-settings-cog-gold-v2.svg' : '/admin-settings-cog-v2.svg'} alt="" width="30" height="30" /></a>
+{!isAdmin && (
+  <a class="action-bar-home" href="/" aria-label="Go to the Grayz'n Buffalo home page" aria-current={isHome ? 'page' : undefined}>
+    <img src={isHome ? '/buffalo-mark-gold.svg' : '/buffalo-mark.svg'} alt="" width="44" height="26" />
+  </a>
 )}
-{isAdmin && !isAdminLogin && (
-  <a class="admin-analytics-circle" href="/admin/analytics" aria-label="Admin Analytics" aria-current={path === '/admin/analytics' ? 'page' : undefined}><img src={path === '/admin/analytics' ? '/admin-analytics-chart-gold-v2.svg' : '/admin-analytics-chart-v2.svg'} alt="" width="30" height="30" /></a>
-)}
-<main><slot /></main>
+{!isContact && <main><slot /></main>}
 
 <ImageLightbox />
 
@@ -854,6 +848,31 @@ const deliveryUnavailableMsg = 'Delivery is unavailable at this time';
         }
       });
     }
+  }
+</script>
+<script>
+  const adminToggle = document.querySelector<HTMLButtonElement>('.admin-menu-toggle');
+  const adminDestinations = document.getElementById('admin-destinations');
+  if (adminToggle && adminDestinations) {
+    adminToggle.hidden = false;
+    const expanded = () => adminToggle.getAttribute('aria-expanded') === 'true';
+    const close = () => {
+      adminToggle.setAttribute('aria-expanded', 'false');
+      adminToggle.focus();
+    };
+    adminToggle.addEventListener('click', () => {
+      if (expanded()) close();
+      else {
+        adminToggle.setAttribute('aria-expanded', 'true');
+        adminDestinations.querySelector('a')?.focus();
+      }
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && expanded() && adminToggle.getClientRects().length) {
+        event.preventDefault();
+        close();
+      }
+    });
   }
 </script>
 </body>
