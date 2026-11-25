@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {Miniflare} from 'miniflare';
 import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {harness} from './test-fixture.js';
 import worker,{runImportPipeline,requeueFailedImport,validateExtraction} from './worker.js';
 import {beginAlertScan,finishAlertScan,dispatchVerifiedAlerts,revalidateAlert,readAlertHealth} from './alert-runtime.js';
-import {ALERT_GRACE_MS,dispatchAlert} from './alert-store.js';
+import {ALERT_GRACE_MS,dispatchAlert,alertEvidenceReads,alertEvidenceFence} from './alert-store.js';
 import {reconcileToday} from './guarded-auto.js';
 import {emailTransport,alertTransport,alertMessage} from './alert-email.js';
 import {imageAlertDetail} from './alert-detail.js';
@@ -381,6 +382,7 @@ async function localD1(t,f) {
     inserts.push(DB.prepare(`INSERT INTO ${name} (${keys.join(',')}) VALUES (${keys.map((_,i)=>'?'+(i+1)).join(',')})`).bind(...Object.values(row)));
   }
   await DB.batch(inserts);
+  for(const {sql} of f.db.prepare("SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL").all()) await DB.prepare(sql).run();
   for(const {sql} of f.db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name LIKE 'facebook_alert_%'").all()) await DB.prepare(sql).run();
   return DB;
 }
@@ -436,8 +438,80 @@ test('real local D1: an empty source and week snapshot completes without creatin
   assert.equal(await DB.prepare('SELECT count(*) FROM facebook_alert_incidents').first('count(*)'),0);
 });
 
-for(const [label,groupId] of [['current week','auto-default:3:nightly'],['historical week','prior-lunch']]) {
-  test(`real local D1: a ${label} edit before the batch rejects every stale incident change`,async t=>{
+test('version 1 proofs retain their original hash and can dispatch',async t=>{
+  const f=await failure(t);
+  const scan=f.db.prepare('SELECT * FROM facebook_alert_scans').get();
+  const rows=sql=>f.db.prepare(sql).all();
+  const legacy=[
+    f.imports().map(s=>({...s,superseded:0})),
+    rows("SELECT * FROM weekly_specials WHERE week_start_date<='2030-01-09' AND week_end_date>='2030-01-09' ORDER BY id"),
+    rows('SELECT * FROM special_collections ORDER BY id'),
+    rows('SELECT * FROM special_groups ORDER BY id'),
+    rows('SELECT * FROM special_slots ORDER BY group_id,position'),
+    rows("SELECT key,value FROM settings WHERE key IN ('delivery_display','facebook_daily_post_times') ORDER BY key"),
+    rows('SELECT * FROM delivery_automation ORDER BY id'),
+    rows('SELECT * FROM special_migration_checks ORDER BY version'),
+  ];
+  const hash=createHash('sha256').update(JSON.stringify(legacy.map(set=>set.map(row=>
+    Object.fromEntries(Object.keys(row).sort().map(key=>[key,row[key]])))))).digest('hex');
+  const proof={...JSON.parse(f.row().proof_json),version:1,hash};
+  f.db.prepare('UPDATE facebook_alert_incidents SET proof_json=?').run(JSON.stringify(proof));
+  assert.equal(proof.token,scan.token);
+  f.advance(ALERT_GRACE_MS);
+  await f.send();
+  assert.equal(f.sent.length,1);
+});
+
+test('real local D1: historical fixture measures scoped snapshot and atomic reads',async t=>{
+  const f=await failure(t);
+  f.db.exec(`
+    CREATE INDEX IF NOT EXISTS weekly_specials_range_idx ON weekly_specials(week_start_date,week_end_date);
+    WITH RECURSIVE weeks(n) AS (VALUES(-7) UNION ALL SELECT n+1 FROM weeks WHERE n<1)
+    INSERT INTO weekly_specials(id,week_start_date,week_end_date)
+      SELECT 9000+n,date('2030-01-07',(7*n)||' days'),date('2030-01-13',(7*n)||' days') FROM weeks WHERE n<>0;
+    INSERT INTO special_collections(id,kind,weekly_special_id)
+      SELECT 'saved:'||id,'week',id FROM weekly_specials WHERE id BETWEEN 8993 AND 9001 AND id<>9000;
+    INSERT INTO special_groups(id,collection_id,day_of_week,service,label,sort)
+      SELECT c.id||':'||g.id,c.id,g.day_of_week,g.service,g.label,g.sort FROM special_collections c
+      CROSS JOIN special_groups g WHERE c.id GLOB 'saved:*' AND g.collection_id='defaults';
+    WITH soup(day) AS (VALUES(1),(3),(5))
+    INSERT INTO special_groups(id,collection_id,day_of_week,service,label,sort)
+      SELECT c.id||':soup:'||day,c.id,day,'custom','Soup',99 FROM special_collections c CROSS JOIN soup WHERE c.kind='week';
+    WITH RECURSIVE menu(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM menu
+      WHERE n<402-(SELECT count(*) FROM special_groups))
+    INSERT INTO special_groups(id,collection_id,day_of_week,service,label,sort)
+      SELECT 'menu:'||n,CASE WHEN n%2=0 THEN 'mexican-night' ELSE 'mexican-night-defaults' END,-1,'custom','Menu',n FROM menu;
+    WITH positions(position) AS (VALUES(1),(2),(3),(4))
+    INSERT INTO special_slots(group_id,position,content)
+      SELECT g.id,p.position,CASE WHEN p.position=1 THEN 'Saved special' ELSE '' END
+      FROM special_groups g CROSS JOIN positions p WHERE NOT EXISTS
+        (SELECT 1 FROM special_slots s WHERE s.group_id=g.id AND s.position=p.position)
+      ORDER BY g.id DESC,p.position LIMIT (1604-(SELECT count(*) FROM special_slots));
+  `);
+  for(const [table,count] of [['weekly_specials',15],['special_collections',20],['special_groups',402],['special_slots',1604]])
+    assert.equal(f.db.prepare(`SELECT count(*) AS n FROM ${table}`).get().n,count);
+  const DB=await localD1(t,f),day='2030-01-09',sourceIds=f.imports().map(s=>s.id);
+  const measure=async targets=>{
+    const reads=await DB.batch(alertEvidenceReads(DB,day,JSON.stringify(sourceIds),targets,false));
+    const fence=alertEvidenceFence({data:reads.map(r=>r.results),sourceIds,day,targets},2);
+    const update=await DB.prepare(`UPDATE facebook_alert_scans SET token=token WHERE day=?1 ${fence.sql}`)
+      .bind(day,...fence.args).run();
+    assert.equal(update.meta.changes,1);
+    return {groups:reads[3].meta.rows_read,slots:reads[4].meta.rows_read,atomic:update.meta.rows_read};
+  };
+  const baseline=await measure(null);
+  for(const [scenario,targets] of [
+    ['daily',{days:[],starts:[]}],
+    ['dated next week',{days:[],starts:['2030-01-14','2031-01-14']}],
+  ]) {
+    const scoped=await measure(targets);
+    t.diagnostic(`${scenario} D1 rows_read ${JSON.stringify({baseline,scoped})}`);
+    for(const metric of Object.keys(baseline)) assert.ok(scoped[metric]<baseline[metric]/2,metric);
+  }
+});
+
+for(const [label,groupId,relevant] of [['current week','auto-default:3:nightly',true],['unrelated historical week','prior-lunch',false]]) {
+  test(`real local D1: editing the ${label} before the batch ${relevant?'blocks':'allows'} evaluation`,async t=>{
     const f=await failure(t),old=f.row();
     f.db.exec(`INSERT INTO weekly_specials(id,week_start_date,week_end_date) VALUES(8999,'2029-12-31','2030-01-06');
       INSERT INTO special_collections(id,kind,weekly_special_id) VALUES('prior-week','week',8999);
@@ -459,10 +533,14 @@ for(const [label,groupId] of [['current week','auto-default:3:nightly'],['histor
     const context=await beginAlertScan(f.env,'2030-01-09');
     await finishAlertScan(f.env,context,f.imports().map(s=>s.id),{send:async m=>f.sent.push(m)});
     assert.equal(edited,true);
-    assert.deepEqual(await DB.prepare("SELECT * FROM facebook_alert_incidents WHERE scope='daily'").first(),{...old});
+    const row=await DB.prepare("SELECT * FROM facebook_alert_incidents WHERE scope='daily'").first();
     const scan=await DB.prepare('SELECT token,evaluation_state,evaluation_error,evaluated_ms FROM facebook_alert_scans').first();
-    assert.deepEqual(scan,{token:context.token,evaluation_state:'skipped',evaluation_error:'evidence_changed',evaluated_ms:null});
-    assert.equal(f.sent.length,0);
+    assert.deepEqual(scan,relevant
+      ? {token:context.token,evaluation_state:'skipped',evaluation_error:'evidence_changed',evaluated_ms:null}
+      : {token:context.token,evaluation_state:'complete',evaluation_error:null,evaluated_ms:f.state.now});
+    if(relevant) assert.deepEqual(row,{...old});
+    else assert.equal(JSON.parse(row.proof_json).token,context.token);
+    assert.equal(f.sent.length,relevant?0:1);
   });
 }
 
@@ -514,6 +592,23 @@ test('real local D1: a cross-week poster reports the printed week and sends once
     WHERE g.service='lunch' AND s.content='Chicken Wrap $10' ORDER BY g.collection_id`).all();
   assert.deepEqual(meals.results,[{collection_id:'next-week',content:'Chicken Wrap $10'}]);
   f.advance(ALERT_GRACE_MS);
+  let inserted=false;
+  f.env.DB={batch:statements=>DB.batch(statements),prepare(query){
+    const statement=DB.prepare(query);
+    if(inserted || !query.includes("SET dispatch_state='uncertain'")) return statement;
+    return {bind(...args){const bound=statement.bind(...args);return {async first(){
+      await DB.prepare(`INSERT INTO special_groups(id,collection_id,day_of_week,service,label)
+        VALUES('another-lunch','next-week',1,'lunch','Lunch')`).run();
+      inserted=true;
+      return bound.first();
+    }};}};
+  }};
+  await f.send();
+  assert.equal(inserted,true);
+  assert.equal(f.sent.length,0);
+  f.env.DB=DB;
+  await DB.prepare("DELETE FROM special_groups WHERE id='another-lunch'").run();
+  f.advance(5*60*1000);
   await f.send();await f.send();
   assert.equal(f.sent.length,1);
   assert.match(alertMessage(row.day,row.code,f.sent[0]).text,/\/admin\/specials\?week=9001/);
@@ -583,11 +678,18 @@ for(const [name,sql] of [
   ['import recovery',"UPDATE special_imports SET processing_status='pending'"],
   ['delivery override',"UPDATE settings SET value='hidden' WHERE key='delivery_display'"],
   ['week edit',"UPDATE weekly_specials SET week_end_date='2030-01-12'"],
+  ['overlapping week insertion',"INSERT INTO weekly_specials(id,week_start_date,week_end_date) VALUES(9001,'2030-01-08','2030-01-14')"],
   ['collection edit',"UPDATE special_collections SET revision=revision+1"],
   ['group edit',"UPDATE special_groups SET enabled=0"],
+  ['slot deletion',"DELETE FROM special_slots WHERE group_id='auto-default:3:nightly' AND position=1"],
+  ['recurring default edit',"UPDATE special_slots SET content='Staff menu' WHERE group_id='default:3:lunch' AND position=1"],
+  ['Mexican Night group insertion',"INSERT INTO special_groups(id,collection_id,day_of_week,service,label) VALUES('mn-staff','mexican-night',-1,'custom','New menu')"],
+  ['Wing Wednesday staff lock',"UPDATE special_slots SET manual_locked=1 WHERE group_id='ww-live:ww-default:wings' AND position=1"],
   ['delivery outcome',"INSERT OR REPLACE INTO delivery_automation VALUES(1,'2030-01-09',0,'2030-01-09T21:00:00.000Z','2030-01-09T15:00:00.000Z','[]')"],
   ['migration guard',"UPDATE special_migration_checks SET mismatches=mismatches+1"],
   ['source deletion',"DELETE FROM special_imports"],
+  ['new source version',`INSERT INTO special_imports(id,fb_post_id,fb_created_time,parser_version)
+    SELECT 'new-source-version',fb_post_id,fb_created_time,parser_version FROM special_imports`],
 ]) test(`atomic authorization rejects ${name} committed after revalidation`,async t=>{
   const f=await failure(t);f.advance(ALERT_GRACE_MS);
   const changed=beforeAuthorization(f,()=>f.db.exec(sql));

@@ -24,12 +24,57 @@ function timestamp(value) {
   return n;
 }
 
+const superseded = `EXISTS(SELECT 1 FROM special_imports n WHERE n.fb_post_id=t.fb_post_id
+  AND n.parser_version=t.parser_version AND n.rowid>t.rowid)`;
+const sourceFilter = ids => `t.id IN (SELECT value FROM json_each(${ids}))`;
+
+// Both the read and the atomic fence use these predicates. Derive membership
+// from live parent rows so a newly inserted destination also changes the fence.
+function evidenceTables(ids,date,targets,events) {
+  const current = `week_start_date<=${date} AND week_end_date>=${date}`;
+  const weekly = targets ? `id IN (
+    SELECT id FROM weekly_specials WHERE week_start_date IN (SELECT value FROM json_each(${targets},'$.starts'))
+    UNION
+    SELECT w.id FROM json_each(${targets},'$.days') d
+    JOIN weekly_specials w ON w.week_start_date<=d.value AND w.week_end_date>=d.value)` : '0';
+  const sections = "'mexican-night','mexican-night-defaults','wing-wednesday','wing-wednesday-defaults'";
+  const weekCollections = filter => `SELECT id FROM special_collections WHERE weekly_special_id IN
+    (SELECT id FROM weekly_specials WHERE ${filter})`;
+  const collections = `t.id IN (${sections}) OR t.kind='defaults' OR t.id IN (${weekCollections(`(${current}) OR ${weekly}`)})`;
+  const groups = `t.collection_id IN (${sections})
+    OR (t.day_of_week=CAST(strftime('%w',${date}) AS INTEGER) AND t.collection_id IN
+      (SELECT id FROM special_collections WHERE kind='defaults' UNION ${weekCollections(current)}))
+    OR (t.day_of_week IN (1,2,3,4,5) AND t.collection_id IN (${weekCollections(weekly)}))`;
+  return [
+    ['special_imports',sourceFilter(ids),'id',`t.*,${superseded} AS superseded`],
+    ['weekly_specials',targets?`(${current}) OR ${weekly}`:current,'id'],
+    ['special_collections',targets?collections:'1=1','id'],
+    ['special_groups',targets?groups:'1=1','id'],
+    ['special_slots',targets?`t.group_id IN (SELECT t.id FROM special_groups t WHERE ${groups})`:'1=1','group_id,position'],
+    ['settings',"t.key IN ('delivery_display','facebook_daily_post_times')",'key','key,value'],
+    ['delivery_automation','1=1','id'],
+    ['special_migration_checks','1=1','version'],
+    ...(events?[['special_events',`t.source_post_id IN (SELECT fb_post_id FROM special_imports t WHERE ${sourceFilter(ids)})`,
+      'id','id,source_post_id,status,origin,manual_locked,revision,event_date,title,review_reason']]:[]),
+  ];
+}
+
+export function alertEvidenceReads(DB, day, sourceIds, targets, events) {
+  return evidenceTables('?1','?2',targets?'?3':null,events).map(([table,filter,order,columns='t.*'])=>{
+    const args=[sourceIds,day,JSON.stringify(targets)];
+    const parameters=[...new Set(Array.from(filter.matchAll(/\?(\d+)/g),m=>Number(m[1])))];
+    const predicate=filter.replace(/\?(\d+)/g,(_,i)=>`?${parameters.indexOf(Number(i))+1}`);
+    const query=DB.prepare(`SELECT ${columns} FROM ${table} t WHERE ${predicate} ORDER BY ${order}`);
+    return parameters.length ? query.bind(...parameters.map(i=>args[i-1])) : query;
+  });
+}
+
 // Compare the complete transient read snapshot in the authorizing SQL statement.
 // Table names/filters are fixed here; column identifiers originate in SELECT *,
 // are restricted to plain identifiers, and values are always bound JSON. No raw
 // evidence is persisted in the alert tables or logged. No business-write triggers
 // are needed (D1 counts their side effects in meta.changes).
-export function alertEvidenceFence({data,sourceIds,day},start) {
+export function alertEvidenceFence({data,sourceIds,day,targets=null},start) {
   // A ninth set is present only while special events are active (SPECIAL_EVENTS_MODE=AUTO
   // and migration 0025): the events linked to this scan's posts.
   if(!Array.isArray(data) || ![8,9].includes(data.length) || data.some(rows=>!Array.isArray(rows))) throw Error('Invalid alert evidence');
@@ -38,25 +83,21 @@ export function alertEvidenceFence({data,sourceIds,day},start) {
   // rather than building a left-deep chain across every schema column.
   const and=terms=>terms.length<2?(terms[0]??'1=1'):
     `(${and(terms.slice(0,Math.floor(terms.length/2)))} AND ${and(terms.slice(Math.floor(terms.length/2)))})`;
-  const tables=[['special_imports',`t.id IN (SELECT value FROM json_each(${ids}))`],
-    ['weekly_specials',`t.week_start_date<=${date} AND t.week_end_date>=${date}`],
-    ['special_collections','1=1'],['special_groups','1=1'],['special_slots','1=1'],
-    ['settings',"t.key IN ('delivery_display','facebook_daily_post_times')"],['delivery_automation','1=1'],['special_migration_checks','1=1'],
-    ['special_events',`t.source_post_id IN (SELECT fb_post_id FROM special_imports WHERE id IN (SELECT value FROM json_each(${ids})))`]].slice(0,data.length);
+  const tables=evidenceTables(ids,date,targets?`?${start+3}`:null,data.length===9);
   const sql=tables.map(([table,filter],i)=>{
     const keys=Object.keys(data[i][0]??{});
     if(keys.some(k=>!/^[_a-zA-Z][_a-zA-Z0-9]*$/.test(k))) throw Error('Invalid evidence column');
     const match=and(keys.map(k=>{
       const column=i===0 && k==='superseded'
-        ? '(EXISTS(SELECT 1 FROM special_imports n WHERE n.fb_post_id=t.fb_post_id AND n.parser_version=t.parser_version AND n.rowid>t.rowid))'
+        ? `(${superseded})`
         : `t."${k}"`;
       return `${column} IS json_extract(e.value,'$.${k}')`;
     }));
     return `AND (SELECT count(*) FROM ${table} t WHERE ${filter})=json_array_length(${json},'$[${i}]')
       AND NOT EXISTS(SELECT 1 FROM json_each(${json},'$[${i}]') e WHERE NOT EXISTS(
-        SELECT 1 FROM ${table} t WHERE ${filter} AND ${match}))`;
+        SELECT 1 FROM ${table} t WHERE (${filter}) AND ${match}))`;
   }).join('\n');
-  return {sql,args:[JSON.stringify(data),JSON.stringify(sourceIds),day]};
+  return {sql,args:[JSON.stringify(data),JSON.stringify(sourceIds),day,...(targets?[JSON.stringify(targets)]:[])]};
 }
 
 // Caller supplies an observation timestamp tied to its fenced source snapshot,
