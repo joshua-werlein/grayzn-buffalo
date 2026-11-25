@@ -403,7 +403,14 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
       if (['weekly-lunch','mexican-night'].includes(raw?.type) && !('offers' in raw)) continue;
       const joined=joinProteinVariants(joinPizzaSizes(raw));
       p={...analyzeDailyEvidence(joined,{allowUnpriced:true}),joined_offers:joined.joined_offers===true};
-      if(!p.offers.length && !/\bspecials?|menu|lunch|night|soup\b/i.test(`${p.day_evidence} ${p.poster_evidence}`)) continue;
+      if(!p.offers.length && !/\bspecials?|menu|lunch|night|soup\b/i.test(`${p.day_evidence} ${p.poster_evidence}`)) {
+        // A non-specials announcement printed for another day (November 25: a
+        // Thanksgiving 11/26 closure) is excluded like any other-day poster, so
+        // its stored import failure cannot block or alert today's specials.
+        try { validateDay(p,weekday,today); }
+        catch(error) { if(OTHER_DAY_REASONS.has(error.message)) excludedSources.push({index:source,reason:error.message}); }
+        continue;
+      }
       isExplicitToday=validateDay(p,weekday,today);
     } catch(error) {
       if(OTHER_DAY_REASONS.has(error.message)) excludedSources.push({index:source,reason:error.message});
