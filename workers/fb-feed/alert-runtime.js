@@ -1,5 +1,5 @@
 import {parserVersionFor,classifyCaption} from './classify.js';
-import {reconcileToday,reconcileWeeklyLunch,dailyPosterWeekday,DAILY_POST_TIMES} from './guarded-auto.js';
+import {reconcileToday,reconcileWeeklyLunch,dailyPosterWeekday,weeklyLunchAlertTargets} from './guarded-auto.js';
 import {verifiedPostTimes} from './graph.js';
 import {staffOwnedSectionSlot,sqlTime} from './mexican-night-defaults.js';
 import {hasPrintedPrice} from './evidence.js';
@@ -8,7 +8,7 @@ import {validateCurrentDay,hasWeeklyLunchEvidence,singleDayLunchEvidence,singleD
 import {factKey} from './evidence.js';
 import {deliveryWindow,resolveDeliveryDisplay} from '../../src/lib/delivery.js';
 import {dailyPublicationObservation,importAlertObservation} from './alert-policy.js';
-import {ALERT_GRACE_MS,dispatchAlert,alertEvidenceFence} from './alert-store.js';
+import {ALERT_GRACE_MS,dispatchAlert,alertEvidenceFence,alertEvidenceReads} from './alert-store.js';
 import {alertTransport} from './alert-email.js';
 import {dailyAlertDetail,deliveryAlertDetail,weeklyAlertDetail,wingAlertDetail,imageAlertDetail,mexicanAlertDetail,eventAlertDetail} from './alert-detail.js';
 import {activeEventsMode} from './event-store.js';
@@ -20,6 +20,7 @@ import {splitMexicanItem} from '../../src/lib/mexican-item.js';
 
 const MODES=['OBSERVE','MOCK','EMAIL'];
 const FRESH_MS=90*60*1000;
+const PROOF_VERSION=2;
 // Each dispatchAlert claims, fences and sends at most one incident; a
 // superseded claim keeps its lease, so the next iteration reaches another.
 // Covers daily, delivery and weekly with headroom; bounded by the send timeout.
@@ -55,27 +56,23 @@ export async function beginAlertScan(env,day,started=Date.now()) {
 // A transactional read captures sources (including newer-version detection),
 // ownership, staff locks, revisions, delivery and migration guard state. Only
 // its hash is persisted. Content is never copied into the outbox or telemetry.
-async function snapshot(env,scan) {
-  const q=(sql,...args)=>env.DB.prepare(sql).bind(...args);
+async function snapshot(env,scan,version=PROOF_VERSION,targets=null) {
+  if(version===PROOF_VERSION && !targets) {
+    const {results:sources}=await env.DB.prepare(`SELECT candidate_json,fb_created_time,processing_status,
+      validation_result,image_r2_key,review_status FROM special_imports WHERE id IN (SELECT value FROM json_each(?1))`)
+      .bind(scan.source_ids).all();
+    targets=weeklyLunchAlertTargets(env,sources,scan.day);
+  }
   // Events linked to this scan's posts: at most one per post (unique source).
   const events=await activeEventsMode(env)!=='OFF';
-  const result=await env.DB.batch([
-    q(`SELECT i.*,EXISTS(SELECT 1 FROM special_imports n WHERE n.fb_post_id=i.fb_post_id
-      AND n.parser_version=i.parser_version AND n.rowid>i.rowid) AS superseded
-      FROM special_imports i WHERE i.id IN (SELECT value FROM json_each(?1)) ORDER BY i.id`,scan.source_ids),
-    q('SELECT * FROM weekly_specials WHERE week_start_date<=?1 AND week_end_date>=?1 ORDER BY id',scan.day),
-    q('SELECT * FROM special_collections ORDER BY id'),
-    q('SELECT * FROM special_groups ORDER BY id'),
-    q('SELECT * FROM special_slots ORDER BY group_id,position'),
-    q("SELECT key,value FROM settings WHERE key IN ('delivery_display',?1) ORDER BY key",DAILY_POST_TIMES),
-    q('SELECT * FROM delivery_automation ORDER BY id'),
-    q('SELECT * FROM special_migration_checks ORDER BY version'),
-    ...(events?[q(`SELECT id,source_post_id,status,origin,manual_locked,revision,event_date,title,review_reason FROM special_events
-      WHERE source_post_id IN (SELECT fb_post_id FROM special_imports WHERE id IN (SELECT value FROM json_each(?1))) ORDER BY id`,scan.source_ids)]:[]),
-  ]);
+  const result=await env.DB.batch(alertEvidenceReads(env.DB,scan.day,scan.source_ids,targets,events));
   const data=result.map(r=>r.results);
-  if(data[0].length!==JSON.parse(scan.source_ids).length || data[0].some(s=>s.superseded || s.parser_version!==scan.parser)) return null;
-  return {data,hash:await digest(data),sourceIds:JSON.parse(scan.source_ids),day:scan.day};
+  const sourceIds=JSON.parse(scan.source_ids);
+  if(data[0].length!==sourceIds.length || data[0].some(s=>s.superseded || s.parser_version!==scan.parser)) return null;
+  // The scope comes from the same sources as the snapshot. A source that changes
+  // between the preliminary read and the batch cannot certify the wrong targets.
+  if(targets && JSON.stringify(targets)!==JSON.stringify(weeklyLunchAlertTargets(env,data[0],scan.day))) return null;
+  return {data,targets,hash:await digest(targets?{data,targets}:data),sourceIds,day:scan.day};
 }
 
 function currentSource(s,scan,now) {
@@ -359,6 +356,9 @@ function staffProtectionOnly(daily,data,day,weekday) {
 }
 
 async function assess(env,scan,snap) {
+  // Daily classification and fallback editor links only use weeks covering today.
+  const [imports,weeks,...rest]=snap.data;
+  snap={...snap,data:[imports,weeks.filter(w=>w.week_start_date<=scan.day && w.week_end_date>=scan.day),...rest]};
   const now=Date.now(),w=deliveryWindow(new Date(now)),sourceIds=JSON.parse(scan.source_ids);
   const sources=snap.data[0].filter(s=>currentSource(s,scan,now));
   const eligible=sources.filter(s=>['pending','accepted'].includes(s.review_status));
@@ -455,7 +455,7 @@ function recordFingerprinted(env,scan,scope,code,observation,evidence,writeToken
 function recordVerified(env,scan,scope,observation,evidence,writeToken,incidentKey=null) {
   const code=scope.startsWith('image_')?'automation_failed':scope==='daily'?'publication_blocked':scope==='weekly'?'weekly_lunch_failed':scope==='wing'?'wing_wednesday_failed':scope==='mexican'?'mexican_night_failed':scope==='event'?'special_event_held':'delivery_failed';
   const deliveryEnd=Date.parse(deliveryWindow(new Date(scan.completed_ms)).expiresAt);
-  const proof=JSON.stringify({version:1,token:scan.token,hash:evidence.hash,cause:observation.cause,parser:scan.parser,
+  const proof=JSON.stringify({version:PROOF_VERSION,token:scan.token,hash:evidence.hash,cause:observation.cause,parser:scan.parser,
     ...(observation.fingerprint?{fingerprint:observation.fingerprint}:{}),
     expires_ms:scope==='delivery' ? Math.min(scan.completed_ms+FRESH_MS,deliveryEnd) : scan.completed_ms+FRESH_MS});
   return env.DB.prepare(`INSERT INTO facebook_alert_incidents
@@ -478,15 +478,15 @@ export async function revalidateAlert(env,row,{withEvidence=false}={}) {
   const now=Date.now(),w=deliveryWindow(new Date(now));
   if(w.day!==row.day || hour(now)<7 || (row.scope==='delivery' && !w.open)) return false;
   const proof=JSON.parse(row.proof_json);
-  if(proof.version!==1 || proof.parser!==parserVersionFor(env)
+  if(![1,PROOF_VERSION].includes(proof.version) || proof.parser!==parserVersionFor(env)
     || !Number.isSafeInteger(proof.expires_ms) || now>=proof.expires_ms) return false;
   const scan=await env.DB.prepare('SELECT * FROM facebook_alert_scans WHERE day=?1 AND token=?2')
     .bind(row.day,proof.token).first();
   if(!scan?.completed_ms || scan.evaluation_state!=='complete' || !scan.evaluated_ms || !scan.source_ids || scan.completed_ms>now || now-scan.completed_ms>FRESH_MS) return false;
-  const before=await snapshot(env,scan);
+  const before=await snapshot(env,scan,proof.version);
   if(!before || before.hash!==proof.hash) return false;
   const outcome=(await assess(env,scan,before))[row.scope];
-  const after=await snapshot(env,scan);
+  const after=await snapshot(env,scan,proof.version,before.targets);
   // A weekly or Wing Wednesday proof authorizes only the same failure fingerprint.
   const valid=outcome?.state==='attention' && outcome.cause===proof.cause && after?.hash===proof.hash
     && (!['weekly','wing'].includes(row.scope) || (!!proof.fingerprint && outcome.fingerprint===proof.fingerprint && row.incident_key.endsWith(`:${proof.fingerprint}`)));
@@ -550,7 +550,7 @@ export async function finishAlertScan(env,context,sourceIds,options={}) {
     if(!scan) return;
     const before=await snapshot(env,scan);
     if(!before) {await mark('skipped','evidence_changed');return;}
-    const outcomes=await assess(env,scan,before),after=await snapshot(env,scan);
+    const outcomes=await assess(env,scan,before),after=await snapshot(env,scan,PROOF_VERSION,before.targets);
     if(after?.hash!==before.hash) {await mark('skipped','evidence_changed');return;}
     // D1 executes this batch in one transaction. Check the full snapshot once,
     // then gate every incident write on a token issued only by that check.

@@ -321,7 +321,7 @@ function chicagoYearOf(isoString) {
   } catch { return null; }
 }
 
-async function resolveWeeklyLunchTargetWeek(env, evidence, fbCreatedTime, today) {
+function weeklyLunchWeekLookup(env, evidence, fbCreatedTime, today) {
   if (evidence.date_range) {
     const m = evidence.date_range.match(/^(\d{1,2})\/(\d{1,2})-(\d{1,2})\/(\d{1,2})$/);
     if (!m) return null;
@@ -329,8 +329,19 @@ async function resolveWeeklyLunchTargetWeek(env, evidence, fbCreatedTime, today)
     const startDay = Number(m[2]).toString().padStart(2, '0');
     const baseYear = chicagoYearOf(fbCreatedTime);
     if (!baseYear) return null;
-    for (const year of [baseYear, baseYear + 1]) {
-      const weekStart = `${year}-${startMonth}-${startDay}`;
+    return {starts:[baseYear,baseYear+1].map(year=>`${year}-${startMonth}-${startDay}`),printedEnd:[+m[3],+m[4]]};
+  }
+  // In contract 2 an undated source belongs to its creation week, not to a
+  // future week that a later reconciliation happens to be visiting.
+  const day=env.SPECIALS_EVIDENCE_VERSION==='2' ? chicagoDayOf(fbCreatedTime) : today;
+  return {day};
+}
+
+async function resolveWeeklyLunchTargetWeek(env, evidence, fbCreatedTime, today) {
+  const lookup=weeklyLunchWeekLookup(env,evidence,fbCreatedTime,today);
+  if(!lookup) return null;
+  if(lookup.starts) {
+    for (const weekStart of lookup.starts) {
       const {results} = await env.DB.prepare(`SELECT w.id,w.week_start_date,c.id collection_id,c.revision FROM weekly_specials w
         LEFT JOIN special_collections c ON c.weekly_special_id=w.id AND c.kind='week'
         WHERE w.week_start_date=?1`).bind(weekStart).all();
@@ -338,20 +349,16 @@ async function resolveWeeklyLunchTargetWeek(env, evidence, fbCreatedTime, today)
         if(env.SPECIALS_EVIDENCE_VERSION==='2') {
           const start=new Date(`${weekStart}T12:00:00Z`);
           const end=new Date(start);end.setUTCDate(end.getUTCDate()+4);
-          if(start.getUTCDay()!==1 || end.getUTCMonth()+1!==+m[3] || end.getUTCDate()!==+m[4]) return null;
+          if(start.getUTCDay()!==1 || end.getUTCMonth()+1!==lookup.printedEnd[0] || end.getUTCDate()!==lookup.printedEnd[1]) return null;
         }
         return results[0];
       }
     }
     return null;
   }
-  // In contract 2 an undated source belongs to its creation week, not to a
-  // future week that a later reconciliation happens to be visiting.
-  const sourceDay=env.SPECIALS_EVIDENCE_VERSION==='2'
-    ? new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(fbCreatedTime)) : today;
   const {results} = await env.DB.prepare(`SELECT w.id,w.week_start_date,c.id collection_id,c.revision FROM weekly_specials w
     LEFT JOIN special_collections c ON c.weekly_special_id=w.id AND c.kind='week'
-    WHERE w.week_start_date<=?1 AND w.week_end_date>=?1`).bind(sourceDay).all();
+    WHERE w.week_start_date<=?1 AND w.week_end_date>=?1`).bind(lookup.day).all();
   if (results.length !== 1 || !results[0].collection_id) return null;
   return results[0];
 }
@@ -536,6 +543,24 @@ export function dailyPosterWeekday(candidate, createdTime, today) {
   return new Date(`${today}T12:00:00Z`).getUTCDay();
 }
 const weeklyEvidence = raw => applySharedWeeklyLunchPrice({...validateWeeklyLunch(normalizeWeeklyRange(raw)),unresolved_days:raw.unresolved_days??[]});
+
+// Include both year candidates and undated source days, even when the saved
+// week or its collection is missing. A newly available destination can change
+// the read-only reconciliation.
+export function weeklyLunchAlertTargets(env, sources, today) {
+  const days=new Set(),starts=new Set();
+  if(env.SPECIALS_EVIDENCE_VERSION==='2') for(const s of sources) {
+    if(s.processing_status!=='staged' || s.validation_result!=='ok' || s.image_r2_key==null
+      || !['pending','accepted'].includes(s.review_status) || !s.candidate_json?.startsWith('{"type":"weekly-lunch"')
+      || !Number.isFinite(Date.parse(s.fb_created_time))) continue;
+    try {
+      const lookup=weeklyLunchWeekLookup(env,weeklyEvidence(JSON.parse(s.candidate_json)),s.fb_created_time,today);
+      if(lookup?.day) days.add(lookup.day);
+      for(const start of lookup?.starts??[]) starts.add(start);
+    } catch { /* Invalid evidence has no publication destination. */ }
+  }
+  return {days:[...days].sort(),starts:[...starts].sort()};
+}
 
 // Slot values that earlier weekly posters actually wrote for this week (audited
 // GUARDED_WEEKLY_LUNCH writes), by weekday. Used only as replacement provenance.
