@@ -9,7 +9,7 @@ import {isFullDayClosure} from '../../src/lib/special-closure.js';
 import {reconcilePosterEvidence,validateWeeklyLunch,applySharedWeeklyLunchPrice,validateMexicanNight,canonicalizeSlotContent,singleDayLunchEvidence,singleDayLunchEvidenceV2,MEXICAN_NIGHT_SHAPE_ERROR} from './reconcile.js';
 import {parserVersionFor} from './classify.js';
 import {soupGroupId,blankSoupGroup} from '../../src/lib/daily-soup.js';
-import {normalizeWeeklyRange,printedWeeklyRanges,weeklyEntryEvidence,factKey,sameOffer,analyzeDailyEvidence,hasPrintedPrice} from './evidence.js';
+import {normalizeWeeklyRange,printedWeeklyRanges,weeklyEntryEvidence,factKey,sameOffer,analyzeDailyEvidence,hasPrintedPrice,noActionableSpecials} from './evidence.js';
 import {approvalEvents,staffConfirmedCandidate} from './staff-review.js';
 import {eventSourceIndexes} from './event-store.js';
 import {verifiedPostTimes} from './graph.js';
@@ -134,11 +134,15 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
     const ids=[...new Set([...(last?.time===posted.time ? last.ids : []),...posted.ids])].sort();
     if(last?.time!==posted.time || JSON.stringify(last.ids)!==JSON.stringify(ids)) publications[key]={time:posted.time,ids};
   };
-  const dailySourceIndices=new Set();
+  const dailySourceIndices=new Set(),nonActionable=[];
   sources.forEach((s,index)=>{
     // Contract 2 only: printed evidence placed this whole poster on another day.
     // Its stored import failure remains the audit record; it cannot block today.
     if (excludedSources.some(e=>e.index===index) && !rejected.some(r=>r.index===index)) return;
+    // A complete reading with nothing to publish (a closure, greeting or other
+    // announcement) leaves daily planning: its stored import failure, if any, is
+    // its audit record and can neither block nor alert today's specials.
+    if (!rejected.some(r=>r.index===index) && noActionableSpecials(candidates[index],s.caption)) {nonActionable.push(index);return;}
     const created=Date.parse(s.fb_created_time);
     if (!Number.isFinite(created) || created>Date.now() || dateOf(s.fb_created_time)!==today) {
       const reason='Facebook creation timestamp is invalid, future, or outside the current Chicago date';
@@ -243,9 +247,16 @@ export async function reconcileToday(env,{sourceIds,today,weekday,inspectOnly=fa
       })}} : {})});
   // Monitoring uses the same proposal rules, without publication or audit writes.
   if (inspectOnly) return withOutcome({written:false,reason:rows.length?'Publication incomplete':'No unambiguous eligible changes',
-    blocked,rejectedSources,requiresWrite:rows.length>0,excludedSourceIds:[...excludedSources.map(s=>sources[s.index].id),...eventSourceIds]});
+    blocked,rejectedSources,requiresWrite:rows.length>0,excludedSourceIds:[...excludedSources.map(s=>sources[s.index].id),...nonActionable.map(i=>sources[i].id),...eventSourceIds]});
   if (!rows.length && !timesChanged) {
-    if (!conflictDetail) return withOutcome(stage('No unambiguous eligible changes'));
+    // A conflict recorded earlier today that no longer holds (a fix deployed, or
+    // the blocking post resolved) gets one resolution audit, so the review page
+    // does not keep showing a stale hold. Nothing else changes.
+    if (!conflictDetail && !(dailySources.length && await env.DB.prepare(`SELECT 1 FROM special_import_events e
+      WHERE import_id IN (SELECT value FROM json_each(?1)) AND event_type='review' AND detail LIKE ?2
+      AND id=(SELECT MAX(id) FROM special_import_events WHERE import_id=e.import_id AND event_type='review') LIMIT 1`)
+      .bind(JSON.stringify(dailySources.map(s=>s.id)),`GUARDED_AUTO_CONFLICT: ${today};%`).first()))
+      return withOutcome(stage('No unambiguous eligible changes'));
     // Avoid revision/audit churn when a cron sees the same unresolved conflict.
     const {results:audited}=await env.DB.prepare(`SELECT import_id FROM special_import_events e
       WHERE import_id IN (SELECT value FROM json_each(?1)) AND event_type='review' AND detail=?2

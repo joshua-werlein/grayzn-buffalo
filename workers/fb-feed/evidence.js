@@ -391,6 +391,25 @@ const proteinVariant=o=>{
 };
 export const joinProteinVariants=value=>joinVariants(value,proteinVariant);
 
+// A complete daily reading that found nothing to publish: no offers, no
+// delivery notice, no uncertainty, and no specials wording or printed price in
+// the poster heading or the Facebook caption. Structural only, never a holiday
+// or topic keyword list. Such posts (closures, greetings, announcements, photos)
+// are non-actionable: they never block, alert or need staff, and keep their
+// import history. Any offer, price or specials signal keeps a post actionable.
+const SPECIALS_WORDING=/\bspecials?|menu|lunch|night|soup\b/i; // planner skip test below
+export function noActionableSpecials(reading,caption='') {
+  if (!reading || typeof reading!=='object' || Array.isArray(reading) || 'type' in reading) return false;
+  if (!Array.isArray(reading.offers) || reading.offers.length) return false;
+  if (typeof reading.day_evidence!=='string' || typeof reading.poster_evidence!=='string') return false;
+  if (Array.isArray(reading.uncertainties) && reading.uncertainties.length) return false;
+  const d=reading.delivery;
+  if (d!==undefined && (!d || typeof d!=='object' || !['none',undefined].includes(d.status)
+    || String(d.evidence??'').trim() || String(d.date_evidence??'').trim() || d.uncertainties?.length)) return false;
+  const text=`${reading.day_evidence} ${reading.poster_evidence} ${typeof caption==='string' ? caption : ''}`;
+  return !SPECIALS_WORDING.test(text) && !/\$\s*\.?\d|\d\s*¢/.test(text) && !/\bdeliver/i.test(text);
+}
+
 export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,today,existingAllDay=[],slotLayout=[],verifiedSameDaySources=new Set(),sourceTimes=[]}) {
   // Verified post times from the publisher. Equal or unknown times prove nothing.
   const newer=(a,b)=>Number.isFinite(sourceTimes[a]) && Number.isFinite(sourceTimes[b]) && sourceTimes[a]>sourceTimes[b];
@@ -403,7 +422,7 @@ export function planDailyEvidence(candidates,weekday,{validateDay,canonicalize,t
       if (['weekly-lunch','mexican-night'].includes(raw?.type) && !('offers' in raw)) continue;
       const joined=joinProteinVariants(joinPizzaSizes(raw));
       p={...analyzeDailyEvidence(joined,{allowUnpriced:true}),joined_offers:joined.joined_offers===true};
-      if(!p.offers.length && !/\bspecials?|menu|lunch|night|soup\b/i.test(`${p.day_evidence} ${p.poster_evidence}`)) {
+      if(!p.offers.length && !SPECIALS_WORDING.test(`${p.day_evidence} ${p.poster_evidence}`)) {
         // A non-specials announcement printed for another day (November 25: a
         // Thanksgiving 11/26 closure) is excluded like any other-day poster, so
         // its stored import failure cannot block or alert today's specials.

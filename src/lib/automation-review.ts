@@ -6,7 +6,7 @@ import { eventState } from './special-events';
 import { plainValue } from '../../workers/fb-feed/alert-detail.js';
 import { applySharedWeeklyLunchPrice, validateWeeklyLunch, canonicalizeSlotContent } from '../../workers/fb-feed/reconcile.js';
 import { routeEventSource, eventCue, isEventMessage } from '../../workers/fb-feed/events.js';
-import { normalizeWeeklyRange, factKey } from '../../workers/fb-feed/evidence.js';
+import { normalizeWeeklyRange, factKey, noActionableSpecials } from '../../workers/fb-feed/evidence.js';
 import {approvalEvents} from '../../workers/fb-feed/staff-review.js';
 import {readWingAttention,wingHoldReason} from '../../workers/fb-feed/wing-review.js';
 import {isWingOffer} from '../../workers/fb-feed/wing-night.js';
@@ -74,11 +74,17 @@ export function importOutcome(source: any, events: any[]) {
   if(approvals.some((a: any)=>a.complete)) return {status:'Staff Approved',reason:'Approved and published by staff. Saved values stay until a newer Facebook post replaces them.'};
   if(approvals.length) return {status:'Partially Staff Approved',reason:'Selected offers were published and protected. Remaining offers still need review.'};
   const raw=parseReviewEvidence(source.extracted_json)??parseReviewEvidence(source.candidate_json);
+  // A complete reading with nothing to publish (closure, greeting, announcement):
+  // kept for the record, never a staff task. Same structural test as the Worker.
+  if(!['pending','processing'].includes(source.processing_status) && noActionableSpecials(raw,source.caption))
+    return {status:'No Specials',reason:'No specials were found in this post (for example a closure, greeting or general announcement). Nothing was published from it; it is kept for the record.'};
   if(['mexican-night','weekly-lunch'].includes(raw?.type)) events=events.filter(e=>!/^GUARDED_AUTO(?::|_CONFLICT:)/.test(e.detail??''));
   const latest = events.find(e => e.event_type === 'review');
   const detail = typeof latest?.detail === 'string' ? latest.detail : '';
-  const publication = events.find(e => e.event_type === 'review' && /^GUARDED_(?:AUTO|WEEKLY_LUNCH|MEXICAN_NIGHT):/.test(e.detail));
-  const count = Number(publication?.detail?.match(/; (\d+) (?:slot|item)\(s\)/)?.[1] ?? 0);
+  // Slots this post published in any recorded run: a later run with nothing new
+  // to write (0 slots) or a cleared conflict must not hide an earlier publication.
+  const count = Math.max(0, ...events.filter(e => e.event_type === 'review' && /^GUARDED_(?:AUTO|WEEKLY_LUNCH|MEXICAN_NIGHT):/.test(e.detail ?? ''))
+    .map(e => Number(e.detail.match(/; (\d+) (?:slot|item)\(s\)/)?.[1] ?? 0)));
   const conflict = /CONFLICT|blocked proposals|no publication/i.test(detail);
   const status = conflict ? (count > 0 ? 'Partially Published' : 'Held') : count > 0 ? 'Published'
     : source.processing_status === 'failed' ? 'Failed'
@@ -97,6 +103,7 @@ export function statusBadge(status: string) {
   if(status==='Staff Approved') return {label:'Staff Approved',tone:'approved',help:'Staff checked and published this post. Automation won’t change these specials.'};
   if(status==='Published') return {label:'Published',tone:'published',help:'Automation published this post to the website. No action needed.'};
   if(status==='Failed') return {label:'Failed',tone:'failed',help:'Automation could not read or publish this post. Check it against Facebook and fix the specials if needed.'};
+  if(status==='No Specials') return {label:'No Specials',tone:'neutral',help:'This post has no specials (for example a closure, greeting or announcement). Nothing to publish and no action needed.'};
   if(status==='Processing') return {label:'Processing',tone:'neutral',help:'Automation is still working on this post. Check back shortly.'};
   return {label:'Needs Review',tone:'review',help:NEEDS_REVIEW[status]??'Automation could not confirm this post was published. Check it against Facebook and approve it, or fix the day in the editor.'};
 }
