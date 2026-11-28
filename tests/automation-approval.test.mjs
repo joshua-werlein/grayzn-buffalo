@@ -27,6 +27,18 @@ async function input(f,mexican=false) {
 }
 const all=f=>f.sql('SELECT * FROM special_slots ORDER BY group_id,position');
 const events=f=>f.sql("SELECT event_type,detail FROM special_import_events WHERE import_id='test' ORDER BY id DESC");
+test('the November 27 gift card poster cannot be approved into food slots',async t=>{
+  const f=setup(t);
+  const [promotion]=JSON.parse(readFileSync('tests/fixtures/nov27-facebook-posters.json','utf8'));
+  const friday=new Date('2026-11-27T16:00:00Z');
+  f.sql("UPDATE special_imports SET fb_created_time=?,extracted_json=?,candidate_json=NULL WHERE id='test'",
+    promotion.post.created_time,JSON.stringify(promotion.attempts[0]));
+  const before=all(f);
+  await assert.rejects(()=>approvalModel(f.env,'test','2026-11-27',friday),/Publish gift card promotions under Special Events/);
+  assert.deepEqual(all(f),before);
+  assert.deepEqual(events(f),[]);
+});
+
 test('server suggests exact Tuesday destinations, retains uncertainty and previews without writes',async t=>{
   const f=setup(t);const {m,value}=await input(f);
   assert.deepEqual(m.entries.map(e=>e.suggestedService),['lunch','all-day','all-day']);

@@ -1,0 +1,117 @@
+[
+  {
+    "post": {
+      "id": "583672228384067_1783302653337611",
+      "created_time": "2026-11-27T15:26:12+0000",
+      "message": ""
+    },
+    "importId": "69d36c07fe54bd0b083f13ec8e08f081",
+    "attempts": [
+      {
+        "day_of_week": -1,
+        "day_evidence": "",
+        "poster_evidence": "Black Friday Deal",
+        "delivery": {
+          "status": "none",
+          "evidence": "",
+          "date_evidence": "",
+          "uncertainties": []
+        },
+        "offers": [
+          {
+            "content": "Buy $50 Gift Card Get $55",
+            "evidence": "Buy $50 Gift Card Get $55",
+            "service_time": "",
+            "service_evidence": "",
+            "date_evidence": "",
+            "uncertainties": []
+          },
+          {
+            "content": "Buy $100 Gift Card Get $110!",
+            "evidence": "Buy $100 Gift Card Get $110!",
+            "service_time": "",
+            "service_evidence": "",
+            "date_evidence": "",
+            "uncertainties": []
+          }
+        ]
+      },
+      {
+        "day_of_week": -1,
+        "day_evidence": "",
+        "poster_evidence": "Black Friday Deal",
+        "delivery": {
+          "status": "none",
+          "evidence": "",
+          "date_evidence": "",
+          "uncertainties": []
+        },
+        "offers": [
+          {
+            "content": "Buy $50 Gift Card Get $55",
+            "evidence": "Buy $50 Gift Card Get $55",
+            "service_time": "",
+            "service_evidence": "",
+            "date_evidence": "",
+            "uncertainties": []
+          },
+          {
+            "content": "Buy $100 Gift Card Get $110!",
+            "evidence": "Buy $100 Gift Card Get $110!",
+            "service_time": "",
+            "service_evidence": "",
+            "date_evidence": "",
+            "uncertainties": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "post": {
+      "id": "583672228384067_1783322873335589",
+      "created_time": "2026-11-27T15:46:48+0000",
+      "message": ""
+    },
+    "importId": "3e6002526474e7b1f2aa4c20f190d7b6",
+    "attempts": [
+      {
+        "day_of_week": -1,
+        "day_evidence": "",
+        "poster_evidence": "GRAYZ'N BUFFALO BAR & GRILL DAILY SPECIALS",
+        "delivery": {
+          "status": "available",
+          "evidence": "DELIVERY AVAILABLE 11-1:30",
+          "date_evidence": "",
+          "uncertainties": []
+        },
+        "offers": [
+          {
+            "content": "1) Fish Sandwich w/ Fries + Drink $9.75",
+            "evidence": "1) FISH SANDWICH W/ FRIES + DRINK $9.75 (11 AM - 1:30 PM)",
+            "service_time": "11 AM - 1:30 PM",
+            "service_evidence": "(11 AM - 1:30 PM)",
+            "date_evidence": "",
+            "uncertainties": []
+          },
+          {
+            "content": "2) Cheeseburger or Fish Sandwich w/ Side Salad, Soup or Coleslaw $10.25",
+            "evidence": "2) CHEESEBURGER OR FISH SANDWICH W/ SIDE SALAD, SOUP OR COLESLAW $10.25",
+            "service_time": "",
+            "service_evidence": "",
+            "date_evidence": "",
+            "uncertainties": []
+          },
+          {
+            "content": "3) Grilled Ham and Cheese w/ Cup of Soup or Coleslaw $7.25",
+            "evidence": "3) GRILLED HAM AND CHEESE W/ CUP OF SOUP OR COLESLAW $7.25",
+            "service_time": "",
+            "service_evidence": "",
+            "date_evidence": "",
+            "uncertainties": []
+          }
+        ]
+      }
+    ]
+  }
+]

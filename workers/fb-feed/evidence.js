@@ -4,6 +4,7 @@ import {standaloneSoup} from '../../src/lib/daily-soup.js';
 import {validateWingNight,isWingOffer,WING_HEADING} from './wing-night.js';
 
 export const EVIDENCE_VERSION=2;
+export const isGiftCard=text=>/\bgift[\s-]+(?:cards?|certificates?)\b/i.test(text);
 const clock=String.raw`(?:1[0-2]|[1-9])(?::[0-5]\d)?\s*(?:[ap]\.?m\.?)?`;
 const windowPattern=String.raw`${clock}\s*[-–—]\s*${clock}`;
 const windows=()=>new RegExp(windowPattern,'gi');
@@ -151,7 +152,7 @@ const verifiedPricelessMeal=o=>!!o.evidence.trim() && !PRICE_LIKE.test(`${o.cont
 // Keep invalid offers in their original positions. They participate in conflict
 // scope and never disappear to manufacture agreement or shift another slot.
 // Special events pass no options: an event offer always requires its price.
-export function analyzeDailyEvidence(value,{allowUnpriced=false}={}) {
+export function analyzeDailyEvidence(value,{allowUnpriced=false,allowRetail=false}={}) {
   if (!value || !Number.isInteger(value.day_of_week) || value.day_of_week < -1 || value.day_of_week>6
     || typeof value.day_evidence!=='string' || value.day_evidence.length>600
     || typeof value.poster_evidence!=='string' || value.poster_evidence.length>2400
@@ -161,6 +162,7 @@ export function analyzeDailyEvidence(value,{allowUnpriced=false}={}) {
   const offers=value.offers.map((raw,index)=>{
     try {
       const o=normalizeEvidenceOffer(raw);
+      if (!allowRetail && isGiftCard(`${o.content} ${o.evidence}`)) throw Error('Gift card offer requires Special Events');
       const soup=soupLabel(o.content)||soupLabel(o.evidence);
       if (soup && !readSoup(o)) throw Error('Ambiguous standalone Soup evidence');
       if (!soup && !prices(o.content).length && !(noPrices && verifiedPricelessMeal(o))) throw Error('Missing meal price');

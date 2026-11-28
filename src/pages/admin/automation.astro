@@ -26,6 +26,7 @@ let approvalContext: Awaited<ReturnType<typeof approvalPageContext>>|undefined;
 const active=review?.history.filter(item=>!item.dismissed) ?? [],dismissed=review?.history.filter(item=>item.dismissed) ?? [];
 if(review && today) try {approvalContext=await approvalPageContext(env,active.map((i: {id: string})=>i.id),date);} catch { /* Per-entry errors stay explicit below. */ }
 if(review && today) for(const item of active) {
+  if (item.scope==='Special Event' || item.scope==='Gift card promotion') continue;
   try {if(!approvalContext)throw Error('Approval is temporarily unavailable. Reload before publishing.');approvalPanels.set(item.id,await approvalModel(env,item.id,date,now,approvalContext));}
   catch(error) {approvalErrors.set(item.id,error instanceof Error && !/SQL|D1_|database|no such|sqlite/i.test(error.message)?error.message:'Approval is temporarily unavailable. The Specials editor is still available.');}
 }
@@ -122,6 +123,7 @@ const eventDisplay=review && today ? await eventDisplaySupported(env) : false;
                   :'Only for a holiday, game day or other one-time promotion that automation read as daily specials. Nothing from this post is on the website yet.'}</p>
                 {event}
               </section>;
+              if (item.scope==='Special Event') return eventRoute;
               return <div class="publish-routes">{isEvent ? <>{eventRoute}{dailyRoute}</> : <>{dailyRoute}{eventRoute}</>}</div>;
             })()}
             {item.wing && <WingWednesdayReview id={item.id} wing={item.wing}/>}

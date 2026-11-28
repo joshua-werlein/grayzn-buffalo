@@ -1,6 +1,29 @@
 # Grayz'n Buffalo project status
 
-Updated November 22, 2026 (Central time). Admin session invalidation, the refreshed emergency menu, the Facebook alert optimization and responsive footer artwork are live. The Cloudflare audit is complete within the verified scope below. The full November 22 R2 snapshot is archived. Photos and Reviews is live for signed-in staff and awaits owner review before any public launch.
+## November 27 automation and WAF release
+
+The Facebook release routes one-time gift card offers to Special Events before validating meal weekdays. It checks Black Friday against the holiday date and verified post timing, keeps both printed gift card amounts, and leaves recurring gift card advertising out of meal slots. Admin Automation uses the same classification and blocks daily approval for gift card offers. The rejected promotion had blocked the valid Friday poster, whose numbered meals were already eligible for Lunch 1 and All Day 1–2 under the existing house layout.
+
+Delivery reconciliation now ignores verified retail-only posters with no delivery statement, including the stored Black Friday date-check rejection. A current daily poster can activate delivery independently of food publication. Staff controls and the 1:30 p.m. Chicago expiry still apply. Daily alert publication counts now require saved slot provenance from the current scan, so an older automated lunch cannot produce a false “Partially Published” result. The 30-minute alert grace period and parser version 19 stay in place.
+
+The November 27 food corrections and the Black Friday card are staff-owned and locked. The local release checks passed 515 website tests and 1,877 Facebook Worker tests, with zero failures or skips. Astro reported zero errors and warnings and 29 hints. The build, both Wrangler dry runs, and Git diff validation passed.
+
+The Free Cloudflare zone has **Block private file probes** active first in custom rules, with the action **Block** and the host limited to `grayznbuffalo.com`. The rule ID is `9aa172c373ae48d78b248b03c7ad20d3`. It matches selected private paths and leaves `/.well-known/` available. The scanner IP block remains active in position 2 and the `POST /admin` rate limit remains active. All 14 reported probe paths and an uppercase variant returned Cloudflare 403 after activation. Public routes, the Facebook feed, a published R2 image, and legacy redirects matched their baselines. [Live WAF rule](https://dash.cloudflare.com/a79e3b4a2bb8dad70c75bceac4b1d3f9/grayznbuffalo.com/security/security-rules/custom-rules/9aa172c373ae48d78b248b03c7ad20d3)
+
+A push to `main` runs [the site deployment workflow](../.github/workflows/deploy.yaml). It deploys `grayzn-buffalo` after its checks pass. Deploy `grayzn-fb-feed` separately from the same code revision. The release requires no D1 migration or Pages deployment. Release the Facebook Worker after the Chicago import window closes and the queue and import records confirm processing has finished, or on November 28. Use normal future scans for publication.
+
+### Roll back
+
+```powershell
+npx wrangler rollback 421995d0-acef-4862-8cc5-8584e10c5ac4 --name grayzn-buffalo
+npx wrangler rollback f411c842-ff0b-4c65-a2c9-900bd673a771 --config workers/fb-feed/wrangler.toml
+```
+
+Roll back only the affected Worker, then verify the active version at 100% and repeat the matching HTTP checks. For a WAF rollback, disable only **Block private file probes** and confirm `/vite.config.ts` again returns the site’s custom 404 from an IP outside the scanner block list. Worker rollback and WAF rollback are independent.
+
+## November 22 status and earlier verification
+
+On November 22, 2026 (Central time), admin session invalidation, the refreshed emergency menu, the Facebook alert optimization and responsive footer artwork were live. The Cloudflare audit was complete within the verified scope below. The full November 22 R2 snapshot was archived. Photos and Reviews was live for signed-in staff and awaited owner review before public launch.
 
 ## Verified production baseline
 

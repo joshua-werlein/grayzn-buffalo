@@ -2,7 +2,7 @@
 // resolution and offer validation. No database or AI access. Routing happens
 // after extraction, on stored evidence. Events publish automatically when the
 // evidence is sufficient; nothing waits for staff approval.
-import {analyzeDailyEvidence,factKey,serviceFromEvidence} from './evidence.js';
+import {analyzeDailyEvidence,factKey,isGiftCard,serviceFromEvidence} from './evidence.js';
 
 // OFF is the emergency switch. Any other value, including the retired REVIEW, is OFF.
 export const EVENT_MODES=['OFF','AUTO'];
@@ -40,6 +40,9 @@ const REGULAR=[/\bwing\s+(?:night|wednesday)\b/,/\bpizza\s+night\b/,/\bfish\s+fr
   new RegExp(String.raw`\b(?:${DAYS.join('|')})(?:'s)?\s+(?:(?:lunch|night(?:ly)?|all[\s-]+day)\s+)?specials\b`)];
 const CANCELLED=/\bcancel+ed\b|\bpostponed\b|\bno\s+longer\b/;
 const norm=s=>String(s??'').normalize('NFKC').replace(/[‘’]/g,"'").toLowerCase();
+const BLACK_FRIDAY=/\bblack[\s-]+friday\b/gi;
+const RECURRING_RETAIL=/\b(?:every|each)\s+(?:week|day|month|year|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b|\b(?:weekly|daily|monthly|ongoing|recurring|year[\s-]round|sundays|mondays|tuesdays|wednesdays|thursdays|fridays|saturdays)\b/;
+const RETAIL_DATE_REQUIRED='One-time gift card promotion needs a verified date';
 
 // The cue identifies WHICH event (identity) and whether the phrase alone is
 // specific enough to publish (a team or a holiday, not "game day" or "benefit").
@@ -177,6 +180,42 @@ export function isEventMessage(offer) {
 }
 export const EVENT_MESSAGE_LIMIT=300;
 
+// Keep standalone gift card posters out of meal reconciliation even when
+// recurring, undated, or unreadable. Caption text alone cannot establish this.
+export function retailPromotionCue(candidate) {
+  if (!Array.isArray(candidate?.offers)) return null;
+  const heading=String(candidate.poster_evidence??'');
+  const offers=candidate.offers.filter(o=>!isEventMessage(o));
+  const withoutHoliday=heading.replace(BLACK_FRIDAY,'');
+  if (regularHeading(withoutHoliday) || !(isGiftCard(heading) || offers.length && offers.every(o=>isGiftCard(o?.evidence??'')))) return null;
+  return withoutHoliday!==heading
+    ? {kind:'retail',identity:'black-friday',title:'Black Friday Deal'}
+    : {kind:'retail',identity:'gift-card-promotion',title:'Gift Card Promotion'};
+}
+
+function retailDate(caption,postDate,cue,image) {
+  // Black Friday is the day after the fourth Thursday in November. Resolve it
+  // in the year of a verified November post, and cross-check all other dates.
+  const texts=[image,caption].map(text=>String(text??''));
+  if (texts.some(text=>/\b(?:all\s+(?:week|month|weekend)|(?:valid|runs?)\s+(?:through|until)|(?:through|until)\s+(?:the\s+end\s+of|\d{1,2}\/\d{1,2}))\b/i.test(text)))
+    return {review:'Promotion duration needs review'};
+  const date=resolveEventDate({image:texts[0].replace(BLACK_FRIDAY,''),
+    caption:texts[1].replace(BLACK_FRIDAY,''),postDate});
+  if (date.review) return date;
+  if (cue.identity==='black-friday') {
+    const november=postDate.slice(0,4)+'-11-01';
+    const blackFriday=addDays(november,(4-weekdayOf(november)+7)%7+22);
+    if (date.basis!=='publication-date' && date.date!==blackFriday)
+      return {review:'Printed date conflicts with Black Friday'};
+    if (postDate.slice(5,7)!=='11' || blackFriday<postDate) return {review:'Black Friday is outside the verified post window'};
+    return {date:blackFriday,basis:date.basis==='printed-date'?'printed-date':blackFriday===postDate?'publication-date':'relative',
+      note:`Black Friday after U.S. Thanksgiving, verified November post ${postDate}`};
+  }
+  if (['publication-date','printed-weekday'].includes(date.basis) && !/\bone[\s-]+day[\s-]+only\b/i.test(image))
+    return {review:RETAIL_DATE_REQUIRED};
+  return date;
+}
+
 // Classify one stored source. "event": the whole poster is a one-time
 // promotion, so regular planning skips it, and the draft publishes unless its
 // review_reasons (insufficient or contradictory evidence) withhold it.
@@ -186,6 +225,13 @@ export function routeEventSource({candidate,caption='',postDate,canonicalize}) {
   if (!candidate || typeof candidate!=='object' || !Array.isArray(candidate.offers)) return {route:'regular'};
   const heading=`${candidate.day_evidence??''} ${candidate.poster_evidence??''}`;
   const offers=candidate.offers;
+  const retail=retailPromotionCue(candidate);
+  if (retail) {
+    if (RECURRING_RETAIL.test(norm([heading,caption,...offers.map(offerText)].join(' ')))) return {route:'retail',retail:true};
+    const draft=buildEventDraft({candidate,caption,postDate,cue:retail,indices:offers.map((_,i)=>i),canonicalize});
+    if (draft.review_reasons.includes(RETAIL_DATE_REQUIRED)) return {route:'retail',retail:true};
+    return {route:'event',retail:true,publish:!draft.review_reasons.length,draft};
+  }
   const headingCue=eventCue(heading),offerCues=offers.map(o=>eventCue(offerText(o)));
   const imageCue=headingCue ?? (offers.length && offerCues.every(Boolean) ? offerCues[0] : null);
   const captionCue=eventCue(caption);
@@ -217,8 +263,9 @@ export function routeEventSource({candidate,caption='',postDate,canonicalize}) {
 
 export function buildEventDraft({candidate,caption,postDate,cue,indices,canonicalize}) {
   const review_reasons=[];
+  const retail=cue.kind==='retail';
   let analyzed;
-  try { analyzed=analyzeDailyEvidence(candidate); }
+  try { analyzed=analyzeDailyEvidence(candidate,{allowRetail:retail}); }
   catch (error) { analyzed={offers:[],issues:[]};review_reasons.push(error.message); }
   // Greetings and conditions are the event message; only priced lines are offers.
   const messages=indices.filter(i=>isEventMessage(candidate.offers[i]));
@@ -230,10 +277,16 @@ export function buildEventDraft({candidate,caption,postDate,cue,indices,canonica
   const offers=usable.map(i=>canonicalize(analyzed.offers[i].content,-1,'custom'));
   if (!offers.length) review_reasons.push('No printed, priced event offer');
   const heading=`${candidate.day_evidence??''} ${candidate.poster_evidence??''}`;
-  const image=[heading,...chosen.map(i=>analyzed.offers[i]?.date_evidence)].filter(Boolean).join(' ');
-  const date=resolveEventDate({image,caption,postDate});
+  const image=[heading,...chosen.flatMap(i=>{
+    const offer=analyzed.offers[i];
+    return retail ? [offer?.date_evidence,offer?.evidence,offer?.service_evidence] : [offer?.date_evidence];
+  })].filter(Boolean).join(' ');
+  const date=retail ? retailDate(caption,postDate,cue,image) : resolveEventDate({image,caption,postDate});
   if (date.review) review_reasons.push(date.review);
   const event_date=date.date ?? postDate;
+  if (retail && !date.review && candidate.day_of_week>=0 && candidate.day_of_week!==weekdayOf(event_date))
+    review_reasons.push('Numeric weekday disagrees with the promotion date');
+  if (retail && CANCELLED.test(norm(`${image} ${caption}`))) review_reasons.push('Promotion is cancelled or postponed');
   const fixed=FIXED_HOLIDAY_DATES[cue.identity];
   if (fixed && !date.review && event_date.slice(5)!==fixed)
     review_reasons.push(`${HOLIDAY_NAMES[cue.identity]} is ${MONTHS[+fixed.slice(0,2)-1].replace(/^./,c=>c.toUpperCase())} ${+fixed.slice(3)}; the resolved event date ${event_date} differs`);
@@ -243,7 +296,7 @@ export function buildEventDraft({candidate,caption,postDate,cue,indices,canonica
   if (hours) review_reasons.push(hours);
   const details=[...new Set(messages.map(i=>canonicalize(String(candidate.offers[i].content).trim(),-1,'custom')))].join('\n');
   if (details.length>EVENT_MESSAGE_LIMIT) review_reasons.push('Event message is too long');
-  return {title:eventTitle(candidate.poster_evidence??'',cue,canonicalize),event_date,...time,details:details.slice(0,EVENT_MESSAGE_LIMIT),offers,
+  return {title:retail?cue.title:eventTitle(candidate.poster_evidence??'',cue,canonicalize),event_date,...time,details:details.slice(0,EVENT_MESSAGE_LIMIT),offers,
     identity:cue.identity,date_basis:date.basis ?? 'publication-date',review_reasons,
     fingerprint:`${event_date}|${offers.map(factKey).sort().join('|')}`,
     evidence:{heading:heading.trim(),offers:chosen.map(i=>String(candidate.offers[i]?.evidence ?? candidate.offers[i]?.content ?? '')),
@@ -260,6 +313,12 @@ export function routeStoredSources(rows,{today,canonicalize}) {
     catch { return {route:'regular'}; }
     const created=Date.parse(row.fb_created_time);
     if (!Number.isFinite(created) || chicagoDateOf(created)!==today) return {route:'regular'};
-    return routeEventSource({candidate,caption:row.caption ?? '',postDate:today,canonicalize});
+    const routing=routeEventSource({candidate,caption:row.caption ?? '',postDate:today,canonicalize});
+    if (routing.retail && created>Date.now()) return {route:'retail',retail:true};
+    if (routing.retail && routing.draft && row.validation_reason==='Conflicting image verification; nothing published') {
+      routing.publish=false;
+      routing.draft.review_reasons.push(row.validation_reason);
+    }
+    return routing;
   });
 }

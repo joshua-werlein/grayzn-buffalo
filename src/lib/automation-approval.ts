@@ -5,7 +5,8 @@ import {normalizeMexicanPrices,composeMexicanItem} from './mexican-item.js';
 import {normalizeMenuCase} from './text-case.js';
 import {isSoupGroup,standaloneSoup} from './daily-soup.js';
 import {validateMexicanNight,validateCurrentDay,canonicalizeSlotContent,reconcilePosterEvidence} from '../../workers/fb-feed/reconcile.js';
-import {normalizeMexicanSizeItem,serviceFromEvidence,factKey} from '../../workers/fb-feed/evidence.js';
+import {normalizeMexicanSizeItem,serviceFromEvidence,factKey,isGiftCard} from '../../workers/fb-feed/evidence.js';
+import {retailPromotionCue} from '../../workers/fb-feed/events.js';
 import {mexicanItemKey,accessoryGroup,scheduleKey} from '../../workers/fb-feed/mexican-menu.js';
 import {APPROVAL_PREFIX,approvalEvents} from '../../workers/fb-feed/staff-review.js';
 
@@ -65,6 +66,7 @@ export async function approvalModel(env: any,importId: string,day: string,now=ne
   // Prefer original extraction: it retains all uncertainty and portion evidence.
   const raw=parseReviewEvidence(source.extracted_json)??parseReviewEvidence(source.candidate_json);
   if(!raw) throw Error('Usable stored extraction is unavailable.');
+  if(retailPromotionCue(raw)) throw Error('Publish gift card promotions under Special Events.');
   const mexican=raw.type==='mexican-night';
   if(!mexican && !Array.isArray(raw.offers)) throw Error('Use the Specials editor for this import type.');
   const weekday=calendarDayOfWeek(day);
@@ -111,12 +113,13 @@ export async function approvalModel(env: any,importId: string,day: string,now=ne
     // explicitly select the final destination and verify the source.
     let targets: any[]=[];
     try { targets=reconcilePosterEvidence([{...raw,evidence_version:2,offers:raw.offers.map((o: any)=>({...o,uncertainties:[]}))}],weekday,[],{today:day,verifiedSameDaySources:new Set([0])} as any).targets; } catch { /* Explicit selection remains available. */ }
-    entries=raw.offers.map((item: any,index: number)=>{
+    entries=raw.offers.flatMap((item: any,index: number)=>{
+      if(isGiftCard(`${item?.content??''} ${item?.evidence??''}`)) return [];
       const content=canonicalizeSlotContent(text(item.content,1200),weekday,serviceFromEvidence(`${item.service_time??''} ${item.service_evidence??''}`));
       const suggestion=targets.flatMap(t=>t.items.map((i: any)=>({...i,service:t.service}))).find(i=>factKey(i.content)===factKey(content));
-      return {key:`d:${index}`,index,content,original:typeof item.evidence==='string' && item.evidence.trim()?item.evidence:item.content,
+      return [{key:`d:${index}`,index,content,original:typeof item.evidence==='string' && item.evidence.trim()?item.evidence:item.content,
         evidence:typeof item.evidence==='string'?item.evidence:'',uncertainties:Array.isArray(item.uncertainties)?item.uncertainties:[],
-        suggestedService:suggestion?.service??serviceFromEvidence(`${item.service_time??''} ${item.service_evidence??''}`),suggestedPosition:suggestion?.position??1,done:done.has(`d:${index}`)};
+        suggestedService:suggestion?.service??serviceFromEvidence(`${item.service_time??''} ${item.service_evidence??''}`),suggestedPosition:suggestion?.position??1,done:done.has(`d:${index}`)}];
     });
   }
   if(source.review_status==='edited' && !done.size) throw Error('This import was already reviewed in another editor.');
@@ -184,6 +187,7 @@ export async function approveImport(env: any,input: any,now=new Date(),{preview=
       group=next.groups.find(g=>g.id===dest.groupId);slot=group.slots.find((s: any)=>s.position===dest.position);
       content=canonicalizeSlotContent(text(submitted.content,150),calendarDayOfWeek(input.day),group.service);
       if(!content) throw Error('An approved special cannot be blank.');
+      if(isGiftCard(content)) throw Error('Publish gift card promotions under Special Events.');
       if(isSoupGroup(group)) {
         const original=model.raw.offers[entry.index];
         if(!standaloneSoup({content,evidence:original.evidence??original.content,service_time:''})) throw Error('Soup names must match the complete source evidence.');

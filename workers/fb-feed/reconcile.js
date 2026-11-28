@@ -1,6 +1,6 @@
 import {composeMexicanItem} from '../../src/lib/mexican-item.js';
 import {promotionalHeading} from './mexican-menu.js';
-import {trailingDailyPrice,normalizeMexicanSizeItem} from './evidence.js';
+import {trailingDailyPrice,normalizeMexicanSizeItem,isGiftCard} from './evidence.js';
 import {standaloneSoup,hasStandaloneSoupLabel} from '../../src/lib/daily-soup.js';
 import {formatWingNight,validateWingNight,isWingOffer,WING_HEADING} from './wing-night.js';
 import {planDailyEvidence} from './evidence.js';
@@ -314,6 +314,7 @@ function forToday(value,weekday,today) {
     // Dedicated weekly/section evidence belongs to its own reconciliation path.
     if (['weekly-lunch','mexican-night'].includes(value?.type) && !('offers' in value)) return null;
     const p=validateEvidence(value);
+    if (p.offers.some(o=>isGiftCard(`${o.content} ${o.evidence}`))) throw Error('Gift card offer requires Special Events');
     // guarded-auto verifies each source's same-day Chicago creation timestamp.
     const isExplicitToday=validateCurrentDay(p,weekday,today);
     const offers=p.offers.map(o=>({...o,service:serviceOf(o.service_time)}));

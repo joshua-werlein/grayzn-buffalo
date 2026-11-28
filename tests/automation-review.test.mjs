@@ -36,6 +36,23 @@ test('historical status uses publication audits, including partial and recovered
   assert.equal(r.importOutcome(source,[review('GUARDED_AUTO: 2026-10-26; reconciled 2 source(s); 3 slot(s)')]).status,'Published');
   assert.equal(r.importOutcome(source,[review('GUARDED_MEXICAN_NIGHT: fb_created=2026-10-26; 2 group(s); 4 item(s)')]).status,'Published');
 });
+test('the November 27 promotion has only the Special Event approval route',async t=>{
+  const f=setup(t);
+  const [promotion]=JSON.parse(readFileSync('tests/fixtures/nov27-facebook-posters.json','utf8'));
+  const raw=promotion.attempts[0],friday=new Date('2026-11-27T16:00:00Z');
+  addImport(f,'black-friday',raw,promotion.post.created_time);
+  const model=await r.readAutomationReview(f.env,'2026-11-27',friday);
+  const [item]=model.history;
+  assert.equal(item.scope,'Special Event');
+  assert.equal(item.eventOption.kind,'event');
+  assert.deepEqual(item.eventOption.values.offers,raw.offers.map(o=>o.content));
+  const response=await container.renderToResponse(page,{request:request(),locals:{runtime:{env:f.env,now:friday}}});
+  const html=await response.text();
+  const entry=html.slice(html.indexOf('id="import-black-friday"'));
+  assert.match(entry,/>Special Event<\/p>/);
+  assert.match(entry,/>Publish as a Special Event<span/);
+  assert.doesNotMatch(entry,/>Publish as Daily Specials<\/h4>/);
+});
 test('weekly associations require the verified printed range or source creation week; shared price is retained',()=>{
   const week={week_start_date:day};
   const raw={type:'weekly-lunch',date_range:'10/26-10/30',poster_evidence:'Weekly Lunch Specials $9.75',entries:[{day_of_week:1,content:'Pizza and Drink'}]};

@@ -1,7 +1,8 @@
 import {deliveryWindow} from '../../src/lib/delivery.js';
-import {validateCurrentDay,validateWeeklyLunch,hasWeeklyLunchEvidence} from './reconcile.js';
+import {validateCurrentDay,validateWeeklyLunch,hasWeeklyLunchEvidence,WEEKDAY_ENCODING_MISMATCH} from './reconcile.js';
 import {normalizeWeeklyRange} from './evidence.js';
 import {parserVersionFor} from './classify.js';
+import {retailPromotionCue} from './events.js';
 
 export function completeDeliveryReading(d) {
   return !!d && ['available','cancelled','ambiguous','none'].includes(d.status)
@@ -90,19 +91,36 @@ export async function reconcileDelivery(env,{sourceIds,observedAt,inspectOnly=fa
   let available=false, blocked=sources.length!==sourceIds.length, pending=false;
   const sourceOutcomes=[];
   for (const source of sources) {
-    if (deliveryWindow(new Date(source.fb_created_time)).day!==w.day) {sourceOutcomes.push({id:source.id,status:'other_day'});continue;}
+    const created=Date.parse(source.fb_created_time);
+    if (!Number.isFinite(created) || created>now.getTime()) {sourceOutcomes.push({id:source.id,status:'ineligible'});continue;}
+    if (deliveryWindow(new Date(created)).day!==w.day) {sourceOutcomes.push({id:source.id,status:'other_day'});continue;}
     if (['pending','processing'].includes(source.processing_status)) {blocked=true;pending=true;sourceOutcomes.push({id:source.id,status:'pending'});continue;}
+    let raw,candidate;
+    try {
+      raw=JSON.parse(source.extracted_json);
+      candidate=JSON.parse(source.candidate_json);
+    } catch { /* Handled by the eligibility gate below. */ }
+    // A verified retail-only poster with no delivery statement is outside
+    // this decision, including a historical row rejected by food validation.
+    if (source.image_r2_key && retailPromotionCue(raw) && !/\bdelivery\b/i.test(source.caption??'')
+      && completeDeliveryReading(raw.delivery) && raw.delivery.status==='none'
+      && !raw.delivery.evidence.trim() && !raw.delivery.date_evidence.trim()
+      && !raw.delivery.uncertainties.length && !deliveryStatements(raw).length
+      && (source.processing_status==='staged' && source.validation_result==='ok'
+        && retailPromotionCue(candidate) && !candidate.delivery_blocked && !candidate.delivery_recovery
+        || source.processing_status==='failed' && source.validation_result==='rejected'
+          && source.validation_reason===WEEKDAY_ENCODING_MISMATCH)) {
+      sourceOutcomes.push({id:source.id,status:'retail'});
+      continue;
+    }
     if (source.processing_status!=='staged' || source.validation_result!=='ok'
       || !source.image_r2_key || !['pending','accepted'].includes(source.review_status)) {blocked=true;sourceOutcomes.push({id:source.id,status:'ineligible'});continue;}
     // Same timestamp trust as guarded food publication: finite, not in the
     // future and on today's Chicago date (checked above). A reread recovery
     // already required its own printed weekday and does not use this trust.
-    const created=Date.parse(source.fb_created_time);
-    let trustedSameDay=Number.isFinite(created) && created<=now.getTime();
-    let raw;
+    let trustedSameDay=true;
     try {
-      raw=JSON.parse(source.extracted_json);
-      const candidate=JSON.parse(source.candidate_json);
+      if (!raw || candidate===undefined) throw Error('Missing extraction');
       // A resolved weekly-shape repair drops the daily-only delivery field by
       // contract. Its comparison flag is not conflicting current-day evidence.
       // Require both durable shapes, weekly headings and complete validation;

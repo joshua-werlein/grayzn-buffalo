@@ -12,6 +12,7 @@ import {expireDelivery,reconcileDelivery,completeDeliveryReading,recoveredDelive
 import {observeDeliveryOutcome,observeDailyOutcome} from './alert-outcomes.js';
 import {beginAlertScan,finishAlertScan,dispatchVerifiedAlerts} from './alert-runtime.js';
 import {reconcileEvents} from './event-store.js';
+import {retailPromotionCue} from './events.js';
 import {GRAPH_API_VERSION} from './graph.js';
 import {deliveryWindow} from '../../src/lib/delivery.js';
 
@@ -675,16 +676,18 @@ export function validateExtraction(extractedJson,reliable=false,window={}) {
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'offers' in parsed) {
     if(reliable || parsed.evidence_version===2) {
       try {
-        const candidate=analyzeDailyEvidence(parsed,{allowUnpriced:true});
+        const retail=!!retailPromotionCue(parsed);
+        const candidate=analyzeDailyEvidence(parsed,{allowUnpriced:!retail,allowRetail:retail});
         // Wrong response shape: a weekly or Mexican Night poster read as daily
         // offers gets ONE targeted single-shape reread, as the legacy contract does.
         const heading=`${candidate.day_evidence} ${candidate.poster_evidence}`;
         if(hasWeeklyLunchEvidence(heading)) return {candidateJson:null,validationResult:'rejected',validationReason:WEEKLY_LUNCH_SHAPE_ERROR,needsRepair:true,repairShape:'weekly-lunch'};
         if(/\bmexican\s+night\b/i.test(heading)) return {candidateJson:null,validationResult:'rejected',validationReason:MEXICAN_NIGHT_SHAPE_ERROR,needsRepair:true,repairShape:'mexican-night'};
-        validateCurrentDay(candidate,window.weekday??candidate.day_of_week,window.today);
+        // Standalone retail dates are validated by the event planner.
+        if (!retail) validateCurrentDay(candidate,window.weekday??candidate.day_of_week,window.today);
         // Tuesday has no daily Nightly slot; night offers or an empty reading
         // may be a Mexican Night menu. The reread requires the printed heading.
-        const tuesdayNight=window.weekday===2 && (!candidate.offers.length || serviceFromEvidence(heading)==='nightly'
+        const tuesdayNight=!retail && window.weekday===2 && (!candidate.offers.length || serviceFromEvidence(heading)==='nightly'
           || candidate.offers.some(o=>serviceFromEvidence(`${o?.service_time??''} ${o?.service_evidence??''}`)==='nightly'));
         // A missing service label is not an extraction fault: rereading cannot
         // print a label the poster lacks (and a reread copied a heading onto
@@ -693,7 +696,7 @@ export function validateExtraction(extractedJson,reliable=false,window={}) {
         return {candidateJson:JSON.stringify(candidate),validationResult:'ok',needsRepair:actionable.length>0||tuesdayNight,
           ...(tuesdayNight?{repairShape:'mexican-night'}:{}),
           validationReason:tuesdayNight?'Tuesday night offers: reread for an explicit Mexican Night menu'
-            :actionable.length?actionable.map(i=>`offer ${i.index+1}: ${i.reason}`).join('; '):'poster evidence v2'};
+            :actionable.length?actionable.map(i=>`offer ${i.index+1}: ${i.reason}`).join('; '):retail?'retail promotion evidence':'poster evidence v2'};
       } catch(error) {return {candidateJson:null,validationResult:'rejected',validationReason:error.message,needsRepair:true};}
     }
     try { return {candidateJson:JSON.stringify(validateEvidence(parsed)),validationResult:'ok',validationReason:'poster evidence'}; }

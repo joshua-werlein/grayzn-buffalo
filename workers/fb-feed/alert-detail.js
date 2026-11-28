@@ -12,6 +12,7 @@ const SERVICES = {lunch:'Lunch','all-day':'All Day',nightly:'Nightly',custom:'So
 const STAGES = {
   classification: ['Service not established by evidence','Conflicting offer service evidence','Conflicting or unresolved service evidence'],
   'offer validation': ['Missing meal price','Missing price in original meal evidence','Missing corroborating price evidence',
+    'Gift card offer requires Special Events',
     'Conflicting offer price','Ambiguous offer price evidence','Ambiguous price evidence','Ambiguous service_time price',
     'Meal facts differ from original evidence','Ambiguous side alternatives','Uncertain extracted offer','Invalid offer evidence',
     'Offer exceeds 150 characters without lossless representation','Offer with recovered price exceeds 150 characters',
@@ -95,13 +96,27 @@ export function dailyAlertDetail(result, data, day, weekday) {
     }
     const holds = [...held].map(([key,count])=>{const [category,reason]=key.split('|');
       return {category,reason,count,stage:STAGE_OF.get(reason) ?? 'reconciliation'};}).slice(0,MAX_LINES);
-    // What automation currently shows today, from the same verified snapshot.
+    // A slot's automation origin can be from a previous poster or Weekly Lunch.
+    // Count a current Daily publication only when its saved provenance names a
+    // current staged source and the website still shows the recorded value.
+    const sources=(data[0]??[]).filter(s=>!result?.excludedSourceIds?.includes(s.id));
+    const verifiedIds=new Set(sources.filter(s=>s.processing_status==='staged' && s.validation_result==='ok'
+      && s.image_r2_key && ['pending','accepted'].includes(s.review_status)).map(s=>s.id));
+    let publication;
+    try { publication=JSON.parse(data[5]?.find(s=>s.key==='facebook_daily_post_times')?.value??'null'); }
+    catch { /* Unreadable provenance cannot confirm publication. */ }
+    const times=publication?.day===day && publication?.weekId===week?.id ? publication.times : null;
     const published = [];
     const publishedValues = [];
     for (const g of todays.filter(g=>g.enabled===1)) {
-      const n = slots.filter(s=>s.group_id===g.id && s.origin==='automation' && (s.content ?? '').trim()).length;
-      if (n) published.push({category:label(g.service),count:n});
-      for (const s of slots.filter(s=>s.group_id===g.id && s.origin==='automation' && (s.content??'').trim()))
+      const confirmed=slots.filter(s=>{
+        const writer=times?.[`${s.group_id}:${s.position}`];
+        return s.group_id===g.id && s.origin==='automation' && (s.content??'').trim()
+          && s.last_auto_value===s.content && !s.price && !s.section_link
+          && Array.isArray(writer?.ids) && writer.ids.some(id=>verifiedIds.has(id));
+      });
+      if (confirmed.length) published.push({category:label(g.service),count:confirmed.length});
+      for (const s of confirmed)
         publishedValues.push({category:label(g.service),position:s.position,value:plainValue(s.content,160)});
     }
     // Current stored text only for an identified service; an unidentified
@@ -116,9 +131,9 @@ export function dailyAlertDetail(result, data, day, weekday) {
       current.push({category, values, empty: !values.length});
     }
     const index = EDITOR_DAY_ORDER.indexOf(weekday);
-    const reviewUrls=(data[0]??[]).filter(s=>/^[a-zA-Z0-9_-]{1,100}$/.test(s.id) && ['pending','accepted'].includes(s.review_status))
+    const reviewUrls=sources.filter(s=>/^[a-zA-Z0-9_-]{1,100}$/.test(s.id) && ['pending','accepted'].includes(s.review_status))
       .slice(0,6).map(s=>`${SITE}/admin/automation?date=${day}#import-${s.id}`);
-    const posts=(data[0]??[]).flatMap(s=>{
+    const posts=sources.flatMap(s=>{
       const ms=Date.parse(s.fb_created_time);
       if(!Number.isFinite(ms) || deliveryWindow(new Date(ms)).day!==day) return [];
       return [{time:chicagoTime(ms),url:/^\d{1,30}_\d{1,30}$/.test(s.fb_post_id)
@@ -145,7 +160,7 @@ export function deliveryAlertDetail(data, outcome, now) {
   const manual=data[5]?.find(setting=>!setting.key || setting.key==='delivery_display')?.value ?? 'auto';
   const setting=['auto','available','unavailable','hidden'].includes(manual)?manual:'invalid';
   const iso=value=>typeof value==='string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && Number.isFinite(Date.parse(value)) ? value : '(missing or invalid)';
-  const statuses=new Set(['available','cancelled','ambiguous','none','other_day','pending','ineligible','weekly','withheld']);
+  const statuses=new Set(['available','cancelled','ambiguous','none','other_day','pending','ineligible','weekly','retail','withheld']);
   const readings=outcome?.sourceOutcomes ?? data[0].filter(s=>{
     const time=Date.parse(s.fb_created_time);
     return Number.isFinite(time) && time<=now && deliveryWindow(new Date(time)).day===w.day;

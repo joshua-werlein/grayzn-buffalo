@@ -5,7 +5,7 @@ import { chicagoMidnight } from './analytics';
 import { eventState } from './special-events';
 import { plainValue } from '../../workers/fb-feed/alert-detail.js';
 import { applySharedWeeklyLunchPrice, validateWeeklyLunch, canonicalizeSlotContent } from '../../workers/fb-feed/reconcile.js';
-import { routeEventSource, eventCue, isEventMessage } from '../../workers/fb-feed/events.js';
+import { routeEventSource, eventCue, isEventMessage, retailPromotionCue } from '../../workers/fb-feed/events.js';
 import { normalizeWeeklyRange, factKey, noActionableSpecials } from '../../workers/fb-feed/evidence.js';
 import {approvalEvents} from '../../workers/fb-feed/staff-review.js';
 import {readWingAttention,wingHoldReason} from '../../workers/fb-feed/wing-review.js';
@@ -140,7 +140,13 @@ export function extractedForDay(source: any, day: string, week: any) {
   if (raw.type === 'mexican-night') return {values: Array.isArray(raw.groups) ? raw.groups.slice(0,12).flatMap((g: any) => Array.isArray(g?.items) ? g.items.slice(0,4).map((i: any) => reviewText([i?.title,i?.description].filter(v => typeof v === 'string').join(' '))) : []) : [], scope: 'Mexican Night', relevant: sourceDate(source.fb_created_time) === day};
   const values = Array.isArray(raw.offers) ? raw.offers.slice(0,20).map((o: any) => reviewText(o?.content))
     : Array.isArray(raw) ? raw.slice(0,12).filter((g: any) => g?.day_of_week === calendarDayOfWeek(day)).flatMap((g: any) => Array.isArray(g.items) ? g.items.slice(0,4).map((i: any) => reviewText([i?.content,i?.price].filter(v => typeof v === 'string').join(' '))) : []) : [];
-  return {values: values.filter(Boolean), scope: 'Daily specials', relevant: sourceDate(source.fb_created_time) === day};
+  let scope='Daily specials';
+  if (retailPromotionCue(raw)) {
+    const date=sourceDate(source.fb_created_time);
+    const route=date && routeEventSource({candidate:raw,caption:source.caption,postDate:date,canonicalize:canonicalizeSlotContent});
+    scope=route && route.route==='event' ? 'Special Event' : 'Gift card promotion';
+  }
+  return {values:values.filter(Boolean),scope,relevant:sourceDate(source.fb_created_time)===day};
 }
 // Facebook is the canonical source (docs/facebook-specials-source-of-truth.md): no
 // website value is protected from a newer verified post. A staff edit or approval is
@@ -189,6 +195,7 @@ export function eventDraftFor(source: any, day: string) {
   let routed: any = null;
   try { routed = routeEventSource({candidate: raw, caption: String(source.caption ?? ''), postDate: day, canonicalize: canonicalizeSlotContent}); }
   catch { /* Staff fill the fields. */ }
+  if (routed?.route==='retail') return null;
   const draft = routed?.route === 'event' && !routed.cancellation ? routed.draft ?? null : null;
   const canonical = (text: string) => { try { return canonicalizeSlotContent(text, weekday, 'custom'); } catch { return ''; } };
   const heading = reviewText(String(raw.poster_evidence ?? ''), 80);
@@ -270,16 +277,19 @@ export async function readAutomationReview(env: any, day: string, now = new Date
     // An event automation withheld for this post still needs staff (publish it as a special event below).
     const withheld=linkedEvents.find(e=>e.status==='review' && e.origin==='automation');
     const outcome=event ? {status:'Published',reason:`Published as a special event: ${event.title}.`}
-      : withheld ? {status:'Held',reason:`Special event held: ${withheld.reason || 'the evidence was incomplete'}`} : importOutcome(source,audit);
+      : withheld ? {status:'Held',reason:`Special event held: ${withheld.reason || 'the evidence was incomplete'}`}
+      : extracted.scope==='Gift card promotion' ? {status:'No Specials',reason:'This gift card promotion has no verified one-time event date.'}
+      : importOutcome(source,audit);
+    const retail=['Special Event','Gift card promotion'].includes(extracted.scope);
     const website=extracted.scope==='Mexican Night' ? currentGroups.filter((g: any)=>g.collection_id==='mexican-night')
       : currentGroups.filter((g: any)=>g.collection_id===week?.collection_id && (extracted.scope!=='Weekly Lunch' || g.service==='lunch'));
-    const current = linkedEvents.length ? linkedEvents.flatMap(e=>e.values) : website.flatMap((g: any)=>g.slots.map((s: any)=>s.value));
+    const current = linkedEvents.length ? linkedEvents.flatMap(e=>e.values) : retail ? [] : website.flatMap((g: any)=>g.slots.map((s: any)=>s.value));
     return {id:source.id,source:reviewText(source.fb_post_id,90),created:reviewTimestamp(source.fb_created_time),fetched:reviewTimestamp(source.fetched_at),processed:reviewTimestamp(source.processed_at),link:facebookLink(source.permalink_url),reviewStatus:source.review_status,dismissed:source.review_status==='dismissed',...extracted,...outcome,
       specialEvent:event?{title:event.title,date:event.event_date}:null,
-      eventOption:linkedEvents.every(e=>e.status==='review' && e.origin==='automation') && day===chicagoCalendarDate(now) && extracted.scope==='Daily specials'
+      eventOption:linkedEvents.every(e=>e.status==='review' && e.origin==='automation') && day===chicagoCalendarDate(now) && ['Daily specials','Special Event'].includes(extracted.scope)
         ? eventOptionFor(source,day,extracted.values.some((value: string)=>current.some((v: string)=>factKey(v)===factKey(value))),audit) : null,
       values:extracted.values.map((value: string)=>({value,onWebsite:current.some((v: string)=>factKey(v)===factKey(value))})),
-      editor:linkedEvents.length?'/admin/specials#special-events':extracted.scope==='Mexican Night'?'/admin/specials#mexican-form':editor,
+      editor:linkedEvents.length || retail?'/admin/specials#special-events':extracted.scope==='Mexican Night'?'/admin/specials#mexican-form':editor,
       audits:audit.slice(0,4).map((e: any)=>({type:reviewText(e.event_type,30),at:reviewTimestamp(e.occurred_at),detail:reviewReason(e.detail)})),
       wing:wingFor(source),relevant:extracted.relevant || linkedEvents.length>0};
   }).filter((i: any)=>i.relevant);

@@ -38,7 +38,7 @@ test('October 26 alert reports a classification failure without guessing slots',
     '- Unidentified service: 3 items, Service not established by evidence',
     '  (The service could not be identified, so no slot is named. If the post is a holiday, game day or other one-time promotion, publish it as a Special Event from Automation Review instead of a daily slot.)',
     '',
-    'Published by automation today: Lunch (1), All Day (2), Soup (1)',
+    'Published by automation today: none',
     '',
     'Automatic retry: none pending',
     'Correction: needed for Monday. Review the held imports and use Approve & Publish; approved values stay until a newer Facebook post replaces them. The specials editor is also available.',
@@ -46,8 +46,19 @@ test('October 26 alert reports a classification failure without guessing slots',
     'Review imports: https://grayznbuffalo.com/admin/automation?date=2026-10-26',
   ];
   for(const line of expectedLines.filter(Boolean)) assert.ok(text.split('\n').includes(line),line);
-  assert.match(text,/Result: Partially Published/);
-  assert.match(text,/Published value: Monday Lunch #1: 3 Topping Personal Pizza/);
+  assert.match(text,/Result: Held for Review/);
+  assert.doesNotMatch(text,/Published value:/);
+});
+
+test('a partial publication reports the current poster’s confirmed slot only',()=>{
+  const source={id:'current',processing_status:'staged',validation_result:'ok',image_r2_key:'poster',review_status:'pending'};
+  const data=[[source],...DATA.slice(1,4),DATA[4].map(s=>({...s,last_auto_value:s.content})),
+    [{key:'facebook_daily_post_times',value:JSON.stringify({day:'2026-10-26',weekId:77,
+      times:{'l:1':{ids:['current']},'a:1':{ids:['older']}}})}]];
+  const detail=dailyAlertDetail(OCT26,data,'2026-10-26',1);
+  assert.deepEqual(detail.published,[{category:'Lunch',count:1}]);
+  assert.match(send(detail).text,/Result: Partially Published/);
+  assert.match(send(detail).text,/Published value: Monday Lunch #1: 3 Topping Personal Pizza/);
 });
 
 test('identified holds show the stored values and the staff-protected count',()=>{

@@ -22,13 +22,14 @@ export async function activeEventsMode(env) {
 // whose event staff edited or removed (removing an event must never push its
 // poster into the daily specials).
 export async function eventSourceIndexes(env,sources,today) {
-  if (!sources.length || await activeEventsMode(env)==='OFF') return new Set();
+  if (!sources.length) return new Set();
+  const routes=routeStoredSources(sources,{today,canonicalize:canonicalizeSlotContent});
+  if (await activeEventsMode(env)==='OFF') return new Set(routes.flatMap((r,i)=>r.retail?[i]:[]));
   const {results:held}=await env.DB.prepare(`SELECT source_post_id FROM special_events
     WHERE manual_locked=1 AND source_post_id IN (SELECT value FROM json_each(?1))`)
     .bind(JSON.stringify(sources.map(s=>s.fb_post_id))).all();
   const staff=new Set(held.map(e=>e.source_post_id));
-  return new Set(routeStoredSources(sources,{today,canonicalize:canonicalizeSlotContent})
-    .flatMap((r,i)=>r.route==='event' || staff.has(sources[i].fb_post_id)?[i]:[]));
+  return new Set(routes.flatMap((r,i)=>r.retail || r.route==='event' || staff.has(sources[i].fb_post_id)?[i]:[]));
 }
 
 const SOURCES=`SELECT * FROM special_imports WHERE id IN (SELECT value FROM json_each(?1))
@@ -50,7 +51,7 @@ export async function reconcileEvents(env,{sourceIds,today}) {
     // One event's failure never affects another event or the regular specials.
     try {
       const r=routing[i];
-      if (r.route==='regular') changes+=await withdrawRegular(env,rows[i]);
+      if (r.route==='regular' || r.route==='retail') changes+=await withdrawRegular(env,rows[i]);
       else if (r.route==='mixed') await log(env,{source:rows[i].fb_post_id,action:'conflict',detail:r.reason}).run();
       else if (!r.cancellation) changes+=await applyDraft(env,rows[i],r,times.get(rows[i].id));
     } catch (error) { console.error('Special event reconcile error',{reason:String(error?.message ?? error).slice(0,200)}); }
@@ -103,17 +104,28 @@ async function withdrawRegular(env,row) {
 // reasons (an internal diagnostic, never shown or offered for approval).
 async function applyDraft(env,row,routing,postedMs) {
   const d=routing.draft;
+  if (routing.retail && !Number.isFinite(postedMs)) return 0;
   const status=routing.publish ? 'published' : 'review';
   const reason=status==='review' ? reasonText(d.review_reasons.map(r=>`Withheld: ${r}`)) : '';
   if (status==='review') console.warn('Special event withheld',{reasonCount:d.review_reasons.length});
   const evidence=JSON.stringify({...d.evidence,import_id:row.id,image_key:row.image_r2_key,verified_posted_ms:postedMs});
   // Match both original automation identity and the staff-visible date. A staff
   // date correction must not let a repost of the original event bypass removal.
-  const sameEventSql=`fingerprint=?3 OR (identity=?4 AND (event_date=?2 OR
+  // Staff may enter the Black Friday event independently with edited offer text
+  // and no Facebook link. Preserve that card and fence the insert on its title.
+  const manualBlackFriday=(identity,date)=>`${identity}='black-friday' AND event_date=${date}
+    AND manual_locked=1 AND lower(trim(title))='black friday deal'`;
+  const sameEventSql=`fingerprint=?3 OR (${manualBlackFriday('?4','?2')}) OR (identity=?4 AND (event_date=?2 OR
     CASE WHEN json_valid(last_auto_json) THEN json_extract(last_auto_json,'$.event_date') END=?2))
     OR (status='rejected' AND COALESCE(identity,'')='' AND event_date=?2)`;
   const existing=await readEvents(env,`SELECT * FROM special_events WHERE source_post_id=?1
     OR (${sameEventSql})`,row.fb_post_id,d.event_date,d.fingerprint,d.identity);
+  const manual=existing.find(e=>d.identity==='black-friday' && e.event_date===d.event_date
+    && e.manual_locked===1 && e.title.trim().toLowerCase()==='black friday deal');
+  if (manual) {
+    await log(env,{event_id:manual.id,source:row.fb_post_id,action:'protected',detail:'Kept the staff-edited Black Friday event'}).run();
+    return 0;
+  }
   const linked=existing.find(e=>e.source_post_id===row.fb_post_id);
   const matches=existing.filter(e=>e.status!=='rejected' && e.identity===d.identity);
   const own=linked ?? (matches.length===1 && matches[0].fingerprint!==d.fingerprint ? matches[0] : null);
@@ -183,7 +195,7 @@ async function applyDraft(env,row,routing,postedMs) {
       date_basis,source_post_id,source_import_id,source_created_time,source_permalink,fingerprint,identity,evidence_json,last_auto_json,review_reason)
       SELECT ?1,?2,?3,?4,?5,?6,?7,?8,'automation',0,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18
       WHERE NOT EXISTS(SELECT 1 FROM special_events WHERE source_post_id=?10
-        OR fingerprint=?14 OR (identity=?15 AND (event_date=?3 OR
+        OR fingerprint=?14 OR (${manualBlackFriday('?15','?3')}) OR (identity=?15 AND (event_date=?3 OR
           CASE WHEN json_valid(last_auto_json) THEN json_extract(last_auto_json,'$.event_date') END=?3))
         OR (status='rejected' AND COALESCE(identity,'')='' AND event_date=?3))`)
       .bind(id,d.title,d.event_date,d.time_text,d.start_time,d.end_time,d.details,status,d.date_basis,row.fb_post_id,row.id,
